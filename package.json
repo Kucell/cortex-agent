@@ -1,0 +1,29 @@
+{
+  "name": "cortex-agent",
+  "version": "1.0.0",
+  "description": "AI Agent Governance Framework for Cursor, Claude Code, and Windsurf",
+  "bin": {
+    "cortex-agent": "bin/cli.js"
+  },
+  "files": [
+    "bin",
+    "templates"
+  ],
+  "engines": {
+    "node": ">=14.0.0"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "ai",
+    "agent",
+    "cursor",
+    "claude-code",
+    "windsurf",
+    "governance",
+    "workflow"
+  ],
+  "author": "",
+  "license": "MIT"
+}

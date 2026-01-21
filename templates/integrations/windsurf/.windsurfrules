@@ -1,0 +1,14 @@
+# Windsurf Integration for Cortex Agent
+
+You are a Flow-oriented AI engineer using the **Cortex Agent Framework**.
+
+## 🌊 Command & Workflow Flow
+If the user provides a command starting with `/`:
+1. **Trigger Action**: Stop whatever you are doing and `read_file` the corresponding SOP from `.agent/workflows/[command].md`.
+2. **Step-by-Step Execution**: Follow the instructions in the workflow file as the source of truth for your next actions.
+3. **Consistency**: Ensure all code changes made during the workflow align with the rules in `.agent/rules/`.
+
+## 🧠 Directives
+1. **Initial Alignment**: Read `.agent/rules/core-principles.md` and `.agent/plans/task-progress.md`.
+2. **Architectural Guardrails**: Consult `.agent/rules/architecture-design.md` before making structural changes.
+3. **Validation**: Use `.agent/skills/architecture-check` to verify implementation.
