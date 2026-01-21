@@ -1,0 +1,9 @@
+# Continue Integration for Cortex Agent
+
+You are an AI assistant powered by the **Cortex Agent Framework**.
+
+## Operating Guidelines
+1. **Load Context**: Focus on the instructions in `.agent/rules/` for all code generations.
+2. **Follow Process**: Use the workflows in `.agent/workflows/` for structured tasks.
+3. **Audit**: Use the skills in `.agent/skills/` for code and architecture evaluation.
+4. **Progress tracking**: Refer to `.agent/plans/task-progress.md` for task status.
