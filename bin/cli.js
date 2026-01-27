@@ -6,12 +6,23 @@ const path = require('path');
 const cwd = process.cwd();
 const templateDir = path.join(__dirname, '../templates');
 
+// List of legacy config files to check for migration
+const legacyConfigFiles = [
+    '.cursorrules',
+    '.clauderules',
+    'CLAUDE.md',
+    '.windsurfrules',
+    '.aider.instructions.md',
+    '.continuerules',
+    '.github/copilot-instructions.md'
+];
+
 function copyRecursive(src, dest) {
     const exists = fs.existsSync(src);
     const stats = exists && fs.statSync(src);
     const isDirectory = exists && stats.isDirectory();
     if (isDirectory) {
-        if (!fs.existsSync(dest)) fs.mkdirSync(dest);
+        if (!fs.existsSync(dest)) fs.mkdirSync(dest, { recursive: true });
         fs.readdirSync(src).forEach((child) => {
             copyRecursive(path.join(src, child), path.join(dest, child));
         });
@@ -20,29 +31,51 @@ function copyRecursive(src, dest) {
     }
 }
 
+function migrateOldConfigs() {
+    console.log('🔍 Checking for existing AI assistant configurations...');
+    let foundLegacyConfig = false;
+    const importedRulesDir = path.join(cwd, '.agent', 'imported_rules');
+
+    legacyConfigFiles.forEach(fileName => {
+        const filePath = path.join(cwd, fileName);
+        if (fs.existsSync(filePath)) {
+            if (!foundLegacyConfig) {
+                console.log('Legacy configurations found. Migrating them to .agent/imported_rules/');
+                foundLegacyConfig = true;
+                if (!fs.existsSync(importedRulesDir)) {
+                    fs.mkdirSync(importedRulesDir, { recursive: true });
+                }
+            }
+            const destFileName = `imported_from_${path.basename(fileName)}.md`;
+            const destPath = path.join(importedRulesDir, destFileName);
+            const content = fs.readFileSync(filePath, 'utf8');
+            fs.writeFileSync(destPath, `# Imported from ${fileName}\n\n${content}`);
+            console.log(`  - Migrated ${fileName}`);
+        }
+    });
+
+    if (!foundLegacyConfig) {
+        console.log('No legacy configurations found.');
+    }
+
+    return foundLegacyConfig;
+}
+
+
 function init() {
     console.log('🧠 Initializing Cortex Agent Framework...');
+    
+    const isExistingProject = migrateOldConfigs();
 
     // 1. Copy .agent folder (Knowledge Base)
     const agentSrc = path.join(templateDir, '.agent');
     const agentDest = path.join(cwd, '.agent');
 
-    if (fs.existsSync(agentDest)) {
-        console.warn('⚠️  .agent directory already exists. Skipping...');
+    if (fs.existsSync(agentDest) && !isExistingProject) {
+        console.warn('⚠️  .agent directory already exists. Skipping creation of knowledge base.');
     } else {
         copyRecursive(agentSrc, agentDest);
         console.log('✅ Created .agent directory (Knowledge Base).');
-    }
-
-    // 2. Copy .cursor folder (Triggers & Proxy Rules)
-    const cursorSrc = path.join(templateDir, '.cursor');
-    const cursorDest = path.join(cwd, '.cursor');
-
-    if (fs.existsSync(cursorDest)) {
-        console.warn('⚠️  .cursor directory already exists. Merging/Skipping...');
-    } else {
-        copyRecursive(cursorSrc, cursorDest);
-        console.log('✅ Created .cursor directory (Native Rules, Skills, Commands).');
     }
 
     // 2. Integration prompts/copies
@@ -74,11 +107,55 @@ function init() {
         }
     });
 
+    setupPlatformLinks();
+
     console.log('\n🎉 Cortex Agent initialized successfully!');
-    console.log('👉 Next steps:');
-    console.log('   1. Edit .agent/rules/tech-stack.md');
-    console.log('   2. Edit .agent/rules/architecture-design.md');
-    console.log('   3. Update .agent/plans/task-progress.md');
+    
+    if (isExistingProject) {
+        console.log('\n👉 Your existing project is ready for migration!');
+        console.log('   We\'ve imported your old configurations into `.agent/imported_rules/`.');
+        console.log('   To complete the process, run the `/migrate-rules` command in your AI assistant for a guided migration.');
+    } else {
+        console.log('\n👉 Your new project is ready! What\'s next?');
+        console.log('   Run the `/configure` command in your AI assistant to interactively set up your agent.');
+    }
+}
+
+function setupPlatformLinks() {
+    console.log('\n🔗 Automating platform mappings via symbolic links...');
+
+    const links = [
+        // For Cursor
+        { target: '../.agent/workflows', link: '.cursor/commands' },
+        { target: '../.agent/rules', link: '.cursor/rules' },
+        { target: '../.agent/skills', link: '.cursor/skills' },
+
+        // For Claude
+        { target: '../.agent/workflows', link: '.claude/commands' },
+        { target: '../.agent/sub-agents', link: '.claude/agents' },
+        { target: '../.agent/plugins', link: '.claude/plugins' },
+        { target: '.agent/rules/core-principles.md', link: 'CLAUDE.md' },
+
+        // For Windsurf
+        { target: '../.agent/workflows', link: '.windsurf/workflows' },
+        { target: '../.agent/rules', link: '.windsurf/rules' }
+    ];
+
+    links.forEach(item => {
+        const linkPath = path.join(cwd, item.link);
+        const linkDir = path.dirname(linkPath);
+
+        if (!fs.existsSync(linkDir)) {
+            fs.mkdirSync(linkDir, { recursive: true });
+        }
+
+        if (fs.existsSync(linkPath)) {
+            console.log(`ℹ️  Path ${item.link} already exists. Skipping link creation.`);
+        } else {
+            fs.symlinkSync(item.target, linkPath);
+            console.log(`✅ Linked ${item.link} -> ${item.target}`);
+        }
+    });
 }
 
 const command = process.argv[2];

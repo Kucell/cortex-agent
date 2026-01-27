@@ -9,12 +9,14 @@ description: 用于新增、修改或维护 AI 指令（规则、工作流、技
 ## 1. 需求解析与定位
 - **确定类别**：判断是新增 `Rule`（底线）、`Workflow`（流程）还是 `Skill`（能力）。
 - **影响评估**：检查新指令是否与现有指令冲突。
+- **(可选) 任务分解**: 如果用户请求的更新非常复杂（例如，涉及多个组件），**首先调用 `planner` 子代理**，将任务分解为更小的步骤，然后逐一执行。
 
 ## 2. 内容起草
+- **规则优先**: 在编写任何内容之前，**必须首先查阅** `.agent/rules/code-standards.md` 和 `.agent/rules/architecture-design.md`，确保新的指令符合项目规范。
 - **遵循标准模板**：
     - Workflows 需包含 YAML frontmatter 和分步指南。
     - Rules 需条理清晰，具备可操作性。
-    - Skills 需定义清晰的“指南”和“输出格式”。
+    - Skills 需定义清晰的 `name`, `description` 元数据和详细指令。
 
 ## 3. 文件操作 (Action)
 // turbo
