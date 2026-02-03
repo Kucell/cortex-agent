@@ -3,15 +3,15 @@ name: migrate-rules
 description: Interactively migrate and merge legacy AI assistant rules into the Cortex Agent framework.
 ---
 
-# Rules Migration Workflow (/migrate-rules)
+# 规则迁移工作流 (/migrate-rules)
 
-Hello! I'm the Cortex Agent. I will help you safely migrate your existing AI assistant settings into the Cortex Agent framework.
+你好！我是 Cortex Agent。我将帮助你把旧的 AI 助手配置，安全地迁移到 Cortex Agent 框架中。
 
-I've found previous configuration files in the `.agent/imported_rules/` directory. Let's review each file together and merge them into the new `.agent/rules/` structure.
+我在 `.agent/imported_rules/` 目录下找到了之前导入的旧配置文件。现在，让我们一起来审查这些文件，并将它们合并到新的 `.agent/rules/` 结构中吧。
 
 ---
 
-## Migration Process
+## 迁移流程
 
 // For each file `F` in `.agent/imported_rules/`
 // 1. Read the content of `F`
@@ -24,45 +24,45 @@ I've found previous configuration files in the `.agent/imported_rules/` director
 // 8. After a successful merge, ask the user for confirmation to delete the original file `F` from `.agent/imported_rules/`.
 // End loop
 
-## 1. File Review
+## 1. 文件审查 (File Review)
 
 // The agent will list the first file found in `.agent/imported_rules/`
-The current file under review is: `[Agent will insert file name here]`
+当前审查的文件是： `[Agent will insert file name here]`
 
-**Legacy Rule Content:**
+**旧规则内容:**
 ```
 [Agent will insert content of the imported file here]
 ```
 
-## 2. Specify Merge Target
+## 2. 指定合并目标 (Specify Merge Target)
 
-Which file in the `.agent/rules/` directory would you like to merge these rules into? (e.g., `tech-stack.md`, `architecture-design.md`)
+你希望将这些规则合并到 `.agent/rules/` 目录下的哪个文件中？ (例如: `tech-stack.md`, `architecture-design.md`)
 
-> (Enter your answer here)
+> (请在此处输入你的回答)
 
-## 3. Execute Merge
+## 3. 执行合并 (Execute Merge)
 
-Okay, let's compare the legacy rules with the existing rules in the target file.
+好的，现在我们来比较一下旧规则和目标文件中的现有规则。
 
-**Legacy Rules (`[imported file]`)**:
+**旧规则 (`[imported file]`)**:
 ```
 [Agent will insert content of the imported file here]
 ```
 
-**Current Rules (`[target file]`)**:
+**当前规则 (`[target file]`)**:
 ```
 [Agent will insert content of the target rule file here]
 ```
 
-**How would you like to merge them?** (e.g., "Replace all with legacy rules," "Append only the following content: ...," "Merge the content of both files")
+**你希望如何合并它们？** (例如: "用旧规则完全替换", "仅追加以下内容: ...", "将两个文件的内容合并")
 
-> (Enter your answer here)
+> (请在此处输入你的回答)
 
-## 4. Clean Up
+## 4. 清理 (Clean Up)
 
-The merge was successful! May I now delete the original imported file `[imported file]`?
+合并成功！现在可以删除原始的导入文件 `[imported file]` 了吗？
 
-> (Enter your answer here)
+> (请在此处输入你的回答)
 
 ---
-I will repeat this process until all imported legacy rule files have been migrated.
+我将重复此过程，直到所有导入的旧规则文件都被迁移完毕。
