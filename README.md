@@ -30,10 +30,15 @@
 你只需要在你的项目根目录下执行以下命令，即可完成 Cortex Agent 的初始化：
 
 ```bash
+# 初始化当前项目 (Local)
 npx cortex-agent init
+
+# 初始化全局配置 (Global, 存储在 ~/.agent)
+npx cortex-agent init --global
 ```
 
 该命令会自动完成以下工作：
+
 1.  在你的项目中创建 `.agent/` 目录并填充核心治理文件（Rules, Workflows, Skills, Sub-agents, Hooks, Plugins）。
 2.  为 Cursor、Claude Code、Windsurf 等生成对应的入口配置文件（例如 `.cursorrules`, `.clauderules`）。
 3.  自动创建必要的符号链接，将 `.agent` 目录下的内容映射到不同平台的习惯配置文件夹中。
@@ -44,37 +49,42 @@ npx cortex-agent init
 `cortex-agent init` 命令现在会根据你的项目情况，提供两种初始化配置体验：
 
 ### 1. 新项目 (New Project)
+
 如果你的项目中**没有**检测到旧的 AI 助手配置文件（例如 `.cursorrules`, `CLAUDE.md` 等），`init` 命令会为你提供一个全新的 Cortex Agent 框架。
 
 **下一步：运行 `/configure` 命令**
 初始化完成后，你将收到提示，建议你在 AI 助手中运行 `/configure` 命令。这是一个交互式的工作流，它将引导你完成以下步骤：
--   **项目简要介绍**：描述项目的核心目标和用户。
--   **技术栈定义**：明确项目使用的编程语言、框架和关键库。
--   **架构原则**：设定项目的核心设计原则和架构模式。
+
+- **项目简要介绍**：描述项目的核心目标和用户。
+- **技术栈定义**：明确项目使用的编程语言、框架和关键库。
+- **架构原则**：设定项目的核心设计原则和架构模式。
 
 通过 `/configure` 工作流，Cortex Agent 会自动填充 `.agent/rules/tech-stack.md`、`.agent/rules/architecture-design.md` 和 `.agent/plans/task-progress.md` 等文件，为你快速搭建起项目的基础 Agent 信息。你无需手动修改这些文件。
 
 ### 2. 现有项目 (Existing Project)
+
 如果 `init` 命令检测到你的项目中**存在**旧的 AI 助手配置文件，它会自动进入迁移模式。
 
 **1. 自动导入 (Automatic Import)**
--   `init` 命令会将检测到的旧配置文件（例如 `.cursorrules`, `CLAUDE.md`）的内容，自动复制到新创建的 `.agent/imported_rules/` 目录下。
--   你会收到一份报告，告知哪些文件已被导入。
+
+- `init` 命令会将检测到的旧配置文件（例如 `.cursorrules`, `CLAUDE.md`）的内容，自动复制到新创建的 `.agent/imported_rules/` 目录下。
+- 你会收到一份报告，告知哪些文件已被导入。
 
 **2. 运行迁移工作流 (Run Migration Workflow)**
--   **手动融合的时代结束了！** `init` 命令执行完毕后，你将收到提示，建议你在 AI 助手中运行 `/migrate-rules` 命令。
--   这是一个为迁移而生的交互式工作流，Cortex Agent 将会：
-    -   逐一展示导入的旧规则。
-    -   询问你希望将这些旧规则合并到哪个新的核心规则文件（如 `tech-stack.md`）中。
-    -   通过对话，辅助你完成规则的**比较、筛选和合并**。
-    -   在合并成功后，自动清理已处理的旧规则文件。
+
+- **手动融合的时代结束了！** `init` 命令执行完毕后，你将收到提示，建议你在 AI 助手中运行 `/migrate-rules` 命令。
+- 这是一个为迁移而生的交互式工作流，Cortex Agent 将会：
+  - 逐一展示导入的旧规则。
+  - 询问你希望将这些旧规则合并到哪个新的核心规则文件（如 `tech-stack.md`）中。
+  - 通过对话，辅助你完成规则的**比较、筛选和合并**。
+  - 在合并成功后，自动清理已处理的旧规则文件。
 
 通过 `/migrate-rules` 工作流，`cortex-agent` 将繁琐的手动文件比对与合并工作，转变为一个由 AI 辅助的、清晰、可控的对话流程，帮助你更顺畅地将现有项目的 AI 配置，逐步整合到 Cortex Agent 的统一治理框架中。
-
 
 ## 🔧 自定义与演进
 
 所有的指令都是活的。你可以通过以下方式不断优化你的 Agent：
+
 - **`/agent-update`**: 使用该指令来新增或修改规则、工作流。
 - **扩展专业能力**: 新增**子代理 (Sub-agents)** 来处理特定领域的复杂任务，例如专门的架构师代理或安全审计代理。
 - **精细化控制**: 通过定义**钩子 (Hooks)**，在 Agent 的操作生命周期中插入自定义逻辑，实现更精细的自动化和策略执行。
@@ -84,18 +94,17 @@ npx cortex-agent init
 
 `cortex-agent` 提供了一系列预定义的工作流，以覆盖常见的开发场景。这些工作流可以通过在 AI 助手（如 Cursor）中输入斜杠命令来调用。
 
-| 工作流 (Command)      | 描述                                           | 使用示例                       |
-| :-------------------- | :--------------------------------------------- | :----------------------------- |
-| `/agent-update`       | 用于更新或创建 Agent 的规则、工作流或技能。    | `/agent-update "新增一条规则..."` |
-| `/arch-design`        | 引导完成新功能的架构设计和提案文档。           | `/arch-design "用户认证模块"`   |
-| `/briefing`           | 获取当前项目的简报，了解背景和目标。           | `/briefing`                    |
-| `/bug-fix`            | 引导完成一个 Bug 的分析、定位和修复流程。      | `/bug-fix "登录按钮无响应"`     |
-| `/code-review`        | 对指定的代码文件或变更进行评审。               | `/code-review "src/utils.js"`  |
-| `/commit`             | 遵循项目规范，生成并执行 Git Commit。          | `/commit`                      |
-| `/configure-agent`    | 交互式地配置和定制 Agent 框架本身。            | `/configure-agent`             |
-| `/start-task`         | 开始执行一个新任务，并创建对应的计划。         | `/start-task "开发新 API"`      |
-| `/sync-plans`         | 同步和更新项目的任务计划和进度。               | `/sync-plans`                  |
-
+| 工作流 (Command)   | 描述                                        | 使用示例                          |
+| :----------------- | :------------------------------------------ | :-------------------------------- |
+| `/agent-update`    | 用于更新或创建 Agent 的规则、工作流或技能。 | `/agent-update "新增一条规则..."` |
+| `/arch-design`     | 引导完成新功能的架构设计和提案文档。        | `/arch-design "用户认证模块"`     |
+| `/briefing`        | 获取当前项目的简报，了解背景和目标。        | `/briefing`                       |
+| `/bug-fix`         | 引导完成一个 Bug 的分析、定位和修复流程。   | `/bug-fix "登录按钮无响应"`       |
+| `/code-review`     | 对指定的代码文件或变更进行评审。            | `/code-review "src/utils.js"`     |
+| `/commit`          | 遵循项目规范，生成并执行 Git Commit。       | `/commit`                         |
+| `/configure-agent` | 交互式地配置和定制 Agent 框架本身。         | `/configure-agent`                |
+| `/start-task`      | 开始执行一个新任务，并创建对应的计划。      | `/start-task "开发新 API"`        |
+| `/sync-plans`      | 同步和更新项目的任务计划和进度。            | `/sync-plans`                     |
 
 ## 🔌 多平台集成 (Multi-platform Integration)
 
@@ -113,17 +122,18 @@ npx cortex-agent init
 
 下表概述了如何将 `Cortex Agent` 集成到不同的 AI 平台中。
 
-| 平台 (Platform)      | 集成配置文件 (Integration File)               | 集成方式 (Method)         | 备注 (Notes)                                                                                                                                                             |
-| :------------------- | :-------------------------------------------- | :------------------------ | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Cursor**           | `.cursorrules`                                | 符号链接 (Symlink)        | 通过 `ln -s ../.agent/workflows .cursor/commands` 将工作流映射为原生斜杠命令。                                                                                           |
-| **Claude**           | `.clauderules`                                | 指令文件 (Instruction)    | 提示词指示 Claude 读取 `.agent/` 目录下的规则和工作流。                                                                                                                    |
-| **Aider**            | `.aider.instructions.md`                      | 指令文件 (Instruction)    | 指示 Aider 将 `/` 命令路由到 `.agent/workflows/` 中的对应文件。                                                                                                            |
-| **Continue**         | `.continuerules`                              | 指令文件 (Instruction)    | 指示 Continue 遵循 `.agent/` 目录中的指导方针。                                                                                                                          |
-| **GitHub Copilot**   | `.github/copilot-instructions.md`             | 指令文件 (Instruction)    | 指示 Copilot 在提供代码建议时遵循 `.agent/rules/` 和 `.agent/workflows/`。                                                                                                 |
-| **Windsurf**         | `.windsurfrules`                              | 指令文件 (Instruction)    | 提示词指示 Windsurf 遵循 `.agent/` 目录。                                                                                                                                |
-| **OpenAI Codex**     | `AGENTS.md`                                   | 指令文件 (Instruction)    | Codex 会自动查找并遵循 `AGENTS.md` 文件中的指令。你可以将 `.agent` 中的核心规则聚合或链接到此文件。                                                                      |
+| 平台 (Platform)    | 集成配置文件 (Integration File)   | 集成方式 (Method)      | 备注 (Notes)                                                                                        |
+| :----------------- | :-------------------------------- | :--------------------- | :-------------------------------------------------------------------------------------------------- |
+| **Cursor**         | `.cursorrules`                    | 符号链接 (Symlink)     | 通过 `ln -s ../.agent/workflows .cursor/commands` 将工作流映射为原生斜杠命令。                      |
+| **Claude**         | `.clauderules`                    | 指令文件 (Instruction) | 提示词指示 Claude 读取 `.agent/` 目录下的规则和工作流。                                             |
+| **Aider**          | `.aider.instructions.md`          | 指令文件 (Instruction) | 指示 Aider 将 `/` 命令路由到 `.agent/workflows/` 中的对应文件。                                     |
+| **Continue**       | `.continuerules`                  | 指令文件 (Instruction) | 指示 Continue 遵循 `.agent/` 目录中的指导方针。                                                     |
+| **GitHub Copilot** | `.github/copilot-instructions.md` | 指令文件 (Instruction) | 指示 Copilot 在提供代码建议时遵循 `.agent/rules/` 和 `.agent/workflows/`。                          |
+| **Windsurf**       | `.windsurfrules`                  | 指令文件 (Instruction) | 提示词指示 Windsurf 遵循 `.agent/` 目录。                                                           |
+| **OpenAI Codex**   | `AGENTS.md`                       | 指令文件 (Instruction) | Codex 会自动查找并遵循 `AGENTS.md` 文件中的指令。你可以将 `.agent` 中的核心规则聚合或链接到此文件。 |
 
 ### 快速初始化
+
 `cortex-agent` 的 `init` 命令会根据模板自动创建这些配置文件，为你提供一个开箱即用的起点。你可以根据具体需求进一步调整这些指令文件的内容，以优化特定 AI 助手的性能和行为。
 
 ## 📄 开源协议
