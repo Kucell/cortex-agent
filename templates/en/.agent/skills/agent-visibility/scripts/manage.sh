@@ -20,34 +20,34 @@ sd_i() {
 
 case $MODE in
   "private")
-    echo "Config mode: private (Visible to IDE, Ignored by Git)"
-    # 1. Remove from .gitignore
+    echo "配置模式: private (IDE 可见, Git 忽略)"
+    # 1. 从 .gitignore 移除
     if [ -f "$GITIGNORE" ]; then
       sd_i "/^\.agent$/d" "$GITIGNORE"
     fi
-    # 2. Add to local exclude
+    # 2. 加入本地忽略
     mkdir -p .git/info
     grep -qxF "$AGENT_DIR" "$LOCAL_EXCLUDE" 2>/dev/null || echo "$AGENT_DIR" >> "$LOCAL_EXCLUDE"
-    # 3. Ensure it's not staged
+    # 3. 确保不处于暂存区
     git reset "$AGENT_DIR" > /dev/null 2>&1
-    echo "✅ Setup complete. Try checking the / menu."
+    echo "✅ 设置完成。请尝试输入 / 菜单。"
     ;;
 
   "ignore")
-    echo "Config mode: ignore (Completely ignored by Git)"
-    # 1. Remove from local exclude
+    echo "配置模式: ignore (Git 彻底忽略)"
+    # 1. 移出本地忽略
     if [ -f "$LOCAL_EXCLUDE" ]; then
       sd_i "/^\.agent$/d" "$LOCAL_EXCLUDE"
     fi
-    # 2. Add to .gitignore
+    # 2. 加入 .gitignore
     grep -qxF "$AGENT_DIR" "$GITIGNORE" 2>/dev/null || echo "$AGENT_DIR" >> "$GITIGNORE"
-    # 3. Remove from cache if tracked
+    # 3. 如果已被追踪则移除索引
     git rm -r --cached "$AGENT_DIR" > /dev/null 2>&1
-    echo "✅ Completely ignored. Menu may stop working."
+    echo "✅ 已彻底忽略。菜单可能失效。"
     ;;
 
   "track")
-    echo "Config mode: track (Normally tracked by Git)"
+    echo "配置模式: track (Git 正常追踪)"
     if [ -f "$GITIGNORE" ]; then
       sd_i "/^\.agent$/d" "$GITIGNORE"
     fi
@@ -55,11 +55,11 @@ case $MODE in
       sd_i "/^\.agent$/d" "$LOCAL_EXCLUDE"
     fi
     git add "$AGENT_DIR"
-    echo "✅ .agent is now being tracked by Git."
+    echo "✅ 现在 .agent 已进入 Git 追踪范围。"
     ;;
 
   *)
-    echo "Usage: $0 [private|ignore|track]"
+    echo "使用方法: $0 [private|ignore|track]"
     exit 1
     ;;
 esac
