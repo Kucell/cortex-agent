@@ -9,7 +9,9 @@ const args = process.argv.slice(2);
 const command = args[0];
 
 // Basic argument parsing
-const options = {};
+const options = {
+  track: false,
+};
 for (let i = 0; i < args.length; i++) {
     const arg = args[i];
     if (arg === "--lang" || arg === "-l") {
@@ -249,6 +251,67 @@ function setupPlatformLinks() {
             }
         }
     });
+}
+
+function applyGitExclusion() {
+  const excludePath = path.join(cwd, ".git", "info", "exclude");
+  if (!fs.existsSync(path.join(cwd, ".git"))) {
+    return; // Not a git repository
+  }
+
+  const excludeDir = path.dirname(excludePath);
+  if (!fs.existsSync(excludeDir)) {
+    fs.mkdirSync(excludeDir, { recursive: true });
+  }
+
+  const generatedPaths = [
+    ".agent",
+    ".cursorrules",
+    ".clauderules",
+    "CLAUDE.md",
+    ".windsurfrules",
+    ".aider.instructions.md",
+    ".continuerules",
+    ".github/copilot-instructions.md",
+    ".cursor",
+    ".claude",
+    ".windsurf",
+  ];
+
+  console.log(
+    "\n🙈 Adding generated files to local Git exclude (.git/info/exclude)...",
+  );
+
+  let currentExcludes = "";
+  if (fs.existsSync(excludePath)) {
+    currentExcludes = fs.readFileSync(excludePath, "utf8");
+  }
+
+  let updatedExcludes = currentExcludes;
+  let addedAny = false;
+
+  generatedPaths.forEach((p) => {
+    const pattern = p.startsWith(".") ? p : `/${p}`; // Basic pattern
+    const exactPattern = p;
+
+    // Check if already in excludes (simple line match)
+    const lines = currentExcludes.split(/\r?\n/);
+    if (!lines.includes(exactPattern)) {
+      if (updatedExcludes && !updatedExcludes.endsWith("\n")) {
+        updatedExcludes += "\n";
+      }
+      updatedExcludes += exactPattern + "\n";
+      addedAny = true;
+      console.log(`  - Added ${exactPattern}`);
+    }
+  });
+
+  if (addedAny) {
+    fs.writeFileSync(excludePath, updatedExcludes);
+    console.log("✅ Local Git exclusion updated.");
+  } else {
+    console.log("ℹ️ All paths already in exclude list.");
+  }
 }
 
 function linkGlobalConfig() {
