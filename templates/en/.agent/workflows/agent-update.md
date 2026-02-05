@@ -1,28 +1,38 @@
 ---
-description: 用于新增、修改或维护 AI 指令（规则、工作流、技能）并同步文档
+description: Used to add, modify, or maintain AI instructions (Rules, Workflows, Skills, Hooks, Plans, Sub-agents) and sync documentation.
 ---
 
-# AI 指令维护工作流 (/agent-update)
+# AI Instruction Maintenance Workflow (/agent-update)
 
-当你需要调整 AI 的“大脑”配置（如新增规则或优化流程）时，执行：
+When you need to adjust the AI's "brain" configuration (e.g., adding rules or optimizing processes), follow these steps:
 
-## 1. 需求解析与定位
-- **确定类别**：判断是新增 `Rule`（底线）、`Workflow`（流程）还是 `Skill`（能力）。
-- **影响评估**：检查新指令是否与现有指令冲突。
-- **(可选) 任务分解**: 如果用户请求的更新非常复杂（例如，涉及多个组件），**首先调用 `planner` 子代理**，将任务分解为更小的步骤，然后逐一执行。
+## 1. Requirement Analysis & Scope Targeting
 
-## 2. 内容起草
-- **规则优先**: 在编写任何内容之前，**必须首先查阅** `.agent/rules/code-standards.md` 和 `.agent/rules/architecture-design.md`，确保新的指令符合项目规范。
-- **遵循标准模板**：
-    - Workflows 需包含 YAML frontmatter 和分步指南。
-    - Rules 需条理清晰，具备可操作性。
-    - Skills 需定义清晰的 `name`, `description` 元数据和详细指令。
+- **Categorization**: Determine if you are adding or modifying `Rules`, `Workflows`, `Skills`, `Hooks`, `Plans`, or `Sub-agents`.
+- **Storage Selection**:
+  - **Local (Project Specific)**: Default to the `.agent/` directory in the current project. Suitable for project-specific business logic and architectural requirements.
+  - **Global (General Capability)**: If the instruction is general-purpose, store it in the global directory `~/.agent/`. Suitable for general code styles, Git standards, or common automation tools.
+- **Impact Assessment**: Check if the new instruction conflicts with existing ones.
 
-## 3. 文件操作 (Action)
+## 2. Drafting Content
+
+- **Reference Standards**: Before writing any content, consult relevant standard documents (e.g., `.agent/rules/code-standards.md`) to ensure the definition is logical.
+- **Follow Standard Templates**:
+  - **Workflows**: Must include YAML frontmatter and step-by-step guides.
+  - **Rules**: Must be well-structured and actionable.
+  - **Skills**: Must include `SKILL.md` (metadata + instructions) and optional `scripts/`.
+  - **Hooks**: Must define trigger timing and execution scripts.
+
+## 3. File Operation (Action)
+
 // turbo
-- **创建/修改文件**：在对应的 `.agent/` 子目录下执行操作。
-- **元数据同步**：**必须更新 `.agent/README.md`** 中的索引，确保文档始终是最新的。
 
-## 4. 验证与总结
-- **自我测试**：尝试模拟运行新指令。
-- **提交报告**：告诉用户做了哪些调整，并附带 `.agent/README.md` 的更新快照。
+- **Write to File**:
+  - If **Local**: Operate on files under `[Project Root]/.agent/`.
+  - If **Global**: Operate on files under `~/.agent/`.
+- **Sync Documentation**: **MUST update the `README.md`** in the corresponding directory (local or global) to keep the index up to date.
+
+## 4. Verification & Summary
+
+- **Self-Test**: Try to simulate running the new instruction.
+- **Submit Report**: Tell the user what adjustments were made, along with a snapshot of the updated `README.md`.
