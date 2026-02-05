@@ -30,11 +30,15 @@
 你只需要在你的项目根目录下执行以下命令，即可完成 Cortex Agent 的初始化：
 
 ```bash
-# 初始化当前项目 (Local)
+# 初始化当前项目 (Local, 默认为中文)
 npx cortex-agent init
+
+# 指定语言初始化 (可选: zh, en)
+npx cortex-agent init --lang=en
 
 # 初始化全局配置 (Global, 存储在 ~/.agent)
 npx cortex-agent init --global
+
 ```
 
 该命令会自动完成以下工作：
@@ -94,17 +98,20 @@ npx cortex-agent init --global
 
 `cortex-agent` 提供了一系列预定义的工作流，以覆盖常见的开发场景。这些工作流可以通过在 AI 助手（如 Cursor）中输入斜杠命令来调用。
 
-| 工作流 (Command)   | 描述                                        | 使用示例                          |
-| :----------------- | :------------------------------------------ | :-------------------------------- |
-| `/agent-update`    | 用于更新或创建 Agent 的规则、工作流或技能。 | `/agent-update "新增一条规则..."` |
-| `/arch-design`     | 引导完成新功能的架构设计和提案文档。        | `/arch-design "用户认证模块"`     |
-| `/briefing`        | 获取当前项目的简报，了解背景和目标。        | `/briefing`                       |
-| `/bug-fix`         | 引导完成一个 Bug 的分析、定位和修复流程。   | `/bug-fix "登录按钮无响应"`       |
-| `/code-review`     | 对指定的代码文件或变更进行评审。            | `/code-review "src/utils.js"`     |
-| `/commit`          | 遵循项目规范，生成并执行 Git Commit。       | `/commit`                         |
-| `/configure-agent` | 交互式地配置和定制 Agent 框架本身。         | `/configure-agent`                |
-| `/start-task`      | 开始执行一个新任务，并创建对应的计划。      | `/start-task "开发新 API"`        |
-| `/sync-plans`      | 同步和更新项目的任务计划和进度。            | `/sync-plans`                     |
+| 工作流 (Command)      | 描述                                           | 使用示例                       |
+| :-------------------- | :--------------------------------------------- | :----------------------------- |
+| `/agent-update`       | 用于更新或创建 Agent 的规则、工作流或技能。    | `/agent-update "新增一条规则..."` |
+| `/arch-design`        | 引导完成新功能的架构设计和提案文档。           | `/arch-design "用户认证模块"`   |
+| `/briefing`           | 获取当前项目的简报，了解背景和目标。           | `/briefing`                    |
+| `/bug-fix`            | 引导完成一个 Bug 的分析、定位和修复流程。      | `/bug-fix "登录按钮无响应"`     |
+| `/code-review`        | 对指定的代码文件或变更进行评审。               | `/code-review "src/utils.js"`  |
+| `/commit`             | 遵循项目规范，生成并执行 Git Commit。          | `/commit`                      |
+| `/configure`          | **新功能**: 交互式地初始化项目背景、技术栈与架构模式。 | `/configure`                   |
+| `/configure-agent`    | 交互式地配置和定制 Agent 框架本身。            | `/configure-agent`             |
+| `/migrate-rules`      | **新功能**: 引导式地从旧配置(如 .cursorrules)迁移到新框架。 | `/migrate-rules`               |
+| `/start-task`         | 开始执行一个新任务，并创建对应的计划。         | `/start-task "开发新 API"`      |
+| `/sync-plans`         | 同步和更新项目的任务计划和进度。               | `/sync-plans`                  |
+
 
 ## 🔌 多平台集成 (Multi-platform Integration)
 
@@ -116,7 +123,7 @@ npx cortex-agent init --global
 
 1.  **指令文件集成 (Instruction File)**: 这是最通用、最广泛的集成方式。我们通过一个平台特定的配置文件（如 `.aider.instructions.md`, `.clauderules`）向 AI 代理下达“系统级指令”，告诉它必须遵循 `.agent` 目录中的规则和工作流。项目中的 `Aider`, `Claude`, `Continue`, `GitHub Copilot` 和 `Windsurf` 都采用此模式。
 
-2.  **符号链接集成 (Symbolic Link)**: 少数平台（如 `Cursor`）原生支持加载特定目录下的文件作为自定义命令或规则。对于这些平台，我们可以通过创建符号链接（Symbolic Link）将 `.agent` 的子目录映射到其指定位置，实现更深度的原生集成。
+2.  **原生/符号链接集成 (Native/Symbolic Link Integration)**: 少数平台（如 `Cursor`, `Claude Code CLI`, `Windsurf`）原生支持加载特定目录下的文件作为自定义命令、规则或代理。对于这些平台，`init` 命令会自动创建符号链接（Symbolic Link），将 `.agent` 的子目录映射到工具的默认配置路径中（例如 `.cursor/commands`, `.claude/commands`），实现更深度的**零开销**原生体验。
 
 ### 平台映射指南
 
