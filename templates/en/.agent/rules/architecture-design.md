@@ -1,30 +1,36 @@
-# 架构设计原则 (模板)
+# Architectural Design Principles (Template)
 
-请根据项目的实际架构模式（如：MVC, MVVM, Clean Architecture, Hexagonal 等）定义核心原则。
+Please define core principles according to the project's actual architectural patterns (e.g., MVC, MVVM, Clean Architecture, Hexagonal, etc.).
 
-## 核心设计理念
+## Core Design Philosophy
 
-### 1. 关注点分离 (Separation of Concerns)
-- **[规则描述]**: 例如，UI 与业务逻辑分离，数据访问与服务逻辑分离。
+### 1. Separation of Concerns
 
-### 2. [架构模式名称] (例如: 六边形架构)
-- **[规则描述]**: 说明核心领域、端口和适配器的职责。
+- **[Rule Description]**: For example, UI separation from business logic, data access separation from service logic.
 
-### 3. [模块化原则]
-- **[规则描述]**: 说明如何划分模块，模块间的依赖关系（例如：禁止循环依赖）。
+### 2. [Architectural Pattern Name] (e.g., Hexagonal Architecture)
 
-### 4. [接口与契约]
-- **[规则描述]**: 强调面向接口编程而非面向实现。
+- **[Rule Description]**: Explain responsibilities of core domain, ports, and adapters.
 
-## 目录与文件规范
-- `src/core/`: 存放核心业务逻辑/领域模型。
-- `src/api/`: 存放外部接口调用。
-- `src/components/`: 存放通用 UI 组件。
-- `src/utils/`: 存放工具函数。
+### 3. [Modularity Principles]
 
-## 架构审查检查清单 (Code Review Checklist)
-- [ ] 代码是否遵循了预定义的层次结构？
-- [ ] 模块间的耦合度是否处于合理水平？
-- [ ] 是否存在逻辑越位（例如在 UI 层编写复杂的数据库查询）？
-- [ ] 新增功能是否符合现有的扩展模式？
-- [ ] 是否有适当的错误处理和日志记录？
+- **[Rule Description]**: Explain how to divide modules and their dependencies (e.g., prohibiting circular dependencies).
+
+### 4. [Interfaces and Contracts]
+
+- **[Rule Description]**: Emphasize programming to interfaces rather than implementations.
+
+## Directory and File Standards
+
+- `src/core/`: Core business logic/domain models.
+- `src/api/`: External API calls.
+- `src/components/`: Shared UI components.
+- `src/utils/`: Utility functions.
+
+## Architecture Review Checklist
+
+- [ ] Does the code follow the predefined hierarchical structure?
+- [ ] Is the coupling between modules at a reasonable level?
+- [ ] Is there logical overreach (e.g., complex database queries in the UI layer)?
+- [ ] Does the new feature follow existing extension patterns?
+- [ ] Is there appropriate error handling and logging?

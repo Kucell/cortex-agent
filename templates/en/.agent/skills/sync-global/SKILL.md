@@ -1,20 +1,20 @@
 ---
 name: sync-global
-description: 将全局 ~/.agent 下的工作流和技能一键同步(Link)到当前项目。
+description: Synchronize workflows and skills from the global ~/.agent directory to the current project using symbolic links.
 ---
 
 # Global Sync Skill
 
-## 🎯 目标
+## 🎯 Goal
 
-消除手动维护符号链接的成本，实现全局能力的“一键导入”。
+Eliminate the cost of manually maintaining symbolic links and achieve "one-click import" of global capabilities.
 
-## 🛠 功能
+## 🛠 Features
 
-- 自动扫描 `~/.agent/workflows/` 并链接到项目。
-- 自动扫描 `~/.agent/skills/` 并链接到项目。
-- 保持物理文件在全局，项目内仅存储快捷方式。
+- Automatically scan `~/.agent/workflows/` and link them to the project.
+- Automatically scan `~/.agent/skills/` and link them to the project.
+- Keep physical files global, with only shortcuts stored within the project.
 
-## 📝 使用方法
+## 📝 Usage
 
-对 Agent 说：“执行 sync-global” 即可完成同步。
+Say to the Agent: "Execute sync-global" to complete the synchronization.
