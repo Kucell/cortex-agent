@@ -1,37 +1,42 @@
 ---
-description: 用于开发过程中提出、评估和整合新的架构思路或方案
+description: Used to propose, evaluate, and integrate new architectural ideas or solutions during the development process.
 ---
 
-# 架构演进与设计工作流 (/arch-design)
+# Architectural Evolution and Design Workflow (/arch-design)
 
-当你有了新的架构想法或需要重构现有模块时，遵循此流程以确保设计的严谨性和一致性：
+When you have new architectural ideas or need to refactor existing modules, follow this process to ensure design rigor and consistency:
 
-## 1. 方案构思与现状分析
-- **读取核心原则**: **必须首先读取** `.agent/rules/architecture-design.md` 文件，将项目架构的核心原则作为最高优先级。
-- **理解背景**: 深入探讨用户提出的需求或现有系统遇到的技术瓶颈。
-- **现状梳理**: 搜索当前 codebase 中相关的实现逻辑。
-- **冲突检测**: 分析新方案与已加载的架构原则是否冲突。
+## 1. Solution Conception and Current State Analysis
 
-## 2. 设计方案产出
-- **编写提案**: 提供清晰的设计说明，建议包含：
-    - 结构变更说明。
-    - 核心流程图或类图 (Mermaid)。
-    - 接口 (API) 变动清单。
-    - 对既有数据流的影响。
+- **Read Core Principles**: **You must first read** the `.agent/rules/architecture-design.md` file, treating the core principles of the project architecture as the highest priority.
+- **Understand Context**: Deeply explore the requirements proposed by the user or the technical bottlenecks encountered by the existing system.
+- **Current State Review**: Search for relevant implementation logic in the current codebase.
+- **Conflict Detection**: Analyze whether the new solution conflicts with the loaded architectural principles.
 
-## 3. 架构对比评估
-- **调用审计技能**: 结合 `.agent/skills/architecture-audit` 技能对新提案进行审计。
-- **深度对比**: 产出方案对比表，对比当前方案 (Status Quo) 与提议方案 (Proposal) 在以下维度的表现：
-    - 架构合规性
-    - 扩展性与维护成本
-    - 运行时性能与系统复杂度
-    - 实现难度与迁移成本
-- **风险识别**: 明确指出新方案可能引入的副作用（如：破坏向后兼容性、增加系统开销）。
+## 2. Design Output
 
-## 4. 评审与决策
-- **呈现结论**: 向用户展示对比分析结果，并给出 AI 的推荐建议。
-- **等待确认**: 根据用户反馈进行方案微调或确认。
+- **Write Proposal**: Provide clear design descriptions, recommended to include:
+  - Description of structural changes.
+  - Core flowcharts or class diagrams (Mermaid).
+  - API change list.
+  - Impact on existing data flows.
 
-## 5. 整合与落地
-- **更新文档**: 将批准的设计归档至项目文档库（如 `docs/architecture/`）。
-- **任务分解**: 将设计方案转化为具体的任务清单，更新 `.agent/plans/` 下的实施计划。
+## 3. Architectural Comparison and Evaluation
+
+- **Call Audit Skill**: Use the `.agent/skills/architecture-audit` skill to audit the new proposal.
+- **In-depth Comparison**: Produce a solution comparison table, comparing the Status Quo with the Proposal across these dimensions:
+  - Architectural compliance
+  - Scalability and maintenance cost
+  - Runtime performance and system complexity
+  - Implementation difficulty and migration cost
+- **Risk Identification**: Clearly point out potential side effects introduced by the new solution (e.g., breaking backward compatibility, increasing system overhead).
+
+## 4. Review and Decision
+
+- **Present Conclusions**: Show the comparison analysis results to the user and provide the AI's recommendation.
+- **Wait for Confirmation**: Fine-tune or confirm the solution based on user feedback.
+
+## 5. Integration and Implementation
+
+- **Update Documentation**: Archive approved designs to the project's documentation library (e.g., `docs/architecture/`).
+- **Task Decomposition**: Convert the design solution into a specific task list and update the implementation plans under `.agent/plans/`.
