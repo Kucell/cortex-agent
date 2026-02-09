@@ -1,38 +1,38 @@
 ---
-description: 用于新增、修改或维护 AI 指令（规则、工作流、技能）并同步文档
+description: Used to add, modify, or maintain AI instructions (rules, workflows, skills) and synchronize documentation.
 ---
 
-# AI 指令维护工作流 (/agent-update)
+# AI Instruction Maintenance Workflow (/agent-update)
 
-当你需要调整 AI 的“大脑”配置（如新增规则或优化流程）时，执行：
+When you need to adjust the AI's "brain" configuration (such as adding rules or optimizing processes), execute:
 
-## 1. 需求解析与定位
+## 1. Requirement Analysis and Localization
 
-- **确定类别**：判断是新增 `Rule`（底线）、`Workflow`（流程）还是 `Skill`（能力）。
-- **影响评估**：检查新指令是否与现有指令冲突。
-- **(可选) 任务分解**: 如果用户请求的更新非常复杂（例如，涉及多个组件），**首先调用 `planner` 子代理**，将任务分解为更小的步骤，然后逐一执行。
+- **Determine Category**: Decide whether it's adding a `Rule` (guidelines), `Workflow` (process), or `Skill` (capability).
+- **Impact Assessment**: Check if new instructions conflict with existing ones.
+- **(Optional) Task Decomposition**: If the update requested by the user is very complex (e.g., involves multiple components), **first call the `planner` sub-agent** to decompose the task into smaller steps, then execute them one by one.
 
-## 2. 内容起草
+## 2. Content Drafting
 
-- **规则优先**: 在编写任何内容之前，**必须首先查阅** `.agent/rules/code-standards.md` 和 `.agent/rules/architecture-design.md`，确保新的指令符合项目规范。
-- **遵循标准模板**：
-  - Workflows 需包含 YAML frontmatter 和分步指南。
-  - Rules 需条理清晰，具备可操作性。
-  - Skills 需定义清晰的 `name`, `description` 元数据和详细指令。
+- **Rules First**: Before writing any content, **you must first consult** `.agent/rules/code-standards.md` and `.agent/rules/architecture-design.md` to ensure new instructions comply with project standards.
+- **Follow Standard Templates**:
+  - Workflows must include YAML frontmatter and step-by-step guides.
+  - Rules must be well-organized and actionable.
+  - Skills must define clear `name` and `description` metadata and detailed instructions.
 
-## 3. 文件操作 (Action)
+## 3. File Operation (Action)
 
 // turbo
 
-- **选择存储位置**：
-  - **Local (项目专用)**：操作当前项目的 `.agent/` 目录。
-  - **Global (通用能力)**：操作 `~/.agent/` 目录。
-- **执行写入**：在对应的子目录下执行操作。
-- **自动关联 (仅针对 Global)**：
-  - 如果更新了 **Global** 配置，**必须立即调用 `sync-global` 技能**，将最新的全局配置通过符号链接同步到当前项目，确保 IDE 能立即识别。
-- **文档维护**：更新对应目录（本地或全局）下的 `README.md`。
+- **Select Storage Location**:
+  - **Local (Project-Specific)**: Operate on the current project's `.agent/` directory.
+  - **Global (General Capabilities)**: Operate on the `~/.agent/` directory.
+- **Execute Write**: Perform operations in the corresponding subdirectories.
+- **Automatic Linkage (Global only)**:
+  - If **Global** configuration is updated, **you must immediately call the `sync-global` skill** to synchronize the latest global configuration to the current project via symbolic links, ensuring the IDE recognizes them immediately.
+- **Documentation Maintenance**: Update the `README.md` in the corresponding directory (local or global).
 
-## 4. 验证与总结
+## 4. Verification and Summary
 
-- **验证链接**：如果是全局更新，确认本地项目的符号链接已生效。
-- **提交报告**：说明调整内容，并确认同步状态。
+- **Verify Links**: If it's a global update, confirm that the symlinks in the local project are effective.
+- **Submit Report**: Explain the adjustments made and confirm the synchronization status.

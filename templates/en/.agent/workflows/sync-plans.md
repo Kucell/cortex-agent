@@ -1,33 +1,39 @@
 ---
-description: 用于多任务并行开发时的计划对齐集、进度同步与冲突检测
+description: Used for plan alignment, progress synchronization, and conflict detection during multi-task parallel development.
 ---
 
-# 计划同步与对齐工作流 (/sync-plans)
+# Plan Synchronization and Alignment Workflow (/sync-plans)
 
-当有多个任务并行、或需要同步整体进度时，请执行此流程：
+When multiple tasks are running in parallel or you need to synchronize overall progress, follow this process:
 
-## 1. 全局状态扫描
-- **读取总表**：详细阅读 `.agent/plans/task-progress.md`，理解当前的 Roadmap 阶段和 P0 任务。
-- **子计划探测**：扫描 `.agent/plans/` 目录下活跃的任务文件，通过 `view_file` 提取它们的最新进度。
+## 1. Global State Scanning
 
-## 2. 并行任务分析 (Parallel Task Analysis)
-- **调用依赖分析技能**: **调用 `dependency-analysis` 技能**来执行以下分析：
-    - **冲突检测**: 检查不同任务是否修改同一组源文件。
-    - **接口依赖**: 检查多个方案之间是否共享了尚未实现的底层接口。
-    - **依赖对齐**: 识别任务间的“阻塞项 (Blocker)”。
-    - **重复工作识别**: 识别是否有两个任务在实现类似的功能。
+- **Read Master Table**: Thoroughly read `.agent/plans/task-progress.md` to understand the current Roadmap phase and P0 tasks.
+- **Sub-plan Detection**: Scan active task files in the `.agent/plans/` directory and extract their latest progress using `view_file`.
 
-## 3. 架构设计关联
-- **设计变更同步**：如果最近执行了 `/arch-design`，检查该架构变更是否已经反映在所有活跃的任务计划中。
-- **审计反馈集成**：将架构审计发现的问题转化为计划中的待办事项 (TODO)。
+## 2. Parallel Task Analysis
 
-## 4. 综合对齐与更新
+- **Call Dependency Analysis Skill**: **Call the `dependency-analysis` skill** to perform the following analysis:
+  - **Conflict Detection**: Check if different tasks are modifying the same set of source files.
+  - **Interface Dependencies**: Check if multiple solutions share unimplemented low-level interfaces.
+  - **Dependency Alignment**: Identify "Blockers" between tasks.
+  - **Duplicate Work Identification**: Determine if two tasks are implementing similar functionalities.
+
+## 3. Architectural Design Correlation
+
+- **Design Change Sync**: If `/arch-design` was recently executed, check if those architectural changes have been reflected in all active task plans.
+- **Audit Feedback Integration**: Convert issues found during architectural audits into TODO items in the plans.
+
+## 4. Comprehensive Alignment and Update
+
 // turbo
-- **更新 `task-progress.md`**：反映最新的百分比进度、已完成项和当前最优先级任务。
-- **更新各子计划**：确保每个活跃计划文件的 "Context" 或 "Next Steps" 都是最新的，且不与其他任务冲突。
 
-## 5. 输出对齐报告
-- 产出一个简洁的对齐摘要：
-    - **活跃任务状态**：[List of Task Status]
-    - **风险预警**：[List of Conflicts/Blockers]
-    - **今日推荐行动**：[Most critical items to handle]
+- **Update `task-progress.md`**: Reflect the latest percentage progress, completed items, and current highest priority tasks.
+- **Update Sub-plans**: Ensure the "Context" or "Next Steps" of each active plan file are up-to-date and do not conflict with other tasks.
+
+## 5. Output Alignment Report
+
+- Produce a concise alignment summary:
+  - **Active Task Status**: [List of Task Status]
+  - **Risk Alerts**: [List of Conflicts/Blockers]
+  - **Today's Recommended Actions**: [Most critical items to handle]

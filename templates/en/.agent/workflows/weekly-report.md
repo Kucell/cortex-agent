@@ -1,41 +1,41 @@
 ---
 name: weekly-report
-description: 生成周报，根据 Git 记录汇总，支持自定义存储路径。
+description: Generate weekly reports based on Git records, supporting custom storage paths.
 ---
 
-# 📊 周报生成工作流 (/weekly-report)
+# 📊 Weekly Report Generation Workflow (/weekly-report)
 
-当你需要生成开发周报时，执行此流程：
+When you need to generate a development weekly report, follow this process:
 
-## 1. 核心参数获取
+## 1. Core Parameter Acquisition
 
-- **日期区间**: 请告诉我你要生成的日期范围（例如：`1.24-1.31`）。
-- **自定义路径**: (可选) 如果你想存到特定文件夹，请提供路径（默认存储在 `~/.agent/reports/`）。
+- **Date Range**: Please specify the date range (e.g., `1.24-1.31`).
+- **Custom Path**: (Optional) If you want to save to a specific folder, please provide the path (defaults to `~/.agent/reports/`).
 
-## 2. 数据采集与处理
+## 2. Data Collection and Processing
 
-- **Git 日志读取**:
-  - 我将根据输入的日期（默认为今年），自动执行 `git log --since="YYYY-MM-DD" --until="YYYY-MM-DD"`。
-- **信息脱敏**: 自动移除 Commit Hash 和邮箱，保留作者、日期和提交信息。
+- **Git Log Reading**:
+  - I will automatically execute `git log --since="YYYY-MM-DD" --until="YYYY-MM-DD"` based on the input dates (defaulting to the current year).
+- **Data Anonymization**: Automatically remove commit hashes and emails, keeping only the author, date, and commit message.
 
-## 3. 内容生成
+## 3. Content Generation
 
-- **智能分类**:
-  - 🚀 **新功能 (Features)**
-  - 🐛 **问题修复 (Fixes)**
-  - 🔧 **维护与构建 (Chore/Build)**
-- **价值提炼**: 对凌乱的提交记录进行一句话总结。
+- **Smart Categorization**:
+  - 🚀 **Features**
+  - 🐛 **Fixes**
+  - 🔧 **Chore/Build**
+- **Value Extraction**: Summarize messy commit records into concise sentences.
 
-## 4. 存储与归档
+## 4. Storage and Archiving
 
 // turbo
 
-- **文件检查**: 如果指定的文件夹不存在，我会自动创建它。
-- **保存路径**:
-  - 项目名称：从 `package.json` 或目录名提取。
-  - 文件名格式：`weekly-report_[项目名]_[日期].md`。
-- **持久化**: 写入文件并提供完整路径。
+- **Directory Check**: I will automatically create the specified folder if it doesn't exist.
+- **Save Path**:
+  - Project Name: Extracted from `package.json` or the directory name.
+  - Filename Format: `weekly-report_[project_name]_[date].md`.
+- **Persistence**: Write to the file and provide the full path.
 
-## 5. 提示
+## 5. Tips
 
-> 此周报存储在全局目录下的 `reports` 文件夹，方便跨项目管理。
+> This weekly report is stored in the `reports` folder under the global directory for easier cross-project management.
