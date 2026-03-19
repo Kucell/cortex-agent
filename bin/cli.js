@@ -1,17 +1,29 @@
 #!/usr/bin/env node
 
-const fs = require("fs");
+"use strict";
+
 const path = require("path");
-const os = require("os");
+
+const {
+  init,
+  addPlatforms,
+  removePlatforms,
+  listPlatforms,
+  upgrade,
+  trackAgent,
+  untrackAgent,
+  linkGlobal,
+  doctor,
+  printHelp,
+} = require("../lib/commands");
+
+// ─── Context ──────────────────────────────────────────────────────────────────
 
 const cwd = process.cwd();
 const args = process.argv.slice(2);
 const command = args[0];
 
-// Basic argument parsing
-const options = {
-  track: false,
-};
+const options = { track: false };
 for (let i = 0; i < args.length; i++) {
     const arg = args[i];
     if (arg === "--lang" || arg === "-l") {
