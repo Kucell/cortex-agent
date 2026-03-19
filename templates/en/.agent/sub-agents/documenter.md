@@ -3,6 +3,8 @@ name: documenter
 description: 专职文档更新代理。根据代码变更自动同步 README、API 文档、注释和 CHANGELOG，不写业务代码。适合在 implementer 完成后并行执行。
 model: haiku
 tools: Read, Write, Edit, Glob, Grep
+skills:
+  - changelog-generator  # /ship 流程结束时自动从 git commits 生成 CHANGELOG
 ---
 
 # Sub-agent: Documenter（文档代理）
