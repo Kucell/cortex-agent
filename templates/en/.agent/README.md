@@ -22,6 +22,7 @@ For the full architecture design, see [docs/architecture.md](../../docs/architec
 | `/scan-project` | Scan existing project, auto-generate module reference docs in `.agent/references/` |
 | `/update-refs` | After iterations, detect changed modules and incrementally update reference docs |
 | `/parallel` | Dispatch independent tasks to sub-agents in parallel |
+| `/release` | SemVer release: analyze commits → bump version → commit + tag → npm publish |
 | `/weekly-report` | Generate weekly report from Git history |
 | `/sync-plans` | Align task states across concurrent tasks |
 | `/migrate-rules` | Migrate legacy config files (e.g. .cursorrules) to this framework |
