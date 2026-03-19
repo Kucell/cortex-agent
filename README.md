@@ -196,32 +196,34 @@ graph LR
 每个 Sub-agent 按职责挂载对应的**专项技能 (Skills)**，实现更精准的能力覆盖：
 
 ```mermaid
-graph TD
+graph TB
+    subgraph Agents["🤖 Sub-agents"]
+        direction LR
+        PL[planner]
+        IM[implementer]
+        CR[code-reviewer]
+    end
+
     subgraph Skills["📦 技能库"]
+        direction LR
         AA[architecture-audit]
         AC[architecture-check]
         CE[code-evaluation]
     end
 
-    subgraph Agents["🤖 Sub-agents"]
-        PL2[planner]
-        IM2[implementer]
-        CR2[code-reviewer]
-    end
+    PL -->|架构约束感知| AA
+    IM -->|编码前预审| AA
+    IM -->|实现质量自评| CE
+    CR -->|架构合规| AA
+    CR -->|细粒度约束| AC
+    CR -->|质量评分| CE
 
-    AA -->|架构约束感知| PL2
-    AA -->|编码前预审| IM2
-    CE -->|实现质量自评| IM2
-    AA -->|架构合规| CR2
-    AC -->|细粒度约束| CR2
-    CE -->|质量评分| CR2
-
+    style PL fill:#0ea5e9,color:#fff,stroke:none
+    style IM fill:#10b981,color:#fff,stroke:none
+    style CR fill:#ef4444,color:#fff,stroke:none
     style AA fill:#0ea5e9,color:#fff,stroke:none
     style AC fill:#0ea5e9,color:#fff,stroke:none
     style CE fill:#0ea5e9,color:#fff,stroke:none
-    style PL2 fill:#0ea5e9,color:#fff,stroke:none
-    style IM2 fill:#10b981,color:#fff,stroke:none
-    style CR2 fill:#ef4444,color:#fff,stroke:none
 ```
 
 > 完整架构设计（含模块职责、Hooks 触发机制、演进指南）见 [docs/architecture.md](docs/architecture.md)。
