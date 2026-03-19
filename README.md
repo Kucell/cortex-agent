@@ -1,6 +1,6 @@
 # 🧠 Cortex Agent Framework
 
-**Cortex Agent** 是一个为 AI 编程助手（如 Cursor Agent, Windsurf 等）设计的治理与指令框架。它通过一套结构化的**规则 (Rules)**、**工作流 (Workflows)** 和**技能 (Skills)**，将 AI 从一个简单的代码生成器提升为具有架构意识和工程规范的“资深工程师”。
+**Cortex Agent** 是一个为 AI 编程助手（如 Cursor、Claude Code、Windsurf、Gemini CLI、Antigravity 等）设计的治理与指令框架。它通过一套结构化的**规则 (Rules)**、**工作流 (Workflows)** 和**技能 (Skills)**，将 AI 从一个简单的代码生成器提升为具有架构意识和工程规范的“资深工程师”。
 
 ## 🚀 核心价值
 
@@ -41,12 +41,23 @@ npx cortex-agent init --global
 
 ```
 
+可选参数（按需使用）：
+
+- `cortex-agent init --track`：初始化时直接纳入 Git 追踪（默认本地忽略）。
+- `cortex-agent init --global`：初始化到全局目录 `~/.agent`。
+- `cortex-agent upgrade`：**已有 `.agent` 的项目升级用**，仅补充模板中新增的文件，刷新符号链接，绝不修改已有内容。
+- `cortex-agent track`：**初始化后**想开启 Git 追踪时使用——移除本地忽略条目，自动 `git add .agent`。
+- `cortex-agent untrack`：关闭 Git 追踪——`git rm --cached` + 写入本地忽略，不删除文件。
+- `cortex-agent doctor`：一键检查 `.agent`/`AGENTS.md`/`GEMINI.md` 的识别与 Git 状态，并提示下一步操作。
+
 该命令会自动完成以下工作：
 
-1.  在你的项目中创建 `.agent/` 目录并填充核心治理文件（Rules, Workflows, Skills, Sub-agents, Hooks, Plugins）。
-2.  为 Cursor、Claude Code、Windsurf 等生成对应的入口配置文件（例如 `.cursorrules`, `.clauderules`）。
-3.  自动创建必要的符号链接，将 `.agent` 目录下的内容映射到不同平台的习惯配置文件夹中。
-4.  **智能识别项目类型**：根据项目是否存在旧的 AI 配置，引导你进入不同的配置流程。
+1. 在你的项目中创建 `.agent/` 目录并填充核心治理文件（Rules, Workflows, Skills, Sub-agents, Hooks, Plugins）。
+2. 自动创建 `AGENTS.md` 与 `GEMINI.md` 入口文件（若不存在），提升多工具（含 Antigravity）识别兼容性。
+3. 为 Cursor、Claude Code、Windsurf 等生成对应的入口配置文件（例如 `.cursorrules`, `.clauderules`）。
+4. 自动创建必要的符号链接，将 `.agent` 目录下的内容映射到不同平台的习惯配置文件夹中。
+5. **自动生成 `.claude/settings.json`**，注入 Claude Code Hooks 配置，实现文件编辑后自动质量检查。
+6. **智能识别项目类型**：根据项目是否存在旧的 AI 配置，引导你进入不同的配置流程。
 
 ## ⚙️ 项目配置 (Project Configuration)
 
@@ -61,9 +72,10 @@ npx cortex-agent init --global
 
 - **项目简要介绍**：描述项目的核心目标和用户。
 - **技术栈定义**：明确项目使用的编程语言、框架和关键库。
+- **主力语言选择**：选择 TypeScript / Python / Go 等，AI 将自动激活对应的语言规范规则（存放于 `.agent/rules/languages/`）。
 - **架构原则**：设定项目的核心设计原则和架构模式。
 
-通过 `/configure` 工作流，Cortex Agent 会自动填充 `.agent/rules/tech-stack.md`、`.agent/rules/architecture-design.md` 和 `.agent/plans/task-progress.md` 等文件，为你快速搭建起项目的基础 Agent 信息。你无需手动修改这些文件。
+通过 `/configure` 工作流，Cortex Agent 会自动填充 `.agent/rules/tech-stack.md`、`.agent/rules/architecture-design.md` 和 `.agent/plans/task-progress.md` 等文件，并将语言专属规则追加到 `tech-stack.md`，让 AI 从第一行代码起就遵循语言级约定。
 
 ### 2. 现有项目 (Existing Project)
 
@@ -129,19 +141,49 @@ npx cortex-agent init --global
 
 下表概述了如何将 `Cortex Agent` 集成到不同的 AI 平台中。
 
-| 平台 (Platform)    | 集成配置文件 (Integration File)   | 集成方式 (Method)      | 备注 (Notes)                                                                                        |
-| :----------------- | :-------------------------------- | :--------------------- | :-------------------------------------------------------------------------------------------------- |
-| **Cursor**         | `.cursorrules`                    | 符号链接 (Symlink)     | 通过 `ln -s ../.agent/workflows .cursor/commands` 将工作流映射为原生斜杠命令。                      |
-| **Claude**         | `.clauderules`                    | 指令文件 (Instruction) | 提示词指示 Claude 读取 `.agent/` 目录下的规则和工作流。                                             |
-| **Aider**          | `.aider.instructions.md`          | 指令文件 (Instruction) | 指示 Aider 将 `/` 命令路由到 `.agent/workflows/` 中的对应文件。                                     |
-| **Continue**       | `.continuerules`                  | 指令文件 (Instruction) | 指示 Continue 遵循 `.agent/` 目录中的指导方针。                                                     |
-| **GitHub Copilot** | `.github/copilot-instructions.md` | 指令文件 (Instruction) | 指示 Copilot 在提供代码建议时遵循 `.agent/rules/` 和 `.agent/workflows/`。                          |
-| **Windsurf**       | `.windsurfrules`                  | 指令文件 (Instruction) | 提示词指示 Windsurf 遵循 `.agent/` 目录。                                                           |
-| **OpenAI Codex**   | `AGENTS.md`                       | 指令文件 (Instruction) | Codex 会自动查找并遵循 `AGENTS.md` 文件中的指令。你可以将 `.agent` 中的核心规则聚合或链接到此文件。 |
+| 平台 (Platform)    | 集成配置文件 (Integration File)                          | 集成方式 (Method)              | 备注 (Notes)                                                                                                                   |
+| :----------------- | :------------------------------------------------------- | :----------------------------- | :----------------------------------------------------------------------------------------------------------------------------- |
+| **Cursor**         | `.cursorrules`                                           | 符号链接 (Symlink)             | 同时创建 `.cursor/commands`、`.cursor/rules`、`.cursor/skills` 符号链接，将工作流映射为原生斜杠命令。                          |
+| **Claude Code**    | `.clauderules` / `CLAUDE.md`                             | 指令文件 + 符号链接 (Hybrid)   | 同时创建 `.claude/commands`、`.claude/agents`、`.claude/plugins` 符号链接，实现深度原生集成。                                  |
+| **Windsurf**       | `.windsurfrules`                                         | 指令文件 + 符号链接 (Hybrid)   | 同时创建 `.windsurf/workflows`、`.windsurf/rules` 符号链接，深度集成工作流和规则。                                             |
+| **Aider**          | `.aider.instructions.md`                                 | 指令文件 (Instruction)         | 指示 Aider 将 `/` 命令路由到 `.agent/workflows/` 中的对应文件。                                                               |
+| **Continue**       | `.continuerules`                                         | 指令文件 (Instruction)         | 指示 Continue 遵循 `.agent/` 目录中的指导方针。                                                                                |
+| **GitHub Copilot** | `.github/copilot-instructions.md`                        | 指令文件 (Instruction)         | 指示 Copilot 在提供代码建议时遵循 `.agent/rules/` 和 `.agent/workflows/`。                                                    |
+| **OpenAI Codex**   | `AGENTS.md`                                              | 指令文件 (Instruction)         | Codex 会自动查找并遵循 `AGENTS.md` 文件中的指令。你可以将 `.agent` 中的核心规则聚合或链接到此文件。                            |
+| **Gemini CLI**     | `GEMINI.md`                                              | 指令文件 (Instruction)         | Google Gemini CLI (Antigravity) 会自动读取 `GEMINI.md`，以 `AGENTS.md` 为基准并扩展 Gemini 特定行为。         |
+| **Cline**          | `.clinerules`                                            | 指令文件 (Instruction)         | VS Code 中极流行的 AI 编程助手，直接读取 `.clinerules` 作为系统指令。                              |
+| **Roo Code**       | `.roorules` / `.roo/rules/`                              | 指令文件 + 符号链接 (Hybrid)   | 支持多模式（Architect/Code/Debug/Ask），双路径集成：`.roorules` 指令文件 + `.roo/rules → .agent/rules` 符号链接。 |
+| **Amazon Q**       | `.amazonq/rules/cortex.md`                               | 指令文件 (Instruction)         | AWS 官方 AI 编程助手，根据 `.amazonq/rules/*.md` 注入规则到每次对话上下文。                    |
 
 ### 快速初始化
 
 `cortex-agent` 的 `init` 命令会根据模板自动创建这些配置文件，为你提供一个开箱即用的起点。你可以根据具体需求进一步调整这些指令文件的内容，以优化特定 AI 助手的性能和行为。
+
+## 🔌 Claude Code 插件安装（可选）
+
+除了 CLI 初始化之外，Cortex Agent 也可以作为 **Claude Code 插件**直接安装，适合仅使用 Claude Code 的团队。
+
+```bash
+# 在 Claude Code 中运行（需要 Claude Code ≥ 1.x）
+/plugin marketplace add Kucell/cortex-agent
+/plugin install cortex-agent@cortex-agent
+```
+
+插件安装后，Claude Code 会自动发现根目录下的 `agents/`、`skills/`、`commands/`、`hooks/hooks.json`，无需手动运行 `cortex-agent init`。
+
+> **注意**：CLI 初始化方式（`cortex-agent init`）支持所有平台（Cursor、Windsurf、Claude Code 等）；插件方式仅适用于 Claude Code。
+
+## 🌐 语言规范规则 (Language Rules)
+
+`.agent/rules/languages/` 目录下包含各主流语言的规范文件：
+
+| 语言 | 规则文件 | 覆盖内容 |
+| :--- | :--- | :--- |
+| TypeScript / JS | `rules/languages/typescript.md` | 类型系统、命名、async、ESLint |
+| Python | `rules/languages/python.md` | 类型注解、dataclass、Ruff、mypy |
+| Go | `rules/languages/golang.md` | 错误处理、并发、接口设计、golangci-lint |
+
+通过 `/configure` 工作流选择语言后，AI 会自动将对应规则激活。你也可以直接在 `tech-stack.md` 中 `@import` 或手动粘贴对应规则文件的内容。
 
 ## 📄 开源协议
 
