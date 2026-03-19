@@ -1,10 +1,8 @@
 ---
 name: planner
-description: 一个专门将大型用户请求拆分为一系列较小、可执行步骤的子代理。
-model: claude-3-haiku-20240307
-tools:
-  - read_file
-  - list_directory
+description: 将大型、复杂的用户请求拆分为一系列较小、可执行步骤的规划子代理。当需要为复杂任务制定详细实施计划时自动调用。
+model: haiku
+tools: Read, Glob, Grep
 ---
 # 子代理：规划者 (Planner)
 

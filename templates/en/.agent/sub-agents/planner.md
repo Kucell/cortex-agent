@@ -1,10 +1,8 @@
 ---
 name: planner
-description: A sub-agent specialized in decomposing large user requests into a series of smaller, executable steps.
-model: claude-3-haiku-20240307
-tools:
-  - read_file
-  - list_directory
+description: A planning sub-agent that decomposes large, complex user requests into smaller, executable steps. Invoked automatically when a detailed implementation plan is needed for a complex task.
+model: haiku
+tools: Read, Glob, Grep
 ---
 
 # Sub-agent: Planner
