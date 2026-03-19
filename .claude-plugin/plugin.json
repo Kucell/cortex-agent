@@ -1,0 +1,24 @@
+{
+  "name": "cortex-agent",
+  "version": "1.0.0",
+  "description": "AI Agent Governance Framework — structured Rules, Workflows, Skills, Sub-agents, and Hooks for Cursor, Claude Code, Windsurf and more.",
+  "author": {
+    "name": "Cortex Agent",
+    "url": "https://github.com/Kucell/cortex-agent"
+  },
+  "homepage": "https://github.com/Kucell/cortex-agent",
+  "repository": "https://github.com/Kucell/cortex-agent",
+  "license": "MIT",
+  "keywords": [
+    "claude-code",
+    "cursor",
+    "windsurf",
+    "agents",
+    "skills",
+    "hooks",
+    "rules",
+    "governance",
+    "workflow",
+    "architecture"
+  ]
+}
