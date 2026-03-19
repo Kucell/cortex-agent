@@ -1,18 +1,17 @@
 {
   "name": "cortex-agent",
   "owner": {
-    "name": "Kucell",
-    "email": ""
+    "name": "Kucell"
   },
   "metadata": {
-    "description": "AI Agent Governance Framework — structured Rules, Workflows, Skills, Sub-agents, and Hooks for Claude Code, Cursor, Windsurf and more.",
+    "description": "AI Agent Governance Framework for Claude Code, Cursor, Windsurf, Gemini CLI and more. Run /cortex-setup after installation to complete project initialization.",
     "version": "1.0.0"
   },
   "plugins": [
     {
       "name": "cortex-agent",
       "source": "./",
-      "description": "Complete AI agent governance: architecture rules, slash-command workflows (/arch-design, /ship, /parallel…), specialized sub-agents (planner, implementer, code-reviewer…), and quality-gate hooks.",
+      "description": "Governance framework for AI coding assistants. Provides slash-command workflows (/arch-design, /ship, /parallel…), specialized sub-agents (planner, implementer, code-reviewer…), and 9 reusable skills. Run /cortex-setup after install for full project setup.",
       "version": "1.0.0",
       "author": {
         "name": "Kucell"
@@ -21,7 +20,7 @@
       "repository": "https://github.com/Kucell/cortex-agent",
       "license": "MIT",
       "category": "productivity",
-      "tags": ["governance", "workflow", "agents", "skills", "hooks", "architecture", "rules"]
+      "tags": ["governance", "workflow", "agents", "skills", "architecture", "rules", "cursor", "windsurf"]
     }
   ]
 }
