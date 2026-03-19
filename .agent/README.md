@@ -19,6 +19,8 @@ For the full architecture design, see [docs/architecture.md](../../docs/architec
 | `/bug-fix` | Structured bug analysis and fix workflow |
 | `/configure` | Interactive project setup: tech stack, language rules, architecture |
 | `/agent-update` | Add or modify rules, workflows, or skills |
+| `/scan-project` | Scan existing project, auto-generate module reference docs in `.agent/references/` |
+| `/update-refs` | After iterations, detect changed modules and incrementally update reference docs |
 | `/parallel` | Dispatch independent tasks to sub-agents in parallel |
 | `/weekly-report` | Generate weekly report from Git history |
 | `/sync-plans` | Align task states across concurrent tasks |

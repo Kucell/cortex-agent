@@ -113,7 +113,7 @@ npx cortex-agent init --global
 ### 完整开发链路
 
 ```mermaid
-flowchart 
+flowchart
     A([💡 有想法]) --> B
 
     subgraph 方案设计
@@ -147,23 +147,25 @@ flowchart
 
 ### 工作流命令列表
 
-| 工作流 | 描述 | 使用示例 |
-| :--- | :--- | :--- |
-| `/arch-design` | 引导完成新功能的架构设计，输出方案对比与 Mermaid 架构图 | `/arch-design "用户认证模块"` |
-| `/plan` | **方案→任务清单**：将确认的方案拆解为带 ID/优先级/验收标准的任务条目，写入 task-progress.md | `/plan` |
-| `/briefing` | 每日晨播：当前阶段、活跃任务、今日推荐接入点 | `/briefing` |
-| `/start-task` | 开始执行任务：同步上下文、架构预审、委托 planner 制定详细计划 | `/start-task T-001` |
-| `/ship` | **一键交付**：code-review → commit → done → sync-plans 全链路串联 | `/ship T-001` |
-| `/done` | 轻量版完成标记：更新路线图 `[ ]→[x]`，刷新进度百分比 | `/done T-001 T-002` |
-| `/commit` | 遵循 Conventional Commits，AI 生成提交信息，禁止 AI 署名 | `/commit` |
-| `/code-review` | 对当前改动进行代码审查 | `/code-review` |
-| `/bug-fix` | Bug 分析、定位、修复完整流程 | `/bug-fix "登录按钮无响应"` |
-| `/sync-plans` | 多任务并行时对齐冲突，更新关联任务状态 | `/sync-plans` |
-| `/configure` | 交互式初始化：项目背景、技术栈、语言规则、架构模式 | `/configure` |
-| `/agent-update` | 新增或修改 Agent 的规则、工作流或技能 | `/agent-update "新增规则..."` |
-| `/migrate-rules` | 将旧配置（如 `.cursorrules`）引导式迁移到新框架 | `/migrate-rules` |
-| `/parallel` | **并行调度**：分析依赖，将互不依赖的任务批量派发给专职 sub-agent 并行执行 | `/parallel T-001 T-002 T-003` |
-| `/weekly-report` | 基于 Git 记录生成周报 | `/weekly-report` |
+| 工作流           | 描述                                                         | 使用示例                      |
+| :--------------- | :----------------------------------------------------------- | :---------------------------- |
+| `/arch-design`   | 引导完成新功能的架构设计，输出方案对比与 Mermaid 架构图      | `/arch-design "用户认证模块"` |
+| `/plan`          | **方案→任务清单**：将确认的方案拆解为带 ID/优先级/验收标准的任务条目，写入 task-progress.md | `/plan`                       |
+| `/briefing`      | 每日晨播：当前阶段、活跃任务、今日推荐接入点                 | `/briefing`                   |
+| `/start-task`    | 开始执行任务：同步上下文、架构预审、委托 planner 制定详细计划 | `/start-task T-001`           |
+| `/ship`          | **一键交付**：code-review → commit → done → sync-plans 全链路串联 | `/ship T-001`                 |
+| `/done`          | 轻量版完成标记：更新路线图 `[ ]→[x]`，刷新进度百分比         | `/done T-001 T-002`           |
+| `/commit`        | 遵循 Conventional Commits，AI 生成提交信息，禁止 AI 署名     | `/commit`                     |
+| `/code-review`   | 对当前改动进行代码审查                                       | `/code-review`                |
+| `/bug-fix`       | Bug 分析、定位、修复完整流程                                 | `/bug-fix "登录按钮无响应"`   |
+| `/sync-plans`    | 多任务并行时对齐冲突，更新关联任务状态                       | `/sync-plans`                 |
+| `/configure`     | 交互式初始化：项目背景、技术栈、语言规则、架构模式           | `/configure`                  |
+| `/agent-update`  | 新增或修改 Agent 的规则、工作流或技能                        | `/agent-update "新增规则..."` |
+| `/scan-project`  | **项目扫描**：扫描现有项目，为每个模块/微应用生成结构化架构参考文档到 `.agent/references/` | `/scan-project` |
+| `/update-refs`   | **文档同步**：检测自上次扫描以来变更的模块，增量更新对应参考文档，保持 AI 知识库与代码同步 | `/update-refs` |
+| `/migrate-rules` | 将旧配置（如 `.cursorrules`）引导式迁移到新框架              | `/migrate-rules`              |
+| `/parallel`      | **并行调度**：分析依赖，将互不依赖的任务批量派发给专职 sub-agent 并行执行 | `/parallel T-001 T-002 T-003` |
+| `/weekly-report` | 基于 Git 记录生成周报                                        | `/weekly-report`              |
 
 ### Sub-agent 专职代理
 
@@ -185,13 +187,13 @@ graph LR
     style DC fill:#8b5cf6,color:#fff,stroke:none
 ```
 
-| Sub-agent | 职责 | 触发方式 |
-| :--- | :--- | :--- |
-| `planner` | 任务拆解、依赖分析、制定实施计划 | `/start-task`、`/parallel` 自动调用 |
-| `implementer` | 独立完成功能编码，包含单元测试 | `/parallel` 派发 |
-| `researcher` | 技术调研、方案对比、可行性评估（只读） | `/parallel` 派发 |
-| `code-reviewer` | 架构合规、代码质量、性能检查 | `/ship`、`/code-review` 自动调用 |
-| `documenter` | 同步 README、API 文档、注释、CHANGELOG | `/parallel` 派发 |
+| Sub-agent       | 职责                                   | 触发方式                            |
+| :-------------- | :------------------------------------- | :---------------------------------- |
+| `planner`       | 任务拆解、依赖分析、制定实施计划       | `/start-task`、`/parallel` 自动调用 |
+| `implementer`   | 独立完成功能编码，包含单元测试         | `/parallel` 派发                    |
+| `researcher`    | 技术调研、方案对比、可行性评估（只读） | `/parallel` 派发                    |
+| `code-reviewer` | 架构合规、代码质量、性能检查           | `/ship`、`/code-review` 自动调用    |
+| `documenter`    | 同步 README、API 文档、注释、CHANGELOG | `/parallel` 派发                    |
 
 每个 Sub-agent 按职责挂载对应的**专项技能 (Skills)**，实现更精准的能力覆盖：
 
@@ -244,19 +246,19 @@ graph TB
 
 下表概述了如何将 `Cortex Agent` 集成到不同的 AI 平台中。
 
-| 平台 (Platform)    | 集成配置文件 (Integration File)                          | 集成方式 (Method)              | 备注 (Notes)                                                                                                                   |
-| :----------------- | :------------------------------------------------------- | :----------------------------- | :----------------------------------------------------------------------------------------------------------------------------- |
-| **Cursor**         | `.cursorrules`                                           | 符号链接 (Symlink)             | 同时创建 `.cursor/commands`、`.cursor/rules`、`.cursor/skills` 符号链接，将工作流映射为原生斜杠命令。                          |
-| **Claude Code**    | `.clauderules` / `CLAUDE.md`                             | 指令文件 + 符号链接 (Hybrid)   | 同时创建 `.claude/commands`、`.claude/agents`、`.claude/plugins` 符号链接，实现深度原生集成。                                  |
-| **Windsurf**       | `.windsurfrules`                                         | 指令文件 + 符号链接 (Hybrid)   | 同时创建 `.windsurf/workflows`、`.windsurf/rules` 符号链接，深度集成工作流和规则。                                             |
-| **Aider**          | `.aider.instructions.md`                                 | 指令文件 (Instruction)         | 指示 Aider 将 `/` 命令路由到 `.agent/workflows/` 中的对应文件。                                                               |
-| **Continue**       | `.continuerules`                                         | 指令文件 (Instruction)         | 指示 Continue 遵循 `.agent/` 目录中的指导方针。                                                                                |
-| **GitHub Copilot** | `.github/copilot-instructions.md`                        | 指令文件 (Instruction)         | 指示 Copilot 在提供代码建议时遵循 `.agent/rules/` 和 `.agent/workflows/`。                                                    |
-| **OpenAI Codex**   | `AGENTS.md`                                              | 指令文件 (Instruction)         | Codex 会自动查找并遵循 `AGENTS.md` 文件中的指令。你可以将 `.agent` 中的核心规则聚合或链接到此文件。                            |
-| **Gemini CLI**     | `GEMINI.md`                                              | 指令文件 (Instruction)         | Google Gemini CLI (Antigravity) 会自动读取 `GEMINI.md`，以 `AGENTS.md` 为基准并扩展 Gemini 特定行为。         |
-| **Cline**          | `.clinerules`                                            | 指令文件 (Instruction)         | VS Code 中极流行的 AI 编程助手，直接读取 `.clinerules` 作为系统指令。                              |
-| **Roo Code**       | `.roorules` / `.roo/rules/`                              | 指令文件 + 符号链接 (Hybrid)   | 支持多模式（Architect/Code/Debug/Ask），双路径集成：`.roorules` 指令文件 + `.roo/rules → .agent/rules` 符号链接。 |
-| **Amazon Q**       | `.amazonq/rules/cortex.md`                               | 指令文件 (Instruction)         | AWS 官方 AI 编程助手，根据 `.amazonq/rules/*.md` 注入规则到每次对话上下文。                    |
+| 平台 (Platform)    |  集成配置文件 (Integration File)  | 集成方式 (Method)            | 备注 (Notes)                                                                                                      |
+| ------------------ | :-------------------------------: | :--------------------------- | :---------------------------------------------------------------------------------------------------------------- |
+| **Cursor**         |          `.cursorrules`           | 符号链接 (Symlink)           | 同时创建 `.cursor/commands`、`.cursor/rules`、`.cursor/skills` 符号链接，将工作流映射为原生斜杠命令。             |
+| **Claude Code**    |   `.clauderules` / `CLAUDE.md`    | 指令文件 + 符号链接 (Hybrid) | 同时创建 `.claude/commands`、`.claude/agents`、`.claude/plugins` 符号链接，实现深度原生集成。                     |
+| **Windsurf**       |         `.windsurfrules`          | 指令文件 + 符号链接 (Hybrid) | 同时创建 `.windsurf/workflows`、`.windsurf/rules` 符号链接，深度集成工作流和规则。                                |
+| **Aider**          |     `.aider.instructions.md`      | 指令文件 (Instruction)       | 指示 Aider 将 `/` 命令路由到 `.agent/workflows/` 中的对应文件。                                                   |
+| **Continue**       |         `.continuerules`          | 指令文件 (Instruction)       | 指示 Continue 遵循 `.agent/` 目录中的指导方针。                                                                   |
+| **GitHub Copilot** | `.github/copilot-instructions.md` | 指令文件 (Instruction)       | 指示 Copilot 在提供代码建议时遵循 `.agent/rules/` 和 `.agent/workflows/`。                                        |
+| **OpenAI Codex**   |            `AGENTS.md`            | 指令文件 (Instruction)       | Codex 会自动查找并遵循 `AGENTS.md` 文件中的指令。你可以将 `.agent` 中的核心规则聚合或链接到此文件。               |
+| **Gemini CLI**     |            `GEMINI.md`            | 指令文件 (Instruction)       | Google Gemini CLI (Antigravity) 会自动读取 `GEMINI.md`，以 `AGENTS.md` 为基准并扩展 Gemini 特定行为。             |
+| **Cline**          |           `.clinerules`           | 指令文件 (Instruction)       | VS Code 中极流行的 AI 编程助手，直接读取 `.clinerules` 作为系统指令。                                             |
+| **Roo Code**       |    `.roorules` / `.roo/rules/`    | 指令文件 + 符号链接 (Hybrid) | 支持多模式（Architect/Code/Debug/Ask），双路径集成：`.roorules` 指令文件 + `.roo/rules → .agent/rules` 符号链接。 |
+| **Amazon Q**       |    `.amazonq/rules/cortex.md`     | 指令文件 (Instruction)       | AWS 官方 AI 编程助手，根据 `.amazonq/rules/*.md` 注入规则到每次对话上下文。                                       |
 
 ### 快速初始化
 
@@ -280,11 +282,11 @@ graph TB
 
 `.agent/rules/languages/` 目录下包含各主流语言的规范文件：
 
-| 语言 | 规则文件 | 覆盖内容 |
-| :--- | :--- | :--- |
-| TypeScript / JS | `rules/languages/typescript.md` | 类型系统、命名、async、ESLint |
-| Python | `rules/languages/python.md` | 类型注解、dataclass、Ruff、mypy |
-| Go | `rules/languages/golang.md` | 错误处理、并发、接口设计、golangci-lint |
+| 语言            | 规则文件                        | 覆盖内容                                |
+| :-------------- | :------------------------------ | :-------------------------------------- |
+| TypeScript / JS | `rules/languages/typescript.md` | 类型系统、命名、async、ESLint           |
+| Python          | `rules/languages/python.md`     | 类型注解、dataclass、Ruff、mypy         |
+| Go              | `rules/languages/golang.md`     | 错误处理、并发、接口设计、golangci-lint |
 
 通过 `/configure` 工作流选择语言后，AI 会自动将对应规则激活。你也可以直接在 `tech-stack.md` 中 `@import` 或手动粘贴对应规则文件的内容。
 
