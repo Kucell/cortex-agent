@@ -5,14 +5,14 @@
   },
   "metadata": {
     "description": "AI Agent Governance Framework for Claude Code, Cursor, Windsurf, Gemini CLI and more. Run /cortex-setup after installation to complete project initialization.",
-    "version": "1.0.0"
+    "version": "1.1.0"
   },
   "plugins": [
     {
       "name": "cortex-agent",
       "source": "./",
       "description": "Governance framework for AI coding assistants. Provides slash-command workflows (/arch-design, /ship, /parallel…), specialized sub-agents (planner, implementer, code-reviewer…), and 9 reusable skills. Run /cortex-setup after install for full project setup.",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "author": {
         "name": "Kucell"
       },
