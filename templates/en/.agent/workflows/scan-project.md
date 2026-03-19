@@ -15,10 +15,11 @@ description: 扫描现有项目结构，自动识别模块/微应用，为每个
 
 ### 第一步：项目全局探测
 
-// 读取以下文件获取项目全局信息：
-// - package.json（根目录）→ 项目名、依赖、脚本
-// - README.md → 项目简介
-// - 顶层目录结构（ls -la）→ 识别模块组织方式
+ 读取以下文件获取项目全局信息：
+
+- package.json（根目录）→ 项目名、依赖、脚本
+- README.md → 项目简介
+- 顶层目录结构（ls -la）→ 识别模块组织方式
 
 识别模块组织模式（适用于各类软件开发项目）：
 
@@ -49,6 +50,19 @@ description: 扫描现有项目结构，自动识别模块/微应用，为每个
 | Android | `app/`、`build.gradle`、`AndroidManifest.xml` | Jetpack / KMP |
 | 跨平台 | `lib/`、`pubspec.yaml` / `android/` + `ios/` | Flutter / React Native |
 
+**嵌入式 / 固件**
+
+| 模式 | 特征目录 / 文件 | 典型框架 / 工具链 |
+| :--- | :--- | :--- |
+| ESP-IDF 项目 | `main/`、`components/`、`CMakeLists.txt`、`sdkconfig` | ESP-IDF (Espressif) |
+| Arduino 项目 | `*.ino`、`src/`、`lib/`、`platformio.ini` | Arduino SDK / PlatformIO |
+| STM32 / MCU | `Core/`、`Drivers/`、`*.ioc`（CubeMX）、`Makefile` / `CMakeLists.txt` | STM32CubeIDE / HAL / LL |
+| Zephyr RTOS | `app/`、`boards/`、`west.yml`、`prj.conf` | Zephyr / West |
+| 裸机 C/C++ | `src/`、`include/`、`Makefile` / `CMakeLists.txt`、`*.ld`（链接脚本）| GCC ARM / Clang |
+| Linux 驱动 / 内核模块 | `drivers/`、`*.ko`、`Kconfig`、`Makefile` | Linux Kernel |
+| FreeRTOS 项目 | `FreeRTOS/`、`tasks/`、`freertos_config.h` | FreeRTOS |
+| Yocto / 嵌入式 Linux | `meta-*/`、`recipes-*/`、`bitbake.conf` | Yocto Project / BitBake |
+
 **其他**
 
 | 模式 | 特征目录 / 文件 | 典型框架 |
@@ -59,37 +73,53 @@ description: 扫描现有项目结构，自动识别模块/微应用，为每个
 
 ### 第二步：逐模块扫描
 
-// 对识别到的每个模块，依次执行以下读取操作：
-//
-// 【通用】
-// 1. 模块根目录结构（深度 2 层）→ 目录职责
-// 2. README.md（若存在）→ 模块说明
-//
-// 【依赖描述文件，按优先级读取存在的那个】
-//   package.json（Node.js/前端）
-//   pyproject.toml / requirements.txt / setup.py（Python）
-//   pom.xml / build.gradle（Java/Kotlin）
-//   go.mod（Go）
-//   Cargo.toml（Rust）
-//   Podfile / Package.swift（iOS）
-//   pubspec.yaml（Flutter）
-//
-// 【入口文件，按语言读取存在的那个】
-//   index.tsx / main.ts / App.tsx（前端）
-//   main.go / cmd/*/main.go（Go）
-//   main.py / app.py / manage.py（Python）
-//   Application.java / *Application.kt（Spring Boot）
-//   lib/main.dart（Flutter）
-//
-// 【路由 / 接口入口（若存在）】
-//   router/ routes/ → 页面 / 路由列表（前端）
-//   controller/ handler/ → API 接口列表（后端）
-//   api/ services/ → 接口封装（前端）或 proto 定义（gRPC）
-//
-// 【类型 / 模型定义（若存在）】
-//   types/ *.d.ts → 前端类型
-//   model/ entity/ domain/ → 后端数据模型
-//   schema/ → 数据库 schema 或 GraphQL schema
+对识别到的每个模块，依次执行以下读取操作：
+
+**通用**
+
+1. 模块根目录结构（深度 2 层）→ 目录职责
+2. `README.md`（若存在）→ 模块说明
+
+**依赖描述文件（按优先级读取存在的那个）**
+
+- `package.json`（Node.js / 前端）
+- `pyproject.toml` / `requirements.txt` / `setup.py`（Python）
+- `pom.xml` / `build.gradle`（Java / Kotlin）
+- `go.mod`（Go）
+- `Cargo.toml`（Rust）
+- `Podfile` / `Package.swift`（iOS）
+- `pubspec.yaml`（Flutter）
+- `CMakeLists.txt` / `Makefile`（嵌入式 C/C++，ESP-IDF / STM32 / 裸机）
+- `platformio.ini`（PlatformIO / Arduino）
+- `west.yml` + `prj.conf`（Zephyr RTOS）
+- `sdkconfig`（ESP-IDF 配置）
+- `Kconfig`（Linux 内核 / Zephyr 组件配置）
+- `bitbake.conf` / `*.bb`（Yocto）
+
+**入口文件（按语言读取存在的那个）**
+
+- `index.tsx` / `main.ts` / `App.tsx`（前端）
+- `main.go` / `cmd/*/main.go`（Go）
+- `main.py` / `app.py` / `manage.py`（Python）
+- `Application.java` / `*Application.kt`（Spring Boot）
+- `lib/main.dart`（Flutter）
+- `main/main.c` / `main/app_main.c`（ESP-IDF）
+- `src/main.cpp` / `*.ino`（Arduino / PlatformIO）
+- `Core/Src/main.c`（STM32 CubeMX）
+- `src/main.c` + `freertos_config.h`（FreeRTOS）
+- `app/src/main.c`（Zephyr）
+
+**路由 / 接口入口（若存在）**
+
+- `router/` `routes/` → 页面 / 路由列表（前端）
+- `controller/` `handler/` → API 接口列表（后端）
+- `api/` `services/` → 接口封装（前端）或 proto 定义（gRPC）
+
+**类型 / 模型定义（若存在）**
+
+- `types/` `*.d.ts` → 前端类型
+- `model/` `entity/` `domain/` → 后端数据模型
+- `schema/` → 数据库 schema 或 GraphQL schema
 
 ### 第三步：生成参考文档
 
