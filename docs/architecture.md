@@ -86,49 +86,38 @@ graph LR
 每个 Sub-agent 只挂载它职责范围内**确实需要**的技能，避免权限过宽。
 
 ```mermaid
-graph TD
-    subgraph Skills["📦 技能库 (skills/)"]
-        AA["architecture-audit<br>对照规则审计架构分层"]
-        AC["architecture-check<br>细粒度架构约束验证"]
-        CE["code-evaluation<br>代码质量评分"]
-        AV["agent-visibility<br>Git 可见性管理"]
-        SG["sync-global<br>全局配置同步"]
-        WR["weekly-report<br>周报生成"]
-    end
-
+graph TB
     subgraph Agents["🤖 Sub-agents"]
-        PL2[planner]
-        IM2[implementer]
-        CR2[code-reviewer]
-        RS2[researcher]
-        DC2[documenter]
+        direction LR
+        PL[planner]
+        IM[implementer]
+        CR[code-reviewer]
+        RS["researcher<br>— 无挂载"]
+        DC["documenter<br>— 无挂载"]
     end
 
-    AA -->|架构约束感知| PL2
-    AA -->|编码前预审| IM2
-    CE -->|实现质量自评| IM2
-    AA -->|架构合规检查| CR2
-    AC -->|细粒度约束| CR2
-    CE -->|代码质量评分| CR2
+    subgraph Skills["📦 技能库 (skills/)"]
+        direction LR
+        AA["architecture-audit<br>架构分层审计"]
+        AC["architecture-check<br>细粒度约束验证"]
+        CE["code-evaluation<br>代码质量评分"]
+    end
 
-    RS2 -.->|无需挂载<br>专注 WebSearch| RS2
-    DC2 -.->|无需挂载<br>专注文档写作| DC2
+    PL -->|架构约束感知| AA
+    IM -->|编码前预审| AA
+    IM -->|实现质量自评| CE
+    CR -->|架构合规| AA
+    CR -->|细粒度约束| AC
+    CR -->|质量评分| CE
 
-    AV -. "工具型技能<br>直接调用，不挂 agent" .-> AV
-    SG -. "工具型技能<br>直接调用，不挂 agent" .-> SG
-    WR -. "工具型技能<br>直接调用，不挂 agent" .-> WR
-
+    style PL fill:#0ea5e9,color:#fff,stroke:none
+    style IM fill:#10b981,color:#fff,stroke:none
+    style CR fill:#ef4444,color:#fff,stroke:none
+    style RS fill:#6b7280,color:#fff,stroke:none
+    style DC fill:#8b5cf6,color:#fff,stroke:none
     style AA fill:#0ea5e9,color:#fff,stroke:none
     style AC fill:#0ea5e9,color:#fff,stroke:none
     style CE fill:#0ea5e9,color:#fff,stroke:none
-    style AV fill:#6b7280,color:#fff,stroke:none
-    style SG fill:#6b7280,color:#fff,stroke:none
-    style WR fill:#6b7280,color:#fff,stroke:none
-    style PL2 fill:#0ea5e9,color:#fff,stroke:none
-    style IM2 fill:#10b981,color:#fff,stroke:none
-    style CR2 fill:#ef4444,color:#fff,stroke:none
-    style RS2 fill:#f59e0b,color:#fff,stroke:none
-    style DC2 fill:#8b5cf6,color:#fff,stroke:none
 ```
 
 ### 挂载逻辑说明
