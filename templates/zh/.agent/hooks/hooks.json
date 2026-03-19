@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/pre-commit-check.sh",
+            "async": true,
+            "timeout": 15
+          }
+        ],
+        "description": "文件编辑后自动执行质量检查（Lint / 密钥扫描）"
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node -e \"const f='.agent/plans/task-progress.md'; const fs=require('fs'); if(fs.existsSync(f)){console.log('[Cortex] 项目进度已加载：'+f);}\""
+          }
+        ],
+        "description": "会话启动时提示加载任务进度文件"
+      }
+    ]
+  }
+}

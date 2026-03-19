@@ -1,8 +1,6 @@
 ---
 name: architecture-audit
-description: Audits the project's architecture against predefined rules. Use to ensure code changes align with the established architectural design.
-context: fork
-agent: code-reviewer
+description: 审计项目架构是否符合预定义规则。在实现新功能、进行代码审查或重构核心模块前自动调用。
 ---
 # Architecture Audit Skill
 
