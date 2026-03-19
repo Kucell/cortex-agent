@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "AI Agent Governance Framework — structured Rules, Workflows, Skills, Sub-agents, and Hooks for Cursor, Claude Code, Windsurf and more.",
   "author": {
-    "name": "Cortex Agent",
+    "name": "Kucell",
     "url": "https://github.com/Kucell/cortex-agent"
   },
   "homepage": "https://github.com/Kucell/cortex-agent",
@@ -20,5 +20,35 @@
     "governance",
     "workflow",
     "architecture"
-  ]
+  ],
+  "commands": "./commands/",
+  "agents": "./agents/",
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/pre-commit-check.sh",
+            "async": true,
+            "timeout": 15
+          }
+        ],
+        "description": "文件编辑后自动执行质量检查（Lint / 密钥扫描）"
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node -e \"const f='.agent/plans/task-progress.md'; const fs=require('fs'); if(fs.existsSync(f)){console.log('[Cortex] 项目进度已加载：'+f);}\""
+          }
+        ],
+        "description": "会话启动时提示加载任务进度文件"
+      }
+    ]
+  }
 }
