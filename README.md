@@ -171,11 +171,11 @@ flowchart
 
 ```mermaid
 graph LR
-    O["🎯 主 AI\nOrchestrator"] -->|分析依赖| PL["planner\n任务拆解 + 依赖图\nmodel: haiku"]
-    O -->|并行派发| IM["implementer\n功能实现 + 单元测试\nmodel: sonnet"]
-    O -->|并行派发| RS["researcher\n技术调研 + 方案评估\nmodel: sonnet"]
-    O -->|并行派发| CR["code-reviewer\n架构合规 + 代码质量\nmodel: sonnet"]
-    O -->|并行派发| DC["documenter\nREADME + API文档 + 注释\nmodel: haiku"]
+    O["🎯 主 AI<br>Orchestrator"] -->|分析依赖| PL["planner <br>任务拆解 + 依赖图<br>model: haiku"]
+    O -->|并行派发| IM["implementer<br>功能实现 + 单元测试<br>model: sonnet"]
+    O -->|并行派发| RS["researcher<br>技术调研 + 方案评估<br>model: sonnet"]
+    O -->|并行派发| CR["code-reviewer<br>架构合规 + 代码质量<br>model: sonnet"]
+    O -->|并行派发| DC["documenter<br>README + API文档 + 注释<br>model: haiku"]
 
     style O fill:#6366f1,color:#fff,stroke:none
     style PL fill:#0ea5e9,color:#fff,stroke:none
@@ -192,6 +192,39 @@ graph LR
 | `researcher` | 技术调研、方案对比、可行性评估（只读） | `/parallel` 派发 |
 | `code-reviewer` | 架构合规、代码质量、性能检查 | `/ship`、`/code-review` 自动调用 |
 | `documenter` | 同步 README、API 文档、注释、CHANGELOG | `/parallel` 派发 |
+
+每个 Sub-agent 按职责挂载对应的**专项技能 (Skills)**，实现更精准的能力覆盖：
+
+```mermaid
+graph TD
+    subgraph Skills["📦 技能库"]
+        AA[architecture-audit]
+        AC[architecture-check]
+        CE[code-evaluation]
+    end
+
+    subgraph Agents["🤖 Sub-agents"]
+        PL2[planner]
+        IM2[implementer]
+        CR2[code-reviewer]
+    end
+
+    AA -->|架构约束感知| PL2
+    AA -->|编码前预审| IM2
+    CE -->|实现质量自评| IM2
+    AA -->|架构合规| CR2
+    AC -->|细粒度约束| CR2
+    CE -->|质量评分| CR2
+
+    style AA fill:#0ea5e9,color:#fff,stroke:none
+    style AC fill:#0ea5e9,color:#fff,stroke:none
+    style CE fill:#0ea5e9,color:#fff,stroke:none
+    style PL2 fill:#0ea5e9,color:#fff,stroke:none
+    style IM2 fill:#10b981,color:#fff,stroke:none
+    style CR2 fill:#ef4444,color:#fff,stroke:none
+```
+
+> 完整架构设计（含模块职责、Hooks 触发机制、演进指南）见 [docs/architecture.md](docs/architecture.md)。
 
 ## 🔌 多平台集成 (Multi-platform Integration)
 

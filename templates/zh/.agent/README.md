@@ -1,22 +1,50 @@
-# Cortex Agent 模板 (.agent)
+# Cortex Agent Template (.agent)
 
-本目录是 Cortex Agent 的默认配置中心。
+This directory is the **Single Source of Truth** for all AI governance rules, workflows, and capabilities.
 
-## 🚀 工作流 (Workflows)
+For the full architecture design, see [docs/architecture.md](../../docs/architecture.md).
 
-- **agent-update**: 更新 AI 指令并与全局配置同步。
-- **weekly-report**: 根据 Git 历史自动生成周报。
-- **start-task**: 开始一个新任务并创建对应的计划。
-- **commit**: 遵循提交规范，生成并执行 Git Commit。
-- **bug-fix**: 引导完成 Bug 的分析、定位和修复流程。
-- **code-review**: 对指定代码文件或变更进行评审。
-- **arch-design**: 引导完成新功能的架构设计和提案文档。
-- ... (更多详见 `workflows/` 目录)
+## 🚀 Workflows
 
-## 🛠 技能 (Skills)
+| Workflow | Description |
+| :--- | :--- |
+| `/arch-design` | Design new features, output architecture diagrams |
+| `/plan` | Convert confirmed proposals into structured task lists |
+| `/briefing` | Daily standup: current phase, active tasks, recommended entry points |
+| `/start-task` | Load context, architecture pre-audit, delegate to planner |
+| `/ship` | One-click delivery: code-review → commit → done → sync-plans |
+| `/done` | Lightweight task completion: update task-progress.md |
+| `/commit` | Conventional Commits with AI-generated messages (no AI attribution) |
+| `/code-review` | In-depth review of current changes |
+| `/bug-fix` | Structured bug analysis and fix workflow |
+| `/configure` | Interactive project setup: tech stack, language rules, architecture |
+| `/agent-update` | Add or modify rules, workflows, or skills |
+| `/parallel` | Dispatch independent tasks to sub-agents in parallel |
+| `/weekly-report` | Generate weekly report from Git history |
+| `/sync-plans` | Align task states across concurrent tasks |
+| `/migrate-rules` | Migrate legacy config files (e.g. .cursorrules) to this framework |
 
-- **agent-visibility**: 管理 `.agent` 目录在 Git 中的可见性（私有 / 忽略 / 跟踪）。
-- **weekly-report**: 获取并汇总 Git 日志的核心逻辑。
-- **sync-global**: 一键将 `~/.agent` 同步到本地项目。
-- **architecture-audit**: 审计项目架构合规性。
-- **code-evaluation**: 评估代码质量。
+## 🤖 Sub-agents
+
+Specialized agents with isolated model, tools, and context boundaries.
+
+| Sub-agent | Model | Skills | Trigger |
+| :--- | :--- | :--- | :--- |
+| `planner` | haiku | architecture-audit | `/start-task`, `/parallel` |
+| `implementer` | sonnet | architecture-audit, code-evaluation | `/parallel` |
+| `researcher` | sonnet | — | `/parallel` |
+| `code-reviewer` | sonnet | architecture-audit, architecture-check, code-evaluation | `/ship`, `/code-review` |
+| `documenter` | haiku | — | `/parallel` |
+
+## 🛠 Skills
+
+Reusable capabilities invoked by workflows or mounted on sub-agents.
+
+| Skill | Description | Used By |
+| :--- | :--- | :--- |
+| `architecture-audit` | Audit code changes against architecture layer rules | planner, implementer, code-reviewer |
+| `architecture-check` | Fine-grained architecture constraint validation | code-reviewer |
+| `code-evaluation` | Score code quality: reliability, performance, maintainability | implementer, code-reviewer |
+| `agent-visibility` | Manage .agent Git visibility (Private / Ignore / Track) | Direct invocation |
+| `sync-global` | Sync workflows and skills from `~/.agent` to current project | Direct invocation |
+| `weekly-report` | Fetch and summarize Git logs into a weekly report | `/weekly-report` workflow |
