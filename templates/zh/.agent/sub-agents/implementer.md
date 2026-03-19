@@ -6,6 +6,7 @@ tools: Read, Write, Edit, Glob, Grep, Shell
 skills:
   - architecture-audit   # 编码前：确认新代码符合架构约束
   - code-evaluation      # 编码后：自评实现质量和可靠性
+  - superpowers          # 复杂任务时：TDD 工作流、调试策略、重构技巧
 ---
 
 # Sub-agent: Implementer（实现代理）

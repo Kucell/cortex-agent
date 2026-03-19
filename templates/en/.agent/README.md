@@ -31,10 +31,10 @@ Specialized agents with isolated model, tools, and context boundaries.
 | Sub-agent | Model | Skills | Trigger |
 | :--- | :--- | :--- | :--- |
 | `planner` | haiku | architecture-audit | `/start-task`, `/parallel` |
-| `implementer` | sonnet | architecture-audit, code-evaluation | `/parallel` |
+| `implementer` | sonnet | architecture-audit, code-evaluation, superpowers | `/parallel` |
 | `researcher` | sonnet | — | `/parallel` |
-| `code-reviewer` | sonnet | architecture-audit, architecture-check, code-evaluation | `/ship`, `/code-review` |
-| `documenter` | haiku | — | `/parallel` |
+| `code-reviewer` | sonnet | architecture-audit, architecture-check, code-evaluation, security-scan | `/ship`, `/code-review` |
+| `documenter` | haiku | changelog-generator | `/parallel`, `/ship` |
 
 ## 🛠 Skills
 
@@ -45,6 +45,9 @@ Reusable capabilities invoked by workflows or mounted on sub-agents.
 | `architecture-audit` | Audit code changes against architecture layer rules | planner, implementer, code-reviewer |
 | `architecture-check` | Fine-grained architecture constraint validation | code-reviewer |
 | `code-evaluation` | Score code quality: reliability, performance, maintainability | implementer, code-reviewer |
+| `security-scan` | Dependency vulnerabilities, dangerous APIs, supply chain risks | code-reviewer |
+| `changelog-generator` | Auto-generate CHANGELOG from git commits (Conventional Commits) | documenter |
+| `superpowers` | TDD workflow, debugging strategies, refactoring & git techniques | implementer |
 | `agent-visibility` | Manage .agent Git visibility (Private / Ignore / Track) | Direct invocation |
 | `sync-global` | Sync workflows and skills from `~/.agent` to current project | Direct invocation |
 | `weekly-report` | Fetch and summarize Git logs into a weekly report | `/weekly-report` workflow |
