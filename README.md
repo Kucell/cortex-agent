@@ -108,21 +108,61 @@ npx cortex-agent init --global
 
 ## 📦 默认工作流 (Default Workflows)
 
-`cortex-agent` 提供了一系列预定义的工作流，以覆盖常见的开发场景。这些工作流可以通过在 AI 助手（如 Cursor）中输入斜杠命令来调用。
+`cortex-agent` 提供了一系列预定义的工作流，覆盖从方案设计到任务交付的完整开发链路，通过在 AI 助手中输入斜杠命令调用。
 
-| 工作流 (Command)      | 描述                                           | 使用示例                       |
-| :-------------------- | :--------------------------------------------- | :----------------------------- |
-| `/agent-update`       | 用于更新或创建 Agent 的规则、工作流或技能。    | `/agent-update "新增一条规则..."` |
-| `/arch-design`        | 引导完成新功能的架构设计和提案文档。           | `/arch-design "用户认证模块"`   |
-| `/briefing`           | 获取当前项目的简报，了解背景和目标。           | `/briefing`                    |
-| `/bug-fix`            | 引导完成一个 Bug 的分析、定位和修复流程。      | `/bug-fix "登录按钮无响应"`     |
-| `/code-review`        | 对指定的代码文件或变更进行评审。               | `/code-review "src/utils.js"`  |
-| `/commit`             | 遵循项目规范，生成并执行 Git Commit。          | `/commit`                      |
-| `/configure`          | **新功能**: 交互式地初始化项目背景、技术栈与架构模式。 | `/configure`                   |
-| `/configure-agent`    | 交互式地配置和定制 Agent 框架本身。            | `/configure-agent`             |
-| `/migrate-rules`      | **新功能**: 引导式地从旧配置(如 .cursorrules)迁移到新框架。 | `/migrate-rules`               |
-| `/start-task`         | 开始执行一个新任务，并创建对应的计划。         | `/start-task "开发新 API"`      |
-| `/sync-plans`         | 同步和更新项目的任务计划和进度。               | `/sync-plans`                  |
+### 完整开发链路
+
+```mermaid
+flowchart LR
+    A([💡 有想法]) --> B
+
+    subgraph 方案设计
+        B["/arch-design\n设计方案\n输出架构图"] --> C{确认方案?}
+        C -->|修改| B
+    end
+
+    subgraph 任务规划
+        C -->|确认| D["/plan\n方案→任务清单\n写入 task-progress"]
+        D --> E["/briefing\n每日晨播\n知道今天做什么"]
+    end
+
+    subgraph 任务执行
+        E --> F["/start-task T-xxx\n加载上下文\n调用 planner"]
+        F --> G([🔨 编码实施])
+    end
+
+    subgraph 任务交付
+        G --> H["/ship T-xxx\n一键交付"]
+        H --> I["① code-review\n② commit\n③ done\n④ sync-plans"]
+        I --> J([🔓 解锁下一任务])
+    end
+
+    J -->|循环| E
+
+    style D fill:#4a9eff,color:#fff,stroke:none
+    style H fill:#4a9eff,color:#fff,stroke:none
+```
+
+> **每日节奏**：早上 `/briefing` → 开启 `/start-task` → 完成后 `/ship` → 第二天继续。
+
+### 工作流命令列表
+
+| 工作流 | 描述 | 使用示例 |
+| :--- | :--- | :--- |
+| `/arch-design` | 引导完成新功能的架构设计，输出方案对比与 Mermaid 架构图 | `/arch-design "用户认证模块"` |
+| `/plan` | **方案→任务清单**：将确认的方案拆解为带 ID/优先级/验收标准的任务条目，写入 task-progress.md | `/plan` |
+| `/briefing` | 每日晨播：当前阶段、活跃任务、今日推荐接入点 | `/briefing` |
+| `/start-task` | 开始执行任务：同步上下文、架构预审、委托 planner 制定详细计划 | `/start-task T-001` |
+| `/ship` | **一键交付**：code-review → commit → done → sync-plans 全链路串联 | `/ship T-001` |
+| `/done` | 轻量版完成标记：更新路线图 `[ ]→[x]`，刷新进度百分比 | `/done T-001 T-002` |
+| `/commit` | 遵循 Conventional Commits，AI 生成提交信息，禁止 AI 署名 | `/commit` |
+| `/code-review` | 对当前改动进行代码审查 | `/code-review` |
+| `/bug-fix` | Bug 分析、定位、修复完整流程 | `/bug-fix "登录按钮无响应"` |
+| `/sync-plans` | 多任务并行时对齐冲突，更新关联任务状态 | `/sync-plans` |
+| `/configure` | 交互式初始化：项目背景、技术栈、语言规则、架构模式 | `/configure` |
+| `/agent-update` | 新增或修改 Agent 的规则、工作流或技能 | `/agent-update "新增规则..."` |
+| `/migrate-rules` | 将旧配置（如 `.cursorrules`）引导式迁移到新框架 | `/migrate-rules` |
+| `/weekly-report` | 基于 Git 记录生成周报 | `/weekly-report` |
 
 
 ## 🔌 多平台集成 (Multi-platform Integration)
