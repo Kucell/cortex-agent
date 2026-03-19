@@ -7,7 +7,13 @@
   },
   "files": [
     "bin",
-    "templates"
+    "lib",
+    "templates",
+    "hooks",
+    "agents",
+    "commands",
+    "skills",
+    ".claude-plugin"
   ],
   "engines": {
     "node": ">=14.0.0"
@@ -26,6 +32,14 @@
     "governance",
     "workflow"
   ],
-  "author": "",
+  "author": "Kucell",
+  "homepage": "https://github.com/Kucell/cortex-agent",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Kucell/cortex-agent.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Kucell/cortex-agent/issues"
+  },
   "license": "MIT"
 }
