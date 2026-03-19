@@ -1,6 +1,6 @@
 {
   "name": "cortex-agent",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "AI Agent Governance Framework — structured Rules, Workflows, Skills, Sub-agents, and Hooks for Cursor, Claude Code, Windsurf and more.",
   "author": {
     "name": "Kucell",
