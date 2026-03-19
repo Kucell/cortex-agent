@@ -1,8 +1,6 @@
 ---
 name: code-evaluation
-description: A structured skill for evaluating the quality, reliability, and performance of a proposed code implementation. Use when analyzing complex changes or refactoring.
-user-invocable: true
-disable-model-invocation: false
+description: A structured skill for evaluating the quality, reliability, and performance of a proposed code implementation. Invoked automatically when analyzing complex changes, refactoring, or introducing heavy dependencies.
 ---
 # 代码实现评估技能 (SKILL)
 

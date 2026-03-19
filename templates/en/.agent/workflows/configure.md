@@ -3,35 +3,49 @@ name: configure
 description: Interactively configure the Cortex Agent for a new project.
 ---
 
-# 🚀 Agent 配置工作流 (/configure)
+# 🚀 Agent Configuration Workflow (/configure)
 
-你好！我是 Cortex Agent。为了更好地协助你，我需要了解一下你的项目。请回答以下几个问题，我将为你自动生成初始配置文件。
+Hi! I'm Cortex Agent. To serve you better, I need to understand your project. Please answer the questions below and I'll generate the initial configuration files for you.
 
-## 1. 简要介绍 (Project Briefing)
+## 1. Project Briefing
 
-**请用几句话描述这个项目的核心目标是什么？它的主要用户是谁？**
+**In a few sentences, what is the core goal of this project? Who are its main users?**
 
-> (请在这里填写你的回答)
+> (Your answer here)
 
-## 2. 技术栈定义 (Tech Stack)
+## 2. Tech Stack
 
-**这个项目主要使用哪些编程语言、框架和关键库？** (例如: TypeScript, React, Node.js, Express, PostgreSQL)
+**What programming languages, frameworks, and key libraries does this project primarily use?** (e.g. TypeScript, React, Node.js, Express, PostgreSQL)
 
-> (请在这里填写你的回答)
+> (Your answer here)
 
-## 3. 架构原则 (Architecture Design)
+## 3. Primary Language
 
-**项目有无遵循特定的架构模式？(例如：分层架构、六边形架构、微服务) 或者，有哪些你希望我遵守的核心设计原则？** (例如: "保持模块解耦", "服务必须是无状态的")
+**Please select one or more primary languages so I can load the matching language-specific rules:**
 
-> (请在这里填写你的回答)
+- [ ] TypeScript / JavaScript
+- [ ] Python
+- [ ] Go
+- [ ] Java
+- [ ] Swift
+- [ ] Other (please specify)
+
+> (Check all that apply)
+
+## 4. Architecture Principles
+
+**Does the project follow a specific architectural pattern? (e.g. layered, hexagonal, microservices) Are there any core design principles you want me to follow?** (e.g. "keep modules decoupled", "services must be stateless")
+
+> (Your answer here)
 
 ---
-## 🤖 我的操作 (My Actions)
+## 🤖 My Actions
 
-收到你的回答后，我将执行以下操作：
+After receiving your answers I will:
 
-1.  **更新 `task-progress.md`**: 将你的项目目标填充到项目路线图中。
-2.  **更新 `tech-stack.md`**: 将你定义的技术栈写入规则文件。
-3.  **更新 `architecture-design.md`**: 将你的架构原则写入规则文件。
+1. **Update `task-progress.md`** — fill in the project roadmap with your goals.
+2. **Update `tech-stack.md`** — write your tech stack into the rules file.
+3. **Activate language rules** — based on step 3, append the relevant language rule file (e.g. `rules/languages/typescript.md`) into `tech-stack.md` so I follow language-level conventions.
+4. **Update `architecture-design.md`** — record your architecture principles.
 
-完成后，我就是你项目的专属 AI 工程师了！让我们开始吧。
+Once done, I'll be your project-dedicated AI engineer. Let's get started!
