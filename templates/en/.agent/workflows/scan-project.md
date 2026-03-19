@@ -20,24 +20,76 @@ description: 扫描现有项目结构，自动识别模块/微应用，为每个
 // - README.md → 项目简介
 // - 顶层目录结构（ls -la）→ 识别模块组织方式
 
-识别模块组织模式：
+识别模块组织模式（适用于各类软件开发项目）：
 
-| 模式 | 特征目录 | 典型框架 |
+**前端 / 全栈**
+
+| 模式 | 特征目录 / 文件 | 典型框架 |
 | :--- | :--- | :--- |
-| Monorepo | `packages/`、`apps/`、`workspaces` | Lerna, pnpm workspace, Turborepo |
-| 微前端 | `micro-applications/`、`microapps/` | qiankun, Module Federation |
+| Monorepo | `packages/`、`apps/`、`pnpm-workspace.yaml`、`turbo.json` | pnpm workspace, Turborepo, Lerna |
+| 微前端 | `micro-applications/`、`microapps/`、`shell/` | qiankun, Module Federation |
 | 单仓多模块 | `src/modules/`、`src/features/` | 标准 SPA |
-| 单体应用 | 仅 `src/` | 普通项目 |
+| 单体前端 | 仅 `src/` + `package.json` | React / Vue / Angular |
+
+**后端 / 服务端**
+
+| 模式 | 特征目录 / 文件 | 典型框架 |
+| :--- | :--- | :--- |
+| 微服务 | `services/`、`apps/`，各子目录独立 `Dockerfile` | Spring Boot, Go, Node.js |
+| 分层单体 | `controller/`、`service/`、`repository/`（或 `handler/`、`usecase/`、`repo/`） | Spring MVC, Django, Rails, Gin |
+| 模块化单体 | `internal/`、`pkg/`、`cmd/`（Go 惯用）| Go standard layout |
+| Python 包 | `src/{包名}/`、`pyproject.toml`、`setup.py` | FastAPI, Django, Flask |
+| Java/Kotlin | `src/main/java/`，多 `module` 的 `pom.xml` / `build.gradle` | Maven / Gradle multi-module |
+
+**移动端**
+
+| 模式 | 特征目录 / 文件 | 典型框架 |
+| :--- | :--- | :--- |
+| iOS | `*.xcodeproj`、`*.xcworkspace`、`Podfile` | UIKit / SwiftUI |
+| Android | `app/`、`build.gradle`、`AndroidManifest.xml` | Jetpack / KMP |
+| 跨平台 | `lib/`、`pubspec.yaml` / `android/` + `ios/` | Flutter / React Native |
+
+**其他**
+
+| 模式 | 特征目录 / 文件 | 典型框架 |
+| :--- | :--- | :--- |
+| CLI 工具 | `cmd/`、`bin/`、`cli/` | Cobra, Click, Commander.js |
+| 数据 / AI | `notebooks/`、`src/`、`requirements.txt` / `pyproject.toml` | PyTorch, TensorFlow, Scikit-learn |
+| 基础设施即代码 | `terraform/`、`k8s/`、`helm/`、`.github/workflows/` | Terraform, Helm, GitHub Actions |
 
 ### 第二步：逐模块扫描
 
 // 对识别到的每个模块，依次执行以下读取操作：
-// 1. 模块 package.json → 名称、版本、依赖、脚本命令
-// 2. 模块根目录结构（深度 2 层）→ 目录职责
-// 3. 入口文件（index.tsx / main.ts / App.tsx）→ 核心逻辑
-// 4. 路由文件（router/ 或 routes/）→ 页面列表
-// 5. API 目录（api/ 或 services/）→ 接口概览
-// 6. 类型定义文件（types/ 或 *.d.ts）→ 核心数据模型
+//
+// 【通用】
+// 1. 模块根目录结构（深度 2 层）→ 目录职责
+// 2. README.md（若存在）→ 模块说明
+//
+// 【依赖描述文件，按优先级读取存在的那个】
+//   package.json（Node.js/前端）
+//   pyproject.toml / requirements.txt / setup.py（Python）
+//   pom.xml / build.gradle（Java/Kotlin）
+//   go.mod（Go）
+//   Cargo.toml（Rust）
+//   Podfile / Package.swift（iOS）
+//   pubspec.yaml（Flutter）
+//
+// 【入口文件，按语言读取存在的那个】
+//   index.tsx / main.ts / App.tsx（前端）
+//   main.go / cmd/*/main.go（Go）
+//   main.py / app.py / manage.py（Python）
+//   Application.java / *Application.kt（Spring Boot）
+//   lib/main.dart（Flutter）
+//
+// 【路由 / 接口入口（若存在）】
+//   router/ routes/ → 页面 / 路由列表（前端）
+//   controller/ handler/ → API 接口列表（后端）
+//   api/ services/ → 接口封装（前端）或 proto 定义（gRPC）
+//
+// 【类型 / 模型定义（若存在）】
+//   types/ *.d.ts → 前端类型
+//   model/ entity/ domain/ → 后端数据模型
+//   schema/ → 数据库 schema 或 GraphQL schema
 
 ### 第三步：生成参考文档
 
