@@ -113,27 +113,27 @@ npx cortex-agent init --global
 ### 完整开发链路
 
 ```mermaid
-flowchart LR
+flowchart 
     A([💡 有想法]) --> B
 
     subgraph 方案设计
-        B["/arch-design\n设计方案\n输出架构图"] --> C{确认方案?}
+        B["/arch-design 设计方案 <br>输出架构图"] --> C{确认方案?}
         C -->|修改| B
     end
 
     subgraph 任务规划
-        C -->|确认| D["/plan\n方案→任务清单\n写入 task-progress"]
-        D --> E["/briefing\n每日晨播\n知道今天做什么"]
+        C -->|确认| D["/plan 方案→任务清单 <br>写入 task-progress"]
+        D --> E["/briefing <br>每日晨播<br>知道今天做什么"]
     end
 
     subgraph 任务执行
-        E --> F["/start-task T-xxx\n加载上下文\n调用 planner"]
+        E --> F["/start-task T-xxx<br>加载上下文<br>调用 planner"]
         F --> G([🔨 编码实施])
     end
 
     subgraph 任务交付
-        G --> H["/ship T-xxx\n一键交付"]
-        H --> I["① code-review\n② commit\n③ done\n④ sync-plans"]
+        G --> H["/ship T-xxx <br>一键交付"]
+        H --> I["① code-review<br>② commit<br>③ done<br>④ sync-plans"]
         I --> J([🔓 解锁下一任务])
     end
 
@@ -162,8 +162,36 @@ flowchart LR
 | `/configure` | 交互式初始化：项目背景、技术栈、语言规则、架构模式 | `/configure` |
 | `/agent-update` | 新增或修改 Agent 的规则、工作流或技能 | `/agent-update "新增规则..."` |
 | `/migrate-rules` | 将旧配置（如 `.cursorrules`）引导式迁移到新框架 | `/migrate-rules` |
+| `/parallel` | **并行调度**：分析依赖，将互不依赖的任务批量派发给专职 sub-agent 并行执行 | `/parallel T-001 T-002 T-003` |
 | `/weekly-report` | 基于 Git 记录生成周报 | `/weekly-report` |
 
+### Sub-agent 专职代理
+
+工作流内部通过调用 sub-agent 实现职责分离，每个代理有独立的模型、工具权限和上下文边界：
+
+```mermaid
+graph LR
+    O["🎯 主 AI\nOrchestrator"] -->|分析依赖| PL["planner\n任务拆解 + 依赖图\nmodel: haiku"]
+    O -->|并行派发| IM["implementer\n功能实现 + 单元测试\nmodel: sonnet"]
+    O -->|并行派发| RS["researcher\n技术调研 + 方案评估\nmodel: sonnet"]
+    O -->|并行派发| CR["code-reviewer\n架构合规 + 代码质量\nmodel: sonnet"]
+    O -->|并行派发| DC["documenter\nREADME + API文档 + 注释\nmodel: haiku"]
+
+    style O fill:#6366f1,color:#fff,stroke:none
+    style PL fill:#0ea5e9,color:#fff,stroke:none
+    style IM fill:#10b981,color:#fff,stroke:none
+    style RS fill:#f59e0b,color:#fff,stroke:none
+    style CR fill:#ef4444,color:#fff,stroke:none
+    style DC fill:#8b5cf6,color:#fff,stroke:none
+```
+
+| Sub-agent | 职责 | 触发方式 |
+| :--- | :--- | :--- |
+| `planner` | 任务拆解、依赖分析、制定实施计划 | `/start-task`、`/parallel` 自动调用 |
+| `implementer` | 独立完成功能编码，包含单元测试 | `/parallel` 派发 |
+| `researcher` | 技术调研、方案对比、可行性评估（只读） | `/parallel` 派发 |
+| `code-reviewer` | 架构合规、代码质量、性能检查 | `/ship`、`/code-review` 自动调用 |
+| `documenter` | 同步 README、API 文档、注释、CHANGELOG | `/parallel` 派发 |
 
 ## 🔌 多平台集成 (Multi-platform Integration)
 
