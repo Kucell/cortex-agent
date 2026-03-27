@@ -51,22 +51,35 @@ git diff --name-only {上次 commit hash} HEAD
 | 仅样式/逻辑修改 | ⚠️ 可选 | 关键约束（如有破坏性变更） |
 | 仅测试文件 | ❌ 跳过 | — |
 
-### 第四步：增量更新文档
+### 第四步：增量更新文档（含 frontmatter 同步）
 
-// 对每个需要更新的模块：
-// 1. 读取现有的 .agent/references/{模块}.md
-// 2. 只重新扫描该模块（与 /scan-project 单模块逻辑相同）
-// 3. 对比差异，更新变更的章节
-// 4. 更新文件顶部的「文档生成时间」和「对应 git commit」
+对每个需要更新的模块：
+
+1. 读取现有的 `.agent/references/{模块}.md`
+2. 只重新扫描该模块（与 `/scan-project` 单模块逻辑相同）
+3. 对比差异，更新变更的章节
+4. **同步更新 YAML frontmatter**：
+   - `last_updated`：更新为今日日期
+   - `last_commit`：更新为当前 HEAD short hash
+   - `estimated_tokens`：根据新文件大小重新估算
+   - `keywords`：如有新增核心功能/技术词，追加（不删除已有关键词）
+   - `dependencies`：根据新依赖关系更新
 
 **保留规则**：
 - 用户手动补充的「关键约束与注意事项」内容不自动覆盖，追加而非替换
 - 如有冲突，在文档末尾标注 `> ⚠️ 待人工确认：{描述}`
 
-### 第五步：更新全局索引
+### 第五步：更新 context-index.json
 
-// 更新 .agent/references/README.md 中的「最后更新」时间和 commit hash
-// 如有新增模块，在索引表格中追加
+同步刷新 `.agent/context-index.json` 中受影响模块的条目：
+
+- 更新 `last_updated`、`last_commit`、`estimated_tokens`、`keywords`、`dependencies`
+- 更新 `_meta.last_updated` 和 `_meta.last_commit`
+- **不删除**未变更模块的条目（增量更新，非全量重写）
+
+### 第六步：更新全局索引
+
+更新 `.agent/references/README.md` 中的「最后更新」时间和 commit hash。如有新增模块，在索引表格中追加。
 
 ---
 
