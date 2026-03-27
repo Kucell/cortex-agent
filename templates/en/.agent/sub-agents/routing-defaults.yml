@@ -1,0 +1,59 @@
+# Sub-agent 默认路由配置
+# 目标：让用户无需手动判断"该用哪个 sub-agent"，框架自动串联
+# 策略：保留 5 个独立 sub-agent，通过路由配置降低决策负担
+
+workflows:
+
+  /start-task:
+    # 默认流水线：调研 → 规划
+    default_pipeline:
+      - researcher    # 技术调研（可配置跳过）
+      - planner       # 基于调研结果制定计划
+
+    # 用户可手动跳过 researcher（任务足够明确时）
+    skip_researcher_when:
+      - "任务描述包含明确的文件路径和验收标准"
+      - "用户指定 --skip-research"
+
+    # planner 输出契约：plan_summary.json
+    planner_output: plan_summary.json
+
+  /ship:
+    # 默认流水线：实现 → 审查 → （文档）
+    default_pipeline:
+      - implementer   # 编码实现（输出 execution_report.json）
+      - code-reviewer # 审查（输出 review_verdict.json）
+      - documenter    # 轻量化文档更新（仅 API 文档和 CHANGELOG）
+
+    # 轻量化模式：跳过 documenter（小改动不需要更新文档）
+    lightweight_mode:
+      skip: [documenter]
+      trigger: "改动文件 ≤ 3 个且无 public API 变更"
+
+    # 快速模式：跳过 code-reviewer（--no-review 参数）
+    fast_mode:
+      skip: [code-reviewer, documenter]
+      trigger: "--no-review 参数"
+
+  /parallel:
+    # 并行任务：多个 implementer 实例同时运行
+    # 用法：/start-task T-001 T-002 T-003（多任务 ID 自动并行）
+    parallel_agents: [implementer]
+    max_concurrent: 3
+
+# Orchestrator 决策规则
+orchestration:
+  # reviewer 输入严格限制（防火墙）
+  reviewer_input_sources:
+    - plan_summary.json   # planner 的结构化输出
+    - execution_report.json  # implementer 的结构化输出
+    - git_diff            # 实际代码变更
+
+  # reviewer 禁止访问
+  reviewer_blocked_sources:
+    - implementer_reasoning  # implementer 的推理过程
+    - debug_logs            # 调试日志
+    - intermediate_outputs  # 中间产物
+
+  # Orchestrator 只解析 sub-agent 响应的最后一个 JSON 代码块
+  output_contract: last_json_block
