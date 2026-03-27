@@ -1,7 +1,7 @@
 # Harness Engineering 优化设计方案
 
-> **状态**: 已审批，执行中
-> **版本**: v1.0
+> **状态**: ✅ 已完成（Phase 6 全部交付）
+> **版本**: v1.1
 > **日期**: 2026-03-27
 > **基础文档**: [cortex-agent-harness-optimization.md](../cortex-agent-harness-optimization.md)
 
@@ -67,27 +67,28 @@ graph TB
 | `skills/architecture-guard/` | Phase 1 | P0 | ✅ 已完成 |
 | `skills/phase-gate/` | Phase 1 | P0 | ✅ 已完成 |
 | `metrics/baseline.yml` | Phase 1 | P0 | ✅ 已完成 |
-| `context-index.json` | Phase 1 | P0 | ❌ 待实现 |
-| `skills/context-budget/` | Phase 1 | P0 | ❌ 待实现 |
-| `sub-agents/entropy-scanner.md` | Phase 3 | P2 | ❌ 待实现 |
-| `entropy-config.yml` | Phase 3 | P2 | ❌ 待实现 |
-| `harness-manifest.yml` | Phase 3 | P3 | ❌ 待实现 |
-| `skills/maturity-tracker/` | Phase 3 | P3 | ❌ 待实现 |
-| `metrics/component-health.json` | Phase 3 | P3 | ❌ 待实现 |
+| `context-index.json` | Phase 1 | P0 | ✅ 已完成 |
+| `skills/context-budget/` | Phase 1 | P0 | ✅ 已完成 |
+| `sub-agents/routing-defaults.yml` | Phase 2 | P1 | ✅ 已完成 |
+| `sub-agents/entropy-scanner.md` | Phase 3 | P2 | ✅ 已完成 |
+| `entropy-config.yml` | Phase 3 | P2 | ✅ 已完成 |
+| `harness-manifest.yml` | Phase 3 | P3 | ✅ 已完成 |
+| `skills/maturity-tracker/` | Phase 3 | P3 | ✅ 已完成 |
+| `metrics/component-health.json` | Phase 3 | P3 | ✅ 已完成 |
 
 ### 2.2 改造文件（9 个）
 
 | 文件路径（相对 `.agent/`） | 改动要点 | 当前状态 |
 |---------------------------|---------|---------|
-| `sub-agents/planner.md` | haiku→sonnet + architecture-guard + 上下文选择 | 🔶 部分完成（模型+skill已改） |
-| `sub-agents/implementer.md` | 推理声明 + BLOCKED 机制 + 输出摘要 | 🔶 部分完成（推理声明已加） |
-| `sub-agents/code-reviewer.md` | 结构化评分 + 输入隔离 + 污染检测 | ✅ 已完成 |
-| `workflows/ship.md` | 状态机 + max_retry + cleanup + entropy_scan | 🔶 部分完成（状态机已加） |
-| `workflows/start-task.md` | 插入 context-manifest 生成步骤 | ❌ 待实现 |
-| `workflows/scan-project.md` | reference 生成时加 frontmatter | ❌ 待实现 |
-| `workflows/update-refs.md` | 刷新 frontmatter 和索引 | ❌ 待实现 |
-| `workflows/briefing.md` | 健康度板块 + 成熟度看板 | ❌ 待实现 |
-| `hooks/hooks.json` | 双层 hooks + PostCommit 触发 | 🔶 部分完成（双层已加） |
+| `sub-agents/planner.md` | haiku→sonnet + architecture-guard + 上下文选择 + plan_summary JSON 契约 | ✅ 已完成 |
+| `sub-agents/implementer.md` | 推理声明 + BLOCKED 机制 + execution_report JSON 契约 | ✅ 已完成 |
+| `sub-agents/code-reviewer.md` | 结构化评分 + 输入隔离 + review_verdict JSON 契约 | ✅ 已完成 |
+| `workflows/ship.md` | 状态机 + max_retry + CONTEXT_CLEANUP + ENTROPY_SCAN | ✅ 已完成 |
+| `workflows/start-task.md` | 插入 context-manifest 生成步骤 | ✅ 已完成 |
+| `workflows/scan-project.md` | reference 生成时加 frontmatter + 更新 context-index | ✅ 已完成 |
+| `workflows/update-refs.md` | 刷新 frontmatter 和 context-index 增量更新 | ✅ 已完成 |
+| `workflows/briefing.md` | 知识库健康度板块 + 成熟度看板 | ✅ 已完成 |
+| `hooks/hooks.json` | 双层 hooks（linter先行+AI后行）+ PostCommit L0 自动清理 | ✅ 已完成 |
 
 ### 2.3 移除/归档文件（5 个）
 
