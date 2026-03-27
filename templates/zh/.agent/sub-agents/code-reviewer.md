@@ -1,7 +1,7 @@
 ---
 name: code-reviewer
 description: A dedicated code review sub-agent that evaluates code changes for architectural compliance, coding standards, test coverage, and performance. Invoked during /code-review workflows or when deep code analysis is needed.
-model: sonnet
+model: claude-sonnet-4-6   # roles.code_reviewer = standard；在 config/reasoning-config.yml 中修改
 tools: Read, Glob, Grep, Bash
 skills:
   - architecture-guard   # 架构守卫：自动化审计 + 多维度人工审查

@@ -1,7 +1,7 @@
 ---
 name: researcher
 description: 专职技术调研代理。负责调研技术方案、分析依赖库、评估可行性，只读不写代码。适合在编码任务开始前并行执行，为实现提供决策依据。
-model: sonnet
+model: claude-sonnet-4-6   # roles.researcher = standard；在 config/reasoning-config.yml 中修改
 tools: Read, Glob, Grep, WebSearch, WebFetch
 ---
 

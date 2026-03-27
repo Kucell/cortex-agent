@@ -1,7 +1,7 @@
 ---
 name: implementer
 description: 专职编码实现代理。接受一个明确的任务描述和验收标准，独立完成代码实现，不依赖其他任务上下文。适合并行执行多个互不依赖的功能模块。
-model: sonnet
+model: claude-sonnet-4-6   # roles.implementer = standard；在 config/reasoning-config.yml 中修改
 tools: Read, Write, Edit, Glob, Grep, Shell
 skills:
   - architecture-guard   # 编码前：确认新代码符合架构约束

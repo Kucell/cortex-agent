@@ -1,69 +1,109 @@
-# Reasoning Sandwich Configuration
-# Phase 1: Simplified Reasoning Sandwich - Cost-Controlled Quality Assurance
+# ============================================================
+# Cortex Agent — Model & API Configuration
+# Customize your AI provider, model IDs, and per-role assignments here
+# ============================================================
 
-## Cost Mode Configuration
-cost_mode: balanced  # conservative | balanced | quality
+# ── 1. API Provider ──────────────────────────────────────────
+api:
+  provider: anthropic          # Options: anthropic | openai | azure | ollama | custom
+  base_url: ""                 # Leave empty for provider default; fill in for self-hosted or proxy
+  api_key_env: ANTHROPIC_API_KEY  # Environment variable name that holds your API key
 
-## Mode Definitions
+# ── 2. Model Alias Registry ──────────────────────────────────
+# Map abstract aliases to real model IDs.
+# Change here once — all roles update automatically.
+models:
+  # ---- Anthropic Claude (default) ----
+  fast:     claude-haiku-4-5-20251001   # Lightweight, high-frequency / low-cost tasks
+  standard: claude-sonnet-4-6           # Balanced, everyday development
+  premium:  claude-opus-4-6             # Highest quality, complex reasoning & architecture
+
+  # ---- OpenAI (switch provider to openai, comment out the three lines above) ----
+  # fast:     gpt-4o-mini
+  # standard: gpt-4o
+  # premium:  o1
+
+  # ---- Local models (provider: ollama) ----
+  # fast:     qwen2.5-coder:7b
+  # standard: qwen2.5-coder:32b
+  # premium:  qwen2.5-coder:72b
+
+# ── 3. Sub-agent Role Assignments ────────────────────────────
+# Which alias each role uses by default.
+# You can also set a full model ID here to override an alias.
+roles:
+  planner:         premium    # Planning needs strongest reasoning (plan mode)
+  implementer:     standard   # Code execution uses standard model
+  researcher:      standard   # Research uses standard model
+  code_reviewer:   standard   # Code review uses standard model
+  documenter:      fast       # Documentation generation uses fast model
+  entropy_scanner: fast       # Entropy scanning uses fast model (high-frequency, cost-sensitive)
+
+# ── 4. Cost Modes (override roles) ───────────────────────────
+# When active_mode is set, it overrides all role assignments above.
+# Leave empty ("") to use per-role assignments from section 3.
+active_mode: ""               # "" | conservative | balanced | quality
+
 modes:
-  # Conservative mode: for simple tasks, exploratory work
-  conservative:
-    planning: haiku
-    execution: haiku
-    verification: sonnet
-    max_cost_per_task: 0.1  # USD
-    description: "Minimal cost, suitable for simple repetitive tasks"
+  conservative:               # Minimal cost: simple or exploratory tasks
+    planning:     fast
+    execution:    fast
+    verification: standard
+    max_cost_per_task: 0.10   # USD budget cap
 
-  # Balanced mode: default mode for most development tasks
-  balanced:
-    planning: sonnet
-    execution: sonnet
-    verification: sonnet
-    max_cost_per_task: 0.5  # USD
-    description: "Balance quality and cost, suitable for daily development"
+  balanced:                   # Recommended for everyday development
+    planning:     standard
+    execution:    standard
+    verification: standard
+    max_cost_per_task: 0.50
 
-  # Quality mode: for complex architecture decisions, critical features
-  quality:
-    planning: opus
-    execution: sonnet
-    verification: opus
-    max_cost_per_task: 2.0  # USD
-    description: "Highest quality, suitable for architecture design and complex refactoring"
+  quality:                    # Maximum quality: complex architecture, critical features
+    planning:     premium
+    execution:    standard
+    verification: premium
+    max_cost_per_task: 2.00
 
-## State Machine Configuration
-state_machine:
-  max_retry: 2  # Maximum retry count per phase
-  auto_rollback: true  # Automatically rollback to last stable state on failure
-  timeout_per_phase: 300  # Timeout per phase (seconds)
+# ── 5. Runtime Behaviour ─────────────────────────────────────
+runtime:
+  max_retry: 2                 # Max retries per phase
+  auto_rollback: true          # Roll back to last stable state on failure
+  timeout_per_phase: 300       # Per-phase timeout in seconds
+  escalation:
+    requires_approval: true    # Upgrading from balanced/roles to quality requires user confirmation
+    auto_downgrade_on_budget: true  # Downgrade to conservative automatically when budget is low
+    approval_prompt: |
+      This task recommends upgrading to quality mode (using ${models.premium}).
+      Estimated cost: $${estimated_cost} USD
+      Continue? (y/N)
 
-## Escalation Strategy
-escalation:
-  requires_approval: true  # Require user confirmation to upgrade from balanced to quality
-  auto_downgrade_on_budget: true  # Auto downgrade to conservative when budget insufficient
-  approval_prompt: |
-    Current task suggests upgrading to quality mode (using Opus).
-    Estimated cost: $${estimated_cost}
-    Continue?
+# ── 6. Applying Config Changes ───────────────────────────────
+# After editing models / roles / active_mode, sync the model: field
+# in the corresponding sub-agent files:
+#
+#   sub-agents/planner.md         → roles.planner       (default: premium)
+#   sub-agents/implementer.md     → roles.implementer   (default: standard)
+#   sub-agents/researcher.md      → roles.researcher    (default: standard)
+#   sub-agents/code-reviewer.md   → roles.code_reviewer (default: standard)
+#   sub-agents/documenter.md      → roles.documenter    (default: fast)
+#   sub-agents/entropy-scanner.md → roles.entropy_scanner (default: fast)
+#
+# Quick example — downgrade planner to standard:
+#   1. This file: roles.planner: standard
+#   2. sub-agents/planner.md line 4: model: claude-sonnet-4-6
+#
+# Switching to OpenAI:
+#   1. api.provider: openai
+#   2. api.api_key_env: OPENAI_API_KEY
+#   3. Comment out Anthropic lines in models, uncomment OpenAI lines
+#   4. Update model: in all sub-agent files to the matching OpenAI model ID
 
-## Downgrade Conditions
-downgrade_conditions:
-  budget_threshold: 0.8  # Trigger downgrade when budget usage > 80%
-  consecutive_failures: 3  # Downgrade model after 3 consecutive failures
-  timeout_threshold: 2  # Downgrade to faster model after 2 timeouts
-
-## Success Criteria
-success_criteria:
-  first_pass_rate_target: 0.85  # First-pass rate target 85%
-  max_retry_count: 2  # Hard limit: > 2 retries considered failure
-  cost_increase_limit: 1.0  # Cost increase limit 100% (vs Phase 0)
-
-## Monitoring Metrics
+# ── 7. Observability Metrics ─────────────────────────────────
 metrics:
   track:
-    - first_pass_rate  # First-pass rate
-    - retry_count_avg  # Average retry count
-    - cost_per_task_usd  # Cost per task
-    - phase_duration_avg  # Average phase duration
+    - first_pass_rate         # Target >= 85%
+    - retry_count_avg
+    - cost_per_task_usd
+    - phase_duration_avg
   alert_on:
-    - first_pass_rate < 0.7  # Alert when pass rate < 70%
-    - cost_per_task_usd > max_cost_per_task  # Alert on budget exceeded
+    - first_pass_rate < 0.70
+    - cost_per_task_usd > max_cost_per_task

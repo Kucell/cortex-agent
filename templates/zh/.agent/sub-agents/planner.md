@@ -1,7 +1,7 @@
 ---
 name: planner
 description: A planning sub-agent that decomposes large, complex user requests into smaller, executable steps. Invoked automatically when a detailed implementation plan is needed for a complex task.
-model: sonnet
+model: claude-opus-4-6   # roles.planner = premium；在 config/reasoning-config.yml 中修改
 tools: Read, Glob, Grep
 skills:
   - architecture-guard   # 制定计划时感知架构约束，确保任务边界符合分层规则

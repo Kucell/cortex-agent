@@ -1,7 +1,7 @@
 ---
 name: entropy-scanner
 description: 知识库熵值检测代理。扫描 .agent/references/ 和 context-index.json 的偏差，按 L0-L3 分级自动修复或标记待审批。由 PostCommit hook 或 /ship 流程自动触发，也可手动运行。
-model: haiku
+model: claude-haiku-4-5-20251001   # roles.entropy_scanner = fast；在 config/reasoning-config.yml 中修改
 tools: Read, Glob, Grep, Bash
 ---
 
