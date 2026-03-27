@@ -52,6 +52,34 @@ if [[ "$FILE_PATH" =~ \.py$ ]]; then
   fi
 fi
 
+# 4. 对 Go 文件运行 go vet（若已安装）
+if [[ "$FILE_PATH" =~ \.go$ ]]; then
+  if command -v go &>/dev/null; then
+    FILE_DIR=$(dirname "$FILE_PATH")
+    if ! go vet "$FILE_DIR" 2>/dev/null; then
+      ERRORS="${ERRORS}\n⚠️  [Lint] go vet 检查失败: $FILE_PATH"
+    fi
+  fi
+fi
+
+# 5. 对 Java 文件做基础检查（若存在 checkstyle 则运行）
+if [[ "$FILE_PATH" =~ \.java$ ]]; then
+  if command -v checkstyle &>/dev/null && [ -f "checkstyle.xml" ]; then
+    if ! checkstyle -c checkstyle.xml "$FILE_PATH" 2>/dev/null; then
+      ERRORS="${ERRORS}\n⚠️  [Lint] Checkstyle 检查失败: $FILE_PATH"
+    fi
+  fi
+fi
+
+# 6. 对 Swift 文件运行 swiftlint（若已安装）
+if [[ "$FILE_PATH" =~ \.swift$ ]]; then
+  if command -v swiftlint &>/dev/null; then
+    if ! swiftlint lint --quiet "$FILE_PATH" 2>/dev/null; then
+      ERRORS="${ERRORS}\n⚠️  [Lint] SwiftLint 检查失败: $FILE_PATH"
+    fi
+  fi
+fi
+
 # 输出结果给 Claude Code
 if [ -n "$ERRORS" ]; then
   # 阻断执行（Layer 1: 确定性检查）

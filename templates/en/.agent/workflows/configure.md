@@ -45,7 +45,23 @@ After receiving your answers I will:
 
 1. **Update `task-progress.md`** — fill in the project roadmap with your goals.
 2. **Update `tech-stack.md`** — write your tech stack into the rules file.
-3. **Activate language rules** — based on step 3, append the relevant language rule file (e.g. `rules/languages/typescript.md`) into `tech-stack.md` so I follow language-level conventions.
+3. **Activate language rules** — based on step 3, read the matching language rule file and append its full content to `.agent/rules/tech-stack.md`:
+
+   | Selection | Language Rule File |
+   |-----------|-------------------|
+   | TypeScript / JavaScript | `.agent/rules/languages/typescript.md` |
+   | Python | `.agent/rules/languages/python.md` |
+   | Go | `.agent/rules/languages/golang.md` |
+   | Java | `.agent/rules/languages/java.md` |
+   | Swift | `.agent/rules/languages/swift.md` |
+
+   Action: read the full content of the matching file and append to `tech-stack.md` with a separator:
+   ```
+   ---
+   <!-- Auto-injected by /configure: {language} conventions -->
+   {language rule file content}
+   ```
+
 4. **Update `architecture-design.md`** — record your architecture principles.
 
 Once done, I'll be your project-dedicated AI engineer. Let's get started!
