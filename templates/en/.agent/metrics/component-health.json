@@ -1,0 +1,12 @@
+{
+  "_meta": {
+    "description": "Harness 组件表现指标，由 maturity-tracker skill 在每次 /ship CLEAN 后写入",
+    "rolling_window_days": 30,
+    "max_records": 30
+  },
+  "records": [],
+  "rolling_averages": null,
+  "degradation_suggestions": [],
+  "last_updated": null,
+  "total_records": 0
+}
