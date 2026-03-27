@@ -1,0 +1,69 @@
+# Reasoning Sandwich Configuration
+# Phase 1: 推理三明治（简化版）- 成本可控的质量保障
+
+## 成本模式配置
+cost_mode: balanced  # conservative | balanced | quality
+
+## 模式定义
+modes:
+  # 节约模式：适合简单任务、探索性工作
+  conservative:
+    planning: haiku
+    execution: haiku
+    verification: sonnet
+    max_cost_per_task: 0.1  # USD
+    description: "最小成本，适合简单重复任务"
+
+  # 平衡模式：默认模式，适合大部分开发任务
+  balanced:
+    planning: sonnet
+    execution: sonnet
+    verification: sonnet
+    max_cost_per_task: 0.5  # USD
+    description: "质量与成本平衡，适合日常开发"
+
+  # 质量模式：适合复杂架构决策、关键功能
+  quality:
+    planning: opus
+    execution: sonnet
+    verification: opus
+    max_cost_per_task: 2.0  # USD
+    description: "最高质量，适合架构设计和复杂重构"
+
+## 状态机配置
+state_machine:
+  max_retry: 2  # 每个阶段最大重试次数
+  auto_rollback: true  # 失败时自动回滚到上一个稳定状态
+  timeout_per_phase: 300  # 每个阶段超时时间（秒）
+
+## 升级策略
+escalation:
+  requires_approval: true  # 从 balanced 升级到 quality 需用户确认
+  auto_downgrade_on_budget: true  # 预算不足时自动降级到 conservative
+  approval_prompt: |
+    当前任务建议升级到 quality 模式（使用 Opus）。
+    预估成本：$${estimated_cost}
+    是否继续？
+
+## 降级触发条件
+downgrade_conditions:
+  budget_threshold: 0.8  # 预算使用率 > 80% 时触发降级
+  consecutive_failures: 3  # 连续失败 3 次时降级模型
+  timeout_threshold: 2  # 超时 2 次时降级到更快的模型
+
+## 成功标准
+success_criteria:
+  first_pass_rate_target: 0.85  # 首次通过率目标 85%
+  max_retry_count: 2  # 硬性限制：超过 2 次重试视为失败
+  cost_increase_limit: 1.0  # 成本增幅不超过 100%（相比 Phase 0）
+
+## 监控指标
+metrics:
+  track:
+    - first_pass_rate  # 首次通过率
+    - retry_count_avg  # 平均重试次数
+    - cost_per_task_usd  # 每任务成本
+    - phase_duration_avg  # 每阶段平均耗时
+  alert_on:
+    - first_pass_rate < 0.7  # 通过率低于 70% 时告警
+    - cost_per_task_usd > max_cost_per_task  # 超预算告警

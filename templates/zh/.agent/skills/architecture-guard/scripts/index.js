@@ -46,9 +46,9 @@ function findSourceFiles(dir, filelist = []) {
 function auditFiles(files) {
     console.log(`- 正在审计 ${files.length} 个源文件...`);
     const violations = [];
-    
+
     // 示例规则: 'controllers' 目录下的文件不应导入 'db' 模块。
-    const hypotheticalControllerDir = 'controllers'; 
+    const hypotheticalControllerDir = 'controllers';
     const dataLayerImportPattern = /require\(['"]db['"]\)|import .* from ['"]db['"]/g;
 
     files.forEach(file => {
@@ -65,7 +65,7 @@ function auditFiles(files) {
 }
 
 function run() {
-    console.log('--- 🏛️  开始架构审计 ---');
+    console.log('--- 🛡️  开始架构守卫审计 ---');
     readArchitecturalRules();
     const allSourceFiles = findSourceFiles(projectRoot);
     const violations = auditFiles(allSourceFiles);

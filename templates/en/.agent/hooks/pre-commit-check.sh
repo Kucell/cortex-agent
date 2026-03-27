@@ -54,8 +54,10 @@ fi
 
 # Report findings back to Claude Code
 if [ -n "$ERRORS" ]; then
-  # Output as stderr advisory (non-blocking, informational only)
-  echo -e "🔍 Pre-commit check found issues:$ERRORS" >&2
+  # Output as stderr and block execution (Layer 1: deterministic checks)
+  echo -e "❌ Pre-commit check BLOCKED:$ERRORS" >&2
+  exit 1
 fi
 
+# All checks passed
 exit 0

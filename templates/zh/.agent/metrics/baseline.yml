@@ -1,0 +1,126 @@
+# Baseline Metrics Collection
+# Phase 1: 收集基线数据，用于评估优化效果并决定 Phase 2 是否实施
+
+## Collection Period
+start_date: null  # 自动填充为创建日期
+collection_weeks: 2  # 收集 2 周数据后评估
+
+## Context Window Metrics
+context:
+  # 上下文窗口利用率
+  window_utilization_avg: null  # 平均利用率（百分比）
+  window_utilization_p95: null  # P95 利用率（检测峰值）
+  overflow_count: 0  # 溢出次数（超过 80% 上下文窗口视为溢出）
+
+  # 触发条件：overflow_count / total_tasks > 10% → 实施上下文预算控制
+
+## Quality Metrics
+quality:
+  # 首次通过率：reviewer 首次 PASS 的任务比例
+  first_pass_rate: null  # 目标 > 80%
+
+  # 重试统计
+  retry_count_avg: null  # 平均每任务重试次数
+  retry_count_max: 0  # 最大重试次数
+
+  # 阻断性问题
+  blocking_issues_per_task: null  # 平均每任务的 "❌ Must Fix" 数量
+
+  # 触发条件：first_pass_rate < 70% → 强化推理三明治或调整 reviewer
+
+## Knowledge Base Health
+knowledge:
+  # 引用文件健康度
+  stale_refs_count: 0  # 过期引用（超过 30 天未更新）
+  missing_refs_count: 0  # 缺失引用（文件已删除但仍在 references/）
+  rule_drift_count: 0  # 规则漂移（规则文件与实际代码不一致）
+
+  # 触发条件：(stale + missing + drift) / total_refs > 20% → 实施熵治理
+
+## Cost Metrics
+cost:
+  # Token 使用量
+  tokens_per_task_avg: null  # 平均每任务 token 消耗
+  tokens_per_phase:
+    planning: null
+    execution: null
+    lint: null
+    review: null
+    commit: null
+
+  # 成本（基于 Claude API 定价）
+  cost_per_task_usd: null  # 平均每任务成本（美元）
+  cost_increase_vs_phase0: null  # 相比 Phase 0 的成本增幅（百分比）
+
+  # 触发条件：cost_increase_vs_phase0 > 100% → 检查是否过度使用 opus
+
+## Performance Metrics
+performance:
+  # 时间统计
+  avg_task_duration_sec: null  # 平均任务耗时（秒）
+  phase_durations:
+    planning: null
+    execution: null
+    lint: null
+    review: null
+    commit: null
+
+  # Hooks 性能
+  hook_execution_avg_ms: null  # 平均 hook 执行时间（毫秒）
+  hook_block_count: 0  # Hook 阻断次数
+  hook_block_rate: null  # Hook 阻断率（阻断次数 / 总执行次数）
+
+## Phase 1 Success Criteria
+success_criteria:
+  first_pass_rate: "> 0.85"  # 首次通过率 > 85%
+  retry_count_zero: true  # 死循环次数 = 0（max_retry 硬性阻断）
+  cost_increase_limit: "< 1.0"  # 成本增幅 < 100%
+  hook_block_rate: "> 0.9"  # Hook 拦截率 > 90%
+
+## Phase 2 Decision Matrix
+phase2_triggers:
+  context_budget_control:
+    condition: "overflow_count / total_tasks > 0.1"
+    description: "溢出率 > 10% → 实施启发式上下文预算控制"
+
+  entropy_governance:
+    condition: "(stale_refs + missing_refs + rule_drift) / total_refs > 0.2"
+    description: "知识库健康度 < 80 → 实施熵治理 L0+L1"
+
+## Data Collection Instructions
+
+### Manual Tracking (2 周内手动记录)
+
+1. **Context Overflow**:
+   - 每次任务结束后，检查 context window 使用率
+   - 如果 > 80%，记录为 overflow
+   - 公式: `overflow_rate = overflow_count / total_tasks`
+
+2. **First Pass Rate**:
+   - Reviewer 首次返回 "✅ Passed + 无 ❌ Must Fix" → 计为 pass
+   - 否则计为需要重试
+   - 公式: `first_pass_rate = pass_count / total_tasks`
+
+3. **Knowledge Base Health**:
+   - 每周末检查一次 `.agent/references/` 目录
+   - 对比实际代码，标记过期/缺失/漂移的引用
+   - 公式: `health = 1 - (问题引用数 / 总引用数)`
+
+4. **Cost**:
+   - 记录每个任务的 token 使用量（可从 API 日志获取）
+   - 根据 Claude API 定价计算成本
+
+### Automated Collection (可选)
+
+如果有 API 日志访问权限，可编写脚本自动收集：
+```bash
+# 示例：从 API 日志提取 token 使用量
+.agent/metrics/collect.sh --start-date 2026-03-25 --weeks 2
+```
+
+## Review & Decision
+
+2 周后（约 2026-04-08），review 收集的数据：
+1. 检查 Phase 1 成功标准是否达标
+2. 根据 Phase 2 触发条件决定是否实施
+3. 更新此文件，标记实际数值和决策结果
