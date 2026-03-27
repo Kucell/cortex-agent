@@ -1,0 +1,126 @@
+# Baseline Metrics Collection
+# Phase 1: Collect baseline data to evaluate optimization effects and decide Phase 2 implementation
+
+## Collection Period
+start_date: null  # Auto-filled with creation date
+collection_weeks: 2  # Collect 2 weeks of data before evaluation
+
+## Context Window Metrics
+context:
+  # Context window utilization
+  window_utilization_avg: null  # Average utilization (percentage)
+  window_utilization_p95: null  # P95 utilization (detect peaks)
+  overflow_count: 0  # Overflow count (> 80% context window considered overflow)
+
+  # Trigger condition: overflow_count / total_tasks > 10% → Implement context budget control
+
+## Quality Metrics
+quality:
+  # First-pass rate: proportion of tasks that pass reviewer on first attempt
+  first_pass_rate: null  # Target > 80%
+
+  # Retry statistics
+  retry_count_avg: null  # Average retry count per task
+  retry_count_max: 0  # Maximum retry count
+
+  # Blocking issues
+  blocking_issues_per_task: null  # Average "❌ Must Fix" count per task
+
+  # Trigger condition: first_pass_rate < 70% → Strengthen reasoning sandwich or adjust reviewer
+
+## Knowledge Base Health
+knowledge:
+  # Reference file health
+  stale_refs_count: 0  # Stale references (not updated for 30+ days)
+  missing_refs_count: 0  # Missing references (file deleted but still in references/)
+  rule_drift_count: 0  # Rule drift (rule files inconsistent with actual code)
+
+  # Trigger condition: (stale + missing + drift) / total_refs > 20% → Implement entropy governance
+
+## Cost Metrics
+cost:
+  # Token usage
+  tokens_per_task_avg: null  # Average token consumption per task
+  tokens_per_phase:
+    planning: null
+    execution: null
+    lint: null
+    review: null
+    commit: null
+
+  # Cost (based on Claude API pricing)
+  cost_per_task_usd: null  # Average cost per task (USD)
+  cost_increase_vs_phase0: null  # Cost increase vs Phase 0 (percentage)
+
+  # Trigger condition: cost_increase_vs_phase0 > 100% → Check for opus overuse
+
+## Performance Metrics
+performance:
+  # Time statistics
+  avg_task_duration_sec: null  # Average task duration (seconds)
+  phase_durations:
+    planning: null
+    execution: null
+    lint: null
+    review: null
+    commit: null
+
+  # Hooks performance
+  hook_execution_avg_ms: null  # Average hook execution time (milliseconds)
+  hook_block_count: 0  # Hook block count
+  hook_block_rate: null  # Hook block rate (blocks / total executions)
+
+## Phase 1 Success Criteria
+success_criteria:
+  first_pass_rate: "> 0.85"  # First-pass rate > 85%
+  retry_count_zero: true  # Zero infinite loops (max_retry hard block)
+  cost_increase_limit: "< 1.0"  # Cost increase < 100%
+  hook_block_rate: "> 0.9"  # Hook intercept rate > 90%
+
+## Phase 2 Decision Matrix
+phase2_triggers:
+  context_budget_control:
+    condition: "overflow_count / total_tasks > 0.1"
+    description: "Overflow rate > 10% → Implement heuristic context budget control"
+
+  entropy_governance:
+    condition: "(stale_refs + missing_refs + rule_drift) / total_refs > 0.2"
+    description: "Knowledge base health < 80 → Implement entropy governance L0+L1"
+
+## Data Collection Instructions
+
+### Manual Tracking (2 weeks)
+
+1. **Context Overflow**:
+   - After each task, check context window usage
+   - If > 80%, record as overflow
+   - Formula: `overflow_rate = overflow_count / total_tasks`
+
+2. **First Pass Rate**:
+   - Reviewer returns "✅ Passed + no ❌ Must Fix" on first try → count as pass
+   - Otherwise count as needs retry
+   - Formula: `first_pass_rate = pass_count / total_tasks`
+
+3. **Knowledge Base Health**:
+   - Check `.agent/references/` directory weekly
+   - Compare with actual code, mark stale/missing/drifted references
+   - Formula: `health = 1 - (problem_refs / total_refs)`
+
+4. **Cost**:
+   - Record token usage per task (from API logs)
+   - Calculate cost based on Claude API pricing
+
+### Automated Collection (Optional)
+
+If API log access available, write script for auto-collection:
+```bash
+# Example: Extract token usage from API logs
+.agent/metrics/collect.sh --start-date 2026-03-25 --weeks 2
+```
+
+## Review & Decision
+
+After 2 weeks (around 2026-04-08), review collected data:
+1. Check if Phase 1 success criteria are met
+2. Decide Phase 2 implementation based on trigger conditions
+3. Update this file with actual values and decision results

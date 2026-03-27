@@ -1,11 +1,21 @@
 ---
 name: ship
-description: 任务完成后的一键收尾：代码审查 → 提交 → 标记完成 → 同步计划。将 /code-review + /commit + /done + /sync-plans 串联为单一流程。
+description: 任务完成后的一键收尾：代码审查 → 提交 → 标记完成 → 同步计划。将 /code-review + /commit + /done + /sync-plans 串联为单一流程。Phase 1: 增加状态机和 max_retry 限制。
 ---
 
 # 任务交付工作流 (/ship)
 
 当你完成了某个任务的编码，执行此流程完成交付闭环。
+
+## Phase 1 增强：状态机 + 重试控制
+
+**状态流转**：`PLAN → EXECUTE → LINT → REVIEW → COMMIT → DONE`
+
+**关键特性**：
+- ✅ **Phase Gate 检查**：每个转换有硬性前置条件
+- ✅ **Max Retry 限制**：每个阶段最多重试 2 次（来自 `reasoning-config.yml`）
+- ✅ **Auto Rollback**：失败时自动回滚到上一稳定状态
+- ✅ **成本可控**：基于 `cost_mode` 选择模型（balanced 模式默认）
 
 ## 使用方式
 
@@ -15,7 +25,100 @@ description: 任务完成后的一键收尾：代码审查 → 提交 → 标记
 /ship T-001 --no-review  （跳过代码审查，直接提交）
 ```
 
-## 执行步骤
+## 执行步骤（状态机模式）
+
+### Phase 0: PLAN（可选，如果任务已有明确计划则跳过）
+
+**Gate Check**: `phase-gate --from START --to PLAN`
+- ✅ 任务描述存在
+- ✅ 架构约束已加载（`.agent/rules/architecture-design.md`）
+
+**输出**: 实施计划（如已存在则跳过）
+
+---
+
+### Phase 1: EXECUTE
+
+**Gate Check**: `phase-gate --from PLAN --to EXECUTE`
+- ✅ 实施计划已完成（或明确验收标准已提供）
+- ✅ 架构预审通过（`architecture-guard`）
+
+**执行**: 代理完成编码实现
+
+**Max Retry**: 2 次（若连续 2 次实现失败，阻断并请求人工介入）
+
+---
+
+### Phase 2: LINT
+
+**Gate Check**: `phase-gate --from EXECUTE --to LINT`
+- ✅ 代码文件已写入/编辑
+- ✅ git status 显示改动
+
+**执行**: 运行 `.agent/hooks/pre-commit-check.sh`
+- Linter 检查（ESLint, Ruff 等）
+- 密钥扫描
+
+**Blocking Condition**: Linter 失败 → 阻断，提示修复
+
+**Max Retry**: 2 次（连续 2 次 lint 失败 → 请求人工检查规则或手动修复）
+
+---
+
+### Phase 3: REVIEW
+
+**Gate Check**: `phase-gate --from LINT --to REVIEW`
+- ✅ Linter 检查通过（exit code 0）
+- ✅ 无安全漏洞检测
+
+**执行**: 调用 `code-reviewer` sub-agent
+- 输入隔离：只看 plan + diff + previous reports
+- 架构合规性检查（`architecture-guard`）
+- 代码质量评分（`code-evaluation`）
+- 安全扫描（`security-scan`）
+
+**输出格式**:
+```
+## Review Report
+### ✅ Passed
+### ⚠️ Suggestions
+### ❌ Must Fix
+### Summary
+```
+
+**Blocking Condition**: "❌ Must Fix" 非空 → 阻断，回滚到 EXECUTE 阶段
+
+**Max Retry**: 2 次
+
+---
+
+### Phase 4: COMMIT
+
+**Gate Check**: `phase-gate --from REVIEW --to COMMIT`
+- ✅ 代码审查完成
+- ✅ 无阻断性问题（"❌ Must Fix" 为空）
+
+**执行**: 调用 `/commit` 逻辑
+- 分析 git diff 生成 Conventional Commits 消息
+- 用户确认后执行 `git commit`
+
+**Max Retry**: 1 次（提交失败通常是环境问题，不应反复重试）
+
+---
+
+### Phase 5: DONE
+
+**Gate Check**: `phase-gate --from COMMIT --to DONE`
+- ✅ 改动已提交（`git log -1` 显示新提交）
+
+**执行**:
+- 更新 `task-progress.md`（标记完成）
+- 同步关联任务状态（`/sync-plans` 逻辑）
+- 生成交付报告
+
+---
+
+## 传统执行步骤（兼容旧版，逐步迁移到状态机模式）
 
 ### 第一步：加载任务上下文
 

@@ -33,10 +33,10 @@ Specialized agents with isolated model, tools, and context boundaries.
 
 | Sub-agent | Model | Skills | Trigger |
 | :--- | :--- | :--- | :--- |
-| `planner` | haiku | architecture-audit | `/start-task`, `/parallel` |
-| `implementer` | sonnet | architecture-audit, code-evaluation, superpowers | `/parallel` |
+| `planner` | sonnet | architecture-guard | `/start-task`, `/parallel` |
+| `implementer` | sonnet | architecture-guard, code-evaluation, superpowers | `/parallel` |
 | `researcher` | sonnet | — | `/parallel` |
-| `code-reviewer` | sonnet | architecture-audit, architecture-check, code-evaluation, security-scan | `/ship`, `/code-review` |
+| `code-reviewer` | sonnet | architecture-guard, code-evaluation, security-scan | `/ship`, `/code-review` |
 | `documenter` | haiku | changelog-generator | `/parallel`, `/ship` |
 
 ## 🛠 Skills
@@ -45,8 +45,7 @@ Reusable capabilities invoked by workflows or mounted on sub-agents.
 
 | Skill | Description | Used By |
 | :--- | :--- | :--- |
-| `architecture-audit` | Audit code changes against architecture layer rules | planner, implementer, code-reviewer |
-| `architecture-check` | Fine-grained architecture constraint validation | code-reviewer |
+| `architecture-guard` | Guards architecture through automated audits and manual reviews | planner, implementer, code-reviewer |
 | `code-evaluation` | Score code quality: reliability, performance, maintainability | implementer, code-reviewer |
 | `security-scan` | Dependency vulnerabilities, dangerous APIs, supply chain risks | code-reviewer |
 | `changelog-generator` | Auto-generate CHANGELOG from git commits (Conventional Commits) | documenter |

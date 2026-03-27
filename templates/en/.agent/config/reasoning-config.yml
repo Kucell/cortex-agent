@@ -1,0 +1,69 @@
+# Reasoning Sandwich Configuration
+# Phase 1: Simplified Reasoning Sandwich - Cost-Controlled Quality Assurance
+
+## Cost Mode Configuration
+cost_mode: balanced  # conservative | balanced | quality
+
+## Mode Definitions
+modes:
+  # Conservative mode: for simple tasks, exploratory work
+  conservative:
+    planning: haiku
+    execution: haiku
+    verification: sonnet
+    max_cost_per_task: 0.1  # USD
+    description: "Minimal cost, suitable for simple repetitive tasks"
+
+  # Balanced mode: default mode for most development tasks
+  balanced:
+    planning: sonnet
+    execution: sonnet
+    verification: sonnet
+    max_cost_per_task: 0.5  # USD
+    description: "Balance quality and cost, suitable for daily development"
+
+  # Quality mode: for complex architecture decisions, critical features
+  quality:
+    planning: opus
+    execution: sonnet
+    verification: opus
+    max_cost_per_task: 2.0  # USD
+    description: "Highest quality, suitable for architecture design and complex refactoring"
+
+## State Machine Configuration
+state_machine:
+  max_retry: 2  # Maximum retry count per phase
+  auto_rollback: true  # Automatically rollback to last stable state on failure
+  timeout_per_phase: 300  # Timeout per phase (seconds)
+
+## Escalation Strategy
+escalation:
+  requires_approval: true  # Require user confirmation to upgrade from balanced to quality
+  auto_downgrade_on_budget: true  # Auto downgrade to conservative when budget insufficient
+  approval_prompt: |
+    Current task suggests upgrading to quality mode (using Opus).
+    Estimated cost: $${estimated_cost}
+    Continue?
+
+## Downgrade Conditions
+downgrade_conditions:
+  budget_threshold: 0.8  # Trigger downgrade when budget usage > 80%
+  consecutive_failures: 3  # Downgrade model after 3 consecutive failures
+  timeout_threshold: 2  # Downgrade to faster model after 2 timeouts
+
+## Success Criteria
+success_criteria:
+  first_pass_rate_target: 0.85  # First-pass rate target 85%
+  max_retry_count: 2  # Hard limit: > 2 retries considered failure
+  cost_increase_limit: 1.0  # Cost increase limit 100% (vs Phase 0)
+
+## Monitoring Metrics
+metrics:
+  track:
+    - first_pass_rate  # First-pass rate
+    - retry_count_avg  # Average retry count
+    - cost_per_task_usd  # Cost per task
+    - phase_duration_avg  # Average phase duration
+  alert_on:
+    - first_pass_rate < 0.7  # Alert when pass rate < 70%
+    - cost_per_task_usd > max_cost_per_task  # Alert on budget exceeded

@@ -54,8 +54,10 @@ fi
 
 # 输出结果给 Claude Code
 if [ -n "$ERRORS" ]; then
-  # 返回提示信息，让 Claude Code 感知到问题（不阻断，仅告知）
-  echo -e "🔍 Pre-commit 检查发现以下问题：$ERRORS" >&2
+  # 阻断执行（Layer 1: 确定性检查）
+  echo -e "❌ Pre-commit 检查阻断：$ERRORS" >&2
+  exit 1
 fi
 
+# 所有检查通过
 exit 0
