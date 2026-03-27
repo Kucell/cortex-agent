@@ -1,355 +1,57 @@
 # 🧠 Cortex Agent Framework
 
-**Cortex Agent** 是一个为 AI 编程助手（如 Cursor、Claude Code、Windsurf、Gemini CLI、Antigravity 等）设计的治理与指令框架。它通过一套结构化的**规则 (Rules)**、**工作流 (Workflows)** 和**技能 (Skills)**，将 AI 从一个简单的代码生成器提升为具有架构意识和工程规范的“资深工程师”。
+**Cortex Agent** 是一个为 AI 编程助手（Cursor、Claude Code、Windsurf、Gemini CLI 等）设计的治理与指令框架。它通过一套结构化的**规则 (Rules)**、**工作流 (Workflows)** 和**技能 (Skills)**，将 AI 从简单的代码生成器提升为具有架构意识和工程规范的"资深工程师"。
 
-## 🚀 核心价值
+## 核心价值
 
-- **架构一致性**: 强制 AI 遵循项目预定义的架构模式（如六边形架构、分层设计）。
-- **专业化委托**: 通过 **子代理 (Sub-agents)** 机制，将复杂任务分解并委托给具有特定专长的 AI 代理，提高效率和深度。
-- **质量保障**: 自动化的提交规范检查、单元测试验证和类型安全审计。
-- **事件驱动自动化**: 利用 **钩子 (Hooks)** 在关键操作前后自动执行代码，实现策略强制和自动化流程。
-- **上下文透明**: 通过标准化的任务计划 (`plans/`)，让 AI 随时掌握项目进度和下一步行动。
-- **标准化流程**: 预定义 `/bug-fix`, `/code-review`, `/arch-design` 等常见场景的 SOP，并通过 **技能 (Skills)** 实现更动态、上下文感知的执行。
-- **上下文预算控制**: `context-budget` skill 对每次任务按 Tier 0-3 分级裁剪上下文，将有效负载控制在窗口 40% 以内，避免尾部幻觉。
-- **推理三明治**: `/ship` 全链路按 计划(sonnet) → 执行(sonnet) → 验证(sonnet) 分配模型算力，兼顾质量与成本。
-- **Sub-agent 防火墙**: 每个子代理输出结构化 JSON 契约（`plan_summary` / `execution_report` / `review_verdict`），阻断上下文污染传播。
-- **熵治理闭环**: `entropy-scanner` 周期扫描知识库漂移（L0-L3 分级），PostCommit Hook 自动修复 L0 问题，保持 `.agent/` 长期健康。
+- **架构一致性**：强制 AI 遵循项目预定义的架构模式（六边形、分层、微服务等）。
+- **专业化委托**：5 个专职 Sub-agent（planner / implementer / researcher / code-reviewer / documenter）分工协作，职责隔离。
+- **上下文预算控制**：`context-budget` skill 按 Tier 0-3 分级裁剪上下文，将有效负载控制在窗口 40% 以内。
+- **推理三明治**：`/ship` 按 规划(premium) → 执行(standard) → 验证(standard) 分配模型算力，兼顾质量与成本。
+- **熵治理闭环**：`entropy-scanner` 周期扫描知识库漂移，PostCommit Hook 自动修复，保持 `.agent/` 长期健康。
+- **工具无关**：同一套 `.agent/` 配置通过符号链接和指令文件适配 11 个主流 AI 平台。
 
-## 📂 目录结构
+## 快速开始
+
+```bash
+# 初始化当前项目（默认中文模板）
+npx cortex-agent init
+
+# 英文模板
+npx cortex-agent init --lang=en
+
+# 升级已有安装（纯加法，不覆盖已有文件）
+npx cortex-agent upgrade
+```
+
+初始化后，在 AI 助手中运行 `/configure` 完成项目配置。
+
+## 目录结构
 
 ```text
 .agent/
-├── rules/          # 核心规则：定义 AI 必须遵守的底线（架构、代码、提交规范）
-├── workflows/      # 工作流：Slash Commands (如 /start-task, /commit)
-├── skills/         # 专项技能：封装复杂逻辑（如架构审计、实现评估）
-├── sub-agents/     # 子代理：专职处理特定任务的代理，可被主代理委托
-├── hooks/          # 钩子：事件驱动的自动化，用于在特定操作前后执行代码
-├── plugins/        # 插件：集成自定义工具、数据源等核心能力
-├── plans/          # 进度管理：存储 Roadmap 和详细任务实施计划
-└── resources/      # 模板资源：架构提案、计划文档等模板
+├── rules/          # 核心规则：架构约束、代码规范、语言规则
+├── workflows/      # 工作流：/start-task /ship /configure 等斜杠命令
+├── skills/         # 专项技能：architecture-guard / context-budget / phase-gate
+├── sub-agents/     # 子代理：planner / implementer / researcher 等
+├── hooks/          # 钩子：PostToolUse Lint 检查 + PostCommit 熵清理
+├── config/         # 配置：reasoning-config.yml（模型 & API 配置）
+├── plans/          # 进度管理：task-progress.md 路线图
+└── references/     # 知识库：/scan-project 生成的模块参考文档
 ```
 
-## 🛠️ 如何开始 (Quick Start)
-
-你只需要在你的项目根目录下执行以下命令，即可完成 Cortex Agent 的初始化：
-
-```bash
-# 初始化当前项目 (Local, 默认为中文)
-npx cortex-agent init
-
-# 指定语言初始化 (可选: zh, en)
-npx cortex-agent init --lang=en
-
-# 初始化全局配置 (Global, 存储在 ~/.agent)
-npx cortex-agent init --global
-
-```
-
-可选参数（按需使用）：
-
-- `cortex-agent init --track`：初始化时直接纳入 Git 追踪（默认本地忽略）。
-- `cortex-agent init --global`：初始化到全局目录 `~/.agent`。
-- `cortex-agent upgrade`：**已有 `.agent` 的项目升级用**，仅补充模板中新增的文件，刷新符号链接，绝不修改已有内容。
-- `cortex-agent track`：**初始化后**想开启 Git 追踪时使用——移除本地忽略条目，自动 `git add .agent`。
-- `cortex-agent untrack`：关闭 Git 追踪——`git rm --cached` + 写入本地忽略，不删除文件。
-- `cortex-agent doctor`：一键检查 `.agent`/`AGENTS.md`/`GEMINI.md` 的识别与 Git 状态，并提示下一步操作。
-
-该命令会自动完成以下工作：
-
-1. 在你的项目中创建 `.agent/` 目录并填充核心治理文件（Rules, Workflows, Skills, Sub-agents, Hooks, Plugins）。
-2. 自动创建 `AGENTS.md` 与 `GEMINI.md` 入口文件（若不存在），提升多工具（含 Antigravity）识别兼容性。
-3. 为 Cursor、Claude Code、Windsurf 等生成对应的入口配置文件（例如 `.cursorrules`, `.clauderules`）。
-4. 自动创建必要的符号链接，将 `.agent` 目录下的内容映射到不同平台的习惯配置文件夹中。
-5. **自动生成 `.claude/settings.json`**，注入 Claude Code Hooks 配置，实现文件编辑后自动质量检查。
-6. **智能识别项目类型**：根据项目是否存在旧的 AI 配置，引导你进入不同的配置流程。
-
-## ⚙️ 项目配置 (Project Configuration)
-
-`cortex-agent init` 命令现在会根据你的项目情况，提供两种初始化配置体验：
-
-### 1. 新项目 (New Project)
-
-如果你的项目中**没有**检测到旧的 AI 助手配置文件（例如 `.cursorrules`, `CLAUDE.md` 等），`init` 命令会为你提供一个全新的 Cortex Agent 框架。
-
-**下一步：运行 `/configure` 命令**
-初始化完成后，你将收到提示，建议你在 AI 助手中运行 `/configure` 命令。这是一个交互式的工作流，它将引导你完成以下步骤：
-
-- **项目简要介绍**：描述项目的核心目标和用户。
-- **技术栈定义**：明确项目使用的编程语言、框架和关键库。
-- **主力语言选择**：选择 TypeScript / Python / Go 等，AI 将自动激活对应的语言规范规则（存放于 `.agent/rules/languages/`）。
-- **架构原则**：设定项目的核心设计原则和架构模式。
-
-通过 `/configure` 工作流，Cortex Agent 会自动填充 `.agent/rules/tech-stack.md`、`.agent/rules/architecture-design.md` 和 `.agent/plans/task-progress.md` 等文件，并将语言专属规则追加到 `tech-stack.md`，让 AI 从第一行代码起就遵循语言级约定。
-
-### 2. 现有项目 (Existing Project)
-
-如果 `init` 命令检测到你的项目中**存在**旧的 AI 助手配置文件，它会自动进入迁移模式，完整接入分三步：
-
-**第一步：自动导入旧配置**
-
-- `init` 自动将检测到的旧配置（`.cursorrules`、`CLAUDE.md` 等）复制到 `.agent/imported_rules/`。
-- 运行 `/migrate-rules`，AI 引导你逐文件合并到新规则体系（`tech-stack.md`、`architecture-design.md` 等），合并后自动清理旧文件。
-
-**第二步：扫描项目，建立知识库**
-
-运行 `/scan-project`，AI 自动扫描整个代码仓库，识别模块组织模式（Monorepo / 微前端 / 后端微服务 / 嵌入式等），为每个模块生成结构化参考文档存入 `.agent/references/`。
-
-这一步让 AI 在后续每次 `/start-task` 时都能直接获取准确的模块上下文，无需每次重新解释项目结构。
-
-**第三步：补充全局配置**
-
-运行 `/configure`，填写项目背景、技术栈和架构原则，AI 自动激活对应语言规范规则，完成项目专属配置。
-
-> **后续维护**：每次功能迭代后运行 `/update-refs`，AI 基于 git diff 自动检测变更模块并增量更新参考文档，保持知识库与代码同步。
-
-## 🔧 自定义与演进
-
-所有的指令都是活的。你可以通过以下方式不断优化你的 Agent：
-
-- **`/agent-update`**: 使用该指令来新增或修改规则、工作流。
-- **扩展专业能力**: 新增**子代理 (Sub-agents)** 来处理特定领域的复杂任务，例如专门的架构师代理或安全审计代理。
-- **精细化控制**: 通过定义**钩子 (Hooks)**，在 Agent 的操作生命周期中插入自定义逻辑，实现更精细的自动化和策略执行。
-- **集成新功能**: 通过**插件 (Plugins)** 引入外部工具、自定义数据源或与特定 IDE 的集成，不断扩展 Agent 的核心能力。
-
-## 📦 默认工作流 (Default Workflows)
-
-`cortex-agent` 提供了一系列预定义的工作流，覆盖从方案设计到任务交付的完整开发链路，通过在 AI 助手中输入斜杠命令调用。
-
-### 接入流程（首次使用）
-
-```mermaid
-flowchart TD
-    START([开始接入]) --> Q{项目类型?}
-
-    Q -->|全新项目| N1["npx cortex-agent init"]
-    N1 --> N2["/configure<br>填写背景·技术栈·架构原则"]
-    N2 --> READY
-
-    Q -->|已有项目<br>有旧 AI 配置| E1["npx cortex-agent init<br>自动导入旧配置"]
-    E1 --> E2["/migrate-rules<br>引导式合并旧规则"]
-    E2 --> E3["/scan-project<br>扫描模块·生成 references/"]
-    E3 --> E4["/configure<br>补充全局配置"]
-    E4 --> READY
-
-    Q -->|已有项目<br>无旧 AI 配置| P1["npx cortex-agent init"]
-    P1 --> P2["/scan-project<br>扫描模块·生成 references/"]
-    P2 --> P3["/configure<br>填写背景·技术栈·架构原则"]
-    P3 --> READY
-
-    READY([✅ 接入完成<br>进入日常开发循环])
-
-    style E3 fill:#4a9eff,color:#fff,stroke:none
-    style P2 fill:#4a9eff,color:#fff,stroke:none
-    style READY fill:#10b981,color:#fff,stroke:none
-```
-
-### 完整开发链路
-
-```mermaid
-flowchart
-    A([💡 有想法]) --> B
-
-    subgraph 方案设计
-        B["/arch-design 设计方案 <br>输出架构图"] --> C{确认方案?}
-        C -->|修改| B
-    end
-
-    subgraph 任务规划
-        C -->|确认| D["/plan 方案→任务清单 <br>写入 task-progress"]
-        D --> E["/briefing <br>每日晨播<br>知道今天做什么"]
-    end
-
-    subgraph 任务执行
-        E --> F["/start-task T-xxx<br>加载上下文<br>调用 planner"]
-        F --> G([🔨 编码实施])
-    end
-
-    subgraph 任务交付
-        G --> H["/ship T-xxx <br>一键交付"]
-        H --> I["① code-review<br>② commit<br>③ done<br>④ sync-plans"]
-        I --> K{模块有<br>结构变更?}
-        K -->|是| L["/update-refs<br>增量更新参考文档"]
-        K -->|否| J
-        L --> J([🔓 解锁下一任务])
-    end
-
-    J -->|循环| E
-
-    style D fill:#4a9eff,color:#fff,stroke:none
-    style H fill:#4a9eff,color:#fff,stroke:none
-    style L fill:#0ea5e9,color:#fff,stroke:none
-```
-
-> **每日节奏**：早上 `/briefing` → 开启 `/start-task` → 完成后 `/ship` → 有结构变更时 `/update-refs` → 第二天继续。
-
-### 工作流命令列表
-
-**🚀 接入阶段**
-
-| 工作流 | 描述 | 使用示例 |
-| :--- | :--- | :--- |
-| `/configure` | 交互式初始化：项目背景、技术栈、语言规则、架构模式 | `/configure` |
-| `/configure-model` | 交互式配置 AI 提供商、模型 ID 和每个角色的模型分配（支持 Anthropic / OpenAI / Azure / Ollama）| `/configure-model` |
-| `/scan-project` | **项目扫描**：扫描现有项目，为每个模块/微应用自动生成结构化架构参考文档到 `.agent/references/` | `/scan-project` |
-| `/migrate-rules ` | 将旧配置（如 `.cursorrules`）引导式迁移到新框架 | `/migrate-rules` |
-
-**📅 日常开发**
-
-| 工作流 | 描述 | 使用示例 |
-| :--- | :--- | :--- |
-| `/briefing` | 每日晨播：当前阶段、活跃任务、今日推荐接入点 | `/briefing` |
-| `/arch-design ` | 引导完成新功能的架构设计，输出方案对比与 Mermaid 架构图 | `/arch-design "用户认证模块"` |
-| `/plan` | **方案→任务清单**：将确认的方案拆解为带 ID/优先级/验收标准的任务条目，写入 task-progress.md | `/plan` |
-| `/start-task` | 开始执行任务：同步上下文、架构预审、委托 planner 制定详细计划 | `/start-task T-001` |
-| `/bug-fix` | Bug 分析、定位、修复完整流程 | `/bug-fix "登录按钮无响应"` |
-
-**📦 任务交付**
-
-| 工作流 | 描述 | 使用示例 |
-| :--- | :--- | :--- |
-| `/ship` | **一键交付**：code-review → commit → done → sync-plans 全链路串联 | `/ship T-001` |
-| `/code-review` | 对当前改动进行代码审查 | `/code-review` |
-| `/commit` | 遵循 Conventional Commits，AI 生成提交信息，禁止 AI 署名 | `/commit` |
-| `/done` | 轻量版完成标记：更新路线图 `[ ]→[x]`，刷新进度百分比 | `/done T-001 T-002` |
-| `/update-refs ` | **文档同步**：检测自上次扫描以来变更的模块，增量更新 `.agent/references/`，保持 AI 知识库与代码同步 | `/update-refs` |
-
-**⚙️ 高级 / 维护**
-
-| 工作流 | 描述 | 使用示例 |
-| :--- | :--- | :--- |
-| `/parallel` | **并行调度**：分析依赖，将互不依赖的任务批量派发给专职 sub-agent 并行执行 | `/parallel T-001 T-002 T-003` |
-| `/sync-plans` | 多任务并行时对齐冲突，更新关联任务状态 | `/sync-plans` |
-| `/agent-update` | 新增或修改 Agent 的规则、工作流或技能 | `/agent-update "新增规则..."` |
-| `/weekly-report ` | 基于 Git 记录生成周报 | `/weekly-report` |
-
-### Sub-agent 专职代理
-
-工作流内部通过调用 sub-agent 实现职责分离，每个代理有独立的模型、工具权限和上下文边界：
-
-```mermaid
-graph LR
-    O["🎯 主 AI<br>Orchestrator"] -->|分析依赖| PL["planner <br>任务拆解 + 依赖图<br>model: sonnet"]
-    O -->|并行派发| IM["implementer<br>功能实现 + 单元测试<br>model: sonnet"]
-    O -->|并行派发| RS["researcher<br>技术调研 + 方案评估<br>model: sonnet"]
-    O -->|并行派发| CR["code-reviewer<br>架构合规 + 代码质量<br>model: sonnet"]
-    O -->|并行派发| DC["documenter<br>README + API文档 + 注释<br>model: haiku"]
-
-    style O fill:#6366f1,color:#fff,stroke:none
-    style PL fill:#0ea5e9,color:#fff,stroke:none
-    style IM fill:#10b981,color:#fff,stroke:none
-    style RS fill:#f59e0b,color:#fff,stroke:none
-    style CR fill:#ef4444,color:#fff,stroke:none
-    style DC fill:#8b5cf6,color:#fff,stroke:none
-```
-
-| Sub-agent       | 职责                                   | 触发方式                            |
-| :-------------- | :------------------------------------- | :---------------------------------- |
-| `planner`       | 任务拆解、依赖分析、制定实施计划       | `/start-task`、`/parallel` 自动调用 |
-| `implementer`   | 独立完成功能编码，包含单元测试         | `/parallel` 派发                    |
-| `researcher`    | 技术调研、方案对比、可行性评估（只读） | `/parallel` 派发                    |
-| `code-reviewer` | 架构合规、代码质量、性能检查           | `/ship`、`/code-review` 自动调用    |
-| `documenter`    | 同步 README、API 文档、注释、CHANGELOG | `/parallel` 派发                    |
-
-每个 Sub-agent 按职责挂载对应的**专项技能 (Skills)**，实现更精准的能力覆盖：
-
-```mermaid
-graph TB
-    subgraph Agents["🤖 Sub-agents"]
-        direction LR
-        PL[planner]
-        IM[implementer]
-        CR[code-reviewer]
-    end
-
-    subgraph Skills["📦 技能库"]
-        direction LR
-        AG[architecture-guard]
-        PG[phase-gate]
-        CB[context-budget]
-        CE[code-evaluation]
-    end
-
-    PL -->|架构约束感知| AG
-    IM -->|编码前预审| AG
-    IM -->|实现质量自评| CE
-    CR -->|架构合规 + 细粒度约束| AG
-    CR -->|质量评分| CE
-    O -->|阶段门控| PG
-    O -->|上下文裁剪| CB
-
-    style PL fill:#0ea5e9,color:#fff,stroke:none
-    style IM fill:#10b981,color:#fff,stroke:none
-    style CR fill:#ef4444,color:#fff,stroke:none
-    style AG fill:#0ea5e9,color:#fff,stroke:none
-    style PG fill:#0ea5e9,color:#fff,stroke:none
-    style CB fill:#0ea5e9,color:#fff,stroke:none
-    style CE fill:#0ea5e9,color:#fff,stroke:none
-```
-
-> 完整架构设计（含模块职责、Hooks 触发机制、演进指南）见 [docs/architecture.md](docs/architecture.md)。
-
-## 🔌 多平台集成 (Multi-platform Integration)
-
-**Cortex Agent** 的核心设计理念是“工具无关”，旨在成为所有 AI 编程助手的统一治理层。为了实现这一点，它支持两种主要的集成模式：**指令文件集成**和**符号链接集成**。
-
-**`.agent` 目录是所有规则、工作流和知识的唯一真理来源 (Single Source of Truth)。** 通过不同的集成策略，我们可以让各种 AI 工具统一遵循 `Cortex` 的规范。
-
-### 集成模式
-
-1.  **指令文件集成 (Instruction File)**: 这是最通用、最广泛的集成方式。我们通过一个平台特定的配置文件（如 `.aider.instructions.md`, `.clauderules`）向 AI 代理下达“系统级指令”，告诉它必须遵循 `.agent` 目录中的规则和工作流。项目中的 `Aider`, `Claude`, `Continue`, `GitHub Copilot` 和 `Windsurf` 都采用此模式。
-
-2.  **原生/符号链接集成 (Native/Symbolic Link Integration)**: 少数平台（如 `Cursor`, `Claude Code CLI`, `Windsurf`）原生支持加载特定目录下的文件作为自定义命令、规则或代理。对于这些平台，`init` 命令会自动创建符号链接（Symbolic Link），将 `.agent` 的子目录映射到工具的默认配置路径中（例如 `.cursor/commands`, `.claude/commands`），实现更深度的**零开销**原生体验。
-
-### 平台映射指南
-
-下表概述了如何将 `Cortex Agent` 集成到不同的 AI 平台中。
-
-| 平台 (Platform)    |  集成配置文件 (Integration File)  | 集成方式 (Method)            | 备注 (Notes)                                                 |
-| ------------------ | :-------------------------------: | :--------------------------- | :----------------------------------------------------------- |
-| **Cursor**         |          `.cursorrules`           | 符号链接 (Symlink)           | 同时创建 `.cursor/commands`、`.cursor/rules`、`.cursor/skills` 符号链接，将工作流映射为原生斜杠命令。 |
-| **Claude Code**    |   `.clauderules` / `CLAUDE.md`    | 指令文件 + 符号链接 (Hybrid) | 同时创建 `.claude/commands`、`.claude/agents`、`.claude/plugins` 符号链接，实现深度原生集成。 |
-| **Windsurf**       |         `.windsurfrules`          | 指令文件 + 符号链接 (Hybrid) | 同时创建 `.windsurf/workflows`、`.windsurf/rules` 符号链接，深度集成工作流和规则。 |
-| **Aider**          |     `.aider.instructions.md`      | 指令文件 (Instruction)       | 指示 Aider 将 `/` 命令路由到 `.agent/workflows/` 中的对应文件。 |
-| **Continue**       |         `.continuerules`          | 指令文件 (Instruction)       | 指示 Continue 遵循 `.agent/` 目录中的指导方针。              |
-| **GitHub Copilot** | `.github/copilot-instructions.md` | 指令文件 (Instruction)       | 指示 Copilot 在提供代码建议时遵循 `.agent/rules/` 和 `.agent/workflows/`。 |
-| **OpenAI Codex**   |            `AGENTS.md`            | 指令文件 (Instruction)       | Codex 会自动查找并遵循 `AGENTS.md` 文件中的指令。你可以将 `.agent` 中的核心规则聚合或链接到此文件。 |
-| **Gemini CLI **    |            `GEMINI.md`            | 指令文件 (Instruction)       | Google Gemini CLI (Antigravity) 会自动读取 `GEMINI.md`，以 `AGENTS.md` 为基准并扩展 Gemini 特定行为。 |
-| **Cline**          |           `.clinerules`           | 指令文件 (Instruction)       | VS Code 中极流行的 AI 编程助手，直接读取 `.clinerules` 作为系统指令。 |
-| **Roo Code**       |    `.roorules` / `.roo/rules/`    | 指令文件 + 符号链接 (Hybrid) | 支持多模式（Architect/Code/Debug/Ask），双路径集成：`.roorules` 指令文件 + `.roo/rules → .agent/rules` 符号链接。 |
-| **Amazon Q**       |    `.amazonq/rules/cortex.md`     | 指令文件 (Instruction)       | AWS 官方 AI 编程助手，根据 `.amazonq/rules/*.md` 注入规则到每次对话上下文。 |
-
-### 快速初始化
-
-`cortex-agent` 的 `init` 命令会根据模板自动创建这些配置文件，为你提供一个开箱即用的起点。你可以根据具体需求进一步调整这些指令文件的内容，以优化特定 AI 助手的性能和行为。
-
-## 🔌 Claude Code 插件安装（可选）
-
-除了 CLI 初始化之外，Cortex Agent 也可以作为 **Claude Code 插件**直接安装，适合仅使用 Claude Code 的团队。
-
-```bash
-# 在 Claude Code 中运行（需要 Claude Code ≥ 1.x）
-/plugin marketplace add Kucell/cortex-agent
-/plugin install cortex-agent@cortex-agent
-```
-
-插件安装后，Claude Code 会自动发现根目录下的 `agents/`、`skills/`、`commands/`、`hooks/hooks.json`，无需手动运行 `cortex-agent init`。
-
-> **注意**：CLI 初始化方式（`cortex-agent init`）支持所有平台（Cursor、Windsurf、Claude Code 等）；插件方式仅适用于 Claude Code。
-
-## 🌐 语言规范规则 (Language Rules)
-
-`.agent/rules/languages/` 目录下包含各主流语言的规范文件：
-
-| 语言            | 规则文件                        | 覆盖内容                                |
-| :-------------- | :------------------------------ | :-------------------------------------- |
-| TypeScript / JS | `rules/languages/typescript.md` | 类型系统、命名、async、ESLint           |
-| Python          | `rules/languages/python.md`     | 类型注解、dataclass、Ruff、mypy         |
-| Go              | `rules/languages/golang.md`     | 错误处理、并发、接口设计、golangci-lint |
-| Java            | `rules/languages/java.md`       | 命名、异常处理、构造器注入、Spring Boot 分层、Checkstyle/SpotBugs |
-| Swift           | `rules/languages/swift.md`      | 值类型优先、Optional 安全、async/await/Actor、SwiftUI ViewModel、SwiftLint |
-
-通过 `/configure` 工作流选择语言后，AI 会自动将对应规则文件内容追加到 `tech-stack.md`，激活语言级约定。你也可以直接手动粘贴对应规则文件的内容。
-
-## 📄 开源协议
+## 文档索引
+
+| 文档 | 内容 |
+| :--- | :--- |
+| [docs/getting-started.md](docs/getting-started.md) | CLI 命令参考、新项目/已有项目完整接入流程 |
+| [docs/workflows.md](docs/workflows.md) | 全部工作流命令、完整开发链路图、/ship 状态机 |
+| [docs/sub-agents.md](docs/sub-agents.md) | Sub-agent 架构图、技能映射、输出契约、路由配置 |
+| [docs/platform-integration.md](docs/platform-integration.md) | 11 平台集成方式、Claude Code 插件安装 |
+| [docs/language-rules.md](docs/language-rules.md) | TypeScript / Python / Go / Java / Swift 规范 |
+| [docs/customization.md](docs/customization.md) | 自定义规则、扩展 Sub-agent、添加 Hooks |
+| [docs/architecture.md](docs/architecture.md) | 整体架构设计、模块职责、Hooks 触发机制 |
+
+## 开源协议
 
 MIT
