@@ -189,6 +189,7 @@ flowchart
 | 工作流 | 描述 | 使用示例 |
 | :--- | :--- | :--- |
 | `/configure` | 交互式初始化：项目背景、技术栈、语言规则、架构模式 | `/configure` |
+| `/configure-model` | 交互式配置 AI 提供商、模型 ID 和每个角色的模型分配（支持 Anthropic / OpenAI / Azure / Ollama）| `/configure-model` |
 | `/scan-project` | **项目扫描**：扫描现有项目，为每个模块/微应用自动生成结构化架构参考文档到 `.agent/references/` | `/scan-project` |
 | `/migrate-rules ` | 将旧配置（如 `.cursorrules`）引导式迁移到新框架 | `/migrate-rules` |
 
