@@ -1,69 +1,107 @@
-# Reasoning Sandwich Configuration
-# Phase 1: 推理三明治（简化版）- 成本可控的质量保障
+# ============================================================
+# Cortex Agent — 模型与 API 配置
+# 用户可在此自定义模型提供商、模型 ID 和每个角色的模型分配
+# ============================================================
 
-## 成本模式配置
-cost_mode: balanced  # conservative | balanced | quality
+# ── 1. API 提供商配置 ────────────────────────────────────────
+api:
+  provider: anthropic          # 可选：anthropic | openai | azure | ollama | custom
+  base_url: ""                 # 留空使用提供商默认地址；自托管或代理时填写完整 URL
+  api_key_env: ANTHROPIC_API_KEY  # 存储 API Key 的环境变量名
 
-## 模式定义
+# ── 2. 模型别名注册表 ────────────────────────────────────────
+# 将抽象别名映射到实际模型 ID
+# 修改此处即可全局切换模型，无需逐个修改 sub-agent 文件
+models:
+  # ---- Anthropic Claude（默认）----
+  fast:     claude-haiku-4-5-20251001   # 快速/轻量，高频低成本任务
+  standard: claude-sonnet-4-6           # 标准，适合日常开发
+  premium:  claude-opus-4-6             # 高质量，复杂推理与架构决策
+
+  # ---- OpenAI（切换 provider: openai 后启用，注释掉上面三行）----
+  # fast:     gpt-4o-mini
+  # standard: gpt-4o
+  # premium:  o1
+
+  # ---- 本地模型（provider: ollama）----
+  # fast:     qwen2.5-coder:7b
+  # standard: qwen2.5-coder:32b
+  # premium:  qwen2.5-coder:72b
+
+# ── 3. Sub-agent 角色模型分配 ────────────────────────────────
+# 每个角色默认使用哪个别名；也可直接填写完整模型 ID 覆盖别名
+roles:
+  planner:         premium    # 规划需要最强推理（对应 plan 模式）
+  implementer:     standard   # 执行用标准模型
+  researcher:      standard   # 调研用标准模型
+  code_reviewer:   standard   # 代码审查用标准模型
+  documenter:      fast       # 文档生成用快速模型
+  entropy_scanner: fast       # 熵扫描用快速模型（高频，成本敏感）
+
+# ── 4. 成本模式（可覆盖 roles 配置）────────────────────────────
+# active_mode 非空时，批量覆盖 roles 中的分配
+# 留空 ("") 则使用 roles 逐角色配置
+active_mode: ""               # "" | conservative | balanced | quality
+
 modes:
-  # 节约模式：适合简单任务、探索性工作
-  conservative:
-    planning: haiku
-    execution: haiku
-    verification: sonnet
-    max_cost_per_task: 0.1  # USD
-    description: "最小成本，适合简单重复任务"
+  conservative:               # 节约模式：简单任务、探索性工作
+    planning:     fast
+    execution:    fast
+    verification: standard
+    max_cost_per_task: 0.10   # USD 预算上限
 
-  # 平衡模式：默认模式，适合大部分开发任务
-  balanced:
-    planning: sonnet
-    execution: sonnet
-    verification: sonnet
-    max_cost_per_task: 0.5  # USD
-    description: "质量与成本平衡，适合日常开发"
+  balanced:                   # 平衡模式：日常开发推荐
+    planning:     standard
+    execution:    standard
+    verification: standard
+    max_cost_per_task: 0.50
 
-  # 质量模式：适合复杂架构决策、关键功能
-  quality:
-    planning: opus
-    execution: sonnet
-    verification: opus
-    max_cost_per_task: 2.0  # USD
-    description: "最高质量，适合架构设计和复杂重构"
+  quality:                    # 质量模式：复杂架构、关键功能
+    planning:     premium
+    execution:    standard
+    verification: premium
+    max_cost_per_task: 2.00
 
-## 状态机配置
-state_machine:
-  max_retry: 2  # 每个阶段最大重试次数
-  auto_rollback: true  # 失败时自动回滚到上一个稳定状态
-  timeout_per_phase: 300  # 每个阶段超时时间（秒）
+# ── 5. 运行时行为 ─────────────────────────────────────────────
+runtime:
+  max_retry: 2                 # 每个阶段最大重试次数
+  auto_rollback: true          # 失败时自动回滚到上一个稳定状态
+  timeout_per_phase: 300       # 每阶段超时（秒）
+  escalation:
+    requires_approval: true    # 从 balanced/roles 升级到 quality 需用户确认
+    auto_downgrade_on_budget: true  # 预算不足时自动降级到 conservative
+    approval_prompt: |
+      当前任务建议升级到 quality 模式（使用 ${models.premium}）。
+      预估成本：$${estimated_cost} USD
+      是否继续？(y/N)
 
-## 升级策略
-escalation:
-  requires_approval: true  # 从 balanced 升级到 quality 需用户确认
-  auto_downgrade_on_budget: true  # 预算不足时自动降级到 conservative
-  approval_prompt: |
-    当前任务建议升级到 quality 模式（使用 Opus）。
-    预估成本：$${estimated_cost}
-    是否继续？
+# ── 6. 如何应用配置修改 ───────────────────────────────────────
+# 修改 models / roles / active_mode 后，需同步更新 sub-agent 文件中的 model: 字段：
+#
+#   sub-agents/planner.md        → roles.planner      (默认 premium)
+#   sub-agents/implementer.md    → roles.implementer  (默认 standard)
+#   sub-agents/researcher.md     → roles.researcher   (默认 standard)
+#   sub-agents/code-reviewer.md  → roles.code_reviewer(默认 standard)
+#   sub-agents/documenter.md     → roles.documenter   (默认 fast)
+#   sub-agents/entropy-scanner.md→ roles.entropy_scanner (默认 fast)
+#
+# 快速更新示例（将 planner 改为 standard）：
+#   1. 修改本文件：roles.planner: standard
+#   2. 修改 sub-agents/planner.md 第 4 行：model: claude-sonnet-4-6
+#
+# 切换提供商示例（切换到 OpenAI）：
+#   1. api.provider: openai
+#   2. api.api_key_env: OPENAI_API_KEY
+#   3. 注释掉 models 中的 Anthropic 行，取消注释 OpenAI 行
+#   4. 更新所有 sub-agent 文件中的 model: 字段为对应 OpenAI 模型 ID
 
-## 降级触发条件
-downgrade_conditions:
-  budget_threshold: 0.8  # 预算使用率 > 80% 时触发降级
-  consecutive_failures: 3  # 连续失败 3 次时降级模型
-  timeout_threshold: 2  # 超时 2 次时降级到更快的模型
-
-## 成功标准
-success_criteria:
-  first_pass_rate_target: 0.85  # 首次通过率目标 85%
-  max_retry_count: 2  # 硬性限制：超过 2 次重试视为失败
-  cost_increase_limit: 1.0  # 成本增幅不超过 100%（相比 Phase 0）
-
-## 监控指标
+# ── 7. 监控指标 ───────────────────────────────────────────────
 metrics:
   track:
-    - first_pass_rate  # 首次通过率
-    - retry_count_avg  # 平均重试次数
-    - cost_per_task_usd  # 每任务成本
-    - phase_duration_avg  # 每阶段平均耗时
+    - first_pass_rate         # 首次通过率（目标 ≥ 85%）
+    - retry_count_avg         # 平均重试次数
+    - cost_per_task_usd       # 每任务成本
+    - phase_duration_avg      # 每阶段平均耗时
   alert_on:
-    - first_pass_rate < 0.7  # 通过率低于 70% 时告警
+    - first_pass_rate < 0.70  # 通过率低于 70% 时告警
     - cost_per_task_usd > max_cost_per_task  # 超预算告警

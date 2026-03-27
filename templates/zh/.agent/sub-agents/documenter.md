@@ -1,7 +1,7 @@
 ---
 name: documenter
 description: 专职文档更新代理。根据代码变更自动同步 README、API 文档、注释和 CHANGELOG，不写业务代码。适合在 implementer 完成后并行执行。
-model: haiku
+model: claude-haiku-4-5-20251001   # roles.documenter = fast；在 config/reasoning-config.yml 中修改
 tools: Read, Write, Edit, Glob, Grep
 skills:
   - changelog-generator  # /ship 流程结束时自动从 git commits 生成 CHANGELOG
