@@ -1,0 +1,11 @@
+{
+  "_meta": {
+    "description": "项目模块上下文索引，由 /scan-project 自动生成，/update-refs 增量更新",
+    "generated_by": "scan-project",
+    "last_updated": null,
+    "last_commit": null,
+    "estimated_context_tokens": 200000,
+    "total_modules": 0
+  },
+  "modules": []
+}

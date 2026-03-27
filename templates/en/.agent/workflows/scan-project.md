@@ -121,11 +121,25 @@ description: 扫描现有项目结构，自动识别模块/微应用，为每个
 - `model/` `entity/` `domain/` → 后端数据模型
 - `schema/` → 数据库 schema 或 GraphQL schema
 
-### 第三步：生成参考文档
+### 第三步：生成参考文档（含上下文索引元数据）
 
-为每个模块生成 `.agent/references/{分类}/{模块名}.md`，格式如下：
+为每个模块生成 `.agent/references/{分类}/{模块名}.md`。
+
+**文件开头必须包含 YAML frontmatter**（供 `context-budget` skill 使用）：
 
 ```markdown
+---
+module: {模块名}
+module_path: {相对路径，如 src/auth}
+module_type: {微应用 / 功能模块 / 共享包 / 微服务 / 其他}
+keywords: [{关键词1}, {关键词2}, ...]
+estimated_tokens: {估算 token 数，约为文件字符数 / 4}
+last_updated: {YYYY-MM-DD}
+last_commit: {short hash}
+dependencies: [{依赖的其他模块名}]
+summary: "{一句话核心功能描述}"
+---
+
 # {模块名} 架构参考
 
 > **项目路径**: `{相对路径}`
@@ -175,7 +189,42 @@ description: 扫描现有项目结构，自动识别模块/微应用，为每个
 {依赖版本限制、特殊配置、跨模块约定等}
 ```
 
-### 第四步：生成索引文件
+**关键词提取规则**：
+- 从模块名、技术栈、核心功能描述、主要目录名中提取 5-15 个关键词
+- 包含：框架名、核心业务词（如 auth、payment、order）、技术词（如 JWT、GraphQL）
+- 排除：通用词（src、lib、utils、index）
+
+### 第四步：更新 context-index.json
+
+所有模块文档生成完成后，更新 `.agent/context-index.json`，聚合所有模块的 frontmatter 元数据：
+
+```json
+{
+  "_meta": {
+    "description": "项目模块上下文索引，由 /scan-project 自动生成，/update-refs 增量更新",
+    "generated_by": "scan-project",
+    "last_updated": "YYYY-MM-DD",
+    "last_commit": "{short hash}",
+    "estimated_context_tokens": 200000,
+    "total_modules": {N}
+  },
+  "modules": [
+    {
+      "module": "auth-service",
+      "module_path": "src/auth",
+      "module_type": "功能模块",
+      "keywords": ["JWT", "OAuth", "session", "login", "token"],
+      "estimated_tokens": 1200,
+      "last_updated": "YYYY-MM-DD",
+      "dependencies": ["user-service", "redis-cache"],
+      "summary": "负责用户认证、JWT 签发和 Session 管理",
+      "ref_path": ".agent/references/auth-service.md"
+    }
+  ]
+}
+```
+
+### 第五步：生成索引文件
 
 创建 `.agent/references/README.md` 作为全局模块索引：
 
@@ -200,7 +249,7 @@ description: 扫描现有项目结构，自动识别模块/微应用，为每个
 ## 完成后的提示
 
 扫描完成后，告知用户：
-1. 生成了哪些文档（列表）
-2. 如何在任务中引用这些文档（AI 自动读取 `.agent/references/`）
+1. 生成了哪些文档（列表）+ `context-index.json` 已更新（{N} 个模块）
+2. 如何在任务中引用这些文档（AI 通过 `context-budget` skill 自动选择相关上下文）
 3. 提示运行 `/configure` 补充全局架构原则
 4. 提示后续用 `/update-refs` 保持文档同步
