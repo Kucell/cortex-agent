@@ -1,13 +1,16 @@
 ---
 name: done
-description: Quickly mark tasks as complete and update the progress percentage in task-progress.md.
+description: 快速标记任务完成，更新 task-progress.md 的状态和整体进度百分比。
 ---
 
-# Task Completion Workflow (/done)
+# 任务完成工作流 (/done)
 
-Use this to mark one or more tasks as complete and sync the progress document.
+> **推荐使用 `/ship`**：`/ship T-xxx` 在 DONE 阶段自动调用此逻辑。
+> 仅在**不经过代码审查直接标记完成**时单独使用（如文档任务、计划更新等）。
 
-## Usage
+用于快速将一个或多个任务标记为完成，并同步更新进度文档。
+
+## 使用方式
 
 ```
 /done T-001
@@ -15,38 +18,40 @@ Use this to mark one or more tasks as complete and sync the progress document.
 /done T-001 T-002 --progress 95
 ```
 
-## Steps
+## 执行步骤
 
-### Step 1: Read Current Progress
+### 第一步：读取当前进度
 
-Read `.agent/plans/task-progress.md` and locate the specified task IDs.
+读取 `.agent/plans/task-progress.md`，找到指定任务 ID 的当前状态。
 
-### Step 2: Update Task Status
+### 第二步：更新任务状态
 
-- Remove completed tasks from the **Active Tasks** table.
-- Change `[ ]` to `[x]` in the **Roadmap** section.
-- Append a summary of completed tasks to the **Recently Completed** block:
+在 **活跃任务表** 中将对应任务行移除或标记为完成。
 
-```
-- <task description> (completed YYYY-MM-DD)
-```
+在 **路线图** 中将对应 `[ ]` 改为 `[x]`。
 
-### Step 3: Recalculate Overall Progress
-
-Re-estimate the `Overall Progress` percentage based on completed items in the roadmap:
-- If the user specified `--progress <value>`, use that value directly.
-- Otherwise estimate: `completed items / total items × 100%`
-
-Update the `> **Overall Progress**` and `> **Last Updated**` fields at the top of the file.
-
-### Step 4: Output Confirmation
-
-Display an update summary:
+将完成的任务摘要追加到 **最近完成** 区块，格式：
 
 ```
-✅ Marked complete: T-001 (Enhance pre-commit-check.sh multi-language support)
-📊 Overall progress: 82% → 87%
-📅 Last updated: 2026-03-19
+- <任务描述>（完成于 YYYY-MM-DD）
 ```
 
-Then ask if the user wants to `/commit` the updated progress file.
+### 第三步：重新计算整体进度
+
+根据路线图中已完成条目占比重新估算 `整体进度` 百分比：
+- 若用户通过 `--progress` 参数指定了数值，直接使用该值
+- 否则按以下方式估算：`已完成条目数 / 总条目数 × 100%`
+
+更新文件头部的 `> **整体进度**` 和 `> **最后更新**` 字段。
+
+### 第四步：输出确认
+
+展示更新摘要：
+
+```
+✅ 已标记完成：T-001（完善 pre-commit-check.sh 多语言支持）
+📊 整体进度：82% → 87%
+📅 最后更新：2026-03-19
+```
+
+并询问是否需要 `/commit` 提交进度文件。
