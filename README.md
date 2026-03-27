@@ -10,6 +10,10 @@
 - **事件驱动自动化**: 利用 **钩子 (Hooks)** 在关键操作前后自动执行代码，实现策略强制和自动化流程。
 - **上下文透明**: 通过标准化的任务计划 (`plans/`)，让 AI 随时掌握项目进度和下一步行动。
 - **标准化流程**: 预定义 `/bug-fix`, `/code-review`, `/arch-design` 等常见场景的 SOP，并通过 **技能 (Skills)** 实现更动态、上下文感知的执行。
+- **上下文预算控制**: `context-budget` skill 对每次任务按 Tier 0-3 分级裁剪上下文，将有效负载控制在窗口 40% 以内，避免尾部幻觉。
+- **推理三明治**: `/ship` 全链路按 计划(sonnet) → 执行(sonnet) → 验证(sonnet) 分配模型算力，兼顾质量与成本。
+- **Sub-agent 防火墙**: 每个子代理输出结构化 JSON 契约（`plan_summary` / `execution_report` / `review_verdict`），阻断上下文污染传播。
+- **熵治理闭环**: `entropy-scanner` 周期扫描知识库漂移（L0-L3 分级），PostCommit Hook 自动修复 L0 问题，保持 `.agent/` 长期健康。
 
 ## 📂 目录结构
 
@@ -195,7 +199,7 @@ flowchart
 | `/briefing` | 每日晨播：当前阶段、活跃任务、今日推荐接入点 | `/briefing` |
 | `/arch-design ` | 引导完成新功能的架构设计，输出方案对比与 Mermaid 架构图 | `/arch-design "用户认证模块"` |
 | `/plan` | **方案→任务清单**：将确认的方案拆解为带 ID/优先级/验收标准的任务条目，写入 task-progress.md | `/plan` |
-| `/start-task ` | 开始执行任务：同步上下文、架构预审、委托 planner 制定详细计划 | `/start-task T-001` |
+| `/start-task` | 开始执行任务：同步上下文、架构预审、委托 planner 制定详细计划 | `/start-task T-001` |
 | `/bug-fix` | Bug 分析、定位、修复完整流程 | `/bug-fix "登录按钮无响应"` |
 
 **📦 任务交付**
@@ -215,7 +219,7 @@ flowchart
 | `/parallel` | **并行调度**：分析依赖，将互不依赖的任务批量派发给专职 sub-agent 并行执行 | `/parallel T-001 T-002 T-003` |
 | `/sync-plans` | 多任务并行时对齐冲突，更新关联任务状态 | `/sync-plans` |
 | `/agent-update` | 新增或修改 Agent 的规则、工作流或技能 | `/agent-update "新增规则..."` |
-| `/weekly-report` | 基于 Git 记录生成周报 | `/weekly-report` |
+| `/weekly-report ` | 基于 Git 记录生成周报 | `/weekly-report` |
 
 ### Sub-agent 专职代理
 
@@ -223,7 +227,7 @@ flowchart
 
 ```mermaid
 graph LR
-    O["🎯 主 AI<br>Orchestrator"] -->|分析依赖| PL["planner <br>任务拆解 + 依赖图<br>model: haiku"]
+    O["🎯 主 AI<br>Orchestrator"] -->|分析依赖| PL["planner <br>任务拆解 + 依赖图<br>model: sonnet"]
     O -->|并行派发| IM["implementer<br>功能实现 + 单元测试<br>model: sonnet"]
     O -->|并行派发| RS["researcher<br>技术调研 + 方案评估<br>model: sonnet"]
     O -->|并行派发| CR["code-reviewer<br>架构合规 + 代码质量<br>model: sonnet"]
@@ -258,23 +262,26 @@ graph TB
 
     subgraph Skills["📦 技能库"]
         direction LR
-        AA[architecture-audit]
-        AC[architecture-check]
+        AG[architecture-guard]
+        PG[phase-gate]
+        CB[context-budget]
         CE[code-evaluation]
     end
 
-    PL -->|架构约束感知| AA
-    IM -->|编码前预审| AA
+    PL -->|架构约束感知| AG
+    IM -->|编码前预审| AG
     IM -->|实现质量自评| CE
-    CR -->|架构合规| AA
-    CR -->|细粒度约束| AC
+    CR -->|架构合规 + 细粒度约束| AG
     CR -->|质量评分| CE
+    O -->|阶段门控| PG
+    O -->|上下文裁剪| CB
 
     style PL fill:#0ea5e9,color:#fff,stroke:none
     style IM fill:#10b981,color:#fff,stroke:none
     style CR fill:#ef4444,color:#fff,stroke:none
-    style AA fill:#0ea5e9,color:#fff,stroke:none
-    style AC fill:#0ea5e9,color:#fff,stroke:none
+    style AG fill:#0ea5e9,color:#fff,stroke:none
+    style PG fill:#0ea5e9,color:#fff,stroke:none
+    style CB fill:#0ea5e9,color:#fff,stroke:none
     style CE fill:#0ea5e9,color:#fff,stroke:none
 ```
 
@@ -337,8 +344,10 @@ graph TB
 | TypeScript / JS | `rules/languages/typescript.md` | 类型系统、命名、async、ESLint           |
 | Python          | `rules/languages/python.md`     | 类型注解、dataclass、Ruff、mypy         |
 | Go              | `rules/languages/golang.md`     | 错误处理、并发、接口设计、golangci-lint |
+| Java            | `rules/languages/java.md`       | 命名、异常处理、构造器注入、Spring Boot 分层、Checkstyle/SpotBugs |
+| Swift           | `rules/languages/swift.md`      | 值类型优先、Optional 安全、async/await/Actor、SwiftUI ViewModel、SwiftLint |
 
-通过 `/configure` 工作流选择语言后，AI 会自动将对应规则激活。你也可以直接在 `tech-stack.md` 中 `@import` 或手动粘贴对应规则文件的内容。
+通过 `/configure` 工作流选择语言后，AI 会自动将对应规则文件内容追加到 `tech-stack.md`，激活语言级约定。你也可以直接手动粘贴对应规则文件的内容。
 
 ## 📄 开源协议
 
