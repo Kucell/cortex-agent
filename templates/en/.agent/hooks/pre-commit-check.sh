@@ -52,6 +52,34 @@ if [[ "$FILE_PATH" =~ \.py$ ]]; then
   fi
 fi
 
+# 4. Run go vet on Go files (if installed)
+if [[ "$FILE_PATH" =~ \.go$ ]]; then
+  if command -v go &>/dev/null; then
+    FILE_DIR=$(dirname "$FILE_PATH")
+    if ! go vet "$FILE_DIR" 2>/dev/null; then
+      ERRORS="${ERRORS}\n⚠️  [Lint] go vet check failed: $FILE_PATH"
+    fi
+  fi
+fi
+
+# 5. Run checkstyle on Java files (if installed and checkstyle.xml exists)
+if [[ "$FILE_PATH" =~ \.java$ ]]; then
+  if command -v checkstyle &>/dev/null && [ -f "checkstyle.xml" ]; then
+    if ! checkstyle -c checkstyle.xml "$FILE_PATH" 2>/dev/null; then
+      ERRORS="${ERRORS}\n⚠️  [Lint] Checkstyle check failed: $FILE_PATH"
+    fi
+  fi
+fi
+
+# 6. Run swiftlint on Swift files (if installed)
+if [[ "$FILE_PATH" =~ \.swift$ ]]; then
+  if command -v swiftlint &>/dev/null; then
+    if ! swiftlint lint --quiet "$FILE_PATH" 2>/dev/null; then
+      ERRORS="${ERRORS}\n⚠️  [Lint] SwiftLint check failed: $FILE_PATH"
+    fi
+  fi
+fi
+
 # Report findings back to Claude Code
 if [ -n "$ERRORS" ]; then
   # Output as stderr and block execution (Layer 1: deterministic checks)

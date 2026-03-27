@@ -45,7 +45,23 @@ description: Interactively configure the Cortex Agent for a new project.
 
 1. **更新 `task-progress.md`**：将你的项目目标填充到项目路线图中。
 2. **更新 `tech-stack.md`**：将你定义的技术栈写入规则文件。
-3. **激活语言规则**：根据第 3 步选择，将对应的语言规则文件（如 `rules/languages/typescript.md`）内容追加到 `tech-stack.md`，让我遵守语言级约定。
+3. **激活语言规则**：根据第 3 步选择，读取对应的语言规则文件内容，追加到 `.agent/rules/tech-stack.md` 末尾：
+
+   | 选择 | 语言规则文件 |
+   |------|-------------|
+   | TypeScript / JavaScript | `.agent/rules/languages/typescript.md` |
+   | Python | `.agent/rules/languages/python.md` |
+   | Go | `.agent/rules/languages/golang.md` |
+   | Java | `.agent/rules/languages/java.md` |
+   | Swift | `.agent/rules/languages/swift.md` |
+
+   操作：读取对应文件的完整内容，在 `tech-stack.md` 末尾追加分隔线和内容：
+   ```
+   ---
+   <!-- 以下由 /configure 自动注入：{语言} 语言规范 -->
+   {语言规则文件内容}
+   ```
+
 4. **更新 `architecture-design.md`**：将你的架构原则写入规则文件。
 
 完成后，我就是你项目的专属 AI 工程师了！让我们开始吧。
