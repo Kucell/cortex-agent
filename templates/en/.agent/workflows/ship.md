@@ -139,7 +139,20 @@ DONE 状态达成后，执行上下文清洗，防止任务间上下文污染：
 > 若 `.agent/archive/` 目录不存在，先创建再归档。
 > 若任务产物文件不存在（如跳过了某阶段），跳过对应归档步骤，不报错。
 
-**状态流转**：`CONTEXT_CLEANUP` → `CLEAN`（最终状态）
+**状态流转**：`CONTEXT_CLEANUP` → `ENTROPY_SCAN`
+
+---
+
+### Phase 7: ENTROPY_SCAN（自动执行）
+
+CONTEXT_CLEANUP 完成后，调用 `entropy-scanner` sub-agent 做 L0 + L1 扫描：
+
+- **L0**：自动修复 context-index.json 偏差（已删模块条目、orphan_plans）
+- **L1**：标记 stale_refs 和 missing_refs（不修复内容，只标记状态）
+
+输出 `.agent/entropy-report.json`，包含本次健康度评分。
+
+**状态流转**：`ENTROPY_SCAN` → `CLEAN`（最终状态）
 
 ---
 
