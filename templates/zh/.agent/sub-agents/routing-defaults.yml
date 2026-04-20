@@ -41,6 +41,17 @@ workflows:
     parallel_agents: [implementer]
     max_concurrent: 3
 
+  /sync-master:
+    # 文档型工作流：fetch + rebase 同步主干，见 workflows/sync-master.md
+    note: "无默认 sub-agent 流水线；由主会话按工作流逐步执行 git 命令"
+
+# 长时会话与上下文续接（可选委托 session-manager）
+session_continuity:
+  sub_agent: session-manager
+  when:
+    - "预计单次任务超过约 3 小时，或接近会话时长上限"
+    - "用户提及 session assess、archive、restore、status、warm"
+
 # Orchestrator 决策规则
 orchestration:
   # reviewer 输入严格限制（防火墙）

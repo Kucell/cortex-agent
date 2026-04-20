@@ -1,7 +1,7 @@
 # 任务进度
 
-> **当前阶段**：Harness Engineering 优化期
-> **整体进度**：60%
+> **当前阶段**：Harness Engineering 优化期（Phase 6 完成）
+> **整体进度**：90%
 > **最后更新**：2026-03-27
 
 ---
@@ -23,7 +23,7 @@
 - [x] `.claude-plugin/plugin.json` + 根目录插件发现入口（agents / commands / skills / hooks）
 - [x] `commit.md` 工作流 —— AI 生成 Conventional Commits，禁 AI 署名
 - [x] `commit-standards.md` 规则文件
-- [ ] 完善 `pre-commit-check.sh`：支持 Python ruff、Go vet（T-001）
+- [x] 完善 `pre-commit-check.sh`：支持 Python ruff、Go vet、Java checkstyle、Swift swiftlint（T-001）
 
 ### Phase 3：平台管理与语言规则（✅ 已完成）
 
@@ -34,8 +34,8 @@
 - [x] `.agent/.platforms` 状态文件持久化已安装平台
 - [x] 语言规则模板：TypeScript / Python / Go（zh + en）
 - [x] `configure.md` 加入语言选择步骤
-- [ ] 新增 Java、Swift 语言规则（T-002）
-- [ ] `configure.md` 自动写入语言规则到 `tech-stack.md`（T-003）
+- [x] 新增 Java、Swift 语言规则（T-002）
+- [x] `configure.md` 自动写入语言规则到 `tech-stack.md`（T-003）
 
 ### Phase 4：代码架构优化（✅ 已完成）
 
@@ -64,32 +64,32 @@
 - [x] `sub-agents/code-reviewer.md`：结构化评分输出 + 输入隔离声明（T-H03）
 - [x] `workflows/ship.md`：状态机 + max_retry + LINT/REVIEW 阶段 Gate（T-H02）
 - [x] `hooks/hooks.json`：双层 Hooks（linter 先行 + AI 后行）（T-H01）
-- [ ] 上下文预算基础设施：`context-index.json` + `skills/context-budget/`（T-H04）
-- [ ] `/start-task` 改造：插入 context-manifest 生成步骤（T-H04）
-- [ ] `/scan-project` 改造：reference 生成时自动加 frontmatter（T-H04）
-- [ ] `/update-refs` 改造：同步刷新 frontmatter 和 context-index（T-H04）
+- [x] 上下文预算基础设施：`context-index.json` + `skills/context-budget/`（T-H04）
+- [x] `/start-task` 改造：插入 context-manifest 生成步骤（T-H04）
+- [x] `/scan-project` 改造：reference 生成时自动加 frontmatter（T-H04）
+- [x] `/update-refs` 改造：同步刷新 frontmatter 和 context-index（T-H04）
 
 **P1 — 完整防火墙（Sub-agent 输出契约）**
 
-- [ ] `sub-agents/planner.md` 增加结构化输出摘要（plan_summary JSON 契约）（T-H05）
-- [ ] `sub-agents/implementer.md` 增加结构化输出摘要（execution_report JSON 契约）（T-H05）
-- [ ] `workflows/ship.md` DONE 后增加 context_cleanup 步骤（T-H05）
-- [ ] 新增 `sub-agents/routing-defaults.yml`：自动路由配置（保留 5 个 sub-agent）（T-H05）
+- [x] `sub-agents/planner.md` 增加结构化输出摘要（plan_summary JSON 契约）（T-H05）
+- [x] `sub-agents/implementer.md` 增加结构化输出摘要（execution_report JSON 契约）（T-H05）
+- [x] `workflows/ship.md` DONE 后增加 context_cleanup 步骤（T-H05）
+- [x] 新增 `sub-agents/routing-defaults.yml`：自动路由配置（保留 5 个 sub-agent）（T-H05）
 
 **P2 — 熵治理闭环**
 
-- [ ] 新增 `sub-agents/entropy-scanner.md`：扫描逻辑 + 分级策略（T-H06）
-- [ ] 新增 `entropy-config.yml`：扫描频率 + L0-L3 分级规则（T-H06）
-- [ ] `hooks/hooks.json` 增加 PostCommit L0 自动清理（T-H06）
-- [ ] `workflows/ship.md` 追加 ENTROPY_SCAN → CLEAN 状态（T-H06）
-- [ ] `workflows/briefing.md` 增加知识库健康度板块（T-H06）
+- [x] 新增 `sub-agents/entropy-scanner.md`：扫描逻辑 + 分级策略（T-H06）
+- [x] 新增 `entropy-config.yml`：扫描频率 + L0-L3 分级规则（T-H06）
+- [x] `hooks/hooks.json` 增加 PostCommit L0 自动清理（T-H06）
+- [x] `workflows/ship.md` 追加 ENTROPY_SCAN → CLEAN 状态（T-H06）
+- [x] `workflows/briefing.md` 增加知识库健康度板块（T-H06）
 
 **P3 — 渐进式退化 + Workflow 精简**
 
-- [ ] 新增 `harness-manifest.yml`：全组件退化条件 + 路径 + 回滚策略（T-H07）
-- [ ] 新增 `skills/maturity-tracker/`：组件表现指标收集（T-H07）
-- [ ] `workflows/briefing.md` 增加成熟度看板（T-H07）
-- [ ] Workflow 精简（13 → 7）：降级 /code-review /commit /done /sync-plans 为 /ship 内步骤（T-H08）
+- [x] 新增 `harness-manifest.yml`：全组件退化条件 + 路径 + 回滚策略（T-H07）
+- [x] 新增 `skills/maturity-tracker/`：组件表现指标收集（T-H07）
+- [x] `workflows/briefing.md` 增加成熟度看板（T-H07）
+- [x] Workflow 精简（降级重定向）：/code-review /done /sync-plans /parallel /weekly-report 加入"推荐用 /ship"提示（T-H08）
 
 ---
 
@@ -100,15 +100,15 @@
 | T-H01 | P0 | **[待提交]** Skill精简 + phase-gate + 双层Hooks | 95% |
 | T-H02 | P0 | **[待提交]** 推理三明治：reasoning-config + planner模型升级 + ship状态机 | 90% |
 | T-H03 | P0 | **[待提交]** code-reviewer结构化输出 + 输入隔离 | 100% |
-| T-H04 | P0 | 上下文预算控制：context-index + context-budget skill + workflows改造 | 0% |
-| T-H05 | P1 | Sub-agent防火墙：输出摘要器契约 + 上下文清洗 + 路由配置 | 0% |
-| T-H06 | P2 | 熵治理闭环：entropy-scanner + PostCommit hook + briefing集成 | 0% |
-| T-H07 | P3 | 渐进式退化：harness-manifest + maturity-tracker | 0% |
-| T-H08 | P3 | Workflow精简：13 → 7 | 0% |
+| T-H04 | P0 | 上下文预算控制：context-index + context-budget skill + workflows改造 | 100% |
+| T-H05 | P1 | Sub-agent防火墙：输出摘要器契约 + 上下文清洗 + 路由配置 | 100% |
+| T-H06 | P2 | 熵治理闭环：entropy-scanner + PostCommit hook + briefing集成 | 100% |
+| T-H07 | P3 | 渐进式退化：harness-manifest + maturity-tracker | 100% |
+| T-H08 | P3 | Workflow精简：降级重定向 | 100% |
 | T-005 | P1 | README 补充快速上手 GIF 演示 | 20% |
-| T-001 | P1 | 完善 pre-commit-check.sh 多语言支持（ruff、go vet） | 0% |
-| T-002 | P1 | 新增 Java / Swift 语言规则模板（zh + en） | 0% |
-| T-003 | P2 | configure.md 自动激活语言规则逻辑 | 30% |
+| T-001 | P1 | 完善 pre-commit-check.sh 多语言支持（ruff、go vet） | 100% |
+| T-002 | P1 | 新增 Java / Swift 语言规则模板（zh + en） | 100% |
+| T-003 | P2 | configure.md 自动激活语言规则逻辑 | 100% |
 | T-008 | P3 | Claude Code 插件市场上架 | 0% |
 
 ---

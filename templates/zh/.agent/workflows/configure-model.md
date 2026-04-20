@@ -21,6 +21,7 @@ description: 交互式配置 AI 模型提供商、模型 ID 和每个 sub-agent 
    - `sub-agents/code-reviewer.md`
    - `sub-agents/documenter.md`
    - `sub-agents/entropy-scanner.md`
+   - `sub-agents/session-manager.md`
 3. 展示当前配置摘要：
 
 ```

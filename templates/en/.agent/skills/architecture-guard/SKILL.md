@@ -35,6 +35,16 @@ The script will:
 - Why it's problematic
 - Suggested solutions
 
+### Optional: project-specific audit script
+
+Some teams add an **extra** Node entry (e.g. `.agent/skills/architecture-guard/scripts/custom-audit.cjs` or a sibling `architecture-audit/scripts/index.cjs`) that encodes **repository-specific** checks (import boundaries, forbidden paths, etc.). If such a script exists and is safe to run:
+
+1. Run it after (or instead of) the default `index.js` when the user asks for a stricter or custom gate.
+2. Merge its output with Layer 1 results; deduplicate and prioritize by severity.
+3. If **no** script is present, rely on `index.js` when it exists, otherwise Layer 2 manual review only.
+
+> Keep scripts **optional** and **additive**: do not require every project to ship a custom auditor.
+
 ### Layer 2: Manual Review
 For code changes or design proposals, perform multi-dimensional review:
 

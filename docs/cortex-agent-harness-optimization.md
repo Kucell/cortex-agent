@@ -1,1208 +1,577 @@
-# Cortex Agent × Harness Engineering 优化方案
+# Cortex Agent Harness 优化方案
 
-> 基于 Harness Engineering 六大支柱，对 cortex-agent 框架的系统性优化提案。
-> 核心理念：Agent 的可靠性瓶颈不在模型，而在模型周围的系统。
-
----
-
-## 一、现状评估
-
-### 1.1 Cortex Agent 当前架构概览
-
-Cortex Agent 是一个为 AI 编程助手设计的治理与指令框架，通过 Rules、Workflows、Skills、Sub-agents、Hooks 五大模块将 AI 从代码生成器提升为具有架构意识的"资深工程师"。
-
-当前架构已具备的能力：
-
-- `.agent/` 作为唯一真理来源（Single Source of Truth）
-- 5 个 Sub-agent（planner / implementer / researcher / code-reviewer / documenter）
-- 3 个 Skill（architecture-audit / architecture-check / code-evaluation）
-- 13+ 个 Workflow 覆盖从方案设计到任务交付的完整链路
-- Hooks 事件驱动自动化（PostToolUse 写完即检）
-- 多平台集成（Cursor / Claude Code / Windsurf / Gemini CLI 等）
-
-### 1.2 Harness 六大支柱对照
-
-| 支柱 | Cortex Agent 现状 | 差距评估 |
-|------|-------------------|---------|
-| ① 上下文架构 | `references/` + `/scan-project` 已在做"给地图不给百科全书" | **缺少量化预算控制**，无 40% 利用率监控 |
-| ② 架构约束 | `rules/` + `hooks/` + `skills/` 提供约束体系 | **待强化**：工具面过大（~25 个决策点），hooks 依赖 AI 判断而非确定性工具 |
-| ③ 自验证循环 | `code-review` + `hooks` 提供验证能力 | **缺少推理三明治**（规划高/执行中/验证高）和死循环防护 |
-| ④ 上下文隔离 | Sub-agents 已有基本隔离（独立模型和工具权限） | **待强化**：父级仍看到子 agent 完整输出，无结构化摘要机制 |
-| ⑤ 熵治理 | `/update-refs` 半自动更新 | **缺少自动闭环**：依赖人手动触发，无后台 agent 自维护 |
-| ⑥ 可拆卸性 | 模块化设计，但无退化策略 | **缺少退化配置**：组件只会增加不会移除 |
-
-### 1.3 优化优先级
-
-- **P0**：上下文预算控制 — 立即可做，ROI 最高
-- **P1**：推理三明治 — 防死循环/跳步，提升交付质量
-- **P2**：熵治理闭环 — references 自动维护，长期复利
-- **P3**：工具精简 + 隔离强化 + 可拆卸性 — 渐进优化
+> 基于 OpenAI 文章《Harness engineering: leveraging Codex in an agent-first world》的对照修订版。
+> 原文发布时间：2026-02-11
+> 来源：https://openai.com/index/harness-engineering/
 
 ---
 
-## 二、上下文预算控制
+## 1. 执行摘要
 
-### 2.1 问题定义
+上一版文档已经抓住了一些正确方向：上下文预算、推理分层、子代理隔离、熵治理，以及 Harness 组件的渐进式退场机制。
 
-Harness 指出：Agent 性能在上下文利用率超 40% 后开始下降。当前 cortex-agent 的 `/start-task` 没有控制注入多少上下文——所有 rules、references、plans 可能全量灌入，导致关键信息被稀释。
+但对照 OpenAI 的文章后，可以更清楚地看到几个问题：
 
-### 2.2 设计方案
+- 我们对“可靠性控制环”的理解基本正确。
+- 我们低估了“仓库可理解性”和“运行时可观测性”的重要性。
+- 我们过早把重点放在“删工作流、并角色、减组件”上，而不是先减少模糊决策面。
+- 我们定义了较多 Gate，却没有明确“吞吐导向的合并哲学”和“自治等级”。
 
-在 `/start-task` 的 planner 阶段插入"上下文选择器"，让 AI 在有限预算内选择最有价值的上下文片段。
+真正值得借鉴的，不是机械照搬 OpenAI 的实现，而是以下六点：
 
-**Step 1：构建上下文索引**
-
-改造 `/scan-project` 和 `/update-refs`，为每个 reference 文件增加 YAML frontmatter 元数据：
-
-```yaml
----
-module: auth-service
-keywords: [JWT, OAuth, session, login, token-refresh]
-estimated_tokens: 1200
-last_updated: 2026-03-20
-dependencies: [user-service, redis-cache]
----
-```
-
-在 `.agent/` 下新增 `context-index.json`，聚合所有 reference 的元数据。此索引文件本身极小（几十个模块不过几 KB），可安全全量注入给 planner。
-
-**Step 2：相关性评分**
-
-改造 planner sub-agent 的 prompt，在任务拆解之前先做"上下文匹配"。planner 拿到任务描述和 `context-index.json` 后，为每个模块打 0-10 相关性分：
-
-```json
-{
-  "task_plan": { "..." : "..." },
-  "context_selection": [
-    { "module": "auth-service", "relevance": 9, "reason": "任务直接修改认证逻辑" },
-    { "module": "user-service", "relevance": 7, "reason": "认证依赖用户模型" },
-    { "module": "redis-cache",  "relevance": 3, "reason": "间接依赖，可能不需要" }
-  ]
-}
-```
-
-**Step 3：预算分配算法**
-
-新增 `skills/context-budget.md`，实现分层贪心填充：
-
-- **总预算** = 模型上下文窗口 × 40% − 系统指令 − rules
-- **Tier 0（必选）**：task-progress + 当前任务描述，始终注入
-- **Tier 1（高相关，relevance ≥ 7）**：按分数降序填入，分数相同时优先选 token 少的
-- **Tier 2（中相关，4-6）**：剩余预算允许时填入
-- **Tier 3（低相关，0-3）**：仅注入摘要首行（一句话描述），AI 知道其存在但不占预算
-
-**Step 4：输出上下文清单**
-
-每次 `/start-task` 执行后，planner 在 `.agent/plans/` 下生成 `context-manifest.json`：
-
-```json
-{
-  "task_id": "T-001",
-  "model": "claude-sonnet-4.5",
-  "window_size": 200000,
-  "budget_limit": 80000,
-  "allocated": {
-    "system_instructions": 3200,
-    "rules": 4800,
-    "tier_0": 2100,
-    "tier_1": [
-      { "module": "auth-service", "tokens": 1200, "relevance": 9 }
-    ],
-    "tier_2": [
-      { "module": "redis-cache", "tokens": 600, "relevance": 4 }
-    ],
-    "tier_3_summaries": ["payment-service", "notification-service"],
-    "total_used": 12700,
-    "utilization": "15.9%"
-  }
-}
-```
-
-### 2.3 文件变更清单
-
-| 操作 | 文件 | 说明 |
-|------|------|------|
-| 新增 | `skills/context-budget.md` | 预算计算和分配逻辑 |
-| 新增 | `context-index.json` | 聚合所有 reference 元数据的索引 |
-| 改造 | `sub-agents/planner.md` | 增加"上下文选择"步骤 |
-| 改造 | `workflows/start-task.md` | 在 planner 后插入 context-manifest 生成步骤 |
-| 改造 | `workflows/scan-project.md` | 生成 reference 时自动加 frontmatter |
-| 改造 | `workflows/update-refs.md` | 更新 reference 时同步刷新 frontmatter 和索引 |
+1. 把 `AGENTS.md` 当成目录，不是百科全书。
+2. 把仓库知识库当成系统真相来源。
+3. 让 Agent 能直接看懂并操作运行中的应用，包括浏览器、日志、指标和链路。
+4. 把架构约束和工程品味尽量机械化，而不是只写在 Prompt 里。
+5. 持续做小步垃圾回收，而不是把“AI slop”留到人工集中清扫。
+6. 优化的稀缺资源不是 token，而是人的时间和注意力。
 
 ---
 
-## 三、工具精简
+## 2. 与现有方案的对照
 
-### 3.1 问题定义
+### 2.1 原方案中仍然成立的部分
 
-Vercel 的经验：移除 80% 工具后可靠性反而更高。当前 cortex-agent 的"工具面"约 25 个决策点（5 sub-agent + 3 skill + 13+ workflow + hooks 路由），AI 在每次交互时的选择负担过大。
+以下方向依然正确，应该保留：
 
-### 3.2 Sub-agent 精简：5 → 3
+- 上下文预算控制
+- 推理三明治（`plan -> execute -> verify`）
+- 子代理结构化输出契约
+- 熵扫描与清理闭环
+- Harness 组件的渐进式退化
+- 确定性 Gate 优先于概率性审查
 
-**合并 researcher → planner**
+这些内容与 OpenAI 文章并不冲突，仍然是可靠 Agent 系统的核心组成。
 
-planner 在任务拆解时本身就需要技术调研。分离导致 Orchestrator 多一次"该派给 planner 还是 researcher"的路由判断。合并后 planner 的 prompt 增加调研职责。
+### 2.2 原方案需要修正的部分
 
-**合并 documenter → implementer**
+原方案需要在四个方面修正。
 
-写代码的 agent 拥有最完整的实现上下文，它生成的文档天然更准确。分离引入同步问题（implementer 改了代码但 documenter 不知道）。合并后 implementer 每次完成编码后同步更新相关文档。
+#### A. 从“工具精简”改为“决策面收缩”
 
-**保留 code-reviewer**
+OpenAI 的文章强调的是强约束、强脚手架，而不是简单删组件。我们上一版文档把“减少命令、合并角色”当成主要优化方向，这个判断过于粗糙。
 
-审查和实现之间需要"对抗性张力"——同一 agent 既写又审容易自我放行。
+真正该减少的，不是文件数量，而是含糊不清的选择题。
 
-### 3.3 Skill 精简：3 → 2
+对 Cortex Agent 的含义是：
 
-**合并 architecture-audit + architecture-check → architecture-guard**
+- 应保留那些承载长期工程实践的 workflow。
+- 只有在真实观测到路由混乱时，才合并 skill、sub-agent 或命令。
+- `/agent-update` 这类低频但高价值的维护流程，不应仅因“不常用”就被删除。
 
-两者的区别是粒度（整体 vs 细节），但这个区分让 AI 多一个选择题。合并为单入口，内部分两阶段（先粗后细），调用者不需要判断粒度。
+#### B. 把“应用可理解性”提升为一等公民
 
-**保留 code-evaluation**
+原方案主要围绕 Prompt、Plan、Repo 结构展开，但 OpenAI 文章指出，当 Agent 吞吐提升后，真正的瓶颈往往变成人工 QA，而解决方式是让 Agent 能直接观察和验证应用本身。
 
-独立的质量评分能力，与架构检查职责不同。
+对 Cortex Agent 的含义是：
 
-### 3.4 Workflow 精简：13 → 7
+- 对 UI 型项目，浏览器自动化不是可选项。
+- 日志、指标、Trace 应该尽可能在隔离的本地环境中向 Agent 暴露。
+- 验收标准应尽量从“文字要求”转成“可执行检查”。
 
-**保留为独立 workflow（7 个）**
+#### C. 强化“仓库知识架构”
 
-`/configure`、`/scan-project`、`/briefing`、`/arch-design`、`/plan`、`/start-task`、`/ship` — 高频、每日必用、不可替代。
+我们已经把 `.agent/` 视为真理来源，但 OpenAI 文章补上了一个更细的层次：入口文件应该短小，真正的知识应该在结构化、可索引、可验证的仓库文档体系中。
 
-**降级为 workflow 内部步骤（4 个）**
+对 Cortex Agent 的含义是：
 
-`/code-review`、`/commit`、`/done`、`/sync-plans` — 90% 场景由 `/ship` 串联。降级后用户只需 `/ship T-xxx`，无需判断调用顺序。如需单独执行可用参数变体（如 `/ship --review-only`）。
+- `AGENTS.md` 应继续保持短小、导航式。
+- `.agent/` 继续作为 harness 配置层的真理来源。
+- 仓库内还需要一套更清晰的 `docs/` 结构，用于沉淀架构、计划、质量、可靠性、产品上下文等知识。
 
-**合并或移除（4 个）**
+#### D. 增加“合并哲学”和“自治等级”
 
-- `/parallel` → `/start-task T-001 T-002 T-003`（多 task ID 自动并行）
-- `/weekly-report` → `/briefing --weekly`
-- `/migrate-rules` → `/configure` 子流程
-- `/agent-update` → 手动编辑 `.agent/` 文件即可
+原方案强调了更多 Gate，但没有回答：什么该阻塞，什么适合快速跟进修复；当前 harness 到底支持多大自治。
 
-### 3.5 Hooks 改造：从 AI 判断到确定性触发
+对 Cortex Agent 的含义是：
 
-将 hook 执行分成两层：
-
-```yaml
-PostToolUse(Write, Edit):
-  layer_1: "npx eslint {file} && npx tsc --noEmit"   # 确定性，零 token
-  layer_2: "code-evaluation"                           # AI，仅语义层
-  gate: layer_1 必须通过才触发 layer_2
-```
-
-第一层用 linter/formatter/compiler 做机械化验证（pass/fail，无歧义）。第二层才调用 AI 做架构合规审查。大量简单错误被第一层拦截，AI 专注于 linter 无法覆盖的语义级问题。
-
-### 3.6 精简后的用户体验
-
-日常开发只需 3 个命令：`/briefing` → `/start-task` → `/ship`。内部 sub-agent 调度、skill 调用、hook 触发全部自动化，用户无需感知。工具面从 ~25 个决策点降至 ~12 个。
+- 倾向于更小、更短生命周期的 PR。
+- 区分“必须阻塞”的确定性问题和“可后续修复”的建议性问题。
+- 当修正成本低于等待成本时，允许快速跟进修复。
+- 必须定义当前自治等级，以及升级自治等级所需的证据。
 
 ---
 
-## 四、推理三明治
+## 3. 更新后的八大支柱
 
-### 4.1 问题定义
+修订后，Cortex Agent 的 Harness 应围绕八个支柱展开。
 
-当前 sub-agent 模型分配是静态的（planner=haiku, implementer=sonnet, reviewer=sonnet），存在三个问题：规划用弱模型导致任务拆解粗糙；验证和执行同级导致验证深度不够；无机械化保障导致死循环或跳过验证。
+### 支柱 1：仓库知识即系统真相来源
 
-### 4.2 核心原则
+这是原方案和 OpenAI 文章之间最大的差距。
 
-推理三明治的结构是 **高 → 中 → 高**：
+#### 目标
 
-- **规划层（高推理）**：深度思考任务边界、依赖关系、风险点
-- **执行层（中推理）**：按计划忠实翻译为代码，不自行做架构决策
-- **验证层（高推理）**：严格审查正确性，推理强度 ≥ 执行层
+让 Agent 能从仓库内的版本化产物中直接发现业务、架构和运维事实，而不是依赖聊天记录、口头共识或人的记忆。
 
-### 4.3 动态模型分配
+#### 设计
 
-新增 `.agent/reasoning-config.yml`：
+- 顶层 `AGENTS.md` 保持短小、导航式。
+- `.agent/` 继续承载 rules、workflows、skills、hooks、sub-agent 契约。
+- 在 `docs/` 下补齐或规范知识结构，例如：
 
-```yaml
-reasoning_sandwich:
-  planning:
-    default: sonnet
-    complex_task: opus        # 任务依赖 ≥ 3 个模块时升级
-
-  verification:
-    default: sonnet
-    critical_path: opus       # 涉及核心模块时升级
-
-  execution:
-    default: sonnet
-    simple_task: haiku        # 单文件修改时降级
-
-  escalation:
-    max_retry: 2
-    escalate_to: opus
-    fallback: human           # 最终兜底
+```text
+docs/
+  architecture/
+  product/
+  exec-plans/
+    active/
+    completed/
+  references/
+  generated/
+  quality/
+  reliability/
+  security/
 ```
 
-关键改动：planner 从 haiku 升级到 sonnet（默认），复杂任务升 opus。这是对整体质量提升最大的单一改动。
+- 把计划当作一等版本化产物，而不是会话中的临时文本。
+- 明确保留 active plan、completed plan 和 tech debt 的分层。
+- 采用渐进式披露：
+  - `AGENTS.md` 只负责指路。
+  - Agent 根据任务按需深入更细文档。
 
-### 4.4 死循环防护
+#### 必备机制
 
-在 `/ship` 内部增加重试计数器。每次 reviewer 打回时：
+- 知识库 lint：检查断链、缺索引、计划状态错误、模块未文档化等问题。
+- doc-gardening 机制：周期性识别过时或弱化的文档，并产出修复变更。
+- 质量评分板：对主要领域、架构层和文档覆盖度进行评分。
 
-1. blocking issues 被结构化记录到 `context-manifest.json`
-2. 下次 implementer 执行时，上次失败原因作为 Tier 0 必选上下文强制注入
-3. 当 `review_attempts` 达到 `max_retry`（默认 2），触发升级或暂停
+#### 原因
 
-```json
-{
-  "review_attempts": [
-    { "attempt": 1, "result": "rejected", "blocking_issues": ["缺少错误处理"], "model": "sonnet" },
-    { "attempt": 2, "result": "rejected", "blocking_issues": ["修复不完整"], "model": "sonnet" }
-  ],
-  "escalation_triggered": true,
-  "escalated_to": "opus"
-}
+OpenAI 文章有一个非常关键的判断：对 Agent 来说，看不到的知识，等同于不存在。
+
+### 支柱 2：应用可理解性
+
+这是上一版基本缺失、但应当提升到 P0/P1 的部分，尤其适用于可运行的产品型仓库。
+
+#### 目标
+
+让 Agent 不止会改代码，还能理解并验证代码改变后的运行行为。
+
+#### 设计
+
+- 在条件允许时，支持按 worktree 启动应用。
+- 为 UI 验证提供浏览器驱动类 skill。
+- 在隔离的任务环境中暴露本地日志、指标、Trace。
+- 支持截图、DOM 快照、控制台、网络请求等检查能力。
+- 尽可能把验收标准改写为可运行的验证语句。
+
+#### 典型验收标准示例
+
+- “服务启动时间必须小于 800ms”
+- “登录链路中任意 Trace 不得超过 2 秒”
+- “表单输入有效后，保存按钮应变为可点击”
+
+#### 对 Cortex Agent 的含义
+
+Harness 的边界不能停留在“帮模型写代码”，而要延伸到“帮 Agent 观察和验证自己刚改过的系统”。
+
+### 支柱 3：机械化约束优先于 Prompt 叙述
+
+上一版已经有这个倾向，但还不够明确。
+
+#### 目标
+
+尽可能把重要工程约束转成可执行检查，而不是留在提示词中靠模型“记住”。
+
+#### 设计
+
+- 机械化校验层级边界
+- 机械化校验命名和文件体量约束
+- 机械化校验结构化日志要求
+- 机械化校验边界数据解析与类型约束
+- 自定义 lint 报错信息，让它不只是报错，还能给出 Agent 可执行的修复路径
+
+#### 指导原则
+
+Prompt 用来表达意图。
+Linter、结构测试和脚本用来守住不变量。
+
+这意味着 Cortex Agent 不应只依赖通用的 `lint/test/typecheck`，还要鼓励仓库定义自己的结构性规则。
+
+### 支柱 4：上下文预算与渐进式披露
+
+这部分原方案总体正确，但需要放回更大的知识架构中理解。
+
+#### 目标
+
+在上下文窗口有限的情况下，最大化有效信息密度，同时保证后续信息仍然可发现。
+
+#### 设计
+
+- 维护 `context-index.json`
+- 为非 trivial 任务生成 `context-manifest.json`
+- 使用分层注入：
+  - Tier 0：任务、当前计划、活跃约束
+  - Tier 1：直接相关 reference
+  - Tier 2：相邻 reference
+  - Tier 3：只注入一句摘要
+
+#### 从 OpenAI 文章得到的补充
+
+控制上下文量只是第一步，更关键的是文档组织必须让 Agent 容易找到“下一个应该读什么”。短入口加深层索引，比一份巨大的总说明文件更有效。
+
+### 支柱 5：推理三明治与自治等级
+
+原方案正确指出了规划、执行、验证要分层，但还需要一个更明确的自治模型。
+
+#### 目标
+
+在高歧义阶段使用更强推理，在低歧义阶段强调执行效率，并明确 Agent 当前能接管到软件生命周期的哪一步。
+
+#### 设计
+
+- Planning：高推理强度
+- Execution：中等推理强度
+- Verification：高推理强度
+- 阶段之间有确定性 Gate
+- 重试次数有上限，并且有升级和人工兜底规则
+
+#### 增加自治等级定义
+
+```text
+L0  只给建议
+L1  计划 + 打补丁
+L2  计划 + 打补丁 + 本地验证
+L3  计划 + 打补丁 + 提 PR + 响应审查
+L4  计划 + 打补丁 + 提 PR + 验证 + 按策略合并
 ```
 
-超过 max_retry 后绝不进入第三次循环——这是硬性确定性约束，不是 AI 自己判断的。
+每个等级都应有明确前提：
 
-### 4.5 跳步防护：阶段状态机
+- 确定性检查通过率
+- 审查返工率
+- 回滚频率
+- 构建稳定性
+- 子代理污染率
 
-在 `/ship` workflow 中定义严格状态机，每个转换有确定性前置条件：
+Cortex Agent 应明确“当前支持到哪个等级”，而不是默认暗示自己已经支持完整自治。
 
-```
-PLAN → EXECUTE → LINT → REVIEW → COMMIT → DONE
-```
+### 支柱 6：子代理防火墙与结构化契约
 
-| 转换 | 硬性前置条件 | 检查方式 |
-|------|-------------|---------|
-| PLAN → EXECUTE | plan 文件存在且 steps.length > 0 | 文件存在性检查 |
-| EXECUTE → LINT | git diff --name-only 非空 | shell 命令 |
-| LINT → REVIEW | linter 退出码 = 0 | 进程返回值 |
-| REVIEW → COMMIT | review.score ≥ 7 且 blocking_issues = 0 | JSON 字段检查 |
-| COMMIT → DONE | git log -1 成功 | shell 命令 |
+这部分仍有价值，但应该更清楚地表述其目的：控制上下文膨胀，并保持独立判断。
 
-这些都是确定性检查，不依赖 AI 判断"差不多可以了"。
+#### 目标
 
-### 4.6 Sub-agent Prompt 改造
+避免上下文污染、确认偏误和角色之间的隐性耦合。
 
-**planner 增加：**
+#### 设计
 
-```
-你是规划层，处于三明治的"上层面包"。你的输出将被推理强度更低的
-implementer 执行。因此你必须：
-- 把每个步骤拆解到"无需额外判断即可执行"的粒度
-- 明确标注每个步骤的验收标准（可机械化检查的）
-- 标注哪些步骤有风险，需要验证层重点审查
-```
+- planner、implementer、reviewer 都输出结构化摘要
+- reviewer 只看：
+  - plan summary
+  - execution report
+  - 实际 diff
+- 任务完成后，清理任务局部产物并归档
+- 各角色读写权限保持非对称
 
-**implementer 增加：**
+#### 额外说明
 
-```
-你是执行层，处于三明治的"馅料"。忠实翻译 planner 的计划为代码，
-不要自行做架构决策。如果计划有歧义，标记为 BLOCKED 并说明原因。
-```
+这里的重点不是“隐藏思维链”本身，而是建立稳定的操作隔离：
 
-**reviewer 增加结构化输出要求：**
+- 上下文更小
+- 接口更清晰
+- reviewer 保持独立性更强
 
-```json
-{
-  "score": 8,
-  "blocking_issues": [],
-  "warnings": ["考虑增加 retry 逻辑"],
-  "verdict": "PASS"
-}
-```
+### 支柱 7：熵治理与垃圾回收
 
-verdict 只有 PASS 或 FAIL，没有中间状态。这让状态机可以机械化解析。
+这部分原方案与 OpenAI 文章方向一致，但可以从“维护 references”扩展为“维护整个仓库秩序”。
 
-### 4.7 文件变更清单
+#### 目标
 
-| 操作 | 文件 | 说明 |
-|------|------|------|
-| 新增 | `reasoning-config.yml` | 三明治模型分配和升级策略 |
-| 新增 | `skills/phase-gate.md` | 阶段转换前置条件检查逻辑 |
-| 改造 | `sub-agents/planner.md` | 默认模型 haiku → sonnet，增加推理强度声明 |
-| 改造 | `sub-agents/code-reviewer.md` | 增加结构化评分输出要求 |
-| 改造 | `sub-agents/implementer.md` | 增加推理强度声明和 BLOCKED 机制 |
-| 改造 | `workflows/ship.md` | 嵌入状态机 + max_retry 计数逻辑 |
+让漂移在扩散前被小步修复，而不是堆成一次大清理。
+
+#### 设计
+
+- 保留 `entropy-scanner`
+- 增加周期性的后台清理任务
+- 追踪以下偏差：
+  - stale docs
+  - stale references
+  - orphan plans
+  - quality regression
+  - architecture drift
+  - 重复出现的反模式
+
+#### 从 OpenAI 文章得到的新强调
+
+清理循环不应只修正文档事实，还应沉淀“golden principles”，并生成小而明确的重构 PR，让审核和合并成本保持很低。
+
+### 支柱 8：Harness 组件的渐进式退场
+
+这部分仍然成立，是长期正确方向。
+
+#### 目标
+
+把 Harness 组件视为阶段性杠杆，而不是永远只增不减的复杂度。
+
+#### 设计
+
+- 用 `harness-manifest.yml` 记录组件状态
+- 降级必须基于真实指标，而不是模型能力想象
+- 当质量回落时允许自动回滚到上一级保护
+
+#### 重要补充
+
+不要因为“模型更强了”就自动移除组件。只有当本仓库的运行指标证明某个组件已经不再承担明显价值时，才考虑让它退场。
 
 ---
 
-## 五、子代理防火墙
+## 4. Cortex Agent 应直接借鉴的内容
 
-### 5.1 问题定义
+以下部分适合直接吸收。
 
-当前子 agent 的完整输出（推理链、工具调用日志、中间错误）全部回传给 Orchestrator，造成三个泄漏：上下文膨胀（~8000 tokens 的噪音）、reviewer 确认偏误（看到 implementer 思路后失去独立性）、跨任务污染（T-001 的残留影响 T-002）。
+### 4.1 保持 `AGENTS.md` 短小且可导航
 
-### 5.2 变更 1：输出摘要器
+这与当前方向一致，但需要更明确约束入口信息膨胀。
 
-在每个 sub-agent 的 prompt 尾部增加强制输出格式。不新增独立 agent，而是让每个 agent 自己在末尾生成结构化 JSON。Orchestrator 只解析最后一个 JSON 代码块，其余丢弃。
+建议：
 
-**planner 输出契约：**
+- 顶层 `AGENTS.md`：简明导航
+- `.agent/`：Harness 层配置与契约
+- `docs/`：业务、架构、质量、可靠性等深层知识
 
-```json
-{
-  "type": "plan_summary",
-  "task_id": "T-xxx",
-  "steps": [
-    {
-      "id": "S1",
-      "action": "创建 auth middleware",
-      "file_targets": ["src/middleware/auth.ts"],
-      "acceptance": "JWT 验证通过 + 未授权返回 401",
-      "risk": "low"
-    }
-  ],
-  "estimated_complexity": "medium",
-  "context_needed": ["auth-service", "user-service"],
-  "risk_flags": ["涉及 session 存储迁移"]
-}
-```
+### 4.2 把执行计划当成长期资产
 
-**implementer 输出契约：**
+我们已经有 `.agent/plans/`，但还可以更进一步，显式区分 active、completed、debt 等状态。
 
-```json
-{
-  "type": "execution_report",
-  "task_id": "T-xxx",
-  "files_changed": ["src/middleware/auth.ts (created)", "src/tests/auth.test.ts (created)"],
-  "tests_added": 3,
-  "tests_passed": true,
-  "deviations": [],
-  "blocked_steps": []
-}
-```
+建议：
 
-**reviewer 输出契约：**
+- 规范计划生命周期
+- 明确归档 completed plan
+- 对复杂任务保留 decision log
 
-```json
-{
-  "type": "review_verdict",
-  "task_id": "T-xxx",
-  "score": 8,
-  "blocking_issues": [],
-  "warnings": ["建议增加 token 过期的边界测试"],
-  "verdict": "PASS"
-}
-```
+### 4.3 增加 doc-gardening 与知识库 lint
 
-效果：Orchestrator 上下文占用从 ~8000 tokens 降到 ~2000 tokens。
+这是目前最值得补的空白能力之一。
 
-### 5.3 变更 2：Reviewer 输入隔离
+建议：
 
-reviewer 的输入严格限定为三个来源：
+- 增加周期性文档维护任务
+- lint 索引、链接、元数据新鲜度与覆盖度
+- 对确定性文档完整性问题可以阻塞
+- 对语义过时问题生成后续修复变更
 
-1. `plan_summary` — planner 的结构化输出（任务目标和验收标准）
-2. `execution_report` — implementer 的结构化输出（改了什么、测了什么）
-3. `git diff` — 实际代码变更（唯一需要深度阅读的内容）
+### 4.4 增加应用可观测与可操作 skill
 
-reviewer 看不到：implementer 的推理过程、调试日志、内部重构历史。这确保 reviewer 基于"代码是否满足验收标准"独立判断，而非沿着 implementer 的思路确认。
+这是此次对照中最大的新增价值点。
 
-在 `sub-agents/code-reviewer.md` 中显式声明：
+建议：
 
-```
-如果你在输入中发现了不属于以上三份材料的内容，
-忽略它们并在输出中标注 "input_contamination": true。
-```
+- 浏览器验证 skill
+- 日志查询能力
+- 指标与 Trace 检查模式
+- 在条件允许时按 worktree 启动本地应用实例
 
-### 5.4 变更 3：任务间上下文清洗
+### 4.5 把“工程品味”编码成机械化规则
 
-`/ship` 完成后（DONE 状态），执行上下文清洗：
+当前方案更多强调架构与 Hook，接下来应补上仓库级 taste invariants。
 
-```yaml
-context_cleanup:
-  archive:
-    from: ".agent/plans/T-001/"
-    to: ".agent/archive/T-001/"
-  retain:
-    - task-progress.md
-    - context-manifest.json
-  purge:
-    - "*.plan_summary.json"
-    - "*.execution_report.json"
-    - "*.review_verdict.json"
-```
+例如：
 
-归档后的文件不被 `context-index.json` 索引，不影响后续任务。但可用于事后复盘。
+- schema/type 命名规范
+- structured logging 约束
+- 边界解析要求
+- 必要时的文件或函数体量限制
 
-### 5.5 变更 4：读写权限分离
+### 4.6 增加吞吐导向的合并策略
 
-| Sub-agent | 可读 | 可写 | 禁止 |
-|-----------|------|------|------|
-| planner | task-progress, references/\*, rules/\* | plan_summary.json | 其他 agent 输出 |
-| implementer | plan_summary.json（只读） | 源代码, 测试, execution_report.json | 修改 plan, 读取 review |
-| reviewer | plan_summary + execution_report + git diff（全只读） | review_verdict.json | 修改任何源代码 |
+OpenAI 文章中的 merge philosophy 很有价值，但需要经过本地化处理。
 
-权限在 prompt 层面为软约束，可通过 hooks 做硬性检查加固（reviewer 的工具调用出现写文件操作时直接拦截）。
+建议：
 
-### 5.6 文件变更清单
+- 优先小 PR
+- 尽量减少非必要阻塞
+- 明确区分“必须拦下”和“建议后续修复”
+- 允许低风险维护类 PR 在确定性检查通过后自动合并
 
-| 操作 | 文件 | 说明 |
-|------|------|------|
-| 改造 | `sub-agents/planner.md` | 增加输出摘要器 + 权限声明 |
-| 改造 | `sub-agents/implementer.md` | 增加输出摘要器 + 权限声明 |
-| 改造 | `sub-agents/code-reviewer.md` | 增加输入隔离声明 + 污染检测 |
-| 改造 | `workflows/ship.md` | DONE 后增加 context_cleanup 步骤 |
+### 4.7 把人的判断沉淀一次，然后持续执行
+
+这是 `/agent-update`、架构规则和熵治理的统一思路。
+
+建议：
+
+- 保留 `/agent-update` 作为 Harness 演化入口
+- 当某类 review comment 重复出现时，应将其提升为：
+  - rule
+  - linter
+  - workflow step
+  - reusable skill
 
 ---
 
-## 六、熵治理闭环
+## 5. 不应直接照搬的部分
 
-### 6.1 问题定义
+OpenAI 文章里有些做法适合作为方向参考，但不应直接变成 Cortex Agent 的默认策略。
 
-`.agent/` 知识库有四种熵源：references 过时（模块重构后描述不准）、rules 与实践脱节（声明 REST 但代码已迁移到 gRPC）、plans 残留（已完成任务未标记）、context-index 偏移（新模块无索引、删除模块仍在索引里）。
+### 5.1 “不写任何人工代码”
 
-当前 `/update-refs` 需手动触发，Harness 要求后台 agent 自动检测偏差、修复、验证。
+这是一种实验性约束，不是 Cortex Agent 用户的默认工作方式。
 
-### 6.2 entropy-scanner Sub-agent
+Cortex Agent 的目标是增强“人和 Agent 的协作”，而不是要求仓库必须零人工修改。
 
-新增最轻量的 sub-agent：
+### 5.2 “所有仓库都应最小阻塞合并”
 
-- **模型**：haiku（成本最低）
-- **工具权限**：read-only + git，仅可写 `.agent/` 目录
-- **输入**：`git diff --stat`（上次扫描点 → 当前 HEAD），不读完整文件内容
-- **无 Skill 挂载**：不需要架构审计能力，只做检测
+这只适用于以下条件同时成立的环境：
 
-检测五个维度：
+- PR 足够小
+- 确定性验证足够强
+- 跟进修复成本足够低
+- 回滚风险足够可控
 
-| 维度 | 检测方式 | 分级 |
-|------|---------|------|
-| `stale_refs` | 变更文件路径 vs reference 覆盖范围 | L1 |
-| `missing_refs` | 新增目录不在任何 reference 覆盖范围内 | L1 |
-| `rule_drifts` | tech-stack.md vs package.json/go.mod 实际依赖 | L2 |
-| `orphan_plans` | 已完成任务仍标记为进行中 | L0 |
-| `index_drift` | context-index.json vs references/ 实际文件列表 | L0 |
+对 Cortex Agent 来说，更合适的默认值是：
 
-### 6.3 分级修复策略
+- 保留强确定性 Gate
+- 只减少那些纯粹浪费人工等待的阻塞
 
-| 级别 | 行为 | 示例 |
-|------|------|------|
-| L0：确定性修复 | 完全自动，零 token | 删除已删模块的索引条目、标记新增文件待扫描 |
-| L1：AI 辅助修复 | 自动修复 + 验证 | 重新生成过时 reference、更新关联依赖文档 |
-| L2：人工审批 | 只标记不修复 | 架构模式变更（REST → gRPC），标记到 briefing 提醒 |
-| L3：忽略 | 跳过 | 注释/格式变更，不影响 reference 准确性 |
+### 5.3 激进地合并角色和 workflow
 
-### 6.4 三种触发策略
+上一版文档提议合并或删除多个 workflow 和 sub-agent。现在看，这更应该是“有数据支撑后的优化”，而不是先验原则。
 
-**即时触发（post-commit hook）**
+如果一个 workflow 承载了稳定的工程知识，那么即使它稍微增加了组件数量，也可能提升整体可理解性。
 
-只做 L0 确定性修复，耗时 < 1 秒，不拖慢 commit 速度。
+### 5.4 默认重写外部依赖
 
-```json
-{
-  "hooks": {
-    "PostCommit": [{
-      "command": "entropy-scanner --level=L0 --quiet",
-      "description": "自动清理已删除模块的索引条目"
-    }]
-  }
-}
-```
+文章提到某些情况下自研小工具比接第三方库更利于 Agent 理解，这个判断只适用于特定情况，不应推广成默认规则。
 
-**批量修复（/ship 完成后）**
+建议使用以下判断方式：
 
-做 L0 + L1 修复。状态机追加两个状态：
-
-```
-... → DONE → ENTROPY_SCAN → CLEAN
-```
-
-耗时约 10-30 秒，不阻塞 commit 流程。
-
-**汇报模式（/briefing）**
-
-展示 L2 待审批项 + 修复统计 + 健康度评分。
-
-```markdown
-## 知识库健康度: 87/100
-
-### 自动修复 (上次 /ship 后)
-- ✅ 移除了 legacy-adapter 的索引条目
-- ✅ 标记 src/notifications/ 待下次 scan-project
-
-### 需要确认 (L2)
-- ⚠️ tech-stack.md 声明 Express.js，但 package.json 已换成 Fastify
-
-### 知识库覆盖率
-- 12/14 模块有 reference (86%)
-- 缺少: notifications, analytics
-```
-
-### 6.5 entropy-report.json 输出格式
-
-```json
-{
-  "scan_id": "ES-20260322-001",
-  "scan_point": { "from": "abc1234", "to": "def5678", "commits_scanned": 5 },
-  "findings": {
-    "stale_refs": [{ "module": "auth-service", "reason": "src/auth/middleware.ts modified", "level": "L1" }],
-    "missing_refs": [{ "path": "src/notifications/", "level": "L1" }],
-    "rule_drifts": [{ "rule_file": "tech-stack.md", "declared": "Express.js", "actual": "Fastify", "level": "L2" }],
-    "orphan_plans": [],
-    "index_drift": [{ "type": "in_index_not_on_disk", "module": "legacy-adapter", "level": "L0" }]
-  },
-  "auto_fixed": ["removed legacy-adapter from context-index.json"],
-  "pending_human": ["tech-stack.md: Express → Fastify drift needs confirmation"],
-  "health_score": 87
-}
-```
-
-### 6.6 文件变更清单
-
-| 操作 | 文件 | 说明 |
-|------|------|------|
-| 新增 | `sub-agents/entropy-scanner.md` | 扫描逻辑 + 分级策略 + 输出格式 |
-| 新增 | `entropy-config.yml` | 扫描频率 + L0-L3 分级规则 + 白名单 |
-| 改造 | `hooks/hooks.json` | 增加 PostCommit 触发 |
-| 改造 | `workflows/ship.md` | DONE 后增加 ENTROPY_SCAN → CLEAN |
-| 改造 | `workflows/briefing.md` | 增加知识库健康度板块 |
+- 若现有库透明、边界清晰、稳定性高，则优先复用
+- 只有当上游实现明显阻碍 Agent 理解、验证或调试时，才考虑包装或替换
 
 ---
 
-## 七、渐进式退化
+## 6. 对现有 Harness 路线图的具体修订
 
-### 7.1 问题定义
+这一节把上一版方案改写成更务实的推进顺序。
 
-Harness 组件存在的原因是"模型还不能..."。随着模型进步，某些组件会变得多余。如果框架只会膨胀不会瘦身，它就从"助力"变成"负重"。每个组件诞生时就应定义退场条件。
+### P0：入口与知识架构整理
 
-### 7.2 模块成熟度模型
+- 保持 `AGENTS.md` 简洁导航化
+- 明确 `.agent/` 与 `docs/` 的职责边界
+- 为主要知识域建立索引
+- 增加 plan 生命周期约定：active、completed、archived、debt
 
-每个组件有四级状态，沿确定方向退化：
+### P1：应用可理解性建设
 
-| 状态 | 含义 | 上下文成本 |
-|------|------|-----------|
-| **Active** | 完全启用，不可跳过 | 占用上下文 |
-| **Advisory** | 建议性启用，可被覆盖 | 轻量上下文 |
-| **Passive** | 仅后台监控，不注入上下文 | 零注入，仅收集指标 |
-| **Retired** | 完全移除，归档保留 | 零成本 |
+- 引入浏览器驱动验证模式
+- 为支持的项目提供日志与指标检查入口
+- 把验收标准改写为更可执行的形式
 
-状态转换规则：
+### P1.5：机械化策略层补强
 
-- Active → Advisory：模型在此能力上的成功率连续 > 90%
-- Advisory → Passive：成功率连续 > 98% 持续 30 天
-- Passive → Retired：无介入运行 90 天，零质量问题
-- **任何级别发现质量下降 → 自动回滚到上一级**
+- 扩充仓库自定义 lint 与结构检查
+- 确保报错信息能指导 Agent 修复
+- 把高频 review 反馈沉淀成规则
 
-### 7.3 各组件退化条件
+### P2：上下文与执行控制
 
-**上下文预算控制**
+- 保留 context budget 与 manifest 机制
+- 保留 reasoning sandwich 与 phase gate
+- 保留结构化子代理契约
+- 新增自治等级声明与指标
 
-- 退化条件：模型上下文窗口 > 2M 且自管理上下文成功率 > 95%
-- 退化路径：Active → 放宽阈值至 60%（Advisory）→ 仅监控 utilization（Passive）→ 移除（Retired）
+### P3：后台维护体系
 
-**推理三明治**
+- 增加 doc-gardening
+- 把 entropy scanning 扩展到质量漂移与计划卫生
+- 在仓库内维护 quality grade 和 tech debt
 
-- 退化条件：单模型全链路首次通过率 > 95%
-- 退化路径：三模型 → 双模型（Advisory）→ 单模型保留 phase-gate（Passive）→ 单模型直通（Retired）
+### P4：基于数据的组件优化
 
-**子代理防火墙**
-
-- 退化条件：模型原生支持多推理链隔离和选择性遗忘
-- 退化路径：严格契约 → 半结构化输出（Advisory）→ 完整输出传递（Passive）→ 单 agent 多角色（Retired）
-
-**熵治理 scanner**
-
-- 退化条件：模型在任务结束时自动维护知识库准确率 > 98%
-- 退化路径：独立 scanner → /ship 内置步骤（Advisory）→ 仅 L0 确定性修复（Passive）→ 信任模型自维护（Retired）
-
-**确定性 hooks（linter/compiler）**
-
-- 退化条件：AI 原生代码生成零 lint 错误率 > 99.5%
-- 退化路径：极低概率退化，可能永远保留
-- 理由：确定性工具本质上比概率性判断更可靠，这不是"模型不够强"的补偿
-
-### 7.4 harness-manifest.yml
-
-新增 `.agent/harness-manifest.yml` 作为退化机制的唯一真理来源：
-
-```yaml
-harness_manifest:
-  version: 1
-  last_evaluated: 2026-03-22
-
-  components:
-    context_budget:
-      status: active
-      introduced: 2026-03-20
-      purpose: "防止上下文溢出导致性能下降"
-      retirement_condition:
-        description: "模型上下文窗口 > 2M 且自管理成功率 > 95%"
-      degradation_path:
-        advisory:
-          action: "将 40% 硬上限改为 60% 软建议"
-          trigger: "overflow_prevented > 90% 连续 30 天"
-        passive:
-          action: "停止预算注入，仅后台监控"
-          trigger: "advisory 下 overflow_rate < 2% 连续 30 天"
-        retired:
-          action: "移除 skill，归档到 archive/retired/"
-          trigger: "passive 90 天零问题"
-      rollback:
-        trigger: "7 天窗口内 overflow_rate > 10%"
-        action: "自动恢复上一级状态"
-```
-
-（其余组件格式相同，完整配置见附录。）
-
-### 7.5 maturity-tracker Skill
-
-新增 `skills/maturity-tracker.md`，挂在 `/ship` 的 CLEAN 阶段，收集各组件表现数据，输出到 `.agent/metrics/component-health.json`。在 `/briefing` 中展示成熟度看板：
-
-```
-## Harness 成熟度看板
-
-| 组件           | 状态    | 关键指标       | 距下次降级   |
-|---------------|--------|---------------|------------|
-| 上下文预算控制  | Active | 有效率 87.5%   | 需 > 90%   |
-| 推理三明治     | Active | 首次通过率 75% | 需 > 95%   |
-| 子代理防火墙   | Active | 污染率 0%      | 需持续 30 天 |
-| 熵治理 scanner | Active | 健康分 89↑     | 接近 advisory |
-| 确定性 hooks   | Active | 捕获率 100%    | 长期保留    |
-```
-
-### 7.6 非对称安全设计
-
-- **降级（减少保护）**：必须由开发者手动修改 `harness-manifest.yml` 并 commit — 主动承担风险
-- **回滚（恢复保护）**：自动执行，无需人工确认 — 降低风险不需要等人批准
-
-### 7.7 预测退化顺序
-
-1. **entropy-scanner L1 修复** — 模型上下文理解提升后可自维护
-2. **上下文预算控制** — 窗口扩大到 2M+ 后绝对空间足够
-3. **推理三明治** — 单模型全链路足够强时
-4. **确定性 hooks** — 可能永远不退化
-
-### 7.8 文件变更清单
-
-| 操作 | 文件 | 说明 |
-|------|------|------|
-| 新增 | `harness-manifest.yml` | 全组件退化条件 + 路径 + 回滚策略 |
-| 新增 | `skills/maturity-tracker.md` | 组件表现指标收集 |
-| 新增 | `metrics/component-health.json` | 指标数据存储 |
-| 改造 | `workflows/briefing.md` | 增加成熟度看板 |
+- 先度量 workflow 路由混乱，再决定是否合并命令
+- 先度量子代理污染，再决定是否加强或放宽隔离
+- 先度量重试次数、审查返工率和维护 PR 接受率，再调整 merge policy
 
 ---
 
-## 八、整体文件变更汇总
+## 7. 文件层面的修订建议
 
-### 8.1 新增文件（10 个）
+### 建议新增
 
-| 文件 | 所属支柱 | 说明 |
-|------|---------|------|
-| `context-index.json` | 上下文预算 | reference 元数据索引 |
-| `skills/context-budget.md` | 上下文预算 | 预算计算和分配逻辑 |
-| `reasoning-config.yml` | 推理三明治 | 模型分配和升级策略 |
-| `skills/phase-gate.md` | 推理三明治 | 阶段转换前置条件 |
-| `sub-agents/entropy-scanner.md` | 熵治理 | 扫描逻辑和分级策略 |
-| `entropy-config.yml` | 熵治理 | 扫描频率和分级规则 |
-| `harness-manifest.yml` | 可拆卸性 | 全组件退化条件配置 |
-| `skills/maturity-tracker.md` | 可拆卸性 | 组件表现指标收集 |
-| `metrics/component-health.json` | 可拆卸性 | 指标数据存储 |
-| `skills/architecture-guard.md` | 工具精简 | 合并后的架构检查 skill |
+- `docs/quality/README.md`
+- `docs/reliability/README.md`
+- `docs/security/README.md`
+- `docs/exec-plans/active/`
+- `docs/exec-plans/completed/`
+- `docs/tech-debt.md`
+- 知识库 lint 规则或脚本
+- doc-gardening workflow 或定时任务定义
+- 浏览器与运行时可理解性相关 skill
 
-### 8.2 改造文件（9 个）
+### 建议保留并加强
 
-| 文件 | 涉及支柱 | 改动要点 |
-|------|---------|---------|
-| `sub-agents/planner.md` | 预算 + 三明治 + 防火墙 | 上下文选择 + 模型升级 + 推理声明 + 输出摘要 |
-| `sub-agents/implementer.md` | 三明治 + 防火墙 | 推理声明 + BLOCKED 机制 + 输出摘要 + 合并 documenter |
-| `sub-agents/code-reviewer.md` | 三明治 + 防火墙 | 结构化评分 + 输入隔离 + 污染检测 |
-| `workflows/start-task.md` | 上下文预算 | 插入 context-manifest 生成步骤 |
-| `workflows/ship.md` | 三明治 + 防火墙 + 熵治理 | 状态机 + max_retry + cleanup + entropy_scan |
-| `workflows/briefing.md` | 熵治理 + 可拆卸性 | 健康度板块 + 成熟度看板 |
-| `workflows/scan-project.md` | 上下文预算 | reference 生成时加 frontmatter |
-| `workflows/update-refs.md` | 上下文预算 | 刷新 frontmatter 和索引 |
-| `hooks/hooks.json` | 工具精简 + 熵治理 | 双层 hooks + PostCommit 触发 |
+- `.agent/context-index.json`
+- `.agent/harness-manifest.yml`
+- `.agent/entropy-config.yml`
+- `.agent/workflows/start-task.md`
+- `.agent/workflows/ship.md`
+- `.agent/workflows/briefing.md`
+- `.agent/workflows/agent-update.md`
+- `.agent/skills/context-budget/`
+- `.agent/skills/phase-gate/`
+- `.agent/skills/maturity-tracker/`
 
-### 8.3 移除/归档文件（5 个）
+### 不建议立即移除
 
-| 文件 | 原因 |
-|------|------|
-| `sub-agents/researcher.md` | 合并到 planner |
-| `sub-agents/documenter.md` | 合并到 implementer |
-| `skills/architecture-audit.md` | 合并为 architecture-guard |
-| `skills/architecture-check.md` | 合并为 architecture-guard |
-| `workflows/agent-update.md` | 降级为手动编辑 |
+- `researcher` sub-agent
+- `documenter` sub-agent
+- `/done`
+- `/sync-plans`
+- `/agent-update`
+
+这些组件未来可以重新评估，但是否移除应该由数据驱动，而不是由“组件越少越好”的直觉驱动。
 
 ---
 
-## 九、实施路线图
+## 8. 成功指标
 
-### Phase 1（1-2 周）：基础设施
+为了避免优化错方向，Cortex Agent 应基于运行结果来评估 Harness，而不是基于抽象感觉。
 
-- 实现上下文预算控制（context-index + context-budget skill + planner 改造）
-- 实现双层 hooks（linter 先行 + AI 后行）
-- Sub-agent 精简（5 → 3）和 Skill 精简（3 → 2）
+### 可靠性
 
-交付标准：`/start-task` 输出 context-manifest.json，hooks 双层执行无误。
+- 首次通过率
+- 确定性检查通过率
+- 审查驳回率
+- 回滚或热修复频率
 
-### Phase 2（2-3 周）：质量保障
+### 可理解性
 
-- 实现推理三明治（reasoning-config + phase-gate + 状态机）
-- 实现防火墙（输出摘要器 + 输入隔离 + 上下文清洗）
-- Workflow 精简（13 → 7）
+- 活跃模块中已建立索引文档的比例
+- 知识库断链数量
+- stale plan 数量
+- 未被文档覆盖的模块数量
 
-交付标准：`/ship` 完整走通 PLAN → EXECUTE → LINT → REVIEW → COMMIT → DONE 状态机。
+### 吞吐
 
-### Phase 3（3-4 周）：自维护
+- PR 中位体量
+- PR 中位生命周期
+- 48 小时内 follow-up fix 比率
+- 维护类 PR 的自动合并比例
 
-- 实现熵治理闭环（entropy-scanner + 三种触发策略 + briefing 集成）
-- 实现渐进式退化（harness-manifest + maturity-tracker + briefing 看板）
+### Harness 成本
 
-交付标准：`/briefing` 展示知识库健康度和成熟度看板，post-commit 自动清理。
+- 平均上下文利用率
+- 单任务平均重试次数
+- 单任务 Agent handoff 次数
+- 各自治等级下的人类介入率
 
-### Phase 4（持续）：数据驱动优化
-
-- 收集 component-health.json 指标
-- 基于数据调整预算阈值、模型分配、退化条件
-- 当指标满足条件时，逐步降级组件
-
----
-
-## 十、设计原则总结
-
-1. **确定性优先**：能用 linter 做的事绝不用 AI 做；能用文件检查做的 gate 绝不用 prompt 约束
-2. **复利效应**：一条规则预防所有会话中的同类错误
-3. **只解决已发生的问题**：不预设过度工程化的方案，先用简单方案跑起来，基于数据迭代
-4. **非对称安全**：减少保护需要人确认，恢复保护自动执行
-5. **可观测**：每个机制都有指标输出，决策基于数据而非直觉
-6. **可拆卸**：每个组件诞生时就定义退场条件，框架随模型进步自然瘦身
+Harness 组件是否调整，应由这些指标来驱动，而不是由主观印象驱动。
 
 ---
 
-## 十一、评估与优化建议
+## 9. 最终结论
 
-> **评估日期**: 2026-03-24
-> **评估人**: Claude Sonnet 4.5
-> **评估结论**: 高质量方案，需简化实施
+上一版文档更多是在优化 Agent 的内部控制环。OpenAI 的文章提醒我们，更大的杠杆在于优化 Agent 所处的整个工程环境：
 
-### 11.1 整体评价
+- 仓库本身必须是可发现、可导航的知识系统
+- 应用运行时必须是可观察、可验证的
+- 架构必须是可机械化约束的
+- 合并流程必须适应高吞吐反馈循环
+- 清理机制必须持续存在，像垃圾回收一样工作
 
-#### 优势（8/10）
-- ✅ 理论基础扎实（基于 Vercel/Harness Engineering 实践）
-- ✅ 设计思路先进（推理三明治、熵治理闭环等创新机制）
-- ✅ 工程化程度高（所有机制都有可观测指标和确定性检查）
-- ✅ 可操作性强（详细的文件变更清单和实施路线图）
+因此，Cortex Agent 下一阶段最重要的转向是：
 
-#### 风险（6/10）
-- ⚠️ **复杂度悖论**：目标是"精简"，但引入 10+ 新文件和大量新概念
-- ⚠️ **成本暴涨**：推理三明治可能导致 API 成本增加 100%-400%
-- ⚠️ **效果存疑**：AI 评分准确性、40% 阈值普适性需验证
-- ⚠️ **维护负担**：谁来维护 Harness？可能违反"只解决已发生问题"原则
+> 从“做一个更强的 Prompt Harness”，升级为“构建一个可理解、可约束、可观测、可持续演化的工程系统”。
 
-#### 总体建议
-采用**渐进式实施 + 数据驱动迭代**策略，而非一次性全部实现。
-
-### 11.2 关键风险详解
-
-#### 风险 1：上下文预算控制的实际效果存疑
-
-**问题**：
-1. 让 planner 打 0-10 相关性分数本身消耗 token，且 AI 判断可能不准确
-2. `estimated_tokens` 预估值可能因模型 tokenizer 不同而失效
-3. 40% 阈值是否适用于所有任务类型？简单任务浪费，复杂任务可能不够
-
-**优化方案**：改用启发式规则（确定性，零 token）
-
-```python
-# skills/context-budget-lite.md - 简化版预算控制
-def select_context(task_description, references, budget):
-    """基于启发式规则的上下文选择（无需 AI 判断）"""
-
-    # 1. 关键词匹配（TF-IDF 或简单词频）
-    keywords = extract_keywords(task_description)
-    scored = [(ref, keyword_overlap_score(ref, keywords)) for ref in references]
-
-    # 2. 路径相似度（文件路径包含关系）
-    file_targets = extract_file_paths(task_description)
-    for ref, score in scored:
-        if any(path_overlap(ref.module, target) for target in file_targets):
-            score += 5  # 直接相关模块加权
-
-    # 3. 依赖图遍历（读取 context-index 的 dependencies 字段）
-    selected = []
-    selected += top_k_by_score(scored, k=3)  # 前 3 个高分模块
-    selected += transitive_dependencies(selected)  # 传递依赖
-
-    # 4. 贪心填充至预算上限
-    return greedy_fill(selected, budget)
-```
-
-**收益**：
-- 消除 AI 评分的不确定性
-- 零额外 token 消耗
-- 可解释性更强
-
-#### 风险 2：推理三明治成本暴涨
-
-**成本对比**：
-
-| 阶段 | 原方案 | 新方案（默认） | 新方案（复杂任务） | 成本变化 |
-|------|--------|---------------|------------------|----------|
-| 规划 | haiku | sonnet | opus | +300%~800% |
-| 执行 | sonnet | sonnet | sonnet | 持平 |
-| 验证 | sonnet | sonnet | opus | 持平~+300% |
-| **总计** | 1x | **1.5x-2x** | **3x-4x** | +50%~300% |
-
-**优化方案**：增加成本模式配置
-
-```yaml
-# reasoning-config.yml - 增加成本控制
-reasoning_sandwich:
-  cost_mode: balanced  # conservative | balanced | quality
-
-  modes:
-    conservative:
-      planning: haiku
-      execution: haiku
-      verification: sonnet
-      max_cost_per_task: 0.1  # USD
-
-    balanced:
-      planning: sonnet
-      execution: sonnet
-      verification: sonnet
-      max_cost_per_task: 0.5
-
-    quality:
-      planning: opus
-      execution: sonnet
-      verification: opus
-      max_cost_per_task: 2.0
-
-  escalation:
-    requires_approval: true  # 升级到 opus 需用户确认
-    auto_downgrade_on_budget: true  # 预算不足自动降级
-```
-
-#### 风险 3：Sub-agent 精简合理性存疑
-
-**问题分析**：
-
-| 合并项 | 问题 | 建议 |
-|--------|------|------|
-| researcher → planner | 调研（发散思维）≠ 规划（收敛思维），强行合并可能两头不到岸 | 保留分离，优化默认路由 |
-| documenter → implementer | implementer 上下文可能已满，再写文档质量堪忧 | 轻量化 documenter（仅更新 API 文档） |
-
-**优化方案**：保留 5 个 sub-agent，通过更好的路由策略减少用户决策负担
-
-```yaml
-# sub-agents/routing-defaults.yml - 新增默认路由配置
-workflows:
-  /start-task:
-    default_pipeline:
-      - researcher  # 自动调研（可配置跳过）
-      - planner     # 基于调研结果规划
-
-    user_choice: optional  # 用户可手动指定跳过 researcher
-
-  /ship:
-    default_pipeline:
-      - implementer
-      - code-reviewer
-      - documenter  # 仅更新 API 文档和 CHANGELOG
-
-    lightweight_mode:  # 快速模式
-      - implementer
-      - code-reviewer
-      # 跳过 documenter
-```
-
-#### 风险 4：熵治理触发频率过高
-
-**问题**：
-- PostCommit 每次触发：高频提交场景累积延迟
-- /ship 后 L0+L1：10-30 秒 × 每天 N 次 = 可观时间成本
-
-**优化方案**：降低触发频率，批量处理
-
-```yaml
-# entropy-config.yml - 优化触发策略
-triggers:
-  post_commit:
-    enabled: true
-    level: L0
-    max_duration: 500ms  # 硬性超时，超时则跳过
-    skip_if:
-      - only_comments_changed
-      - only_test_files
-      - outside_agent_dir
-
-  post_ship:
-    enabled: true
-    level: L0  # 仅确定性修复
-
-  daily_batch:  # 新增批量处理
-    enabled: true
-    level: L1
-    schedule: "0 9 * * *"  # 每天早上 9 点
-    report_to: briefing
-
-  manual:
-    command: "/entropy-scan --full"
-    level: L2
-```
-
-#### 风险 5：可拆卸性机制过于复杂
-
-**问题**：
-- 4 级状态 + 成熟度追踪 + 自动降级判断
-- 这本身就是需要维护的复杂系统（"谁来监控监控系统"？）
-
-**优化方案**：简化为手动配置 + 定期评审
-
-```yaml
-# harness-manifest.yml - 简化版
-harness_manifest:
-  version: 2  # 简化版
-
-  # 手动开关（而非自动降级）
-  components:
-    context_budget: enabled
-    reasoning_sandwich: enabled
-    firewall: enabled
-    entropy_scanner: enabled
-    hooks_dual_layer: enabled
-
-  # 移除复杂的成熟度追踪，改为定期人工评审
-  maintenance:
-    review_schedule: quarterly  # 每季度评审一次
-    review_checklist:
-      - "各组件是否仍然必要？"
-      - "是否有更简单的替代方案？"
-      - "模型能力是否已覆盖该组件功能？"
-
-    # 简单的使用统计（而非复杂的成熟度评分）
-    metrics:
-      - component_usage_count
-      - component_error_rate
-      - user_manual_override_rate
-```
-
-### 11.3 修正后的实施路线图
-
-#### Phase 0：快速胜利（3-5 天，ROI 极高）
-
-**目标**：最小改动，最大收益
-
-| 项目 | 改动量 | 收益 | 风险 |
-|------|--------|------|------|
-| Hooks 双层改造 | 1 个文件 | 拦截 90% 低级错误 | 极低 |
-| Planner 模型升级 | 1 行配置 | 规划质量显著提升 | 极低 |
-| 合并重复 skill | 2 个文件 | 减少决策负担 | 低 |
-
-**交付物**：
-```yaml
-hooks/hooks.json:
-  PostToolUse(Write, Edit):
-    layer_1: "npx eslint {file} && npx tsc --noEmit"
-    layer_2: "code-evaluation"
-    gate: "layer_1 必须通过才触发 layer_2"
-
-sub-agents/planner.md:
-  model: sonnet  # 原 haiku
-
-skills/architecture-guard.md:  # 合并 audit + check
-```
-
-#### Phase 1：核心质量提升（1-2 周）
-
-**目标**：防死循环、防跳步、防污染
-
-| 项目 | 核心改动 | 简化点 |
-|------|---------|--------|
-| 推理三明治（简化版） | 状态机 + max_retry + 成本配置 | 去掉复杂 JSON 契约，用简单的结构化输出 |
-| Reviewer 输入隔离 | 只看 plan + diff + report | 去掉污染检测（过度防御） |
-| Workflow 精简 | 13 → 9 个 | 保留高频独立 workflow，其余降级为内部步骤 |
-
-**交付物**：
-```yaml
-reasoning-config.yml:
-  cost_mode: balanced
-  max_retry: 2
-  escalation_requires_approval: true
-
-workflows/ship.md:
-  states: PLAN → EXECUTE → LINT → REVIEW → COMMIT → DONE
-  gates: 每个转换有硬性前置条件（文件存在、linter 通过等）
-```
-
-#### Phase 2：可选优化（2-3 周，数据驱动）
-
-**前置条件**：Phase 1 运行 2 周，收集基线数据
-
-| 指标 | 当前值 | 目标值 | 是否需要优化 |
-|------|--------|--------|-------------|
-| 上下文溢出率 | ? | < 5% | 若 > 10% 则实施预算控制 |
-| 首次通过率 | ? | > 80% | 若 < 70% 则强化三明治 |
-| 知识库健康度 | ? | > 90 | 若 < 80 则实施熵治理 |
-
-**条件实施**：
-```yaml
-if 上下文溢出率 > 10%:
-  实施: 上下文预算控制（启发式版）
-else:
-  跳过: 当前机制足够
-
-if 知识库健康度 < 80:
-  实施: 熵治理 L0+L1
-else:
-  实施: 仅 L0（轻量维护）
-```
-
-#### Phase 3：长期迭代（持续）
-
-**策略**：基于数据决定是否需要
-
-- ❓ 完整的 AI 评分上下文预算控制
-- ❓ 可拆卸性自动降级机制
-- ❓ Sub-agent 物理合并
-- ✅ 定期评审（每季度）
-
-### 11.4 缺失内容补充
-
-#### 11.4.1 基线数据收集
-
-在 Phase 0 完成后，立即开始收集：
-
-```yaml
-# metrics/baseline.yml - 新增基线数据收集
-metrics:
-  context:
-    - window_utilization_avg
-    - window_utilization_p95
-    - overflow_count
-
-  quality:
-    - first_pass_rate  # reviewer 首次 PASS 比例
-    - retry_count_avg
-    - blocking_issues_per_task
-
-  knowledge:
-    - stale_refs_count
-    - missing_refs_count
-    - rule_drift_count
-
-  cost:
-    - tokens_per_task_avg
-    - cost_per_task_usd
-```
-
-#### 11.4.2 降级方案
-
-每个组件提供快速降级开关：
-
-```yaml
-# .agent/harness-override.yml - 紧急降级配置
-emergency_rollback:
-  context_budget:
-    enabled: false  # 一键关闭
-    fallback: "全量注入 references"
-
-  reasoning_sandwich:
-    enabled: false
-    fallback: "所有 agent 用 sonnet"
-
-  entropy_scanner:
-    enabled: false
-    fallback: "仅手动 /update-refs"
-```
-
-#### 11.4.3 A/B 测试框架
-
-验证优化效果：
-
-```yaml
-# .agent/ab-test.yml - A/B 测试配置
-experiments:
-  context_budget_test:
-    variant_a: "启发式预算控制"
-    variant_b: "全量注入"
-    metric: "首次通过率"
-    sample_size: 20  # 20 个任务后评估
-
-  planner_model_test:
-    variant_a: "sonnet"
-    variant_b: "haiku"
-    metric: "规划质量得分"
-    sample_size: 10
-```
-
-### 11.5 修订后的设计原则
-
-保留原 6 条，新增 3 条：
-
-7. **渐进式实施**：先快速胜利，再复杂优化，基于数据而非假设
-8. **成本可控**：每个优化都要评估成本影响，提供降级选项
-9. **简单优先**：能用启发式规则的不用 AI，能用配置的不用代码
-
-### 11.6 修订后的文件变更汇总
-
-#### Phase 0（3-5 天）
-
-| 操作 | 文件 | 说明 |
-|------|------|------|
-| 改造 | `hooks/hooks.json` | 增加双层验证 |
-| 改造 | `sub-agents/planner.md` | 模型 haiku → sonnet |
-| 新增 | `skills/architecture-guard.md` | 合并 audit + check |
-| 移除 | `skills/architecture-audit.md` | 已合并 |
-| 移除 | `skills/architecture-check.md` | 已合并 |
-
-#### Phase 1（1-2 周）
-
-| 操作 | 文件 | 说明 |
-|------|------|------|
-| 新增 | `reasoning-config.yml` | 三明治配置（含成本模式） |
-| 新增 | `skills/phase-gate.md` | 状态转换检查 |
-| 改造 | `sub-agents/code-reviewer.md` | 输入隔离 |
-| 改造 | `workflows/ship.md` | 状态机 + max_retry |
-| 改造 | 4 个 workflow | 降级为 /ship 内部步骤 |
-
-#### Phase 2（2-3 周，条件实施）
-
-| 操作 | 文件 | 说明 | 触发条件 |
-|------|------|------|----------|
-| 新增 | `skills/context-budget-lite.md` | 启发式预算控制 | 溢出率 > 10% |
-| 新增 | `context-index.json` | reference 元数据 | 溢出率 > 10% |
-| 新增 | `sub-agents/entropy-scanner.md` | 扫描逻辑 | 健康度 < 80 |
-| 新增 | `entropy-config.yml` | 扫描配置 | 健康度 < 80 |
-| 改造 | `workflows/briefing.md` | 健康度看板 | 实施熵治理后 |
-
-**总计**：Phase 0-2 累计新增 ~8 个文件，改造 ~7 个文件（比原方案减少 40%）
-
-### 11.7 成功标准
-
-#### Phase 0 成功标准
-- ✅ Hooks 拦截率 > 90%（linter 能发现的错误）
-- ✅ Planner 输出质量提升（主观评估：计划更详细、依赖识别更准确）
-- ✅ 用户感知工具面减少（skill 从 3 个降到 2 个）
-
-#### Phase 1 成功标准
-- ✅ 首次通过率提升 > 15%
-- ✅ 死循环次数 = 0（max_retry 硬性阻断）
-- ✅ 成本增幅 < 100%（balanced 模式下）
-
-#### Phase 2 成功标准（若实施）
-- ✅ 上下文溢出率 < 5%
-- ✅ 知识库健康度 > 90
-- ✅ 熵扫描耗时 < 1 秒（L0）或 < 30 秒（L1 批量）
-
-### 11.8 最终建议
-
-#### ✅ 立即采纳
-1. Hooks 双层改造
-2. Planner 模型升级
-3. 合并重复 skill
-4. 推理三明治（简化版）
-5. Workflow 精简
-
-#### ⚠️ 条件采纳（基于数据）
-1. 上下文预算控制（启发式版）
-2. 熵治理 L0+L1
-3. Sub-agent 路由优化（保留 5 个）
-
-#### ❌ 暂缓采纳
-1. 完整的 AI 评分上下文预算控制
-2. 可拆卸性自动降级机制
-3. Sub-agent 物理合并
-4. 熵治理 L2 人工审批
-
-#### 核心哲学
-**"先做减法，再做加法；先收集数据，再优化系统"**
-
----
-
-*文档版本：v2.0 | 原方案日期：2026-03-22 | 评估日期：2026-03-24 | 适用于 cortex-agent main 分支*
+这是比单纯优化 Prompt 或 Agent 路由更重要的方向。

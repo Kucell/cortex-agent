@@ -1,0 +1,10 @@
+# Cortex Agent — OpenAI Codex 项目级配置
+# 会与 ~/.codex/config.toml 合并。请在 Codex 中将本仓库标记为受信任，否则可能不加载此文件。
+# 文档：https://developers.openai.com/codex/config-advanced
+
+# 若根目录 AGENTS.md 与分层说明接近默认上限（32768 字节），可适当提高。
+project_doc_max_bytes = 65536
+
+# 可选：每层目录在 AGENTS.override.md、AGENTS.md 之后额外尝试的文件名。
+# 若在仓库根目录增加了配套说明文件，可取消注释。
+# project_doc_fallback_filenames = ["CORTEX.md"]
