@@ -21,6 +21,7 @@ First, I'll read the existing config and display the current state:
    - `sub-agents/code-reviewer.md`
    - `sub-agents/documenter.md`
    - `sub-agents/entropy-scanner.md`
+   - `sub-agents/session-manager.md`
 3. Display a current config summary:
 
 ```

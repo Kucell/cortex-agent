@@ -1,6 +1,6 @@
 # Sub-agent 架构 (Sub-agents)
 
-> Cortex Agent 通过 5 个专职子代理实现职责分离，每个代理有独立的模型、工具权限和上下文边界。
+> Cortex Agent 通过 **5 个核心**子代理实现职责分离，另有 **会话管理**、**熵治理**等辅助子代理，每个代理有独立的模型、工具权限和上下文边界。
 
 ---
 
@@ -41,6 +41,12 @@ graph LR
 | Sub-agent | 职责 | 默认模型 | 触发方式 |
 | :--- | :--- | :--- | :--- |
 | `entropy-scanner` | 扫描 `.agent/references/` 知识库漂移，按 L0-L3 分级自动修复或标记 | fast | PostCommit Hook（L0）、`/ship` ENTROPY_SCAN 阶段（L1）|
+
+长时会话与上下文续接（可选）：
+
+| Sub-agent | 职责 | 默认模型 | 触发方式 |
+| :--- | :--- | :--- | :--- |
+| `session-manager` | 评估长任务耗时、会话存档/恢复、时间状态、`warm` 预热提示 | fast | 用户显式调用或 `routing-defaults.yml` 中 `session_continuity` 约定 |
 
 ---
 

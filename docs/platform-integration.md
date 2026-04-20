@@ -28,7 +28,7 @@
 | **Aider** | `.aider.instructions.md` | 指令文件 | 将 `/` 命令路由到 `.agent/workflows/` 对应文件 |
 | **Continue** | `.continuerules` | 指令文件 | 遵循 `.agent/` 目录中的指导方针 |
 | **GitHub Copilot** | `.github/copilot-instructions.md` | 指令文件 | 在代码建议时遵循 `.agent/rules/` 和 `.agent/workflows/` |
-| **OpenAI Codex** | `AGENTS.md` | 指令文件 | 自动读取 `AGENTS.md`，可将核心规则聚合或链接到此文件 |
+| **OpenAI Codex** | `AGENTS.md` + `.codex/` | 指令文件 + 符号链接 | 根目录 `AGENTS.md` 由 `init`/`upgrade` 保证；`cortex-agent add codex` 会生成 `.codex/config.toml`、`.codex/README.md`，并将 `.codex/prompts` 链接到 `.agent/workflows/`（用 `/mention` 引用具体工作流） |
 | **Gemini CLI** | `GEMINI.md` | 指令文件 | 自动读取 `GEMINI.md`，以 `AGENTS.md` 为基准扩展 Gemini 特定行为 |
 | **Cline** | `.clinerules` | 指令文件 | VS Code 中的 AI 编程助手，直接读取 `.clinerules` 作为系统指令 |
 | **Roo Code** | `.roorules` / `.roo/rules/` | 指令文件 + 符号链接 | 支持多模式（Architect/Code/Debug/Ask），双路径集成 |

@@ -1,0 +1,10 @@
+# Cortex Agent — OpenAI Codex project configuration layer
+# Merges with ~/.codex/config.toml. Mark this repository as trusted in Codex so this file loads.
+# Docs: https://developers.openai.com/codex/config-advanced
+
+# Optional: increase if root AGENTS.md plus layered instructions approach the limit (default 32768).
+project_doc_max_bytes = 65536
+
+# Optional: extra instruction filenames Codex tries per directory (after AGENTS.override.md, AGENTS.md).
+# Uncomment if you add a companion file at the repo root.
+# project_doc_fallback_filenames = ["CORTEX.md"]

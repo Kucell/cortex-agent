@@ -41,6 +41,17 @@ workflows:
     parallel_agents: [implementer]
     max_concurrent: 3
 
+  /sync-master:
+    # Documented workflow: fetch + rebase; see workflows/sync-master.md
+    note: "No default sub-agent pipeline; main session runs git steps"
+
+# Long sessions / context handoff (optional session-manager)
+session_continuity:
+  sub_agent: session-manager
+  when:
+    - "Work may exceed ~3h or session time limits"
+    - "User says session assess, archive, restore, status, warm"
+
 # Orchestrator 决策规则
 orchestration:
   # reviewer 输入严格限制（防火墙）

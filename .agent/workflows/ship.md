@@ -118,6 +118,31 @@ description: 任务完成后的一键收尾：代码审查 → 提交 → 标记
 
 ---
 
+### Phase 6: CONTEXT_CLEANUP（自动执行，无需用户介入）
+
+DONE 状态达成后，执行上下文清洗，防止任务间上下文污染：
+
+**归档任务产物**（移动，不删除，保留复盘能力）：
+
+```
+.agent/plans/T-xxx/plan_summary.json      → .agent/archive/T-xxx/plan_summary.json
+.agent/plans/T-xxx/execution_report.json  → .agent/archive/T-xxx/execution_report.json
+.agent/plans/T-xxx/review_verdict.json    → .agent/archive/T-xxx/review_verdict.json
+```
+
+**保留**（不归档，后续任务仍需访问）：
+- `task-progress.md`（任务状态全局记录）
+- `context-manifest.json`（本次上下文分配记录，供 entropy-scanner 参考）
+
+**清洗完成标志**：创建 `.agent/archive/T-xxx/cleanup.marker`，内容为完成时间戳。
+
+> 若 `.agent/archive/` 目录不存在，先创建再归档。
+> 若任务产物文件不存在（如跳过了某阶段），跳过对应归档步骤，不报错。
+
+**状态流转**：`CONTEXT_CLEANUP` → `CLEAN`（最终状态）
+
+---
+
 ## 传统执行步骤（兼容旧版，逐步迁移到状态机模式）
 
 ### 第一步：加载任务上下文

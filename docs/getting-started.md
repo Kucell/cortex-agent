@@ -29,11 +29,11 @@ npx cortex-agent init --global
 | `cortex-agent init --lang=en` | 使用英文模板初始化 |
 | `cortex-agent init --global` | 初始化到 `~/.agent`（全局共享配置） |
 | `cortex-agent init --track` | 初始化时同时纳入 Git 追踪（默认本地忽略）|
-| `cortex-agent upgrade` | 纯加法升级：补充新增文件，刷新符号链接，**绝不覆盖已有内容** |
+| `cortex-agent upgrade` | 纯加法升级：补充 `.agent/` 新增文件；若缺失则创建根目录 `AGENTS.md` / `GEMINI.md`；刷新符号链接，**绝不覆盖已有内容** |
 | `cortex-agent track` | 开启 Git 追踪：移除本地忽略，自动 `git add .agent` |
 | `cortex-agent untrack` | 关闭 Git 追踪：`git rm --cached` + 写入本地忽略，不删除文件 |
 | `cortex-agent doctor` | 健康检查：验证 `.agent`/`AGENTS.md`/`GEMINI.md` 识别与 Git 状态 |
-| `cortex-agent add <platform>` | 添加平台集成（如 `cline`、`roo`）|
+| `cortex-agent add <platform>` | 添加平台集成（如 `cline`、`roo`、`codex`）|
 | `cortex-agent remove <platform>` | 移除平台集成 |
 | `cortex-agent list` | 列出当前已安装的平台集成 |
 

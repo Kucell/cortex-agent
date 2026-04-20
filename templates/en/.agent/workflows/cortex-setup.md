@@ -57,7 +57,7 @@ npx cortex-agent init
 npx cortex-agent upgrade
 ```
 
-`upgrade` 只补充新增文件，**不覆盖**已有内容，安全增量更新。
+`upgrade` 只补充新增文件，**不覆盖**已有内容；若根目录缺少 `AGENTS.md` / `GEMINI.md` 也会自动补上，安全增量更新。
 
 ---
 

@@ -38,6 +38,7 @@ For the full architecture design, see [docs/architecture.md](../../docs/architec
 | `/release` | SemVer release: analyze commits → bump version → commit + tag → npm publish | Release management |
 | `/scan-project` | Scan existing project, auto-generate module reference docs | Initial setup |
 | `/update-refs` | Incrementally update reference docs | After major changes |
+| `/sync-master` | Sync with default branch: fetch + rebase (stash-safe) | Branch sync with main/master |
 
 ## 🤖 Sub-agents
 
@@ -50,6 +51,15 @@ Specialized agents with isolated model, tools, and context boundaries.
 | `researcher` | sonnet | — | `/parallel` |
 | `code-reviewer` | sonnet | architecture-guard, code-evaluation, security-scan | `/ship`, `/code-review` |
 | `documenter` | haiku | changelog-generator | `/parallel`, `/ship` |
+| `session-manager` | haiku | — | Long sessions; `session assess` / `archive` / `restore` / `status` / `warm` |
+
+## 📜 Rules (selected)
+
+| Rule | Role |
+| :--- | :--- |
+| `ai-behavior.md` | Git safety, minimal edits, plan-before-act, design confirmation, staged commits + `task-progress.md` resume |
+| `integration-safety.md` | Cross-module calls: verify signatures, payload vs schema, avoid swapped args |
+| `refactoring-safety.md` | Refactor without behavior change; don’t blindly “fix” all lints |
 
 ## 🛠 Skills
 
@@ -65,3 +75,4 @@ Reusable capabilities invoked by workflows or mounted on sub-agents.
 | `agent-visibility` | Manage .agent Git visibility (Private / Ignore / Track) | Direct invocation |
 | `sync-global` | Sync workflows and skills from `~/.agent` to current project | Direct invocation |
 | `weekly-report` | Fetch and summarize Git logs into a weekly report | `/weekly-report` workflow |
+| `cleanup-debug` | Prune old files under `.agent/debug` (optional `.playwright-mcp/`) | Direct invocation |

@@ -94,6 +94,7 @@ PLAN → EXECUTE → LINT → REVIEW → COMMIT → DONE → CONTEXT_CLEANUP →
 | :--- | :--- | :--- |
 | `/parallel` | 并行调度：分析依赖，将互不依赖的任务批量派发给专职 sub-agent | `/parallel T-001 T-002 T-003` |
 | `/sync-plans` | 多任务并行时对齐冲突，更新关联任务状态 | `/sync-plans` |
+| `/sync-master` | 与默认分支同步：`fetch` + `rebase`（stash 保护），日常同步避免随意 `merge` | `/sync-master` |
 | `/agent-update` | 新增或修改 Agent 的规则、工作流或技能 | `/agent-update "新增规则..."` |
 | `/weekly-report` | 基于 Git 记录生成周报（简化用法：`/briefing --weekly`）| `/weekly-report` |
 | `/briefing --weekly` | 在标准晨播中追加周报内容 | `/briefing --weekly` |
