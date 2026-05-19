@@ -8,7 +8,7 @@
 
 ```mermaid
 graph LR
-    O["🎯 主 AI<br>Orchestrator"] -->|制定计划| PL["planner<br>任务拆解 + 依赖图<br>model: premium"]
+    O["🎯 主 AI<br>Orchestrator"] -->|制定计划| PL["planner<br>任务拆解 + 验证契约<br>model: premium"]
     O -->|并行派发| IM["implementer<br>功能实现 + 单元测试<br>model: standard"]
     O -->|并行派发| RS["researcher<br>技术调研 + 方案评估<br>model: standard"]
     O -->|并行派发| CR["code-reviewer<br>架构合规 + 代码质量<br>model: standard"]
@@ -30,10 +30,10 @@ graph LR
 
 | Sub-agent | 职责 | 默认模型 | 触发方式 |
 | :--- | :--- | :--- | :--- |
-| `planner` | 任务拆解、依赖分析、制定实施计划，输出 `plan_summary` JSON 契约 | premium | `/start-task`、`/parallel` 自动调用 |
+| `planner` | 任务拆解、依赖分析、制定实施计划，输出 `plan_summary` 和可选 `validation_contract` JSON 契约 | premium | `/start-task`、`/parallel`、`/mission` 自动调用 |
 | `implementer` | 独立完成功能编码，包含单元测试，输出 `execution_report` JSON 契约 | standard | `/ship`、`/parallel` 派发 |
 | `researcher` | 技术调研、方案对比、可行性评估（只读，不写代码）| standard | `/start-task`、`/parallel` 派发 |
-| `code-reviewer` | 架构合规、代码质量、性能检查，输出 `review_verdict` JSON 契约 | standard | `/ship`、`/code-review` 自动调用 |
+| `code-reviewer` | 架构合规、代码质量、性能检查，按 validation contract 验证证据，输出 `review_verdict` JSON 契约 | standard | `/ship`、`/code-review`、`/mission validate` 自动调用 |
 | `documenter` | 同步 README、API 文档、注释、CHANGELOG | fast | `/ship`、`/parallel` 派发 |
 
 此外还有一个专用的熵治理代理：
@@ -71,13 +71,16 @@ graph TB
         CB[context-budget]
         CE[code-evaluation]
         MT[maturity-tracker]
+        VC[validation-contract]
     end
 
     PL -->|架构约束感知| AG
+    PL -->|生成验证契约| VC
     IM -->|编码前预审| AG
     IM -->|实现质量自评| CE
     CR -->|架构合规 + 细粒度约束| AG
     CR -->|质量评分| CE
+    CR -->|契约验证| VC
     O  -->|阶段门控| PG
     O  -->|上下文裁剪| CB
     O  -->|指标收集| MT
@@ -91,6 +94,7 @@ graph TB
     style CB fill:#64748b,color:#fff,stroke:none
     style CE fill:#64748b,color:#fff,stroke:none
     style MT fill:#64748b,color:#fff,stroke:none
+    style VC fill:#64748b,color:#fff,stroke:none
 ```
 
 | 技能 | 作用 |
@@ -100,6 +104,7 @@ graph TB
 | `context-budget` | 按 Tier 0-3 分级裁剪上下文，将每次任务的有效负载控制在窗口 40% 以内 |
 | `code-evaluation` | 实现质量自评：可靠性、性能、可维护性三维评分 |
 | `maturity-tracker` | 收集每次 `/ship` 的指标数据，驱动 harness 组件的渐进式退化决策 |
+| `validation-contract` | 在实现前生成验证断言，并在审查时检查 blocking assertion 的证据 |
 
 ---
 
@@ -108,9 +113,9 @@ graph TB
 所有 Sub-agent 的输出都经过结构化 JSON 契约压缩，防止上下文污染在代理间传播：
 
 ```
-planner      → plan_summary.json       (~2K tokens，代替完整规划过程的 ~10K tokens)
+planner      → plan_summary.json       (~2K tokens，含可选 validation_contract，代替完整规划过程的 ~10K tokens)
 implementer  → execution_report.json   (files_changed / tests_passed / deviations / blocked_steps)
-code-reviewer→ review_verdict.json     (score / blocking_issues / warnings / verdict: PASS|FAIL)
+code-reviewer→ review_verdict.json     (score / blocking_issues / warnings / contract_results / verdict: PASS|FAIL)
 ```
 
 `/ship` 完成后，这些中间产物归档到 `.agent/archive/T-xxx/`，主上下文清零（`CONTEXT_CLEANUP` 阶段）。
