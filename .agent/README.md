@@ -2,7 +2,7 @@
 
 This directory is the **Single Source of Truth** for all AI governance rules, workflows, and capabilities.
 
-For the full architecture design, see [docs/architecture.md](../../docs/architecture.md).
+For the full architecture design, see [docs/architecture.md](../docs/architecture.md).
 
 ## 🚀 Workflows
 
@@ -34,6 +34,8 @@ For the full architecture design, see [docs/architecture.md](../../docs/architec
 | Workflow | Description | When to Use |
 | :--- | :--- | :--- |
 | `/bug-fix` | Structured bug analysis and fix workflow | Bug triage scenarios |
+| `/handoff` | Create or resume a compact task handoff | Agent/session transfer |
+| `/mission` | Orchestrate long-running multi-milestone work | Long-running feature programs |
 | `/weekly-report` | Generate weekly report from Git history | Weekly reviews |
 | `/release` | SemVer release: analyze commits → bump version → commit + tag → npm publish | Release management |
 | `/scan-project` | Scan existing project, auto-generate module reference docs | Initial setup |
@@ -72,7 +74,11 @@ Reusable capabilities invoked by workflows or mounted on sub-agents.
 | `security-scan` | Dependency vulnerabilities, dangerous APIs, supply chain risks | code-reviewer |
 | `changelog-generator` | Auto-generate CHANGELOG from git commits (Conventional Commits) | documenter |
 | `superpowers` | TDD workflow, debugging strategies, refactoring & git techniques | implementer |
+| `handoff` | Compact task transfer between agents, sessions, or sub-agents | `/handoff` |
+| `validation-contract` | Create and check executable validation contracts before implementation | Mission Lite, high-risk tasks |
 | `agent-visibility` | Manage .agent Git visibility (Private / Ignore / Track) | Direct invocation |
 | `sync-global` | Sync workflows and skills from `~/.agent` to current project | Direct invocation |
 | `weekly-report` | Fetch and summarize Git logs into a weekly report | `/weekly-report` workflow |
 | `cleanup-debug` | Prune old files under `.agent/debug` (optional `.playwright-mcp/`) | Direct invocation |
+| `knowledge-lint` | Deterministic checks for knowledge structure and documentation integrity | Direct invocation |
+| `doc-gardening` | Turn knowledge lint findings into low-risk maintenance recommendations | Direct invocation |

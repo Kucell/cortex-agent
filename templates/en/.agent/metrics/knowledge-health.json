@@ -1,0 +1,20 @@
+{
+  "scan": "knowledge-lint",
+  "generated_at": null,
+  "health_score": null,
+  "summary": {
+    "markdown_files_scanned": 0,
+    "broken_links": 0,
+    "broken_anchors": 0,
+    "missing_readmes": 0,
+    "plan_issues": 0,
+    "architecture_doc_mismatches": 0
+  },
+  "findings": {
+    "broken_links": [],
+    "broken_anchors": [],
+    "missing_readmes": [],
+    "plan_issues": [],
+    "architecture_doc_mismatches": []
+  }
+}

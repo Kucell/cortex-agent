@@ -9,7 +9,7 @@ description: 任务完成后的一键收尾：代码审查 → 提交 → 标记
 
 ## Phase 1 增强：状态机 + 重试控制
 
-**状态流转**：`PLAN → EXECUTE → LINT → REVIEW → COMMIT → DONE`
+**状态流转**：`PLAN → EXECUTE → LINT → REVIEW → COMMIT → DONE → CONTEXT_CLEANUP → ENTROPY_SCAN → KNOWLEDGE_LINT → DOC_GARDENING → CLEAN`
 
 **关键特性**：
 - ✅ **Phase Gate 检查**：每个转换有硬性前置条件
@@ -139,7 +139,78 @@ DONE 状态达成后，执行上下文清洗，防止任务间上下文污染：
 > 若 `.agent/archive/` 目录不存在，先创建再归档。
 > 若任务产物文件不存在（如跳过了某阶段），跳过对应归档步骤，不报错。
 
-**状态流转**：`CONTEXT_CLEANUP` → `CLEAN`（最终状态）
+**状态流转**：`CONTEXT_CLEANUP` → `ENTROPY_SCAN`
+
+---
+
+### Phase 7: ENTROPY_SCAN（自动执行）
+
+CONTEXT_CLEANUP 完成后，调用 `entropy-scanner` sub-agent 做 L0 + L1 扫描：
+
+- **L0**：自动修复 context-index.json 偏差（已删模块条目、orphan_plans）
+- **L1**：标记 stale_refs 和 missing_refs（不修复内容，只标记状态）
+
+输出 `.agent/entropy-report.json`，包含本次健康度评分。
+
+**状态流转**：`ENTROPY_SCAN` → `KNOWLEDGE_LINT`
+
+---
+
+### Phase 8: KNOWLEDGE_LINT（自动执行）
+
+ENTROPY_SCAN 完成后，执行轻量 knowledge lint，刷新知识结构健康度：
+
+**执行命令**：
+
+```bash
+node .agent/skills/knowledge-lint/scripts/index.js
+```
+
+**输出**：
+
+- `.agent/metrics/knowledge-health.json`
+
+**检查范围**：
+
+- Markdown 断链
+- 失效锚点
+- 关键知识目录缺 README
+- plan 生命周期异常
+- `docs/architecture.md` 与仓库真实结构的引用失配
+
+**执行策略**：
+
+- 仅做确定性检查
+- 不自动重写大段文档
+- 若发现问题，记录到 `knowledge-health.json`
+- 默认不阻断 `CLEAN`，但应在交付报告中提示高优先级问题
+
+**状态流转**：`KNOWLEDGE_LINT` → `DOC_GARDENING`
+
+---
+
+### Phase 9: DOC_GARDENING（自动执行，建议生成）
+
+KNOWLEDGE_LINT 完成后，生成低风险知识整理建议，供 `/briefing` 与后续维护消费：
+
+**执行命令**：
+
+```bash
+node .agent/skills/doc-gardening/scripts/index.js
+```
+
+**输出**：
+
+- `.agent/metrics/doc-gardening-report.json`
+
+**执行策略**：
+
+- 只生成建议，不自动重写大段文档
+- 优先输出 quick wins 与需要人工判断的结构同步项
+- 默认不阻断 `CLEAN`
+- 若存在 `P0` 项，应在交付报告中明确提示
+
+**状态流转**：`DOC_GARDENING` → `CLEAN`（最终状态）
 
 ---
 
