@@ -1,0 +1,195 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 640" width="1200" height="640" role="img" aria-label="Cortex Agent 快速上手演示">
+  <title>Cortex Agent 快速上手</title>
+  <desc>5 步：npx cortex-agent init → 选择平台 → 选择语言 → /configure → /start-task</desc>
+
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0f1226"/>
+      <stop offset="100%" stop-color="#1a1f3a"/>
+    </linearGradient>
+    <linearGradient id="brand" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#7c83ff"/>
+      <stop offset="100%" stop-color="#a06bff"/>
+    </linearGradient>
+    <style>
+      .term-bg { fill: #0a0d1f; stroke: #2a2f4a; stroke-width: 1; }
+      .term-title { fill: #b0b4d0; font: 500 13px 'Inter', system-ui, sans-serif; }
+      .term-prompt { fill: #7c83ff; font: 500 14px 'JetBrains Mono', 'SF Mono', monospace; }
+      .term-text { fill: #e0e4f5; font: 400 14px 'JetBrains Mono', 'SF Mono', monospace; }
+      .term-ok { fill: #5ed9a4; font: 500 14px 'JetBrains Mono', 'SF Mono', monospace; }
+      .term-warn { fill: #ffb86b; font: 500 14px 'JetBrains Mono', 'SF Mono', monospace; }
+      .term-muted { fill: #6b7090; font: 400 13px 'JetBrains Mono', 'SF Mono', monospace; }
+      .step-num-active { fill: url(#brand); }
+      .step-num-done { fill: #5ed9a4; }
+      .step-num-pending { fill: #2a2f4a; stroke: #4a4f6a; stroke-width: 1.5; }
+      .step-title-active { fill: #ffffff; font: 600 18px 'Inter', system-ui, sans-serif; }
+      .step-title-pending { fill: #8a90b0; font: 500 18px 'Inter', system-ui, sans-serif; }
+      .step-desc { fill: #b0b4d0; font: 400 13px 'Inter', system-ui, sans-serif; }
+      .title { fill: #ffffff; font: 700 24px 'Inter', system-ui, sans-serif; }
+      .subtitle { fill: #8a90b0; font: 400 14px 'Inter', system-ui, sans-serif; }
+      .brand-text { fill: url(#brand); font: 700 24px 'Inter', system-ui, sans-serif; }
+      .cursor { fill: #7c83ff; }
+
+      /* 终端行依次显示 */
+      .line { opacity: 0; animation: typeIn 0.4s ease-out forwards; }
+      .line-1 { animation-delay: 0.3s; }
+      .line-2 { animation-delay: 1.4s; }
+      .line-3 { animation-delay: 2.6s; }
+      .line-4 { animation-delay: 4.0s; }
+      .line-5 { animation-delay: 5.6s; }
+      .line-6 { animation-delay: 7.2s; }
+      .line-7 { animation-delay: 8.8s; }
+      .line-8 { animation-delay: 10.2s; }
+
+      /* 步骤指示器依次激活 */
+      .step { opacity: 0; animation: stepIn 0.5s ease-out forwards; }
+      .step-1 { animation-delay: 0.6s; }
+      .step-2 { animation-delay: 2.9s; }
+      .step-3 { animation-delay: 5.9s; }
+      .step-4 { animation-delay: 8.8s; }
+      .step-5 { animation-delay: 11.0s; }
+
+      /* 标题与子标题 */
+      .header { opacity: 0; animation: fadeIn 0.6s ease-out 0.1s forwards; }
+
+      /* 游标闪烁 */
+      .cursor { animation: blink 1s steps(2) infinite; animation-delay: 0.3s; }
+
+      @keyframes typeIn {
+        0%   { opacity: 0; transform: translateX(-4px); }
+        100% { opacity: 1; transform: translateX(0); }
+      }
+      @keyframes stepIn {
+        0%   { opacity: 0; transform: translateX(8px); }
+        100% { opacity: 1; transform: translateX(0); }
+      }
+      @keyframes fadeIn {
+        0%   { opacity: 0; }
+        100% { opacity: 1; }
+      }
+      @keyframes blink {
+        0%, 50%   { opacity: 1; }
+        51%, 100% { opacity: 0; }
+      }
+    </style>
+  </defs>
+
+  <!-- 背景 -->
+  <rect width="1200" height="640" fill="url(#bg)"/>
+
+  <!-- 顶部标题 -->
+  <g class="header">
+    <text x="60" y="50" class="brand-text">⚡ cortex-agent</text>
+    <text x="60" y="78" class="subtitle">5 步把 AI 助手调教成"资深工程师" · Quick start</text>
+  </g>
+
+  <!-- 终端窗口 -->
+  <g transform="translate(60, 110)">
+    <rect class="term-bg" x="0" y="0" width="640" height="470" rx="10"/>
+    <!-- 窗口装饰 -->
+    <circle cx="22" cy="22" r="6" fill="#ff5f56"/>
+    <circle cx="44" cy="22" r="6" fill="#ffbd2e"/>
+    <circle cx="66" cy="22" r="6" fill="#27c93f"/>
+    <text x="320" y="27" text-anchor="middle" class="term-title">~/my-project — cortex-agent</text>
+
+    <!-- 命令行 -->
+    <g transform="translate(24, 70)">
+      <!-- line 1 -->
+      <g class="line line-1">
+        <text x="0" y="0" class="term-prompt">$ </text>
+        <text x="20" y="0" class="term-text">npx cortex-agent init</text>
+      </g>
+      <!-- line 2 -->
+      <g class="line line-2">
+        <text x="0" y="30" class="term-muted">  › 欢迎使用 cortex-agent v1.4.0</text>
+      </g>
+      <!-- line 3 -->
+      <g class="line line-3">
+        <text x="0" y="58" class="term-ok">  ✓ 已生成 .agent/ 目录 + 平台符号链接</text>
+      </g>
+      <!-- line 4 -->
+      <g class="line line-4">
+        <text x="0" y="92" class="term-prompt">$ </text>
+        <text x="20" y="92" class="term-text">/configure</text>
+      </g>
+      <!-- line 5 -->
+      <g class="line line-5">
+        <text x="0" y="122" class="term-muted">  › 选择 AI 平台 (Claude Code / Cursor / Windsurf ...)</text>
+      </g>
+      <g class="line line-5">
+        <text x="0" y="142" class="term-ok">    ✓ Claude Code</text>
+      </g>
+      <g class="line line-5">
+        <text x="0" y="162" class="term-muted">  › 选择项目语言 (TypeScript / Python / Go / Java / Swift)</text>
+      </g>
+      <g class="line line-5">
+        <text x="0" y="182" class="term-ok">    ✓ TypeScript</text>
+      </g>
+      <!-- line 6 -->
+      <g class="line line-6">
+        <text x="0" y="212" class="term-warn">  ⚙ 写入 tech-stack.md + 注入 Hooks + 生成 .claude/settings.json</text>
+      </g>
+      <!-- line 7 -->
+      <g class="line line-7">
+        <text x="0" y="246" class="term-prompt">$ </text>
+        <text x="20" y="246" class="term-text">/start-task "为 User 模块加单元测试"</text>
+      </g>
+      <!-- line 8 -->
+      <g class="line line-8">
+        <text x="0" y="276" class="term-muted">  [researcher] 调研 →  [planner] 计划</text>
+      </g>
+      <g class="line line-8">
+        <text x="0" y="296" class="term-muted">  [implementer] 实现 →  [code-reviewer] 审查</text>
+      </g>
+      <g class="line line-8">
+        <text x="0" y="316" class="term-ok">  ✓ /ship 完成 · 提交 0a3b9f2 · 进度 17% → 22%</text>
+      </g>
+      <!-- 游标 -->
+      <rect class="cursor" x="0" y="338" width="10" height="18" rx="1"/>
+    </g>
+  </g>
+
+  <!-- 右侧步骤指示 -->
+  <g transform="translate(740, 130)">
+    <!-- 步骤 1 -->
+    <g class="step step-1">
+      <circle cx="22" cy="22" r="22" class="step-num-active"/>
+      <text x="22" y="28" text-anchor="middle" fill="#fff" font="700 18px 'Inter', system-ui, sans-serif">1</text>
+      <text x="60" y="20" class="step-title-active">初始化项目</text>
+      <text x="60" y="40" class="step-desc">npx cortex-agent init — 生成 .agent/</text>
+    </g>
+    <!-- 步骤 2 -->
+    <g class="step step-2">
+      <circle cx="22" cy="92" r="22" class="step-num-active"/>
+      <text x="22" y="98" text-anchor="middle" fill="#fff" font="700 18px 'Inter', system-ui, sans-serif">2</text>
+      <text x="60" y="90" class="step-title-active">选择 AI 平台</text>
+      <text x="60" y="110" class="step-desc">Claude Code / Cursor / Windsurf ...</text>
+    </g>
+    <!-- 步骤 3 -->
+    <g class="step step-3">
+      <circle cx="22" cy="162" r="22" class="step-num-active"/>
+      <text x="22" y="168" text-anchor="middle" fill="#fff" font="700 18px 'Inter', system-ui, sans-serif">3</text>
+      <text x="60" y="160" class="step-title-active">选择语言</text>
+      <text x="60" y="180" class="step-desc">TypeScript / Python / Go / Java / Swift</text>
+    </g>
+    <!-- 步骤 4 -->
+    <g class="step step-4">
+      <circle cx="22" cy="232" r="22" class="step-num-active"/>
+      <text x="22" y="238" text-anchor="middle" fill="#fff" font="700 18px 'Inter', system-ui, sans-serif">4</text>
+      <text x="60" y="230" class="step-title-active">运行 /configure</text>
+      <text x="60" y="250" class="step-desc">写入 tech-stack.md，注入 Hooks</text>
+    </g>
+    <!-- 步骤 5 -->
+    <g class="step step-5">
+      <circle cx="22" cy="302" r="22" class="step-num-active"/>
+      <text x="22" y="308" text-anchor="middle" fill="#fff" font="700 18px 'Inter', system-ui, sans-serif">5</text>
+      <text x="60" y="300" class="step-title-active">/start-task → /ship</text>
+      <text x="60" y="320" class="step-desc">researcher → planner → implementer → reviewer</text>
+    </g>
+  </g>
+
+  <!-- 底部提示 -->
+  <g class="header" transform="translate(60, 610)">
+    <text x="0" y="0" class="subtitle">🎬 CSS 动画 · 总时长 ~12s · 无限循环</text>
+  </g>
+</svg>

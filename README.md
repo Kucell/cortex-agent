@@ -28,6 +28,16 @@ npx cortex-agent upgrade
 
 初始化后，在 AI 助手中运行 `/configure` 完成项目配置。
 
+### 上手流程一览
+
+<p align="center">
+  <img src="docs/assets/quick-start.svg" alt="Cortex Agent 5 步快速上手" width="100%">
+</p>
+
+<p align="center">
+  <em>左：终端实际命令 · 右：每一步的指示 · 总时长约 12 秒 · 无限循环</em>
+</p>
+
 ## 目录结构
 
 ```text
@@ -65,6 +75,7 @@ docs/
 | [docs/architecture.md](docs/architecture.md) | 整体架构设计、模块职责、Mission Lite 设计、Hooks 触发机制 |
 | [docs/architecture/mission-lite-design.md](docs/architecture/mission-lite-design.md) | Mission Lite 长周期任务编排的详细架构方案 |
 | [docs/architecture/harness-optimization-design.md](docs/architecture/harness-optimization-design.md) | Harness Engineering 与 Mission Lite 演进设计 |
+| [docs/architecture/multi-agent-coordinator.md](docs/architecture/multi-agent-coordinator.md) | Multi-Agent Coordinator（多 agent × 多模型协调层）设计稿 |
 
 ## 开源协议
 
