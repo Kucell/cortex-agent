@@ -205,6 +205,7 @@
 - **[Knowledge] knowledge lint 与 doc-gardening 已接入 `/briefing` 与 `/ship` 说明层**：真实 heartbeat / cron automation 仍未创建
 - **[Runtime] runtime evidence 摘要文件尚未实现**：`runtime-health.json` / `browser-verification.json` / `verification-summary.json` 仍停留在设计层
 - **[Mission Lite] 当前为模板级编排**：`/mission`、验证契约和模板已可用，但尚未引入自动脚本或 CLI 状态管理
+- **[Coordinator] T-C02~T-C10 暂存中**：Multi-Agent Coordinator 设计稿已落地（`docs/architecture/multi-agent-coordinator.md`），用户决策走 **C 模式（暂存）**——等 T-005 / T-008 收尾后启动 T-C02 → C03 → C04 → C06 串行基线，再并行 C05/C07/C08，最后 C09/C10
 - **[Harness] upgrade 不覆盖已有文件**：改造文件（ship.md/planner.md 等）在已安装用户侧不会自动同步，需版本说明或迁移指南
 - **[Harness] context-index.json 准确性**：reference frontmatter 的 `estimated_tokens` 依赖人工维护，初期可能不准确
 - **[Harness] 推理三明治成本**：balanced 模式比原来贵约 1.5-2x，需在 README 中明确说明
