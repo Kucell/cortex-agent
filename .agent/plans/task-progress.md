@@ -1,8 +1,8 @@
 # 任务进度
 
-> **当前阶段**：Harness Engineering 优化期（Phase 6 完成）
-> **整体进度**：90%
-> **最后更新**：2026-03-27
+> **当前阶段**：Mission Lite 设计期（Phase 8 进行中）
+> **整体进度**：99%
+> **最后更新**：2026-05-19
 
 ---
 
@@ -50,7 +50,7 @@
 - [ ] `README.md` 补充快速上手 GIF 演示（T-005）
 - [ ] Claude Code 插件市场上架（T-008）
 
-### Phase 6：Harness Engineering 优化（🔥 进行中）
+### Phase 6：Harness Engineering 优化（✅ 已完成）
 
 > 设计方案：`docs/architecture/harness-optimization-design.md`
 > 优先级顺序：P0 → P1 → P2 → P3
@@ -91,31 +91,75 @@
 - [x] `workflows/briefing.md` 增加成熟度看板（T-H07）
 - [x] Workflow 精简（降级重定向）：/code-review /done /sync-plans /parallel /weekly-report 加入"推荐用 /ship"提示（T-H08）
 
+### Phase 7：知识架构与可理解性地基（✅ 已完成）
+
+> 设计方案：`docs/architecture/harness-optimization-design.md`
+> 目标：先补齐知识架构，再继续推进 application legibility 与 knowledge lint
+
+- [x] 建立 `docs/quality`、`docs/reliability`、`docs/security`、`docs/exec-plans` 与 `docs/tech-debt.md` 基础骨架（T-H09）
+- [x] 更新 `docs/architecture.md` 与 `docs/architecture/harness-optimization-design.md`，同步到当前真实实现（T-H10）
+- [x] 新增 active exec plan，并把技术债务统一沉淀到 `docs/tech-debt.md`（T-H11）
+- [x] 设计 knowledge lint 与 doc-gardening 的下一轮落地方案（T-H12）
+- [x] 实现第一版 `knowledge-lint` skill 与 `knowledge-health.json` 输出（T-H13）
+- [x] 将 `knowledge-health.json` 接入 `/briefing` 工作流说明（T-H14）
+- [x] 将轻量 `knowledge-lint` 接入 `/ship` 工作流说明（T-H15）
+- [x] 实现第一版 `doc-gardening` skill，并接入 `/briefing` 与 `/ship`（T-H16）
+- [x] 新增知识维护 Runbook，为 heartbeat / cron 接入提供统一入口（T-H17）
+
+### Phase 8：Mission Lite 长周期任务编排（🔥 设计中）
+
+> 设计入口：`docs/architecture.md`、`docs/architecture/mission-lite-design.md`、`docs/architecture/harness-optimization-design.md`
+> 目标：在现有 `/start-task`、`/ship`、`/handoff` 之上，补齐多 milestone 长周期任务的验证契约、结构化交接和独立验证机制。
+
+- [x] Mission Lite 架构设计：三角色模型、状态机、核心产物、验证契约与边界（T-H24）
+- [x] 新增 `validation-contract` skill：定义 CREATE / CHECK / SUMMARIZE 三种模式和 JSON 契约模板（T-H25）
+- [x] 新增 `/mission` workflow：覆盖 SCOPE / PLAN / CONTRACT / EXECUTE / VALIDATE 状态（T-H26）
+- [x] 扩展 planner / reviewer 输出契约：planner 产出 validation contract，reviewer 按 contract 验证（T-H27）
+- [x] 命令日志与 milestone 模板标准化：提供 `mission-plan.md`、`command-log.md` 与 `milestones/MS-xxx.md` 模板（T-H28）
+
 ---
 
 ## 🔥 当前活跃任务
 
 | 任务 ID | 优先级 | 描述 | 进度 |
 | :--- | :--- | :--- | :--- |
-| T-H01 | P0 | **[待提交]** Skill精简 + phase-gate + 双层Hooks | 95% |
-| T-H02 | P0 | **[待提交]** 推理三明治：reasoning-config + planner模型升级 + ship状态机 | 90% |
-| T-H03 | P0 | **[待提交]** code-reviewer结构化输出 + 输入隔离 | 100% |
-| T-H04 | P0 | 上下文预算控制：context-index + context-budget skill + workflows改造 | 100% |
-| T-H05 | P1 | Sub-agent防火墙：输出摘要器契约 + 上下文清洗 + 路由配置 | 100% |
-| T-H06 | P2 | 熵治理闭环：entropy-scanner + PostCommit hook + briefing集成 | 100% |
-| T-H07 | P3 | 渐进式退化：harness-manifest + maturity-tracker | 100% |
-| T-H08 | P3 | Workflow精简：降级重定向 | 100% |
 | T-005 | P1 | README 补充快速上手 GIF 演示 | 20% |
-| T-001 | P1 | 完善 pre-commit-check.sh 多语言支持（ruff、go vet） | 100% |
-| T-002 | P1 | 新增 Java / Swift 语言规则模板（zh + en） | 100% |
-| T-003 | P2 | configure.md 自动激活语言规则逻辑 | 100% |
 | T-008 | P3 | Claude Code 插件市场上架 | 0% |
+
+## 🧭 下一阶段候选（Application Legibility）
+
+| 任务 ID | 优先级 | 描述 | 进度 |
+| :--- | :--- | :--- | :--- |
+| T-H18 | P0 | 日志可理解性基线 | 100% |
+| T-H19 | P0 | 浏览器验证基线 | 100% |
+| T-H20 | P1 | 指标可理解性基线 | 100% |
+| T-H21 | P1 | Trace / Request Chain 基线 | 100% |
+| T-H22 | P1 | runtime evidence 接入 `/briefing` / `/ship` 设计 | 100% |
+| T-H23 | P2 | 验证模板标准化 | 0% |
 
 ---
 
 ## ✅ 最近完成
 
-- **Harness Engineering P0 基础设施**：architecture-guard + phase-gate + reasoning-config + ship状态机 + code-reviewer结构化输出（T-H01/02/03，待提交）
+- **T-H24**：完成 Mission Lite 架构设计，新增 `docs/architecture/mission-lite-design.md`，补充三角色模型、验证契约、命令日志、milestone 状态机与 `/handoff` 衔接方式
+- **T-H25**：新增 `validation-contract` skill，定义 CREATE / CHECK / SUMMARIZE 模式、assertion 类型、契约规则和最小 JSON 模板
+- **T-H26**：新增 `/mission` workflow，定义 create / status / resume / validate 子命令、mission 状态机、文件结构和质量标准
+- **T-H27**：扩展 planner / code-reviewer 输出契约，planner 可产出 `validation_contract`，reviewer 可输出 `contract_results`
+- **T-H28**：新增 Mission Lite 模板集，标准化 `mission-plan.md`、`command-log.md` 和 `milestones/MS-xxx.md`，并在 `/mission` workflow 中引用
+- **Phase 7 知识架构地基**：补齐 `docs/quality` / `reliability` / `security` / `exec-plans` / `tech-debt`，并更新架构与设计文档（T-H09/10/11）
+- **T-H12**：完成 knowledge lint / doc-gardening 设计，明确检查范围、触发方式与后续落点
+- **T-H13**：实现第一版 `knowledge-lint` 技能，提供断链、README、计划生命周期和架构文档一致性检查
+- **T-H14**：将知识健康度接入 `/briefing`，使 knowledge lint 结果进入每日可见面
+- **T-H15**：将轻量 knowledge lint 接入 `/ship`，使交付后可自动刷新知识健康度
+- **T-H16**：实现第一版 `doc-gardening` 技能，输出整理建议并接入 `/briefing` / `/ship`
+- **T-H17**：新增知识维护 Runbook，明确 heartbeat / cron 的输入、边界与 prompt 约定
+- **2026-04-21**：完成 application legibility 的 Phase 8 路线图与任务拆解，明确 logs / browser / metrics / traces 的推进顺序
+- **T-H18**：完成日志可理解性基线，明确日志入口、字段优先级、排查顺序和标准输出模板
+- **T-H19**：完成浏览器验证基线，明确页面入口、交互顺序、截图留证和标准输出模板
+- **T-H20**：完成指标可理解性基线，明确指标分层、健康度表达方式和标准输出模板
+- **T-H21**：完成 Trace / Request Chain 基线，明确 request_id / trace_id 优先级、链路排查顺序和断点判断模板
+- **T-H22**：完成 runtime evidence 接入设计，明确 `/briefing` 与 `/ship` 应优先消费结构化 runtime summary
+- **Harness Engineering Phase 6**：上下文预算、推理三明治、防火墙、熵治理与渐进式退化全部落地（T-H01 ~ T-H08）
 - **npm 正式发布** —— `npx cortex-agent` 全球可用（kucelleric/cortex-agent）
 - `cortex-agent add / remove / list` 命令实现
 - `cortex-agent track` 命令实现（开启 .agent Git 追踪）
@@ -139,6 +183,9 @@
 
 ## ⚠️ 风险与阻塞
 
+- **[Knowledge] knowledge lint 与 doc-gardening 已接入 `/briefing` 与 `/ship` 说明层**：真实 heartbeat / cron automation 仍未创建
+- **[Runtime] runtime evidence 摘要文件尚未实现**：`runtime-health.json` / `browser-verification.json` / `verification-summary.json` 仍停留在设计层
+- **[Mission Lite] 当前为模板级编排**：`/mission`、验证契约和模板已可用，但尚未引入自动脚本或 CLI 状态管理
 - **[Harness] upgrade 不覆盖已有文件**：改造文件（ship.md/planner.md 等）在已安装用户侧不会自动同步，需版本说明或迁移指南
 - **[Harness] context-index.json 准确性**：reference frontmatter 的 `estimated_tokens` 依赖人工维护，初期可能不准确
 - **[Harness] 推理三明治成本**：balanced 模式比原来贵约 1.5-2x，需在 README 中明确说明

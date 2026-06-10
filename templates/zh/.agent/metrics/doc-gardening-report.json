@@ -1,0 +1,19 @@
+{
+  "scan": "doc-gardening",
+  "generated_at": null,
+  "status": "healthy",
+  "based_on": {
+    "knowledge_health_path": ".agent/metrics/knowledge-health.json",
+    "knowledge_generated_at": null,
+    "knowledge_score": 100
+  },
+  "summary": {
+    "actionable_items": 0,
+    "p0_items": 0,
+    "p1_items": 0,
+    "quick_wins": 0,
+    "manual_review_items": 0
+  },
+  "recommended_focus": "当前无需整理动作，维持现有节奏即可。",
+  "actions": []
+}
