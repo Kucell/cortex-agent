@@ -123,7 +123,6 @@
 
 | 任务 ID | 优先级 | 描述 | 进度 |
 | :--- | :--- | :--- | :--- |
-| T-005 | P1 | README 补充快速上手 GIF 演示 | 20% |
 | T-008 | P3 | Claude Code 插件市场上架 | 0% |
 
 ## 🧭 下一阶段候选（Application Legibility）
@@ -159,6 +158,7 @@
 
 ## ✅ 最近完成
 
+- **T-005**：README 快速上手演示落地（SVG/CSS 动画版），新增 `docs/assets/quick-start.svg` + `docs/assets/README.md`，README "快速开始" 节嵌入 5 步上手流程
 - **T-C01**：完成 Multi-Agent Coordinator 设计稿，新增 `docs/architecture/multi-agent-coordinator.md`，定义 Agent Registry / Artifact Bus / Progress Lock / Handoff 协议四个核心构件，与现有 `/parallel` / `/mission` / `session-manager` 关系明确，10 个子任务 T-C02~T-C10 拆解完成
 - **T-H24**：完成 Mission Lite 架构设计，新增 `docs/architecture/mission-lite-design.md`，补充三角色模型、验证契约、命令日志、milestone 状态机与 `/handoff` 衔接方式
 - **T-H25**：新增 `validation-contract` skill，定义 CREATE / CHECK / SUMMARIZE 模式、assertion 类型、契约规则和最小 JSON 模板
