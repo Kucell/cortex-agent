@@ -137,10 +137,29 @@
 | T-H22 | P1 | runtime evidence 接入 `/briefing` / `/ship` 设计 | 100% |
 | T-H23 | P2 | 验证模板标准化 | 0% |
 
+## 🧭 下一阶段候选（Multi-Agent Coordinator · 协调层）
+
+> 入口设计：`docs/architecture/multi-agent-coordinator.md`
+> 目标：解决"多 agent + 多模型切换后任务做了一半"的协调问题，叠加而非推翻现有 `/parallel` / `/mission` / `session-manager`
+
+| 任务 ID | 优先级 | 描述 | 进度 |
+| :--- | :--- | :--- | :--- |
+| T-C01 | P0 | Multi-Agent Coordinator 设计文档 | 100% |
+| T-C02 | P0 | `coordinator` sub-agent 定义 | 0% |
+| T-C03 | P0 | Agent Registry（`.agent/registry/agents.json` + check-in/out 脚本） | 0% |
+| T-C04 | P0 | Artifact Bus（`artifact-schema.json` + 读写辅助） | 0% |
+| T-C05 | P1 | Progress Lock（`acquire/renew/release` + TTL） | 0% |
+| T-C06 | P0 | handoff skill 升级：双产物 + `AGENT_RESUME` 模式 | 0% |
+| T-C07 | P1 | `routing-defaults.yml` 扩展 `model_registry` | 0% |
+| T-C08 | P1 | `/mission` 状态机改造：显式 HANDOFF + RESUME 状态 | 0% |
+| T-C09 | P1 | 端到端验证：Claude → Codex 切换场景 | 0% |
+| T-C10 | P2 | `/briefing` 接入 coordinator 健康度板块 | 0% |
+
 ---
 
 ## ✅ 最近完成
 
+- **T-C01**：完成 Multi-Agent Coordinator 设计稿，新增 `docs/architecture/multi-agent-coordinator.md`，定义 Agent Registry / Artifact Bus / Progress Lock / Handoff 协议四个核心构件，与现有 `/parallel` / `/mission` / `session-manager` 关系明确，10 个子任务 T-C02~T-C10 拆解完成
 - **T-H24**：完成 Mission Lite 架构设计，新增 `docs/architecture/mission-lite-design.md`，补充三角色模型、验证契约、命令日志、milestone 状态机与 `/handoff` 衔接方式
 - **T-H25**：新增 `validation-contract` skill，定义 CREATE / CHECK / SUMMARIZE 模式、assertion 类型、契约规则和最小 JSON 模板
 - **T-H26**：新增 `/mission` workflow，定义 create / status / resume / validate 子命令、mission 状态机、文件结构和质量标准
