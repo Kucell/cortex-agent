@@ -46,7 +46,18 @@
     "worktrees",
     "workspace",
     "workspaces",
-    "multiline"
+    "multiline",
+    "rive",
+    "Rive",
+    "bodymovin",
+    "lottie",
+    "mermaid",
+    "ELKjs",
+    "GSAP",
+    "greensock",
+    "framer",
+    "spine",
+    "AfterEffects"
   ],
   "ignoreRegExpList": [
     "/<!-- cspell:disable -->[\\s\\S]*?<!-- cspell:enable -->/g",
