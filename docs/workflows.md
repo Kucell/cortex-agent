@@ -83,6 +83,7 @@ PLAN → EXECUTE → LINT → REVIEW → COMMIT → DONE → CONTEXT_CLEANUP →
 | 工作流 | 描述 | 使用示例 |
 | :--- | :--- | :--- |
 | `/ship` | **一键交付**：code-review → commit → done → sync-plans → context-cleanup → entropy-scan 全链路 | `/ship T-001` |
+| `/prototype` | 从需求描述生成文档型原型（Mermaid + Anime.js）或 UI 型原型（Pixso MCP），输出 validation-contract | `/prototype "用户登录流程"` |
 | `/code-review` | 对当前改动进行代码审查，输出结构化评分和 verdict | `/code-review` |
 | `/commit` | 遵循 Conventional Commits，AI 生成提交信息 | `/commit` |
 | `/done` | 轻量版完成标记：更新路线图 `[ ]→[x]`，刷新进度百分比 | `/done T-001 T-002` |
