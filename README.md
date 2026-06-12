@@ -69,6 +69,49 @@ docs/
 └── tech-debt.md    # 已知技术债务与偿还路径
 ```
 
+## 可选增强
+
+### Graphify 知识图谱（可选）
+
+安装 Graphify 后，agent 在 `/handoff` 时可携带当前任务相关的代码知识子图，接手方无需重新探索代码库。未安装时框架自动降级，所有工作流正常运行。
+
+**安装：**
+
+```bash
+pip install graphifyy && graphify install
+# macOS externally-managed 环境：
+pip install --break-system-packages graphifyy && graphify install
+```
+
+**扫描项目图谱（在项目根目录执行一次）：**
+
+```bash
+graphify update .                        # 代码图谱，无需 API Key
+ANTHROPIC_API_KEY=sk-... graphify .      # 完整图谱（含 Markdown 文档）
+```
+
+**在 `/handoff` 前提取任务子图：**
+
+```bash
+node .agent/plugins/graphify/scripts/extract-subgraph.js \
+  --task T-xxx \
+  --files "src/main.js,lib/api.js"
+# 输出：.agent/artifacts/T-xxx/graphify-subgraph.json
+# 并自动注册到 Artifact Bus（kind: knowledge-graph）
+```
+
+**在 Claude Code 中查询图谱：**
+
+```
+/graphify query "coordinator 与 artifact bus 如何协作？"
+/graphify path "handoff-protocol.js" "artifact-bus.js"
+/graphify explain "coordinator"
+```
+
+详见：[`.agent/plugins/graphify/README.md`](.agent/plugins/graphify/README.md) · [设计提案](docs/architecture/graphify-integration-proposal.md)
+
+---
+
 ## 文档索引
 
 | 文档 | 内容 |
