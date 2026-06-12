@@ -1,17 +1,24 @@
 ---
 name: handoff
-description: Create or resume a compact task handoff document for transferring work between agents, sessions, or sub-agents.
+description: Create or resume compact Markdown and JSON task handoff artifacts for transferring work between agents, sessions, or sub-agents.
 ---
 
 # Handoff Workflow (/handoff)
 
 Use `/handoff` when a task should continue in another agent, another session, or an isolated sub-agent context.
 
+T-C06 handoff output is dual-format:
+
+- Markdown for `HUMAN_RESUME`.
+- JSON for `AGENT_RESUME`.
+- Artifact Bus entry (`kind: handoff`) for coordinator indexing when `.agent/artifacts/scripts/artifact-bus.js` exists.
+
 ## Usage
 
 ```text
 /handoff create "short task focus"
 /handoff resume .agent/handoffs/YYYYMMDD-HHMMSS-short-task-focus.md
+/handoff resume .agent/handoffs/H-YYYYMMDD-HHMMSS-short-task-focus.json
 ```
 
 ## CREATE
@@ -28,17 +35,31 @@ Use `/handoff` when a task should continue in another agent, another session, or
    - relevant changed files
 3. Create `.agent/handoffs/` if it does not exist.
 4. Write a compact Markdown handoff using the `handoff` skill template.
-5. Reference existing artifacts by path or URL instead of copying their contents.
-6. End with a `Resume Prompt` that the next agent can follow directly.
+5. Write the matching JSON payload using `.agent/handoffs/handoff.schema.json` semantics.
+6. Reference existing artifacts by path or URL instead of copying their contents.
+7. Validate the JSON payload:
+   ```bash
+   node .agent/handoffs/scripts/handoff-protocol.js validate --payload-file .agent/handoffs/H-YYYYMMDD-HHMMSS-focus.json
+   ```
+8. When Artifact Bus exists, publish the JSON payload:
+   ```bash
+   node .agent/handoffs/scripts/handoff-protocol.js publish --payload-file .agent/handoffs/H-YYYYMMDD-HHMMSS-focus.json --markdown-path .agent/handoffs/YYYYMMDD-HHMMSS-focus.md --agent-id coordinator
+   ```
+9. End the Markdown with a `Resume Prompt` that the next agent can follow directly.
 
 ## RESUME
 
 1. Read `AGENTS.md` and required `.agent/rules/` files.
-2. Read the requested handoff document.
-3. Check `git status --short` before changing files.
-4. Read the referenced plans, source files, tests, and docs.
-5. Compare the handoff with current repository state.
-6. Continue from `Next Steps`, or report conflicts if the handoff is stale.
+2. If the input is Markdown, read the requested handoff document.
+3. If the input is JSON, run:
+   ```bash
+   node .agent/handoffs/scripts/handoff-protocol.js resume-prompt --payload-file <handoff.json>
+   ```
+4. Check `git status --short` before changing files.
+5. Read the referenced plans, Artifact Bus state, source files, tests, and docs.
+6. Compare the handoff with current repository state.
+7. For writable continuation, acquire required Progress Lock scopes when available.
+8. Continue from `Next Steps` or `next_action`, or report conflicts if the handoff is stale.
 
 ## Quality Bar
 
@@ -46,4 +67,5 @@ Use `/handoff` when a task should continue in another agent, another session, or
 - It must be small enough to paste into a new agent context if needed.
 - It must preserve decisions, constraints, verification state, and next actions.
 - It must avoid duplicating plans, PRDs, commits, diffs, ADRs, and API docs.
-
+- JSON handoff payloads must be valid before publish.
+- Artifact Bus publish is skipped only when the bus is not installed or the task deliberately stays human-only.

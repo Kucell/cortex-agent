@@ -77,6 +77,7 @@ graph LR
     O -->|实现| IM["implementer<br/>功能实现 + execution_report<br/>model: sonnet"]
     O -->|审查| CR["code-reviewer<br/>结构化审查 + verdict<br/>model: sonnet"]
     O -->|文档补充| DC["documenter<br/>轻量文档更新<br/>model: haiku"]
+    O -->|协调运行态| CO["coordinator<br/>registry + artifacts + locks + handoff<br/>model: sonnet"]
 
     style O fill:#6366f1,color:#fff,stroke:none
     style PL fill:#0ea5e9,color:#fff,stroke:none
@@ -84,6 +85,7 @@ graph LR
     style RS fill:#f59e0b,color:#fff,stroke:none
     style CR fill:#ef4444,color:#fff,stroke:none
     style DC fill:#8b5cf6,color:#fff,stroke:none
+    style CO fill:#14b8a6,color:#fff,stroke:none
 ```
 
 ### 3.2 代理职责与触发方式
@@ -95,6 +97,7 @@ graph LR
 | `researcher` | sonnet | 技术调研、方案对比、可行性评估（只读） | `/start-task` 默认前置调研；复杂任务可独立派发 |
 | `code-reviewer` | sonnet | 架构合规、代码质量、安全和结构化 verdict 输出 | `/ship`、`/code-review` 自动调用 |
 | `documenter` | haiku | 轻量文档更新，如 README / API 文档 / CHANGELOG | `/ship` 或手动流程按需调用 |
+| `coordinator` | sonnet | 多 agent / 多模型运行态协调，输出 `coordination_report`，覆盖 registry、artifact bus、lock、handoff 和 resume 决策 | `/mission`、`/handoff`、`/parallel` preflight、`/briefing` health |
 
 ---
 
@@ -109,6 +112,7 @@ graph TB
         PL[planner]
         IM[implementer]
         CR[code-reviewer]
+        CO[coordinator]
         RS["researcher<br/>— 默认无挂载"]
         DC["documenter<br/>— 默认无挂载"]
     end
@@ -118,6 +122,11 @@ graph TB
         AG["architecture-guard<br/>架构守卫"]
         CE["code-evaluation<br/>代码质量评分"]
         SS["security-scan<br/>安全扫描"]
+        CB["context-budget<br/>上下文预算"]
+        PG["phase-gate<br/>阶段门控"]
+        HF["handoff<br/>交接协议"]
+        VC["validation-contract<br/>验证契约"]
+        MT["maturity-tracker<br/>成熟度指标"]
     end
 
     PL -->|规划前审查| AG
@@ -126,10 +135,16 @@ graph TB
     CR -->|架构合规| AG
     CR -->|质量评分| CE
     CR -->|安全审查| SS
+    CO -->|resume 裁剪| CB
+    CO -->|状态门控| PG
+    CO -->|交接协议| HF
+    CO -->|契约检查| VC
+    CO -->|协调指标| MT
 
     style PL fill:#0ea5e9,color:#fff,stroke:none
     style IM fill:#10b981,color:#fff,stroke:none
     style CR fill:#ef4444,color:#fff,stroke:none
+    style CO fill:#14b8a6,color:#fff,stroke:none
     style RS fill:#6b7280,color:#fff,stroke:none
     style DC fill:#8b5cf6,color:#fff,stroke:none
     style AG fill:#0ea5e9,color:#fff,stroke:none
@@ -144,6 +159,7 @@ graph TB
 | `planner` | `architecture-guard` | 规划阶段先确认任务边界与架构约束 |
 | `implementer` | `architecture-guard` + `code-evaluation` | 编码前审查结构，编码后做实现质量自评 |
 | `code-reviewer` | `architecture-guard` + `code-evaluation` + `security-scan` | 审查阶段同时覆盖架构、质量和安全 |
+| `coordinator` | `context-budget` + `phase-gate` + `handoff` + `validation-contract` + `maturity-tracker` | 多 agent 运行态协调、恢复决策和健康度报告 |
 | `researcher` | 无 | 保持只读调研，避免角色越界 |
 | `documenter` | 无 | 专注轻量文档同步 |
 
@@ -324,7 +340,55 @@ SCOPE → PLAN → CONTRACT → EXECUTE_FEATURE → HANDOFF → VALIDATE_MILESTO
 
 ---
 
-## 七、Hooks 触发机制
+## 七、Multi-Agent Coordinator 多智能体协调层
+
+Multi-Agent Coordinator 是 Cortex Agent 下一阶段的完整主线，目标是在多 agent / 多模型 / 多会话切换时，提供统一的 agent 登记、结构化产物、进度锁、handoff 协议和恢复路径。
+
+详细设计见 [Multi-Agent Coordinator 设计](architecture/multi-agent-coordinator.md)。
+
+### 7.1 与 Harness / Mission Lite 的关系
+
+```mermaid
+flowchart TD
+    H["Harness Optimization<br/>治理底座"] --> C["Multi-Agent Coordinator<br/>协调运行态"]
+    M["Mission Lite<br/>长任务计划与验证"] --> C
+    C --> R["Agent Registry"]
+    C --> B["Artifact Bus"]
+    C --> L["Progress Lock"]
+    C --> HF["Handoff JSON / AGENT_RESUME"]
+    C --> MR["Model Registry"]
+    C --> BR["/briefing coordinator health"]
+```
+
+| 层级 | 负责 | 不负责 |
+| :--- | :--- | :--- |
+| Harness Optimization | `.agent/` 治理、`docs/` 知识层、workflow / skill / sub-agent 边界 | agent 调度、文件锁、运行态状态 |
+| Mission Lite | mission scope、milestone、validation contract、command log、验证证据 | agent registry、artifact bus、lock、跨模型 resume |
+| Multi-Agent Coordinator | registry、artifact bus、progress lock、handoff JSON、model preference、resume 决策 | 重写 mission scope、替代 `/ship`、替代业务实现 |
+
+### 7.2 核心构件
+
+| 构件 | 作用 |
+| :--- | :--- |
+| Agent Registry | 记录哪些 agent 在跑、负责什么任务、使用什么模型、当前状态是什么 |
+| Artifact Bus | 统一保存 plan / execution / review / validation / handoff 等结构化产物引用 |
+| Progress Lock | 防止多个 agent 并发修改同一任务或同一文件 |
+| Handoff Protocol | 同时提供人可读 Markdown 与 agent 可消费 JSON |
+| Model Registry | 记录模型能力、上下文窗口、成本和偏好，辅助 handoff 接手决策 |
+
+### 7.3 推进顺序
+
+Coordinator 保持完整目标，但按阶段交付：
+
+```text
+T-C01A -> T-C02 -> T-C03/T-C04 -> T-C05/T-C06 -> T-C07/T-C08 -> T-C09/T-C10
+```
+
+其中 `T-C01A` 负责前置架构对齐；`T-C02` 开始定义 `coordinator` sub-agent；`T-C09` 必须验证 Claude -> Codex 的真实交接场景。
+
+---
+
+## 八、Hooks 触发机制
 
 ```mermaid
 sequenceDiagram
@@ -345,7 +409,7 @@ sequenceDiagram
 
 ---
 
-## 八、版本与演进
+## 九、版本与演进
 
 架构变更时，请至少同步以下资产：
 

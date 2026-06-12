@@ -1,0 +1,132 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Cortex Agent Handoff",
+  "type": "object",
+  "required": [
+    "handoff_id",
+    "mode",
+    "from",
+    "to",
+    "task_id",
+    "task_progress",
+    "artifacts",
+    "next_action",
+    "constraints",
+    "verification",
+    "produced_at"
+  ],
+  "properties": {
+    "handoff_id": { "type": "string", "minLength": 1 },
+    "mode": { "type": "string", "enum": ["HUMAN_RESUME", "AGENT_RESUME"] },
+    "from": {
+      "type": "object",
+      "required": ["agent_id", "model"],
+      "properties": {
+        "agent_id": { "type": "string", "minLength": 1 },
+        "model": { "type": "string", "minLength": 1 },
+        "session_id": { "type": ["string", "null"] }
+      },
+      "additionalProperties": false
+    },
+    "to": {
+      "type": "object",
+      "required": ["role", "model_pref", "required_capabilities"],
+      "properties": {
+        "role": { "type": "string", "minLength": 1 },
+        "model_pref": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "required_capabilities": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "task_id": { "type": "string", "minLength": 1 },
+    "mission_id": { "type": ["string", "null"] },
+    "task_progress": {
+      "type": "object",
+      "required": ["current_step", "completed_steps", "in_progress", "remaining_steps"],
+      "properties": {
+        "current_step": { "type": "string", "minLength": 1 },
+        "completed_steps": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "in_progress": { "type": "string" },
+        "remaining_steps": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "artifacts": {
+      "type": "object",
+      "required": ["completed", "context_snapshot_ref", "markdown_ref"],
+      "properties": {
+        "completed": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "context_snapshot_ref": { "type": "string" },
+        "markdown_ref": { "type": "string" },
+        "artifact_refs": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "next_action": { "type": "string", "minLength": 1 },
+    "constraints": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "verification": {
+      "type": "object",
+      "required": ["commands_run", "commands_needed", "known_failures"],
+      "properties": {
+        "commands_run": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["command", "exit_code"],
+            "properties": {
+              "command": { "type": "string" },
+              "exit_code": { "type": ["integer", "null"] },
+              "summary": { "type": "string" }
+            },
+            "additionalProperties": false
+          }
+        },
+        "commands_needed": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "known_failures": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "graphify_context": {
+      "type": ["object", "null"],
+      "properties": {
+        "subgraph_ref": { "type": "string" },
+        "query": { "type": "string" },
+        "included_symbols": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "context_budget_hint": { "type": ["integer", "null"], "minimum": 0 },
+    "produced_at": { "type": "string", "format": "date-time" }
+  },
+  "additionalProperties": false
+}

@@ -1,6 +1,7 @@
 # Sub-agent 默认路由配置
 # 目标：让用户无需手动判断"该用哪个 sub-agent"，框架自动串联
-# 策略：保留 5 个独立 sub-agent，通过路由配置降低决策负担
+# Strategy: keep core execution sub-agents, and use routing config to reduce manual decisions.
+# coordinator is inserted only when multi-agent / multi-model / cross-session coordination is needed.
 
 workflows:
 
@@ -38,8 +39,31 @@ workflows:
   /parallel:
     # 并行任务：多个 implementer 实例同时运行
     # 用法：/start-task T-001 T-002 T-003（多任务 ID 自动并行）
+    preflight:
+      - coordinator  # Check task/file ownership, handoff state, and parallel boundaries
     parallel_agents: [implementer]
     max_concurrent: 3
+
+  /mission:
+    # Mission Lite owns task planning and validation; coordinator owns agent runtime coordination.
+    coordination_points:
+      - ASSESS
+      - DISPATCH
+      - HANDOFF
+      - RESUME
+    sub_agent: coordinator
+
+  /handoff:
+    # handoff workflow/skill still creates Markdown; coordinator handles JSON handoff,
+    # Artifact Bus references, and AGENT_RESUME decisions.
+    coordination_modes:
+      create: HANDOFF
+      resume: RESUME
+    sub_agent: coordinator
+
+  /briefing:
+    # Optional health view when registry/artifacts/locks/handoffs exist.
+    optional_health_agent: coordinator
 
   /sync-master:
     # Documented workflow: fetch + rebase; see workflows/sync-master.md
@@ -54,6 +78,22 @@ session_continuity:
 
 # Orchestrator 决策规则
 orchestration:
+  coordinator_input_sources:
+    - task-progress.md
+    - mission-plan.md
+    - validation-contract.json
+    - command-log.md
+    - handoff_markdown
+    - handoff_json
+    - artifact_state
+    - registry_entries
+    - lock_entries
+
+  coordinator_blocked_sources:
+    - product_source_edits
+    - implementation_reasoning
+    - validation_criteria_rewrites
+
   # reviewer 输入严格限制（防火墙）
   reviewer_input_sources:
     - plan_summary.json   # planner 的结构化输出

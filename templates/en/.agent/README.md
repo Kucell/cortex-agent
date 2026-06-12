@@ -42,6 +42,7 @@ Specialized agents with isolated model, tools, and context boundaries.
 | `code-reviewer` | sonnet | architecture-guard, code-evaluation, security-scan | `/ship`, `/code-review` |
 | `documenter` | haiku | changelog-generator | `/parallel`, `/ship` |
 | `session-manager` | haiku | — | Long sessions; `session assess` / `archive` / `restore` / `status` / `warm` |
+| `coordinator` | sonnet | context-budget, phase-gate, handoff, validation-contract, maturity-tracker | `/mission`, `/handoff`, `/parallel`, `/briefing` |
 
 ## 📜 Rules (selected)
 

@@ -1,8 +1,8 @@
 # 任务进度
 
-> **当前阶段**：Mission Lite 设计期（Phase 8 进行中）
+> **当前阶段**：Multi-Agent Coordinator Progress Lock 完成（Phase 9 进行中）
 > **整体进度**：99%
-> **最后更新**：2026-05-19
+> **最后更新**：2026-06-12
 
 ---
 
@@ -47,7 +47,7 @@
 - [x] 确认 npm 包名 `cortex-agent` 可用（T-004）
 - [x] 发布到 npm registry —— `npx cortex-agent` 现已可用（T-006）
 - [x] 完善 `package.json`：author、homepage、repository、files 字段（T-007）
-- [ ] `README.md` 补充快速上手 GIF 演示（T-005）
+- [x] `README.md` 补充快速上手 SVG/CSS 演示（T-005）
 - [ ] Claude Code 插件市场上架（T-008）
 
 ### Phase 6：Harness Engineering 优化（✅ 已完成）
@@ -106,7 +106,7 @@
 - [x] 实现第一版 `doc-gardening` skill，并接入 `/briefing` 与 `/ship`（T-H16）
 - [x] 新增知识维护 Runbook，为 heartbeat / cron 接入提供统一入口（T-H17）
 
-### Phase 8：Mission Lite 长周期任务编排（🔥 设计中）
+### Phase 8：Mission Lite 长周期任务编排（✅ 模板 MVP 已完成）
 
 > 设计入口：`docs/architecture.md`、`docs/architecture/mission-lite-design.md`、`docs/architecture/harness-optimization-design.md`
 > 目标：在现有 `/start-task`、`/ship`、`/handoff` 之上，补齐多 milestone 长周期任务的验证契约、结构化交接和独立验证机制。
@@ -121,7 +121,7 @@
 
 ## 🔥 当前活跃任务
 
-> 当前无活跃任务。Phase 5 收尾（T-005 ✅ / T-008 降级）已完成，等待用户下达 Coordinator 启动指令或 T-H23 推进指令。
+> Multi-Agent Coordinator 主线执行中。T-C05 Progress Lock 已完成，下一步建议执行 T-C06 Handoff 协议升级。
 
 ## 🧭 下一阶段候选（Application Legibility）
 
@@ -142,20 +142,33 @@
 | 任务 ID | 优先级 | 描述 | 进度 |
 | :--- | :--- | :--- | :--- |
 | T-C01 | P0 | Multi-Agent Coordinator 设计文档 | 100% |
-| T-C02 | P0 | `coordinator` sub-agent 定义 | 0% |
-| T-C03 | P0 | Agent Registry（`.agent/registry/agents.json` + check-in/out 脚本） | 0% |
-| T-C04 | P0 | Artifact Bus（`artifact-schema.json` + 读写辅助） | 0% |
-| T-C05 | P1 | Progress Lock（`acquire/renew/release` + TTL） | 0% |
+| T-C01A | P0 | Coordinator 前置架构对齐：Harness / Mission Lite / Coordinator 边界与任务拆解同步 | 100% |
+| T-C02 | P0 | `coordinator` sub-agent 定义 | 100% |
+| T-C03 | P0 | Agent Registry（`.agent/registry/agents.json` + check-in/out 脚本） | 100% |
+| T-C04 | P0 | Artifact Bus（`artifact-schema.json` + 读写辅助） | 100% |
+| T-C05 | P1 | Progress Lock（`acquire/renew/release` + TTL） | 100% |
 | T-C06 | P0 | handoff skill 升级：双产物 + `AGENT_RESUME` 模式 | 0% |
 | T-C07 | P1 | `routing-defaults.yml` 扩展 `model_registry` | 0% |
 | T-C08 | P1 | `/mission` 状态机改造：显式 HANDOFF + RESUME 状态 | 0% |
 | T-C09 | P1 | 端到端验证：Claude → Codex 切换场景 | 0% |
 | T-C10 | P2 | `/briefing` 接入 coordinator 健康度板块 | 0% |
 
-## 🧭 下一阶段候选（Animation · 动画库评估）
+## 🧭 下一阶段候选（Graphify · 知识图谱集成）
+
+> 提案文档：`docs/architecture/graphify-integration-proposal.md`
+> 目标：通过 Artifact Bus 扩展和 Handoff 协议联动，将 Graphify 源码知识图谱接入 Coordinator 多模型交接链路
+> 启动条件：T-G01/T-G02 随时可独立启动；T-G03 随 T-C06 同期实施
+
+| 任务 ID | 优先级 | 描述 | 进度 |
+| :--- | :--- | :--- | :--- |
+| T-G01 | P1 | `artifact-schema.json` 加 `knowledge-graph` 类型 | 100% |
+| T-G02 | P1 | `templates/zh\|en/.agent/plugins/graphify/` 模板（README + config.yml） | 0% |
+| T-G03 | P1 | `extract-subgraph.js` 裁剪脚本 + T-C06 handoff JSON 加 `graphify_context` 可选字段 | 0% |
+
+## 🧭 下一阶段候选（Animation · 动画与视频化资产）
 
 > 入口评估：`docs/architecture/animation-library-evaluation.md`
-> 结论：现状（CSS + Mermaid）覆盖 90% 需求；如需交互式动画，首选 **Rive**（Web 编辑器 + 免费 + 状态机内置），跳过 Lottie / GSAP / 3D / 视频方案。仅在"必须交互"时启动此区。
+> 结论：现状（CSS + Mermaid）继续作为 README 主路径；Animation 方向保留为正式候选。轻量 Web 原型优先 **Anime.js**，高保真交互状态机优先 **Rive**，视频化教程 / 发布素材优先 **Remotion**。动画工具链不得进入 cortex-agent CLI runtime。
 
 | 任务 ID | 优先级 | 描述 | 进度 |
 | :--- | :--- | :--- | :--- |
@@ -163,6 +176,8 @@
 | T-A02 | P2 | `quick-start.svg` 升级为 `quick-start.riv`（hover 重放 + 跳步） | 0% |
 | T-A03 | P2 | 产 Coordinator 调度演示原型（依赖 T-C02~C10） | 0% |
 | T-A04 | P2 | `docs/assets/` 加入 Rive 加载说明 + cspell 加词 | 0% |
+| T-A05 | P2 | Anime.js 试点：产出 Coordinator 调度 Web 原型 | 0% |
+| T-A06 | P2 | Remotion 试点：生成 Claude → Codex handoff 演示视频 | 0% |
 
 ---
 
@@ -170,6 +185,11 @@
 
 - **T-005**：README 快速上手演示落地（SVG/CSS 动画版），新增 `docs/assets/quick-start.svg` + `docs/assets/README.md`，README "快速开始" 节嵌入 5 步上手流程
 - **T-C01**：完成 Multi-Agent Coordinator 设计稿，新增 `docs/architecture/multi-agent-coordinator.md`，定义 Agent Registry / Artifact Bus / Progress Lock / Handoff 协议四个核心构件，与现有 `/parallel` / `/mission` / `session-manager` 关系明确，10 个子任务 T-C02~T-C10 拆解完成
+- **T-C01A**：完成 Coordinator 前置架构对齐，明确 Harness Optimization 是治理底座、Mission Lite 是长任务计划与验证层、Multi-Agent Coordinator 是完整多 agent 协调主线；同步 `docs/architecture.md`、`harness-optimization-design.md`、`mission-lite-design.md` 与 `multi-agent-coordinator.md`
+- **T-C02**：新增 `coordinator` sub-agent 定义，明确 ASSESS / REGISTER / DISPATCH / HANDOFF / RESUME / HEALTH 模式、权限防火墙和 `coordination_report` 输出契约；同步本地 `.agent/`、中英模板、routing defaults、README、总架构与 sub-agent 架构文档
+- **T-C03**：新增 Agent Registry schema、`agents.json` 初始状态与零依赖 `agent-registry.js` 脚本，支持 check-in、heartbeat、check-out、list-active、get-conflicts、mark-stale；同步本地 `.agent/` 与中英模板，并验证脚本核心命令可运行
+- **T-C04**：新增 Artifact Bus schema、state schema 与零依赖 `artifact-bus.js` 脚本，支持 append、list、read、state、validate；同步本地 `.agent/` 与中英模板，coordinator 可通过 Artifact Bus 读写 plan/execution/review/handoff/validation artifacts
+- **T-C05**：新增 Progress Lock schema、`lock-events.json` 与零依赖 `progress-lock.js` 脚本，支持 acquire、renew、release、inspect、list-held、sweep-expired；同步本地 `.agent/` 与中英模板，coordinator 可在 dispatch/resume/handoff/health 阶段处理本地任务级与文件级互斥
 - **T-H24**：完成 Mission Lite 架构设计，新增 `docs/architecture/mission-lite-design.md`，补充三角色模型、验证契约、命令日志、milestone 状态机与 `/handoff` 衔接方式
 - **T-H25**：新增 `validation-contract` skill，定义 CREATE / CHECK / SUMMARIZE 模式、assertion 类型、契约规则和最小 JSON 模板
 - **T-H26**：新增 `/mission` workflow，定义 create / status / resume / validate 子命令、mission 状态机、文件结构和质量标准
@@ -214,8 +234,8 @@
 
 - **[Knowledge] knowledge lint 与 doc-gardening 已接入 `/briefing` 与 `/ship` 说明层**：真实 heartbeat / cron automation 仍未创建
 - **[Runtime] runtime evidence 摘要文件尚未实现**：`runtime-health.json` / `browser-verification.json` / `verification-summary.json` 仍停留在设计层
-- **[Mission Lite] 当前为模板级编排**：`/mission`、验证契约和模板已可用，但尚未引入自动脚本或 CLI 状态管理
-- **[Coordinator] T-C02~T-C10 暂存中**：Multi-Agent Coordinator 设计稿已落地（`docs/architecture/multi-agent-coordinator.md`），用户决策走 **C 模式（暂存）**——T-005 已 ✅ 100%、T-008 已降级为低优（不在优先），**启动条件已达成**，等用户下达 "开始 T-C02" 指令
+- **[Mission Lite] 模板 MVP 已完成**：`/mission`、验证契约和模板已可用；后续 Mission 增强应优先服务 Coordinator 集成或 runtime evidence，而不是继续扩张基础概念
+- **[Coordinator] T-C06~T-C10 已进入主线执行状态**：Multi-Agent Coordinator 保持完整目标，不缩减为 Lite；T-C01A/T-C02/T-C03/T-C04/T-C05 已完成，下一步进入 T-C06 Handoff 协议升级
 - **[Publish] T-008 Claude Code 插件市场上架降级**：用户明确"T-008 不在优先"，等插件市场上架流程官方文档完善或社区契机出现时再启动
 - **[Harness] upgrade 不覆盖已有文件**：改造文件（ship.md/planner.md 等）在已安装用户侧不会自动同步，需版本说明或迁移指南
 - **[Harness] context-index.json 准确性**：reference frontmatter 的 `estimated_tokens` 依赖人工维护，初期可能不准确
