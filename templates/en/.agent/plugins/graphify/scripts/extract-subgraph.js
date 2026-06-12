@@ -13,10 +13,11 @@
 
 const fs = require('fs');
 const path = require('path');
+const { spawnSync } = require('child_process');
 
 const root = process.cwd();
 const CONFIG_PATH = path.join(root, '.agent/plugins/graphify/config.yml');
-const GRAPHIFY_MAP = path.join(root, '.graphify/map.json');
+const GRAPHIFY_MAP = path.join(root, 'graphify-out', 'graph.json');
 
 // ── CLI args ──────────────────────────────────────────────────────────────────
 
@@ -36,7 +37,7 @@ function parseArgs() {
 
 function checkGraphifyAvailable() {
   if (!fs.existsSync(GRAPHIFY_MAP)) {
-    console.warn('⚠️  Graphify map not found (.graphify/map.json). Run: npx graphify scan');
+    console.warn('⚠️  Graphify map not found (graphify-out/graph.json). Run: graphify update .');
     console.warn('    Skipping subgraph extraction (fallback: skip).');
     return false;
   }
@@ -50,21 +51,21 @@ function extractSubgraph(mapData, entryFiles, maxDepth, maxNodes) {
   const edges = [];
 
   const allNodes = mapData.nodes || [];
-  const allEdges = mapData.edges || [];
+  const allLinks = mapData.links || [];
 
   // Build adjacency
   const adj = {};
   for (const node of allNodes) {
     adj[node.id] = [];
   }
-  for (const edge of allEdges) {
-    if (adj[edge.from]) adj[edge.from].push(edge.to);
+  for (const link of allLinks) {
+    if (adj[link.source]) adj[link.source].push(link.target);
   }
 
   // BFS from entry files
   const queue = [];
   for (const node of allNodes) {
-    if (entryFiles.some(f => node.path && node.path.includes(f.replace(/^\.\//, '')))) {
+    if (entryFiles.some(f => node.source_file && node.source_file.includes(f.replace(/^\.\//, '')))) {
       queue.push({ id: node.id, depth: 0 });
       nodes.set(node.id, node);
     }
@@ -86,10 +87,10 @@ function extractSubgraph(mapData, entryFiles, maxDepth, maxNodes) {
     }
   }
 
-  // Collect relevant edges
-  for (const edge of allEdges) {
-    if (nodes.has(edge.from) && nodes.has(edge.to)) {
-      edges.push(edge);
+  // Collect relevant links
+  for (const link of allLinks) {
+    if (nodes.has(link.source) && nodes.has(link.target)) {
+      edges.push(link);
     }
   }
 
@@ -109,28 +110,31 @@ function registerToArtifactBus(taskId, subgraphPath, subgraph) {
   const artifactBusScript = path.join(root, '.agent/artifacts/scripts/artifact-bus.js');
   if (!fs.existsSync(artifactBusScript)) return;
 
-  try {
-    const artifactBus = require(artifactBusScript);
-    artifactBus.append({
-      task_id: taskId,
-      agent_id: 'graphify',
-      kind: 'knowledge-graph',
-      summary: `Graphify subgraph for ${taskId} (${subgraph.total_nodes} nodes)`,
-      refs: [path.relative(root, subgraphPath)],
-      payload: {
-        graphify_version: '1.x',
-        map_path: path.relative(root, GRAPHIFY_MAP),
-        subgraph_path: path.relative(root, subgraphPath),
-        entry_files: subgraph.entry_files,
-        generated_at: subgraph.extracted_at,
-        total_nodes: subgraph.total_nodes,
-        total_edges: subgraph.total_edges,
-      },
-    });
-    console.log(`✅ Registered to Artifact Bus as kind=knowledge-graph`);
-  } catch {
-    // artifact-bus not available, skip silently
+  const payload = JSON.stringify({
+    graphify_version: '1.x',
+    map_path: path.relative(root, GRAPHIFY_MAP),
+    subgraph_path: path.relative(root, subgraphPath),
+    entry_files: subgraph.entry_files,
+    generated_at: subgraph.extracted_at,
+    total_nodes: subgraph.total_nodes,
+    total_edges: subgraph.total_edges,
+  });
+
+  const result = spawnSync('node', [
+    artifactBusScript,
+    'append',
+    '--task-id', taskId,
+    '--agent-id', 'graphify',
+    '--kind', 'knowledge-graph',
+    '--summary', `Graphify subgraph for ${taskId} (${subgraph.total_nodes} nodes)`,
+    '--refs', path.relative(root, subgraphPath),
+    '--payload-json', payload,
+  ], { encoding: 'utf8', cwd: root });
+
+  if (result.status === 0) {
+    console.log('✅ Registered to Artifact Bus as kind=knowledge-graph');
   }
+  // silently skip on failure
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────

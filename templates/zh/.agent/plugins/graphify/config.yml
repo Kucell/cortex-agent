@@ -1,6 +1,6 @@
 graphify:
   version: ">=1.0.0"
-  map_path: ".graphify/map.json"
+  map_path: "graphify-out/graph.json"
 
   # 扫描范围（相对项目根目录）
   include:

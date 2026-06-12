@@ -6,22 +6,48 @@
 ## Prerequisites
 
 ```bash
-npx graphify init        # Initialize .graphify/ directory
-npx graphify scan        # Build the project knowledge graph (.graphify/map.json)
+pip install graphifyy && graphify install
 ```
 
+> macOS externally-managed environments: `pip install --break-system-packages graphifyy && graphify install`
+>
+> Windows PATH issues: use `pipx install graphifyy`
+
 Full docs: https://github.com/safishamsi/graphify
+
+## Initialize the Knowledge Graph
+
+Run from the project root:
+
+```bash
+# Code-only graph (no LLM API key required)
+graphify update .
+
+# Full graph (code + docs + Markdown, requires API key)
+ANTHROPIC_API_KEY=sk-... graphify .
+```
+
+Output structure:
+
+```text
+graphify-out/
+├── graph.json       Persistent knowledge graph (read by extract-subgraph.js)
+├── graph.html       Interactive visualization (open in browser)
+└── GRAPH_REPORT.md  Key nodes and community summaries
+```
 
 ## How It Works
 
 ```
-Codebase → Graphify full map → extract-subgraph.js → task-scoped subgraph
-                                                              ↓
-                                    Artifact Bus (kind: knowledge-graph)
-                                                              ↓
-                                    Handoff JSON (graphify_context field)
-                                                              ↓
-                                              Incoming agent navigates directly
+Codebase → graphify update . → graphify-out/graph.json
+                                        ↓
+             extract-subgraph.js --task T-C06 --files "lib/commands.js"
+                                        ↓
+             .agent/artifacts/T-C06/graphify-subgraph.json
+                                        ↓
+             Artifact Bus (kind: knowledge-graph) ← coordinator can reference
+                                        ↓
+             Handoff JSON (graphify_context field) ← incoming agent navigates directly
 ```
 
 ## Usage
@@ -36,10 +62,13 @@ node .agent/plugins/graphify/scripts/extract-subgraph.js \
 
 Output: `.agent/artifacts/<task_id>/graphify-subgraph.json`
 
-### 2. Subgraph auto-registers to Artifact Bus
+### 2. Query the graph directly in Claude Code
 
-The script writes a `kind: knowledge-graph` artifact automatically.
-The coordinator can reference it during handoff.
+```
+/graphify query "how does the handoff protocol relate to the artifact bus?"
+/graphify path "handoff-protocol.js" "artifact-bus.js"
+/graphify explain "coordinator"
+```
 
 ### 3. Handoff carries graph context
 
@@ -62,5 +91,5 @@ Edit `.agent/plugins/graphify/config.yml` to adjust scan scope and subgraph dept
 
 ## Fallback Behavior
 
-If Graphify is not installed (`.graphify/map.json` missing), `extract-subgraph.js`
-exits silently without error. Handoff continues normally with `graphify_context.enabled: false`.
+If `graphify-out/graph.json` is missing, `extract-subgraph.js` exits silently (exit 0).
+Handoff continues normally with `graphify_context.enabled: false`.
