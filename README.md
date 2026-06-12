@@ -11,7 +11,6 @@
 - **结构化交接**：`/handoff` 为跨 Agent、跨会话和 sub-agent 接力生成轻量交接文档，避免依赖对话记忆。
 - **长周期任务编排**：`/mission` 通过 milestone、验证契约和命令日志支撑多阶段任务稳定推进。
 - **熵治理闭环**：`entropy-scanner` 周期扫描知识库漂移，PostCommit Hook 自动修复，保持 `.agent/` 长期健康。
-- **自举验证**：`self-check` skill 让框架使用自身能力验证自身，配合 `/ship` CLEAN 阶段实现自检自愈。
 - **工具无关**：同一套 `.agent/` 配置通过符号链接和指令文件适配 11 个主流 AI 平台。
 
 ## 快速开始
