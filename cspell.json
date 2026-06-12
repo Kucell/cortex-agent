@@ -69,7 +69,9 @@
     "easing",
     "autoplay",
     "stateMachines",
-    "unpkg"
+    "unpkg",
+    "pixso",
+    "Pixso"
   ],
   "ignoreRegExpList": [
     "/<!-- cspell:disable -->[\\s\\S]*?<!-- cspell:enable -->/g",
