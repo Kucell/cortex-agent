@@ -57,7 +57,10 @@
     "greensock",
     "framer",
     "spine",
-    "AfterEffects"
+    "AfterEffects",
+    "graphify",
+    "Graphify",
+    "graphifylabs"
   ],
   "ignoreRegExpList": [
     "/<!-- cspell:disable -->[\\s\\S]*?<!-- cspell:enable -->/g",

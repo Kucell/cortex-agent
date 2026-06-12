@@ -3,9 +3,9 @@
 
 # Multi-Agent Coordinator（多 agent × 多模型协调层）设计
 
-> 状态：设计稿 · v0.1
+> 状态：主线架构 · v0.4
 > 范围：A. Agent Registry · B. Artifact Bus · C. Progress Lock · D. Handoff 协议升级
-> 不写代码，仅出设计
+> 当前阶段：T-C06 Handoff 协议升级已完成，随后进入 T-C07 Model Registry
 
 ## 0. 问题陈述
 
@@ -18,6 +18,24 @@ cortex-agent 当前支持多 sub-agent 与多模型路由（`routing-defaults.ym
 5. **handoff 是给人看的**——`.agent/handoffs/*.md` 让"人"能接手，但下一个 agent 需手工解析
 
 本文档提出 **Coordinator** 角色与四个核心构件（Registry / Artifact Bus / Progress Lock / Handoff Protocol），在不推翻现有 `/parallel` / `/mission` / `session-manager` 的前提下叠加。
+
+本方案不缩减为 Lite 版本。Coordinator 是 cortex-agent 下一阶段完整主线，目标是建立多 agent / 多模型 / 多会话下的统一协调层；工程实现采用分阶段交付，避免一次性大爆炸。
+
+## 0.1 架构铺垫
+
+Coordinator 建立在两个已完成或已成型的基础之上：
+
+| 基础 | 已提供能力 | Coordinator 如何复用 |
+|---|---|---|
+| Harness Optimization | `.agent/` 治理层、`docs/` 知识层、context-budget、phase-gate、knowledge-lint、maturity-tracker | 所有 Coordinator 运行态文件、sub-agent、skill、workflow 扩展都落在 `.agent/`；设计与经验沉淀到 `docs/` |
+| Mission Lite | mission-plan、validation-contract、command-log、milestone、handoff 状态 | Artifact Bus 索引这些产物；Coordinator 在 mission 执行阶段负责 agent 登记、锁、handoff JSON 和 resume |
+
+边界原则：
+
+- Harness 定义治理与资产边界，不实现调度。
+- Mission Lite 定义长任务计划与验证，不维护 agent 运行态。
+- Coordinator 定义多 agent 协调运行态，不重写 mission scope 或业务需求。
+- Handoff 是 Coordinator 的协议产物之一，不等于完整 Coordinator。
 
 ## 1. 设计目标
 
@@ -45,22 +63,43 @@ cortex-agent 当前支持多 sub-agent 与多模型路由（`routing-defaults.ym
 - 上下文独立，不污染主代理
 - 可独立演进
 
+第一版 `coordinator` sub-agent 应具备完整职责边界声明，即使底层构件分阶段实现：
+
+| 阶段 | coordinator 需要知道 | coordinator 可实际执行 |
+|---|---|---|
+| T-C02 | Registry / Artifact Bus / Lock / Handoff / Model Registry 的完整设计边界 | 读取现有计划和 handoff，输出下一步协调建议 |
+| T-C03~T-C04 | registry 与 artifact bus schema | 登记 agent、索引产物、更新 state |
+| T-C05~T-C06 | lock 与 handoff JSON 协议 | 仲裁本地锁、生成/消费 AGENT_RESUME |
+| T-C07~T-C08 | model registry 与 mission resume 状态 | 根据能力选择接手模型，衔接 `/mission` HANDOFF / RESUME |
+| T-C09~T-C10 | E2E 验证与健康度 | 支撑 Claude → Codex 切换验证，并输出 briefing health |
+
 ### 2.2 四个构件
 
 #### A. Agent Registry
 
 **位置**：`/Users/xueyq/myworks/cortex-agent/.agent/registry/agents.json`
 
+**状态**：T-C03 已落地。当前提供：
+
+- `.agent/registry/agents.json`
+- `.agent/registry/agent-registry.schema.json`
+- `.agent/registry/scripts/agent-registry.js`
+- `templates/en/.agent/registry/*`
+- `templates/zh/.agent/registry/*`
+
 **Schema**：
 
 ```json
 {
+  "version": 1,
+  "updated_at": "2026-06-12T00:00:00.000Z",
   "agents": [
     {
       "agent_id": "implementer-001",
       "role": "implementer",
       "model": "claude-sonnet-4-6",
       "task_id": "T-H23",
+      "mission_id": "M-001",
       "session_id": "s-2026-06-10-001",
       "started_at": "2026-06-10T12:00:00Z",
       "last_heartbeat": "2026-06-10T12:15:00Z",
@@ -68,29 +107,58 @@ cortex-agent 当前支持多 sub-agent 与多模型路由（`routing-defaults.ym
       "owned_files": ["src/validation/contract.ts"],
       "pending_artifacts": ["003-execution.json"]
     }
+  ],
+  "event_log": [
+    {
+      "event_id": "E-...",
+      "type": "check_in",
+      "agent_id": "implementer-001",
+      "task_id": "T-H23",
+      "timestamp": "2026-06-10T12:00:00Z",
+      "details": {}
+    }
   ]
 }
 ```
 
 **接口**：
-- `check_in(agent_id, role, model, task_id) → registry_entry`
-- `heartbeat(agent_id) → updated_entry`
-- `check_out(agent_id, status) → updated_entry`
-- `list_active() → [entry]`（按 task_id 过滤）
-- `get_conflicts(task_id) → [agent_id]`（检测同 task 多 agent）
+
+```bash
+node .agent/registry/scripts/agent-registry.js check-in --agent-id implementer-001 --role implementer --model codex --task-id T-C03
+node .agent/registry/scripts/agent-registry.js heartbeat --agent-id implementer-001
+node .agent/registry/scripts/agent-registry.js check-out --agent-id implementer-001 --status completed
+node .agent/registry/scripts/agent-registry.js list-active --task-id T-C03
+node .agent/registry/scripts/agent-registry.js get-conflicts --task-id T-C03 --owned-files src/a.ts
+node .agent/registry/scripts/agent-registry.js mark-stale --ttl-seconds 300
+```
 
 **写入规则**：
 - append-only，每次操作追加 `event_log` 数组，便于审计
 - `last_heartbeat` 超时（默认 5 分钟）视为 `failed`，触发自动 handoff
+- 脚本使用原子 rename 写入，避免半写状态
+- 不保存源码、完整 diff、PRD 或长命令输出，只保存路径、状态和 artifact 引用
 
 #### B. Artifact Bus
 
 **位置**：`/Users/xueyq/myworks/cortex-agent/.agent/artifacts/<task-id>/*`
 
+**状态**：T-C04 已落地。当前提供：
+
+- `.agent/artifacts/artifact-schema.json`
+- `.agent/artifacts/state-schema.json`
+- `.agent/artifacts/scripts/artifact-bus.js`
+- `templates/en/.agent/artifacts/*`
+- `templates/zh/.agent/artifacts/*`
+
 **结构**：
 
 ```
-.agent/artifacts/T-H23/
+.agent/artifacts/
+  ├── artifact-schema.json
+  ├── state-schema.json
+  ├── scripts/
+  │   └── artifact-bus.js
+  └── T-H23/
   ├── 001-plan.json        # 第 1 个有序产物（planner 输出）
   ├── 002-execution.json   # implementer 检查点 1
   ├── 003-execution.json   # implementer 检查点 2
@@ -104,16 +172,30 @@ cortex-agent 当前支持多 sub-agent 与多模型路由（`routing-defaults.ym
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "type": "object",
-  "required": ["seq", "task_id", "agent_id", "produced_at", "kind", "payload"],
+  "required": ["artifact_id", "seq", "task_id", "agent_id", "produced_at", "kind", "payload"],
   "properties": {
+    "artifact_id": { "type": "string" },
     "seq": { "type": "integer", "minimum": 1 },
-    "task_id": { "type": "string", "pattern": "^T-[A-Z0-9-]+$" },
+    "task_id": { "type": "string" },
+    "mission_id": { "type": ["string", "null"] },
     "agent_id": { "type": "string" },
     "produced_at": { "type": "string", "format": "date-time" },
-    "kind": { "enum": ["plan", "execution", "review", "handoff", "validation"] },
+    "kind": { "enum": ["plan", "execution", "review", "handoff", "validation", "state", "note"] },
+    "summary": { "type": "string" },
+    "refs": { "type": "array", "items": { "type": "string" } },
     "payload": { "type": "object" }
   }
 }
+```
+
+**接口**：
+
+```bash
+node .agent/artifacts/scripts/artifact-bus.js append --task-id T-C04 --agent-id coordinator --kind plan --payload-json '{"steps":[]}'
+node .agent/artifacts/scripts/artifact-bus.js list --task-id T-C04
+node .agent/artifacts/scripts/artifact-bus.js read --task-id T-C04 --seq 1
+node .agent/artifacts/scripts/artifact-bus.js state --task-id T-C04
+node .agent/artifacts/scripts/artifact-bus.js validate --task-id T-C04
 ```
 
 **关键属性**：
@@ -121,6 +203,7 @@ cortex-agent 当前支持多 sub-agent 与多模型路由（`routing-defaults.ym
 - **跨模型可读**（JSON 协议，不依赖 LLM 特有格式）
 - **state.json 是窗口**——任何新 agent 读 `state.json` 即可知道"该从哪步继续"
 - **不重复存储**——大块源码用 git commit ref 引用，避免 Bus 膨胀
+- **原子写入**——脚本写入 artifact 和 state 时使用临时文件 + rename
 
 **迁移策略**：
 - 现有 `plan_summary.json` / `execution_report.json` / `review_verdict.json` 用脚本迁到 Bus
@@ -129,11 +212,19 @@ cortex-agent 当前支持多 sub-agent 与多模型路由（`routing-defaults.ym
 
 #### C. Progress Lock
 
-**位置**：`/Users/xueyq/myworks/cortex-agent/.agent/locks/<scope>.lock`
+**位置**：`/Users/xueyq/myworks/cortex-agent/.agent/locks/<encoded-scope>.lock.json`
+
+**状态**：T-C05 已落地。当前提供：
+
+- `.agent/locks/progress-lock.schema.json`
+- `.agent/locks/lock-events.json`
+- `.agent/locks/scripts/progress-lock.js`
+- `templates/en/.agent/locks/*`
+- `templates/zh/.agent/locks/*`
 
 **两级锁**：
-- **文件级锁**：`locks/file:src/auth.ts.lock` —— 防止两 agent 并发改同一文件
-- **任务级锁**：`locks/task:T-H23.lock` —— 防止两 agent 跑同一任务
+- **文件级锁**：scope 为 `file:src/auth.ts` —— 防止两 agent 并发改同一文件
+- **任务级锁**：scope 为 `task:T-H23` —— 防止两 agent 跑同一任务
 
 **Lock 文件格式**：
 
@@ -141,34 +232,64 @@ cortex-agent 当前支持多 sub-agent 与多模型路由（`routing-defaults.ym
 {
   "scope": "file:src/auth.ts",
   "held_by": "implementer-001",
+  "task_id": "T-H23",
+  "mission_id": null,
   "acquired_at": "2026-06-10T12:00:00Z",
   "expires_at": "2026-06-10T12:05:00Z",
-  "ttl_seconds": 300
+  "ttl_seconds": 300,
+  "metadata": {}
 }
 ```
 
 **接口**：
-- `acquire(scope, agent_id, ttl) → lock | null`（失败立即返回 null）
-- `renew(agent_id) → updated_lock`（heartbeat 时续期）
-- `release(agent_id, scope) → boolean`
-- `list_held(agent_id) → [lock]`
+
+```bash
+node .agent/locks/scripts/progress-lock.js acquire --scope task:T-C05 --agent-id coordinator --ttl-seconds 300
+node .agent/locks/scripts/progress-lock.js renew --scope task:T-C05 --agent-id coordinator
+node .agent/locks/scripts/progress-lock.js release --scope task:T-C05 --agent-id coordinator
+node .agent/locks/scripts/progress-lock.js inspect --scope task:T-C05
+node .agent/locks/scripts/progress-lock.js list-held --agent-id coordinator
+node .agent/locks/scripts/progress-lock.js sweep-expired
+```
+
+命令语义：
+
+- `acquire(scope, agent_id, ttl) → { acquired, lock }`：成功时写入 lock；失败时返回当前 holder
+- `renew(scope, agent_id, ttl) → { renewed, lock }`：仅当前未过期 holder 可续期
+- `release(scope, agent_id) → { released }`：仅当前未过期 holder 可释放
+- `inspect(scope) → { exists, expired, lock }`
+- `list-held(agent_id?) → [lock]`
+- `sweep-expired() → { swept }`
 
 **防死锁**：
 - TTL 默认 5 分钟
 - 写入 `acquire` 时检测 `expires_at`，过期则可被任何 agent 抢占
 - 抢占事件写入 `event_log`，原持有者下次操作会收到 `lock_lost` 错误并触发 handoff
+- `sweep-expired` 可清理过期本地锁，不影响未过期 holder
 
 **实现**：
 - 本地：用 `fs.openSync(path, 'wx')`（O_CREAT | O_EXCL）+ JSON 元数据
+- scope 文件名使用 base64url 编码，避免 `file:src/auth.ts` 等 scope 直接成为嵌套路径
+- `lock-events.json` 记录 `acquire`、`acquire_blocked`、`renew`、`release`、`expired_removed` 等事件
 - 跨机器：升级为 Redis/etcd（**本轮不实现**，先支持本地 Codex/Claude 切换）
 
 #### D. Handoff Protocol（结构化 agent-to-agent 交接）
 
 **升级现有 `handoff` skill**——从"给人看的 markdown"变成"带契约的 JSON"。
 
+**状态**：T-C06 已落地。当前提供：
+
+- `.agent/handoffs/handoff.schema.json`
+- `.agent/handoffs/scripts/handoff-protocol.js`
+- `.agent/handoffs/README.md`
+- `templates/en/.agent/handoffs/*`
+- `templates/zh/.agent/handoffs/*`
+- `.agent/skills/handoff/SKILL.md` 与中英模板已支持 `HUMAN_RESUME` / `AGENT_RESUME`
+- `.agent/workflows/handoff.md` 与中英模板已支持 Markdown + JSON 双产物
+
 **位置**：
 - Markdown 部分：`/Users/xueyq/myworks/cortex-agent/.agent/handoffs/<handoff-id>.md`（保留）
-- JSON 部分：写入 Artifact Bus（`kind: handoff`）
+- JSON 部分：`/Users/xueyq/myworks/cortex-agent/.agent/handoffs/<handoff-id>.json`，并写入 Artifact Bus（`kind: handoff`）
 
 **Schema**：
 
@@ -186,30 +307,62 @@ cortex-agent 当前支持多 sub-agent 与多模型路由（`routing-defaults.ym
     "required_capabilities": ["code_generation", "test_writing"]
   },
   "task_id": "T-H23",
+  "mission_id": "M-001",
+  "mode": "AGENT_RESUME",
   "task_progress": {
     "current_step": "step-3-of-7",
     "completed_steps": ["step-1", "step-2"],
-    "in_progress": "writing src/validation/contract.ts"
+    "in_progress": "writing src/validation/contract.ts",
+    "remaining_steps": ["step-3", "step-4"]
   },
   "artifacts": {
     "completed": ["001-plan", "002-execution"],
-    "context_snapshot_ref": ".agent/artifacts/T-H23/state.json"
+    "context_snapshot_ref": ".agent/artifacts/T-H23/state.json",
+    "markdown_ref": ".agent/handoffs/20260610-123000-heart-rate.md",
+    "artifact_refs": []
   },
   "next_action": "complete the validator function and add 2 unit tests",
   "constraints": ["do not modify src/user/"],
+  "verification": {
+    "commands_run": [
+      {
+        "command": "npm test -- validation",
+        "exit_code": 0,
+        "summary": "passed"
+      }
+    ],
+    "commands_needed": ["run dashboard integration test"],
+    "known_failures": []
+  },
+  "graphify_context": null,
   "context_budget_hint": 12000,
   "produced_at": "2026-06-10T12:30:00Z"
 }
 ```
 
+**接口**：
+
+```bash
+node .agent/handoffs/scripts/handoff-protocol.js validate --payload-file .agent/handoffs/H-20260610-123000-heart-rate.json
+node .agent/handoffs/scripts/handoff-protocol.js publish --payload-file .agent/handoffs/H-20260610-123000-heart-rate.json --markdown-path .agent/handoffs/20260610-123000-heart-rate.md --agent-id coordinator
+node .agent/handoffs/scripts/handoff-protocol.js resume-prompt --payload-file .agent/handoffs/H-20260610-123000-heart-rate.json
+```
+
 **两种消费模式**：
 - `HUMAN_RESUME`（旧）：人读 markdown，决策下一步
-- `AGENT_RESUME`（新）：agent 读 JSON，从 `task_progress.current_step` 继续
+- `AGENT_RESUME`（新）：agent 读 JSON，从 `task_progress.current_step` 与 `next_action` 继续
+
+**Graphify 扩展点**：
+
+- `graphify_context` 是 T-C06 预留的可选字段。
+- 当 T-G03 落地后，可引用知识图谱子图 artifact，帮助接手 agent 读取最小相关代码结构。
+- 在没有子图时，该字段为 `null` 或省略，不阻塞 handoff。
 
 ## 3. 与现有体系的关系
 
 | 现有 | 与 Coordinator 的关系 |
 |---|---|
+| Harness Optimization | Coordinator 的治理底座；约束其必须保持模板驱动、零 CLI runtime 依赖、平台无关和纯加法升级 |
 | `/parallel` | worker 启动前必须 `registry.check_in` + `lock.acquire`；同 batch 互不依赖原则不变，但锁机制作为安全网 |
 | `/mission` | Artifact Bus 成为 mission 的存储后端——`mission-plan.md` 等价于 `artifacts/<M-id>/000-scope.json`（kind: plan） |
 | `handoff` skill | 升级为双产物（markdown + JSON），新增 `AGENT_RESUME` 模式 |
@@ -319,22 +472,42 @@ model_registry:
 
 ## 7. 子任务清单（实现时按此推进）
 
-按依赖关系与投入产出比排序：
+按依赖关系与投入产出比排序。完整 Coordinator 目标不变，但拆成可独立交付的任务：
 
 | ID | 任务 | 依赖 | 估时 | 优先级 |
 |---|---|---|---|---|
 | T-C01 | `docs/architecture/multi-agent-coordinator.md`（本文档） | — | 1h | P0 |
-| T-C02 | `coordinator` sub-agent 定义（`.agent/sub-agents/coordinator.md`） | T-C01 | 2h | P0 |
-| T-C03 | Agent Registry schema + `agents.json` 模板 + check-in/out 脚本 | T-C02 | 4h | P0 |
-| T-C04 | Artifact Bus：`artifact-schema.json` + 读写辅助函数 | T-C02 | 4h | P0 |
-| T-C05 | Progress Lock：`acquire/renew/release` 脚本 + TTL 处理 | T-C02 | 3h | P1 |
-| T-C06 | handoff skill 升级：双产物 + `AGENT_RESUME` 模式 | T-C04 | 3h | P0 |
+| T-C01A | Coordinator 前置架构对齐：Harness / Mission Lite / Coordinator 边界与任务拆解同步 | T-C01 | 1h | P0 |
+| T-C02 | `coordinator` sub-agent 定义（`.agent/sub-agents/coordinator.md`），包含完整职责边界与阶段化能力声明 | T-C01A | 2h | P0 |
+| T-C03 | Agent Registry schema + `agents.json` 模板 + check-in/out 脚本 | T-C02 | 4h | P0 · done |
+| T-C04 | Artifact Bus：`artifact-schema.json` + 读写辅助函数 | T-C02 | 4h | P0 · done |
+| T-C05 | Progress Lock：`acquire/renew/release` 脚本 + TTL 处理 | T-C02 | 3h | P1 · done |
+| T-C06 | handoff skill 升级：双产物 + `AGENT_RESUME` 模式 | T-C04 | 3h | P0 · done |
 | T-C07 | `routing-defaults.yml` 扩展 `model_registry` | T-C02 | 2h | P1 |
 | T-C08 | `/mission` 状态机改造：显式 HANDOFF + RESUME 状态 | T-C04, T-C06 | 4h | P1 |
 | T-C09 | 端到端验证：起一个 M 任务，模拟 Claude → Codex 切换 | T-C03~T-C08 | 4h | P1 |
 | T-C10 | 文档更新：`/briefing` 加入 coordinator 健康度板块 | T-C03, T-C05 | 2h | P2 |
 
 **总估时**：~27 小时（约 3-4 个工作日）
+
+### 7.1 分阶段交付计划
+
+| 阶段 | 包含任务 | 目标 | 验收 |
+|---|---|---|---|
+| Phase C0：架构对齐 | T-C01A | Harness / Mission Lite / Coordinator 边界一致 | 三份架构文档与 task-progress 同步 |
+| Phase C1：Coordinator 角色 | T-C02 | 定义完整 coordinator sub-agent 与输入/输出契约 | 主代理能知道何时调用 coordinator、coordinator 输出可执行建议 |
+| Phase C2：状态与产物 | T-C03 / T-C04 | 建立 Agent Registry 与 Artifact Bus | agent 状态和 plan/execution/review/handoff artifacts 可寻址 |
+| Phase C3：冲突与交接 | T-C05 / T-C06 | 本地 Progress Lock 与 handoff JSON | 同任务/同文件并发有明确阻断或交接路径 |
+| Phase C4：模型与 Mission 衔接 | T-C07 / T-C08 | Model Registry 与 `/mission` HANDOFF / RESUME | 新 agent 可基于能力和 mission state 接手 |
+| Phase C5：验证与可见性 | T-C09 / T-C10 | Claude → Codex E2E 与 briefing health | 真实切换场景无状态丢失，briefing 可见 coordinator 状态 |
+
+### 7.2 每阶段的架构约束
+
+- 每个阶段都必须保持零第三方 runtime 依赖；脚本只使用 Node.js 内置模块。
+- CLI 不硬编码 Coordinator 业务逻辑；优先落在 templates、`.agent/skills`、`.agent/workflows`、`.agent/sub-agents` 和可选辅助脚本。
+- 所有新增模板必须同步 zh / en。
+- `upgrade` 仍然只添加不存在的文件，不覆盖用户已有 `.agent/`。
+- Artifact Bus 和 Registry 不复制源码或长 diff，只保存路径、commit ref、摘要和结构化 payload。
 
 ## 8. 关键风险与缓解
 
@@ -368,6 +541,21 @@ T-C09 实施时，跑以下场景：
 9. 完成 milestone 1 → 进入 VALIDATE_MILESTONE
 
 如果以上全部走通且无丢状态，验收通过。
+
+## 10.1 Coordinator 完整验收边界
+
+完整 Coordinator 达到可用状态时，应满足：
+
+| 能力 | 验收标准 |
+|---|---|
+| Agent Registry | 能列出当前/最近 agent、任务、模型、状态、心跳或最后更新时间 |
+| Artifact Bus | 能按 task / mission 读取 plan、execution、review、validation、handoff 与 state |
+| Progress Lock | 同任务或同文件并发写入有明确 acquire / renew / release / timeout 语义 |
+| Handoff Protocol | Markdown 面向人，JSON 面向 agent；AGENT_RESUME 可独立恢复下一步 |
+| Model Registry | handoff 可表达 required_capabilities 与 model preference |
+| Mission Integration | `/mission` 可显式进入 HANDOFF / RESUME，而不是隐式依赖自然语言 |
+| E2E Validation | Claude → Codex / Codex → Claude 切换时无状态丢失 |
+| Observability | `/briefing` 可报告 coordinator 健康度、活动 agent、锁和待处理 handoff |
 
 ## 11. 参考
 

@@ -21,7 +21,7 @@ Do not use Mission Lite for small fixes, single-file edits, or routine documenta
 ## State Machine
 
 ```text
-SCOPE -> PLAN -> CONTRACT -> EXECUTE_FEATURE -> HANDOFF -> VALIDATE_MILESTONE -> FIX_OR_ADVANCE -> COMPLETE
+SCOPE -> PLAN -> CONTRACT -> EXECUTE_FEATURE -> HANDOFF -> RESUME -> VALIDATE_MILESTONE -> FIX_OR_ADVANCE -> COMPLETE
 ```
 
 ## Core Rules
@@ -32,6 +32,7 @@ SCOPE -> PLAN -> CONTRACT -> EXECUTE_FEATURE -> HANDOFF -> VALIDATE_MILESTONE ->
 - Worker output is not proof. Validators must rely on the contract, diff, command output, runtime evidence, and necessary source files.
 - Failed validation creates a follow-up fix task or returns to planning; do not let a Worker self-repair indefinitely.
 - Record key commands with exit codes in `command-log.md`.
+- Handoff uses the T-C06 dual-artifact protocol: Markdown for humans, JSON for `AGENT_RESUME`, and Artifact Bus `kind: handoff` when available.
 
 ## Files
 
@@ -45,7 +46,8 @@ Create mission state under:
 ├── milestones/
 │   └── MS-001.md
 └── handoffs/
-    └── YYYYMMDD-HHMMSS-{focus}.md
+    ├── YYYYMMDD-HHMMSS-{focus}.md
+    └── H-YYYYMMDD-HHMMSS-{focus}.json
 ```
 
 Use these templates when creating files:
@@ -103,14 +105,30 @@ Use these templates when creating files:
 
 1. Read project instructions and required rules.
 2. Read the mission state files.
-3. Check `git status --short` before changing files.
-4. Compare the mission state with current repository state.
-5. If stale, report the mismatch and propose a recovery step.
-6. Continue from the current state:
+3. If a JSON handoff exists, run `node .agent/handoffs/scripts/handoff-protocol.js resume-prompt --payload-file <handoff.json>`.
+4. Check `git status --short` before changing files.
+5. Compare the mission state, handoff payload, Artifact Bus state, and current repository state.
+6. If stale, report the mismatch and propose a recovery step.
+7. Continue from the current state:
    - if no contract exists, return to CONTRACT
+   - if a handoff is pending, go to RESUME and follow `next_action`
    - if worker output exists but no validation exists, go to VALIDATE_MILESTONE
    - if validation failed, go to FIX_OR_ADVANCE
    - if all milestones passed, go to COMPLETE
+
+## HANDOFF
+
+1. Use `/handoff create` semantics to write Markdown and JSON handoff files.
+2. Validate the JSON payload:
+   ```bash
+   node .agent/handoffs/scripts/handoff-protocol.js validate --payload-file .agent/missions/M-xxx/handoffs/H-xxx.json
+   ```
+3. Publish the JSON payload to Artifact Bus when available:
+   ```bash
+   node .agent/handoffs/scripts/handoff-protocol.js publish --payload-file .agent/missions/M-xxx/handoffs/H-xxx.json --markdown-path .agent/missions/M-xxx/handoffs/xxx.md --agent-id coordinator
+   ```
+4. Record the handoff paths in `command-log.md` or the current milestone.
+5. Release Progress Locks held by the handing-off agent, or let TTL expire if the agent is unavailable.
 
 ## VALIDATE
 

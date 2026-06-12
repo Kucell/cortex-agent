@@ -1,7 +1,7 @@
 # Harness Engineering 演进设计方案
 
-> **状态**：进行中（Phase 7）
-> **版本**：v2.0
+> **状态**：Completed / Baseline
+> **版本**：v2.1
 > **日期**：2026-04-20
 > **基础文档**：[cortex-agent-harness-optimization.md](../cortex-agent-harness-optimization.md)
 
@@ -16,6 +16,13 @@
 3. 把“计划、债务、质量、可靠性、安全”这些高价值知识从零散描述变成版本化资产
 
 这一步是后续继续做应用可理解性、knowledge lint、doc-gardening 的前置条件。
+
+截至 Phase 7 完成后，本文档不再承担继续扩张 Harness 机制的职责，而是作为后续 Mission Lite 与 Multi-Agent Coordinator 的架构底座。新能力必须复用这里建立的治理边界：
+
+- `.agent/` 继续作为执行期规则、workflow、skill、sub-agent 和运行约束的唯一真理来源。
+- `docs/` 继续作为长期知识、执行计划、质量、可靠性、安全与债务的资产层。
+- 新能力优先以模板、文档、skill 或 sub-agent 形式落地，避免把协调逻辑硬编码进 CLI runtime。
+- 任何脚本化增强都必须遵守零依赖、平台无关、纯加法升级和最小修改原则。
 
 ---
 
@@ -336,7 +343,29 @@ Mission Lite 不替代现有 workflow，而是做编排层：
 | `runtime evidence` 文档 | 为 `runtime` 类型断言提供验证模板 |
 | `knowledge-lint` / `doc-gardening` | Mission 完成后的知识健康检查 |
 
-### 8.8 后续任务拆解
+### 8.8 对 Multi-Agent Coordinator 的铺垫
+
+Mission Lite 解决“长周期任务如何计划、验证和阶段推进”，但不负责“多个 agent 如何登记、抢占、交接和恢复”。这些职责应交给 Multi-Agent Coordinator。
+
+Harness Engineering 为 Coordinator 提供以下基础约束：
+
+| Harness 基础 | Coordinator 复用方式 |
+|--------------|----------------------|
+| `.agent/` 治理层 | Coordinator sub-agent、registry、artifact bus、lock 与 handoff 协议都落在 `.agent/` 下 |
+| `docs/` 知识层 | Coordinator 设计、E2E 验证和后续运行经验沉淀到 `docs/architecture/`、`docs/reliability/` 与 `docs/exec-plans/` |
+| `context-budget` | 新 agent resume 时只读取 handoff JSON、state.json 和必要引用 |
+| `phase-gate` | 后续可用于 Coordinator 状态切换前置检查 |
+| `knowledge-lint` / `doc-gardening` | Coordinator 交付后继续维护文档与计划一致性 |
+| `maturity-tracker` | 后续可记录 Coordinator 的调度成功率、恢复次数和失败模式 |
+
+边界原则：
+
+- Harness 不实现调度器。
+- Harness 不保存 agent 运行状态。
+- Harness 不仲裁文件锁。
+- Harness 只定义底层治理约束与资产分层，Coordinator 在其上实现多 agent 协调。
+
+### 8.9 后续任务拆解
 
 建议新增一组 Mission Lite 任务：
 
@@ -348,7 +377,7 @@ Mission Lite 不替代现有 workflow，而是做编排层：
 | T-H27 | P1 | 扩展 planner / reviewer 输出契约 | planner 输出 validation contract，reviewer 按 contract 验证 |
 | T-H28 | P2 | 命令日志与 milestone 模板标准化 | 提供 `command-log.md` 与 `milestones/MS-xxx.md` 模板 |
 
-### 8.9 推荐落地顺序
+### 8.10 推荐落地顺序
 
 1. 完成架构设计文档同步（T-H24）
 2. 新增 `validation-contract` skill（T-H25）
@@ -360,12 +389,12 @@ Mission Lite 不替代现有 workflow，而是做编排层：
 
 ## 九、推荐结论
 
-推荐立即实施本轮方案。
+本轮 Harness 与知识架构方案已完成，后续不建议继续扩张 Harness 本身。
 
-理由：
+后续推荐方向：
 
-- 改动风险低
-- 与现有架构原则完全兼容
-- 能为后续的应用可理解性、knowledge lint、doc-gardening 提供稳定基础
+- 保持 Harness 作为治理底座。
+- 用 Mission Lite 承接长周期任务计划、验证与里程碑证据。
+- 用 Multi-Agent Coordinator 承接多 agent / 多模型 / 多会话的登记、产物、锁、交接与恢复。
 
-这是一个典型的“先整理地基，再继续加楼层”的步骤，应该先做。
+这是一个典型的“地基已完成，继续往协调层加楼层”的阶段。后续设计应优先推进 Multi-Agent Coordinator，而不是在 Harness 层继续堆机制。

@@ -1,6 +1,7 @@
 # Sub-agent 默认路由配置
 # 目标：让用户无需手动判断"该用哪个 sub-agent"，框架自动串联
-# 策略：保留 5 个独立 sub-agent，通过路由配置降低决策负担
+# 策略：保留核心执行 sub-agent，通过路由配置降低决策负担；
+# coordinator 作为多 agent / 多模型 / 跨会话协调层，按需插入。
 
 workflows:
 
@@ -38,8 +39,31 @@ workflows:
   /parallel:
     # 并行任务：多个 implementer 实例同时运行
     # 用法：/start-task T-001 T-002 T-003（多任务 ID 自动并行）
+    preflight:
+      - coordinator  # 检查任务/文件 ownership、handoff 状态和可并行边界
     parallel_agents: [implementer]
     max_concurrent: 3
+
+  /mission:
+    # 长周期任务：Mission Lite 负责任务计划与验证，coordinator 负责 agent 运行态协调
+    coordination_points:
+      - ASSESS    # create/resume 前读取 registry、artifacts、locks、handoffs
+      - DISPATCH  # milestone worker 选择和最小上下文包
+      - HANDOFF   # 跨 agent / 跨模型 / 跨会话交接
+      - RESUME    # 从 handoff JSON + state.json 继续
+    sub_agent: coordinator
+
+  /handoff:
+    # handoff 仍由 handoff workflow/skill 生成 Markdown；
+    # coordinator 负责 JSON handoff、Artifact Bus 引用和 AGENT_RESUME 决策。
+    coordination_modes:
+      create: HANDOFF
+      resume: RESUME
+    sub_agent: coordinator
+
+  /briefing:
+    # 可选健康度视图：当存在 registry/artifacts/locks/handoffs 时读取 coordinator health
+    optional_health_agent: coordinator
 
   /sync-master:
     # 文档型工作流：fetch + rebase 同步主干，见 workflows/sync-master.md
@@ -54,6 +78,22 @@ session_continuity:
 
 # Orchestrator 决策规则
 orchestration:
+  coordinator_input_sources:
+    - task-progress.md
+    - mission-plan.md
+    - validation-contract.json
+    - command-log.md
+    - handoff_markdown
+    - handoff_json
+    - artifact_state
+    - registry_entries
+    - lock_entries
+
+  coordinator_blocked_sources:
+    - product_source_edits
+    - implementation_reasoning
+    - validation_criteria_rewrites
+
   # reviewer 输入严格限制（防火墙）
   reviewer_input_sources:
     - plan_summary.json   # planner 的结构化输出

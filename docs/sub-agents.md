@@ -1,6 +1,6 @@
 # Sub-agent 架构 (Sub-agents)
 
-> Cortex Agent 通过 **5 个核心**子代理实现职责分离，另有 **会话管理**、**熵治理**等辅助子代理，每个代理有独立的模型、工具权限和上下文边界。
+> Cortex Agent 通过 **5 个核心执行**子代理实现职责分离，另有 **coordinator**、**会话管理**、**熵治理**等治理/协调型子代理，每个代理有独立的模型、工具权限和上下文边界。
 
 ---
 
@@ -13,6 +13,7 @@ graph LR
     O -->|并行派发| RS["researcher<br>技术调研 + 方案评估<br>model: standard"]
     O -->|并行派发| CR["code-reviewer<br>架构合规 + 代码质量<br>model: standard"]
     O -->|并行派发| DC["documenter<br>README + API文档 + CHANGELOG<br>model: fast"]
+    O -->|协调运行态| CO["coordinator<br>registry + artifacts + locks + handoff<br>model: premium"]
 
     style O fill:#6366f1,color:#fff,stroke:none
     style PL fill:#0ea5e9,color:#fff,stroke:none
@@ -20,6 +21,7 @@ graph LR
     style RS fill:#f59e0b,color:#fff,stroke:none
     style CR fill:#ef4444,color:#fff,stroke:none
     style DC fill:#8b5cf6,color:#fff,stroke:none
+    style CO fill:#14b8a6,color:#fff,stroke:none
 ```
 
 模型别名（`premium` / `standard` / `fast`）可在 `.agent/config/reasoning-config.yml` 中统一配置，支持切换 Anthropic、OpenAI、Ollama 等提供商。
@@ -35,6 +37,12 @@ graph LR
 | `researcher` | 技术调研、方案对比、可行性评估（只读，不写代码）| standard | `/start-task`、`/parallel` 派发 |
 | `code-reviewer` | 架构合规、代码质量、性能检查，按 validation contract 验证证据，输出 `review_verdict` JSON 契约 | standard | `/ship`、`/code-review`、`/mission validate` 自动调用 |
 | `documenter` | 同步 README、API 文档、注释、CHANGELOG | fast | `/ship`、`/parallel` 派发 |
+
+多 agent / 多模型协调代理：
+
+| Sub-agent | 职责 | 默认模型 | 触发方式 |
+| :--- | :--- | :--- | :--- |
+| `coordinator` | 维护或检查 agent registry、artifact bus、progress lock、handoff JSON、resume 决策和 coordinator health，输出 `coordination_report` JSON 契约 | premium | `/mission`、`/handoff`、`/parallel` preflight、`/briefing` health |
 
 此外还有一个专用的熵治理代理：
 
@@ -61,6 +69,7 @@ graph TB
         PL[planner]
         IM[implementer]
         CR[code-reviewer]
+        CO[coordinator]
         O[Orchestrator]
     end
 
@@ -72,6 +81,7 @@ graph TB
         CE[code-evaluation]
         MT[maturity-tracker]
         VC[validation-contract]
+        HF[handoff]
     end
 
     PL -->|架构约束感知| AG
@@ -81,6 +91,11 @@ graph TB
     CR -->|架构合规 + 细粒度约束| AG
     CR -->|质量评分| CE
     CR -->|契约验证| VC
+    CO -->|状态转换门控| PG
+    CO -->|resume 上下文裁剪| CB
+    CO -->|交接协议| HF
+    CO -->|契约检查| VC
+    CO -->|协调指标| MT
     O  -->|阶段门控| PG
     O  -->|上下文裁剪| CB
     O  -->|指标收集| MT
@@ -88,6 +103,7 @@ graph TB
     style PL fill:#0ea5e9,color:#fff,stroke:none
     style IM fill:#10b981,color:#fff,stroke:none
     style CR fill:#ef4444,color:#fff,stroke:none
+    style CO fill:#14b8a6,color:#fff,stroke:none
     style O  fill:#6366f1,color:#fff,stroke:none
     style AG fill:#64748b,color:#fff,stroke:none
     style PG fill:#64748b,color:#fff,stroke:none
@@ -105,6 +121,7 @@ graph TB
 | `code-evaluation` | 实现质量自评：可靠性、性能、可维护性三维评分 |
 | `maturity-tracker` | 收集每次 `/ship` 的指标数据，驱动 harness 组件的渐进式退化决策 |
 | `validation-contract` | 在实现前生成验证断言，并在审查时检查 blocking assertion 的证据 |
+| `handoff` | 生成与消费跨 agent / 跨会话的结构化交接 |
 
 ---
 
@@ -116,9 +133,45 @@ graph TB
 planner      → plan_summary.json       (~2K tokens，含可选 validation_contract，代替完整规划过程的 ~10K tokens)
 implementer  → execution_report.json   (files_changed / tests_passed / deviations / blocked_steps)
 code-reviewer→ review_verdict.json     (score / blocking_issues / warnings / contract_results / verdict: PASS|FAIL)
+coordinator → coordination_report.json (status / active_agents / locks / artifacts / next_agent / next_action)
 ```
 
 `/ship` 完成后，这些中间产物归档到 `.agent/archive/T-xxx/`，主上下文清零（`CONTEXT_CLEANUP` 阶段）。
+
+Coordinator 的 Agent Registry 状态保存在 `.agent/registry/agents.json`，可通过零依赖脚本读写：
+
+```bash
+node .agent/registry/scripts/agent-registry.js check-in --agent-id implementer-001 --role implementer --model codex --task-id T-C03
+node .agent/registry/scripts/agent-registry.js list-active --task-id T-C03
+node .agent/registry/scripts/agent-registry.js get-conflicts --task-id T-C03 --owned-files src/a.ts
+```
+
+Coordinator 的 Artifact Bus 保存在 `.agent/artifacts/<task-id>/`，可通过零依赖脚本读写：
+
+```bash
+node .agent/artifacts/scripts/artifact-bus.js append --task-id T-C04 --agent-id coordinator --kind plan --payload-json '{"steps":[]}'
+node .agent/artifacts/scripts/artifact-bus.js list --task-id T-C04
+node .agent/artifacts/scripts/artifact-bus.js state --task-id T-C04
+```
+
+Coordinator 的 Progress Lock 保存在 `.agent/locks/`，用于任务级、mission 级或文件级本地互斥：
+
+```bash
+node .agent/locks/scripts/progress-lock.js acquire --scope task:T-C05 --agent-id coordinator --ttl-seconds 300
+node .agent/locks/scripts/progress-lock.js renew --scope task:T-C05 --agent-id coordinator
+node .agent/locks/scripts/progress-lock.js release --scope task:T-C05 --agent-id coordinator
+node .agent/locks/scripts/progress-lock.js inspect --scope task:T-C05
+node .agent/locks/scripts/progress-lock.js list-held --agent-id coordinator
+node .agent/locks/scripts/progress-lock.js sweep-expired
+```
+
+Coordinator 的 Handoff Protocol 使用 Markdown + JSON 双产物，JSON 可发布到 Artifact Bus 供 `AGENT_RESUME` 使用：
+
+```bash
+node .agent/handoffs/scripts/handoff-protocol.js validate --payload-file .agent/handoffs/H-001.json
+node .agent/handoffs/scripts/handoff-protocol.js publish --payload-file .agent/handoffs/H-001.json --markdown-path .agent/handoffs/H-001.md --agent-id coordinator
+node .agent/handoffs/scripts/handoff-protocol.js resume-prompt --payload-file .agent/handoffs/H-001.json
+```
 
 ---
 
@@ -130,6 +183,9 @@ code-reviewer→ review_verdict.json     (score / blocking_issues / warnings / c
 - **`/ship` 流水线**：`implementer` → `code-reviewer` → `documenter`（顺序，有依赖）
 - **快速模式**（`fast_mode: true`）：跳过 `code-reviewer`
 - **轻量模式**（`lightweight_mode: true`）：跳过 `documenter`
+- **`/mission` 协调点**：`coordinator` 在 ASSESS / DISPATCH / HANDOFF / RESUME 状态提供 agent 运行态判断
+- **`/handoff` 协调点**：`coordinator` 负责 JSON handoff、Artifact Bus 引用和 `AGENT_RESUME` 决策
+- **`/parallel` 预检**：`coordinator` 检查任务/文件 ownership 与可并行边界
 
 ---
 
