@@ -1,6 +1,6 @@
 # 任务进度
 
-> **当前阶段**：Multi-Agent Coordinator Progress Lock 完成（Phase 9 进行中）
+> **当前阶段**：Multi-Agent Coordinator Handoff 协议升级完成（Phase 9 进行中）
 > **整体进度**：99%
 > **最后更新**：2026-06-12
 
@@ -121,7 +121,7 @@
 
 ## 🔥 当前活跃任务
 
-> Multi-Agent Coordinator 主线执行中。T-C05 Progress Lock 已完成，下一步建议执行 T-C06 Handoff 协议升级。
+> Multi-Agent Coordinator 主线执行中。T-C06 Handoff 协议升级已完成，下一步建议执行 T-C07 Model Registry。
 
 ## 🧭 下一阶段候选（Application Legibility）
 
@@ -147,7 +147,7 @@
 | T-C03 | P0 | Agent Registry（`.agent/registry/agents.json` + check-in/out 脚本） | 100% |
 | T-C04 | P0 | Artifact Bus（`artifact-schema.json` + 读写辅助） | 100% |
 | T-C05 | P1 | Progress Lock（`acquire/renew/release` + TTL） | 100% |
-| T-C06 | P0 | handoff skill 升级：双产物 + `AGENT_RESUME` 模式 | 0% |
+| T-C06 | P0 | handoff skill 升级：双产物 + `AGENT_RESUME` 模式 | 100% |
 | T-C07 | P1 | `routing-defaults.yml` 扩展 `model_registry` | 0% |
 | T-C08 | P1 | `/mission` 状态机改造：显式 HANDOFF + RESUME 状态 | 0% |
 | T-C09 | P1 | 端到端验证：Claude → Codex 切换场景 | 0% |
@@ -190,6 +190,7 @@
 - **T-C03**：新增 Agent Registry schema、`agents.json` 初始状态与零依赖 `agent-registry.js` 脚本，支持 check-in、heartbeat、check-out、list-active、get-conflicts、mark-stale；同步本地 `.agent/` 与中英模板，并验证脚本核心命令可运行
 - **T-C04**：新增 Artifact Bus schema、state schema 与零依赖 `artifact-bus.js` 脚本，支持 append、list、read、state、validate；同步本地 `.agent/` 与中英模板，coordinator 可通过 Artifact Bus 读写 plan/execution/review/handoff/validation artifacts
 - **T-C05**：新增 Progress Lock schema、`lock-events.json` 与零依赖 `progress-lock.js` 脚本，支持 acquire、renew、release、inspect、list-held、sweep-expired；同步本地 `.agent/` 与中英模板，coordinator 可在 dispatch/resume/handoff/health 阶段处理本地任务级与文件级互斥
+- **T-C06**：升级 handoff skill / workflow 为 Markdown + JSON 双产物协议，新增 `handoff.schema.json` 与零依赖 `handoff-protocol.js`，支持 validate、publish、resume-prompt；JSON handoff 可作为 Artifact Bus `kind: handoff` 供 `AGENT_RESUME` 消费，并预留 `graphify_context`
 - **T-H24**：完成 Mission Lite 架构设计，新增 `docs/architecture/mission-lite-design.md`，补充三角色模型、验证契约、命令日志、milestone 状态机与 `/handoff` 衔接方式
 - **T-H25**：新增 `validation-contract` skill，定义 CREATE / CHECK / SUMMARIZE 模式、assertion 类型、契约规则和最小 JSON 模板
 - **T-H26**：新增 `/mission` workflow，定义 create / status / resume / validate 子命令、mission 状态机、文件结构和质量标准
@@ -235,7 +236,7 @@
 - **[Knowledge] knowledge lint 与 doc-gardening 已接入 `/briefing` 与 `/ship` 说明层**：真实 heartbeat / cron automation 仍未创建
 - **[Runtime] runtime evidence 摘要文件尚未实现**：`runtime-health.json` / `browser-verification.json` / `verification-summary.json` 仍停留在设计层
 - **[Mission Lite] 模板 MVP 已完成**：`/mission`、验证契约和模板已可用；后续 Mission 增强应优先服务 Coordinator 集成或 runtime evidence，而不是继续扩张基础概念
-- **[Coordinator] T-C06~T-C10 已进入主线执行状态**：Multi-Agent Coordinator 保持完整目标，不缩减为 Lite；T-C01A/T-C02/T-C03/T-C04/T-C05 已完成，下一步进入 T-C06 Handoff 协议升级
+- **[Coordinator] T-C07~T-C10 已进入主线执行状态**：Multi-Agent Coordinator 保持完整目标，不缩减为 Lite；T-C01A/T-C02/T-C03/T-C04/T-C05/T-C06 已完成，下一步进入 T-C07 Model Registry
 - **[Publish] T-008 Claude Code 插件市场上架降级**：用户明确"T-008 不在优先"，等插件市场上架流程官方文档完善或社区契机出现时再启动
 - **[Harness] upgrade 不覆盖已有文件**：改造文件（ship.md/planner.md 等）在已安装用户侧不会自动同步，需版本说明或迁移指南
 - **[Harness] context-index.json 准确性**：reference frontmatter 的 `estimated_tokens` 依赖人工维护，初期可能不准确
