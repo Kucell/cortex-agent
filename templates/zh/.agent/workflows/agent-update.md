@@ -1,38 +1,59 @@
 ---
-description: 用于新增、修改或维护 AI 指令（规则、工作流、技能）并同步文档
+description: Used to add, modify, or maintain AI instructions (rules, workflows, skills) and synchronize documentation.
 ---
 
-# AI 指令维护工作流 (/agent-update)
+# AI Instruction Maintenance Workflow (/agent-update)
 
-当你需要调整 AI 的“大脑”配置（如新增规则或优化流程）时，执行：
+When you need to adjust the AI's "brain" configuration (such as adding rules or optimizing processes), execute:
 
-## 1. 需求解析与范围定位
+## 1. Requirement Analysis and Localization
 
-- **确定类别**：判断是新增或修改 `Rules` (规则)、`Workflows` (工作流)、`Skills` (能力)、`Hooks` (钩子)、`Plans` (计划) 还是 `Sub-agents` (子代理)。
-- **存储位置选择**：
-  - **Local (项目专用)**：默认存储在当前项目的 `.agent/` 目录。适用于项目特有的业务逻辑、架构要求。
-  - **Global (通用能力)**：如果指令具有通用性，应存储在全局目录 `~/.agent/`。适用于通用的代码风格、Git 规范或通用的自动化工具。
-- **影响评估**：检查新指令是否与现有指令冲突。
+- **Determine Category**: Decide whether it's adding a `Rule` (guidelines), `Workflow` (process), or `Skill` (capability).
+- **🆕 Experience Recall**: Before impact assessment, call `experience-recall` to retrieve relevant historical lessons:
+  ```bash
+  node .agent/skills/experience-recall/scripts/index.js \
+    --tags "<relevant-tags>" \
+    --files "<files-to-be-modified>"
+  ```
+  If matches are found, **explicitly reference the relevant experience IDs** in the content draft and confirm the "防复发检查" items are satisfied.
+- **L1/L2/L3 Classification**: Per `rules/agent-scope.md`, confirm the layer of the new capability before writing any file.
+- **Impact Assessment**: Check if new instructions conflict with existing ones.
+- **(Optional) Task Decomposition**: If the update requested by the user is very complex (e.g., involves multiple components), **first call the `planner` sub-agent** to decompose the task into smaller steps, then execute them one by one.
 
-## 2. 内容起草
+## 2. Content Drafting
 
-- **参考规范**: 在编写任何内容之前，查阅相应的标准文档（如 `.agent/rules/code-standards.md`），确保定义符合逻辑。
-- **遵循标准模板**：
-  - **Workflows**: 需包含 YAML frontmatter 和分步指南。
-  - **Rules**: 需条理清晰，具备可操作性。
-  - **Skills**: 需包含 `SKILL.md` (元数据+指令) 及可选的 `scripts/`。
-  - **Hooks**: 需定义触发时机和执行脚本。
+- **Rules First**: Before writing any content, **you must first consult** `.agent/rules/code-standards.md` and `.agent/rules/architecture-design.md` to ensure new instructions comply with project standards.
+- **Follow Standard Templates**:
+  - Workflows must include YAML frontmatter and step-by-step guides.
+  - Rules must be well-organized and actionable.
+  - Skills must define clear `name` and `description` metadata and detailed instructions.
 
-## 3. 文件操作 (Action)
+## 3. File Operation (Action)
 
 // turbo
 
-- **写入文件**：
-  - 若选择 **Local**：操作 `[项目根目录]/.agent/` 下的相关文件。
-  - 若选择 **Global**：操作 `~/.agent/` 下的相关文件。
-- **同步文档**：**必须更新对应目录下的 `README.md`**（本地或全局），确保索引最新。
+- **Select Storage Location**:
+  - **Local (Project-Specific)**: Operate on the current project's `.agent/` directory.
+  - **Global (General Capabilities)**: Operate on the `~/.agent/` directory.
+- **Execute Write**: Perform operations in the corresponding subdirectories.
+- **Automatic Linkage (Global only)**:
+  - If **Global** configuration is updated, **you must immediately call the `sync-global` skill** to synchronize the latest global configuration to the current project via symbolic links, ensuring the IDE recognizes them immediately.
+- **Documentation Maintenance**: Update the `README.md` in the corresponding directory (local or global).
 
-## 4. 验证与总结
+## 4. 🆕 Experience Capture
 
-- **自我测试**：尝试模拟运行新指令。
-- **提交报告**：告诉用户做了哪些调整，并附带 `.agent/README.md` 的更新快照。
+Before final commit, determine if this update triggers an experience record:
+
+| Condition | Action |
+|-----------|--------|
+| This is a `fix:` / `revert:` / `rollback` change | Create `EXP-*.md` + update `index.json` |
+| A new rule file is created for the first time | Create `RULE-EXP` type record |
+| Explicit `/experience-capture` request | Create experience record |
+| Routine update with no lessons learned | Skip (no record needed) |
+
+If triggered, create `.agent/experiences/EXP-NNN.md` using the template at `.agent/experiences/TEMPLATE.md`, then add entry to `experiences/index.json`.
+
+## 5. Verification and Summary
+
+- **Verify Links**: If it's a global update, confirm that the symlinks in the local project are effective.
+- **Submit Report**: Explain the adjustments made, confirm the synchronization status, and report whether an experience record was created.
