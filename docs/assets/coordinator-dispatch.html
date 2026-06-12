@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cortex Agent · Coordinator Dispatch</title>
+<script src="https://cdn.jsdelivr.net/npm/animejs@3.2.2/lib/anime.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    background: #0d1117;
+    color: #c9d1d9;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 32px 16px;
+  }
+
+  h1 {
+    font-size: 18px;
+    color: #58a6ff;
+    margin-bottom: 4px;
+    letter-spacing: 0.05em;
+  }
+
+  .subtitle {
+    font-size: 12px;
+    color: #8b949e;
+    margin-bottom: 40px;
+  }
+
+  .stage {
+    width: 100%;
+    max-width: 860px;
+    position: relative;
+  }
+
+  /* ── Row layout ── */
+  .row {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 28px;
+  }
+
+  /* ── Nodes ── */
+  .node {
+    border: 1.5px solid #30363d;
+    border-radius: 8px;
+    padding: 12px 18px;
+    min-width: 130px;
+    text-align: center;
+    font-size: 12px;
+    position: relative;
+    opacity: 0;
+    transform: translateY(8px);
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+
+  .node.coordinator { background: #161b22; border-color: #58a6ff; }
+  .node.agent       { background: #161b22; border-color: #3d444d; }
+  .node.artifact    { background: #161b22; border-color: #3d444d; }
+  .node.lock        { background: #161b22; border-color: #3d444d; }
+
+  .node .label {
+    font-size: 10px;
+    color: #8b949e;
+    margin-bottom: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+
+  .node .name { color: #e6edf3; font-weight: 600; font-size: 13px; }
+  .node .status { font-size: 10px; margin-top: 4px; color: #8b949e; }
+
+  /* active glow states */
+  .node.active-blue  { border-color: #58a6ff; box-shadow: 0 0 12px rgba(88,166,255,0.3); }
+  .node.active-green { border-color: #3fb950; box-shadow: 0 0 12px rgba(63,185,80,0.3); }
+  .node.active-amber { border-color: #d29922; box-shadow: 0 0 12px rgba(210,153,34,0.3); }
+  .node.active-red   { border-color: #f85149; box-shadow: 0 0 12px rgba(248,81,73,0.2); }
+  .node.active-purple{ border-color: #a5a0f5; box-shadow: 0 0 12px rgba(165,160,245,0.3); }
+
+  /* ── Arrows ── */
+  .arrow {
+    color: #484f58;
+    font-size: 20px;
+    opacity: 0;
+    transition: color 0.2s;
+  }
+  .arrow.active { color: #58a6ff; }
+
+  /* ── Log panel ── */
+  .log-panel {
+    width: 100%;
+    max-width: 860px;
+    background: #161b22;
+    border: 1.5px solid #30363d;
+    border-radius: 8px;
+    padding: 16px;
+    margin-top: 16px;
+    min-height: 140px;
+  }
+
+  .log-panel .log-title {
+    font-size: 10px;
+    color: #8b949e;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-bottom: 10px;
+  }
+
+  .log-entry {
+    font-size: 12px;
+    line-height: 1.8;
+    opacity: 0;
+    transform: translateX(-6px);
+  }
+
+  .log-entry .ts   { color: #484f58; }
+  .log-entry .tag  { padding: 1px 6px; border-radius: 3px; font-size: 10px; margin: 0 6px; }
+  .log-entry .msg  { color: #c9d1d9; }
+
+  .tag.coordinator { background: #0d2040; color: #58a6ff; }
+  .tag.registry    { background: #0d2d0d; color: #3fb950; }
+  .tag.lock        { background: #2d1f00; color: #d29922; }
+  .tag.artifact    { background: #1f0d2d; color: #a5a0f5; }
+  .tag.handoff     { background: #2d0d0d; color: #f85149; }
+
+  /* ── Controls ── */
+  .controls {
+    display: flex;
+    gap: 12px;
+    margin-top: 24px;
+  }
+
+  button {
+    background: #21262d;
+    border: 1.5px solid #30363d;
+    color: #c9d1d9;
+    padding: 8px 20px;
+    border-radius: 6px;
+    font-family: inherit;
+    font-size: 13px;
+    cursor: pointer;
+    transition: border-color 0.2s, background 0.2s;
+  }
+  button:hover { border-color: #58a6ff; background: #161b22; }
+  button:active { transform: scale(0.98); }
+
+  /* ── Phase label ── */
+  .phase-label {
+    font-size: 11px;
+    color: #8b949e;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    width: 100%;
+    max-width: 860px;
+    margin-bottom: 8px;
+    opacity: 0;
+  }
+</style>
+</head>
+<body>
+
+<h1>Cortex Agent · Multi-Agent Coordinator</h1>
+<p class="subtitle">Coordinator 调度流程 · Claude → Codex 交接演示</p>
+
+<div class="stage">
+
+  <!-- Phase 1: Registration -->
+  <div class="phase-label" id="ph1">Phase 1 — Agent Registration</div>
+  <div class="row" id="row1">
+    <div class="node coordinator" id="coord">
+      <div class="label">Coordinator</div>
+      <div class="name">Cortex</div>
+      <div class="status" id="coord-status">idle</div>
+    </div>
+    <div class="arrow" id="arr1">→</div>
+    <div class="node agent" id="claude">
+      <div class="label">Agent · Claude</div>
+      <div class="name">claude-sonnet</div>
+      <div class="status" id="claude-status">offline</div>
+    </div>
+    <div class="arrow" id="arr2">→</div>
+    <div class="node lock" id="lock1">
+      <div class="label">Progress Lock</div>
+      <div class="name">T-H23</div>
+      <div class="status" id="lock-status">free</div>
+    </div>
+  </div>
+
+  <!-- Phase 2: Execution -->
+  <div class="phase-label" id="ph2">Phase 2 — Execution &amp; Artifact</div>
+  <div class="row" id="row2">
+    <div class="node agent" id="claude2">
+      <div class="label">Agent · Claude</div>
+      <div class="name">working…</div>
+      <div class="status" id="claude2-status">executing</div>
+    </div>
+    <div class="arrow" id="arr3">→</div>
+    <div class="node artifact" id="artifact">
+      <div class="label">Artifact Bus</div>
+      <div class="name">plan · review</div>
+      <div class="status" id="artifact-status">empty</div>
+    </div>
+  </div>
+
+  <!-- Phase 3: Handoff -->
+  <div class="phase-label" id="ph3">Phase 3 — Handoff &amp; Resume</div>
+  <div class="row" id="row3">
+    <div class="node agent" id="claude3">
+      <div class="label">Agent · Claude</div>
+      <div class="name">handoff</div>
+      <div class="status">→ Codex</div>
+    </div>
+    <div class="arrow" id="arr4">→</div>
+    <div class="node artifact" id="handoff">
+      <div class="label">Handoff JSON</div>
+      <div class="name">H-T-H23-001</div>
+      <div class="status" id="handoff-status">pending</div>
+    </div>
+    <div class="arrow" id="arr5">→</div>
+    <div class="node agent" id="codex">
+      <div class="label">Agent · Codex</div>
+      <div class="name">codex-mini</div>
+      <div class="status" id="codex-status">waiting</div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Log panel -->
+<div class="log-panel">
+  <div class="log-title">Coordinator Log</div>
+  <div id="logs"></div>
+</div>
+
+<div class="controls">
+  <button id="btn-play">▶ Play</button>
+  <button id="btn-reset">↺ Reset</button>
+</div>
+
+<script>
+const LOGS = [
+  { tag: 'coordinator', label: 'COORDINATOR', msg: 'Task T-H23 received · dispatching to claude-sonnet' },
+  { tag: 'registry',    label: 'REGISTRY',    msg: 'claude-sonnet checked in · status: active' },
+  { tag: 'lock',        label: 'LOCK',        msg: 'acquire task:T-H23 · TTL 3600s · granted' },
+  { tag: 'coordinator', label: 'COORDINATOR', msg: 'claude-sonnet executing · monitoring progress' },
+  { tag: 'artifact',    label: 'ARTIFACT',    msg: 'plan artifact published · seq=001 · kind=plan' },
+  { tag: 'artifact',    label: 'ARTIFACT',    msg: 'review artifact published · seq=002 · kind=review' },
+  { tag: 'handoff',     label: 'HANDOFF',     msg: 'handoff published · H-T-H23-001 · target=codex-mini' },
+  { tag: 'lock',        label: 'LOCK',        msg: 'release task:T-H23 · held by claude-sonnet · released' },
+  { tag: 'registry',    label: 'REGISTRY',    msg: 'claude-sonnet checked out · codex-mini checked in' },
+  { tag: 'coordinator', label: 'COORDINATOR', msg: 'codex-mini resumed from handoff · context loaded' },
+];
+
+let timeline = null;
+let running = false;
+
+function pad(n) { return String(n).padStart(2, '0'); }
+function ts() {
+  const d = new Date();
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
+function appendLog(entry) {
+  const el = document.createElement('div');
+  el.className = 'log-entry';
+  el.innerHTML = `<span class="ts">${ts()}</span><span class="tag ${entry.tag}">${entry.label}</span><span class="msg">${entry.msg}</span>`;
+  document.getElementById('logs').appendChild(el);
+  return el;
+}
+
+function setStatus(id, text, cls) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = text;
+  if (cls) {
+    const node = el ? el.closest('.node') : null;
+    if (node) {
+      node.className = node.className.replace(/active-\w+/g, '').trim();
+      node.classList.add(cls);
+    }
+  }
+}
+
+function showArrow(id) {
+  const el = document.getElementById(id);
+  if (el) el.classList.add('active');
+}
+
+function play() {
+  if (running) return;
+  running = true;
+  document.getElementById('btn-play').disabled = true;
+
+  const a = anime;
+  const t = a.timeline({ easing: 'easeOutExpo' });
+
+  // Phase 1 label
+  t.add({ targets: '#ph1', opacity: [0, 1], duration: 400 });
+
+  // Coordinator appears
+  t.add({ targets: '#coord', opacity: [0, 1], translateY: [8, 0], duration: 500 });
+
+  // Claude appears
+  t.add({ targets: '#arr1', opacity: [0, 1], duration: 300 }, '-=200');
+  t.add({ targets: '#claude', opacity: [0, 1], translateY: [8, 0], duration: 500 }, '-=200');
+
+  // Lock appears
+  t.add({ targets: '#arr2', opacity: [0, 1], duration: 300 }, '-=200');
+  t.add({ targets: '#lock1', opacity: [0, 1], translateY: [8, 0], duration: 500 }, '-=200');
+
+  // Log: task dispatched
+  t.add({
+    duration: 1,
+    complete() {
+      const el = appendLog(LOGS[0]);
+      a.set(el, { opacity: 0, translateX: -6 });
+      a({ targets: el, opacity: [0, 1], translateX: [-6, 0], duration: 350, easing: 'easeOutExpo' });
+      setStatus('coord-status', 'dispatching', 'active-blue');
+    }
+  });
+
+  // Log: registry check-in
+  t.add({
+    delay: 600,
+    duration: 1,
+    complete() {
+      const el = appendLog(LOGS[1]);
+      a.set(el, { opacity: 0, translateX: -6 });
+      a({ targets: el, opacity: [0, 1], translateX: [-6, 0], duration: 350, easing: 'easeOutExpo' });
+      setStatus('claude-status', 'active', 'active-green');
+    }
+  });
+
+  // Log: lock acquired
+  t.add({
+    delay: 600,
+    duration: 1,
+    complete() {
+      const el = appendLog(LOGS[2]);
+      a.set(el, { opacity: 0, translateX: -6 });
+      a({ targets: el, opacity: [0, 1], translateX: [-6, 0], duration: 350, easing: 'easeOutExpo' });
+      setStatus('lock-status', 'held · claude', 'active-amber');
+    }
+  });
+
+  // Phase 2
+  t.add({ targets: '#ph2', opacity: [0, 1], duration: 400, delay: 400 });
+  t.add({ targets: '#claude2', opacity: [0, 1], translateY: [8, 0], duration: 500 }, '-=200');
+  t.add({ targets: '#arr3', opacity: [0, 1], duration: 300 }, '-=300');
+  t.add({ targets: '#artifact', opacity: [0, 1], translateY: [8, 0], duration: 500 }, '-=200');
+
+  // Log: executing
+  t.add({
+    duration: 1,
+    complete() {
+      const el = appendLog(LOGS[3]);
+      a.set(el, { opacity: 0, translateX: -6 });
+      a({ targets: el, opacity: [0, 1], translateX: [-6, 0], duration: 350, easing: 'easeOutExpo' });
+      setStatus('coord-status', 'monitoring', 'active-blue');
+      setStatus('claude2-status', 'executing T-H23', 'active-green');
+    }
+  });
+
+  // Log: plan artifact
+  t.add({
+    delay: 700,
+    duration: 1,
+    complete() {
+      const el = appendLog(LOGS[4]);
+      a.set(el, { opacity: 0, translateX: -6 });
+      a({ targets: el, opacity: [0, 1], translateX: [-6, 0], duration: 350, easing: 'easeOutExpo' });
+      setStatus('artifact-status', 'plan #001', 'active-purple');
+    }
+  });
+
+  // Log: review artifact
+  t.add({
+    delay: 700,
+    duration: 1,
+    complete() {
+      const el = appendLog(LOGS[5]);
+      a.set(el, { opacity: 0, translateX: -6 });
+      a({ targets: el, opacity: [0, 1], translateX: [-6, 0], duration: 350, easing: 'easeOutExpo' });
+      setStatus('artifact-status', 'plan + review', 'active-purple');
+    }
+  });
+
+  // Phase 3
+  t.add({ targets: '#ph3', opacity: [0, 1], duration: 400, delay: 400 });
+  t.add({ targets: '#claude3', opacity: [0, 1], translateY: [8, 0], duration: 500 }, '-=200');
+  t.add({ targets: '#arr4', opacity: [0, 1], duration: 300 }, '-=300');
+  t.add({ targets: '#handoff', opacity: [0, 1], translateY: [8, 0], duration: 500 }, '-=200');
+  t.add({ targets: '#arr5', opacity: [0, 1], duration: 300 }, '-=300');
+  t.add({ targets: '#codex', opacity: [0, 1], translateY: [8, 0], duration: 500 }, '-=200');
+
+  // Log: handoff published
+  t.add({
+    duration: 1,
+    complete() {
+      const el = appendLog(LOGS[6]);
+      a.set(el, { opacity: 0, translateX: -6 });
+      a({ targets: el, opacity: [0, 1], translateX: [-6, 0], duration: 350, easing: 'easeOutExpo' });
+      setStatus('handoff-status', 'published', 'active-red');
+    }
+  });
+
+  // Log: lock released
+  t.add({
+    delay: 600,
+    duration: 1,
+    complete() {
+      const el = appendLog(LOGS[7]);
+      a.set(el, { opacity: 0, translateX: -6 });
+      a({ targets: el, opacity: [0, 1], translateX: [-6, 0], duration: 350, easing: 'easeOutExpo' });
+      setStatus('lock-status', 'released', 'active-green');
+      // lock node back to neutral
+      setTimeout(() => {
+        const node = document.getElementById('lock1');
+        if (node) node.className = node.className.replace(/active-\w+/g, '').trim();
+        setStatus('lock-status', 'free');
+      }, 1200);
+    }
+  });
+
+  // Log: codex checked in
+  t.add({
+    delay: 600,
+    duration: 1,
+    complete() {
+      const el = appendLog(LOGS[8]);
+      a.set(el, { opacity: 0, translateX: -6 });
+      a({ targets: el, opacity: [0, 1], translateX: [-6, 0], duration: 350, easing: 'easeOutExpo' });
+      setStatus('codex-status', 'active', 'active-green');
+    }
+  });
+
+  // Log: codex resumed
+  t.add({
+    delay: 700,
+    duration: 1,
+    complete() {
+      const el = appendLog(LOGS[9]);
+      a.set(el, { opacity: 0, translateX: -6 });
+      a({ targets: el, opacity: [0, 1], translateX: [-6, 0], duration: 350, easing: 'easeOutExpo' });
+      setStatus('coord-status', 'complete ✓', 'active-green');
+    }
+  });
+
+  t.add({
+    delay: 200,
+    duration: 1,
+    complete() { running = false; document.getElementById('btn-play').disabled = false; }
+  });
+
+  timeline = t;
+}
+
+function reset() {
+  if (timeline) { timeline.pause(); timeline = null; }
+  running = false;
+  document.getElementById('btn-play').disabled = false;
+
+  // Reset nodes
+  anime.set('.node', { opacity: 0, translateY: 8 });
+  anime.set('.arrow', { opacity: 0 });
+  anime.set('.phase-label', { opacity: 0 });
+
+  // Reset status texts & classes
+  const resets = [
+    ['coord-status', 'idle'], ['claude-status', 'offline'],
+    ['lock-status', 'free'], ['claude2-status', 'executing'],
+    ['artifact-status', 'empty'], ['handoff-status', 'pending'],
+    ['codex-status', 'waiting'],
+  ];
+  resets.forEach(([id, txt]) => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = txt;
+  });
+  document.querySelectorAll('.node').forEach(n => {
+    n.className = n.className.replace(/active-\w+/g, '').trim();
+  });
+  document.querySelectorAll('.arrow').forEach(a => a.classList.remove('active'));
+
+  // Clear logs
+  document.getElementById('logs').innerHTML = '';
+}
+
+document.getElementById('btn-play').addEventListener('click', play);
+document.getElementById('btn-reset').addEventListener('click', reset);
+
+// Init: hide everything
+anime.set('.node', { opacity: 0, translateY: 8 });
+anime.set('.arrow', { opacity: 0 });
+anime.set('.phase-label', { opacity: 0 });
+</script>
+</body>
+</html>
