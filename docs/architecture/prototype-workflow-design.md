@@ -89,7 +89,7 @@ stateDiagram-v2
         ├─ sequenceDiagram     —— 用户操作序列
         └─ stateDiagram-v2     —— 页面/状态流转
   → Phase 3a Step 2: Anime.js HTML 可点击原型 (prototype.html)
-        ├─ 基于 coordinator-dispatch.html 的深色终端风格
+        ├─ 基于 `docs/assets/coordinator-dispatch.html` 的深色终端风格
         ├─ 每个需求步骤映射为一个 Anime.js timeline 节点
         └─ Play / Reset 控件，CDN 加载 animejs，无构建
   → Phase 4: validation-contract
@@ -256,7 +256,7 @@ UI 路径 Phase 3b。当 `--mode` 为 `ui` 或 `both`、且 `--fidelity` ≥ `mi
 
 | 任务 ID | 描述 | 产物 | 依赖 | 状态 |
 |---------|------|------|------|------|
-| T-P01 | 架构设计文档 | `docs/architecture/prototype-workflow-design.md` | —— | 🔄 进行中 |
+| T-P01 | 架构设计文档 | `docs/architecture/prototype-workflow-design.md` | —— | ✅ 已完成 |
 | T-P02 | 核心工作流（Document 路径 + 本地 prototype.md） | `.agent/workflows/prototype.md` | T-P01 | 待开始 |
 | T-P03 | 中文模板同步 | `templates/zh/.agent/workflows/prototype.md` | T-P02 | 待开始 |
 | T-P04 | 英文模板同步 | `templates/en/.agent/workflows/prototype.md` | T-P02 | 待开始 |
