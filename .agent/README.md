@@ -1,85 +1,89 @@
-# Cortex Agent Template (.agent)
+# Cortex Agent 框架 (.agent)
 
-This directory is the **Single Source of Truth** for all AI governance rules, workflows, and capabilities.
+> 这是 **Cortex Agent 框架** 项目开发的配置中心，包含所有 AI 治理规则、工作流和扩展能力。
 
-For the full architecture design, see [docs/architecture.md](../docs/architecture.md).
+**GitHub 仓库**: https://github.com/Kucell/cortex-agent-agent
 
-## 🚀 Workflows
+完整架构设计请查看 [docs/architecture.md](../docs/architecture.md)。
 
-### Core Workflows (Phase 1 精简后)
+> **注意**: 本仓库是 cortex-agent 框架的 `.agent` 配置独立仓库，主项目位于 [cortex-agent](https://github.com/Kucell/cortex-agent)
 
-| Workflow | Description | Priority |
+## 🚀 工作流
+
+### 核心工作流
+
+| 工作流 | 描述 | 优先级 |
 | :--- | :--- | :--- |
-| `/start-task` | Load context, architecture pre-audit, delegate to planner | ⭐ Core |
-| `/ship` | **State machine delivery**: PLAN → EXECUTE → LINT → REVIEW → COMMIT → DONE | ⭐ Core |
-| `/arch-design` | Design new features, output architecture diagrams | ⭐ Core |
-| `/plan` | Convert confirmed proposals into structured task lists | ⭐ Core |
-| `/briefing` | Daily standup: current phase, active tasks, recommended entry points | ⭐ Core |
-| `/configure` | Interactive project setup: tech stack, language rules, architecture | ⭐ Core |
-| `/parallel` | Dispatch independent tasks to sub-agents in parallel | ⭐ Core |
-| `/agent-update` | Add or modify rules, workflows, or skills | ⭐ Core |
-| `/migrate-rules` | Migrate legacy config files (e.g. .cursorrules) to this framework | ⭐ Core |
+| `/start-task` | 加载上下文、架构预审、分发给 planner | ⭐ 核心 |
+| `/ship` | **状态机交付**: PLAN → EXECUTE → LINT → REVIEW → COMMIT → DONE | ⭐ 核心 |
+| `/arch-design` | 设计新功能，输出架构图 | ⭐ 核心 |
+| `/plan` | 将确认的提案转换为结构化任务列表 | ⭐ 核心 |
+| `/briefing` | 每日站会：当前阶段、活跃任务、推荐入口点 | ⭐ 核心 |
+| `/configure` | 交互式项目配置：技术栈、语言规则、架构 | ⭐ 核心 |
+| `/parallel` | 并行分发独立任务给子 agent | ⭐ 核心 |
+| `/agent-update` | 添加或修改规则、工作流、技能 | ⭐ 核心 |
+| `/migrate-rules` | 迁移旧配置文件（如 .cursorrules）到本框架 | ⭐ 核心 |
 
-### Internal Steps (降级为 /ship 内部阶段)
+### 内部步骤（已降级为 /ship 内部阶段）
 
-| Workflow | Now Part Of | Phase |
+| 工作流 | 现在属于 | 阶段 |
 | :--- | :--- | :--- |
 | `/code-review` | `/ship` | Phase 3: REVIEW |
 | `/commit` | `/ship` | Phase 4: COMMIT |
 | `/done` | `/ship` | Phase 5: DONE |
-| `/sync-plans` | `/ship` | Phase 5: DONE (auto-sync) |
+| `/sync-plans` | `/ship` | Phase 5: DONE (自动同步) |
 
-### Optional Workflows (低频使用)
+### 可选工作流（低频使用）
 
-| Workflow | Description | When to Use |
+| 工作流 | 描述 | 使用场景 |
 | :--- | :--- | :--- |
-| `/bug-fix` | Structured bug analysis and fix workflow | Bug triage scenarios |
-| `/handoff` | Create or resume a compact task handoff | Agent/session transfer |
-| `/mission` | Orchestrate long-running multi-milestone work | Long-running feature programs |
-| `/weekly-report` | Generate weekly report from Git history | Weekly reviews |
-| `/release` | SemVer release: analyze commits → bump version → commit + tag → npm publish | Release management |
-| `/scan-project` | Scan existing project, auto-generate module reference docs | Initial setup |
-| `/update-refs` | Incrementally update reference docs | After major changes |
-| `/sync-master` | Sync with default branch: fetch + rebase (stash-safe) | Branch sync with main/master |
+| `/bug-fix` | 结构化 bug 分析和修复流程 | Bug 分诊 |
+| `/handoff` | 创建或恢复紧凑的任务交接 | Agent/会话转移 |
+| `/mission` | 编排长期多里程碑工作 | 长期特性项目 |
+| `/weekly-report` | 从 Git 历史生成周报 | 周会 |
+| `/release` | SemVer 发布：分析提交 → 升级版本 → 提交 + 标签 → npm 发布 | 发布管理 |
+| `/scan-project` | 扫描项目，自动生成模块参考文档 | 初始设置 |
+| `/update-refs` | 增量更新参考文档 | 重大变更后 |
+| `/sync-master` | 与默认分支同步：fetch + rebase（stash 安全） | 分支同步 |
 
-## 🤖 Sub-agents
+## 🤖 子 Agent
 
-Specialized agents with isolated model, tools, and context boundaries.
+具有隔离的模型、工具和上下文边界的专用 agent。
 
-| Sub-agent | Model | Skills | Trigger |
+| 子 Agent | 模型 | 技能 | 触发方式 |
 | :--- | :--- | :--- | :--- |
 | `planner` | sonnet | architecture-guard | `/start-task`, `/parallel` |
 | `implementer` | sonnet | architecture-guard, code-evaluation, superpowers | `/parallel` |
 | `researcher` | sonnet | — | `/parallel` |
 | `code-reviewer` | sonnet | architecture-guard, code-evaluation, security-scan | `/ship`, `/code-review` |
 | `documenter` | haiku | changelog-generator | `/parallel`, `/ship` |
-| `session-manager` | haiku | — | Long sessions; `session assess` / `archive` / `restore` / `status` / `warm` |
+| `session-manager` | haiku | — | 长期会话；`session assess` / `archive` / `restore` / `status` / `warm` |
 | `coordinator` | sonnet | context-budget, phase-gate, handoff, validation-contract, maturity-tracker | `/mission`, `/handoff`, `/parallel`, `/briefing` |
 
-## 📜 Rules (selected)
+## 📜 规则（精选）
 
-| Rule | Role |
+| 规则 | 作用 |
 | :--- | :--- |
-| `ai-behavior.md` | Git safety, minimal edits, plan-before-act, design confirmation, staged commits + `task-progress.md` resume |
-| `integration-safety.md` | Cross-module calls: verify signatures, payload vs schema, avoid swapped args |
-| `refactoring-safety.md` | Refactor without behavior change; don’t blindly “fix” all lints |
+| `ai-behavior.md` | Git 安全、最小修改、先计划后行动、设计确认、分阶段提交 + `task-progress.md` 恢复 |
+| `integration-safety.md` | 跨模块调用：验证签名、payload vs schema、避免参数互换 |
+| `refactoring-safety.md` | 重构不改变行为；不盲目”修复”所有 lint |
 
-## 🛠 Skills
+## 🛠 技能
 
-Reusable capabilities invoked by workflows or mounted on sub-agents.
+可被工作流调用或挂载到子 agent 的复用能力。
 
-| Skill | Description | Used By |
+| 技能 | 描述 | 使用者 |
 | :--- | :--- | :--- |
-| `architecture-guard` | Guards architecture through automated audits and manual reviews | planner, implementer, code-reviewer |
-| `code-evaluation` | Score code quality: reliability, performance, maintainability | implementer, code-reviewer |
-| `security-scan` | Dependency vulnerabilities, dangerous APIs, supply chain risks | code-reviewer |
-| `changelog-generator` | Auto-generate CHANGELOG from git commits (Conventional Commits) | documenter |
-| `superpowers` | TDD workflow, debugging strategies, refactoring & git techniques | implementer |
-| `handoff` | Compact task transfer between agents, sessions, or sub-agents | `/handoff` |
-| `validation-contract` | Create and check executable validation contracts before implementation | Mission Lite, high-risk tasks |
-| `agent-visibility` | Manage .agent Git visibility (Private / Ignore / Track) | Direct invocation |
-| `sync-global` | Sync workflows and skills from `~/.agent` to current project | Direct invocation |
-| `weekly-report` | Fetch and summarize Git logs into a weekly report | `/weekly-report` workflow |
-| `cleanup-debug` | Prune old files under `.agent/debug` (optional `.playwright-mcp/`) | Direct invocation |
-| `knowledge-lint` | Deterministic checks for knowledge structure and documentation integrity | Direct invocation |
-| `doc-gardening` | Turn knowledge lint findings into low-risk maintenance recommendations | Direct invocation |
+| `architecture-guard` | 通过自动审计和人工审查保护架构 | planner, implementer, code-reviewer |
+| `code-evaluation` | 代码质量评分：可靠性、性能、可维护性 | implementer, code-reviewer |
+| `security-scan` | 依赖漏洞、危险 API、供应链风险 | code-reviewer |
+| `changelog-generator` | 从 git 提交自动生成 CHANGELOG（Conventional Commits） | documenter |
+| `superpowers` | TDD 工作流、调试策略、重构 & git 技巧 | implementer |
+| `handoff` | 在 agent、会话或子 agent 之间紧凑传递任务 | `/handoff` |
+| `validation-contract` | 在实现前创建和检查可执行的验证契约 | Mission Lite、高风险任务 |
+| `agent-visibility` | 管理 .agent Git 可见性（私有/忽略/追踪） | 直接调用 |
+| `sync-global` | 从 `~/.agent` 同步工作流和技能到当前项目 | 直接调用 |
+| `weekly-report` | 获取并汇总 Git 日志生成周报 | `/weekly-report` 工作流 |
+| `cleanup-debug` | 清理 `.agent/debug` 下的旧文件 | 直接调用 |
+| `knowledge-lint` | 对知识结构和文档完整性进行确定性检查 | 直接调用 |
+| `doc-gardening` | 将知识 lint 发现转化为低风险维护建议 | 直接调用 |
