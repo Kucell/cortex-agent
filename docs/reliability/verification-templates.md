@@ -8,257 +8,298 @@
 
 ## 1. 目标
 
-为三类最常见的项目形态（UI、服务/API、链路）提供标准化验证模板。
+提供三类可复用的验证模板，让 Agent 在 `/ship` 的 REVIEW 阶段和 `/briefing` 的风险判断中，用一致的结构表达"这次变更被验证到什么程度"。
 
-每份模板解决三个问题：
+三类模板覆盖：
 
-- **验什么**：最小验证集合
-- **怎么验**：动作顺序与证据收集
-- **怎么记录**：标准输出结构，可直接嵌入 `validation-contract` 的 `runtime` 断言
+- **UI 验证**：浏览器/端到端交互，确认界面真的能用
+- **API 验证**：接口/日志/指标，确认后端服务按预期响应
+- **链路验证**：跨服务 trace，确认端到端请求链路无断点
 
-模板技术栈无关，可被 workflow 或 automation 引用。
-
----
-
-## 2. 模板索引
-
-| 项目形态 | 模板 | 主要依赖文档 |
-| :--- | :--- | :--- |
-| UI / 前端 | [T-VUI：UI 验证模板](#3-t-vui-ui-验证模板) | [browser-verification.md](./browser-verification.md) |
-| 服务 / API | [T-VAPI：API 验证模板](#4-t-vapi-api-验证模板) | [log-legibility.md](./log-legibility.md), [metrics-legibility.md](./metrics-legibility.md) |
-| 链路 / 分布式 | [T-VCHAIN：链路验证模板](#5-t-vchain-链路验证模板) | [trace-legibility.md](./trace-legibility.md) |
+每类分"最小模板"（快速完成，不超过 10 分钟）和"完整模板"（深度覆盖，适合重大变更）。
 
 ---
 
-## 3. T-VUI：UI 验证模板
+## 2. 使用方式
 
-### 3.1 适用场景
+### 何时使用
 
-- 前端页面、Web App、React/Vue/Svelte 项目
-- 改动影响了路由、交互、表单、关键流程
+| 场景 | 推荐模板 |
+|------|---------|
+| `/ship` REVIEW 阶段 | 按改动类型选对应最小模板 |
+| `/briefing` 风险评估 | 读取 `verification-summary.json` |
+| 重大 feature 上线前 | 三类模板完整版依次执行 |
+| Bug fix 验证 | 仅 API 模板最小版 + 对应 E2E 路径 |
 
-### 3.2 最小验证集合
+### 输出位置
 
-| 检查项 | 动作 | 证据 |
-| :--- | :--- | :--- |
-| 页面可打开 | `navigate(URL)` 返回 200 | 截图或状态码 |
-| 主路径可走通 | 核心用户流程完整执行一次 | 截图序列 |
-| 关键交互可触发 | 点击/输入/提交 不报错 | 浏览器控制台无 Error |
-| 无明显视觉回归 | 与基线截图对比 | diff 截图 |
+```text
+.agent/metrics/
+├── runtime-health.json          # API 验证结果摘要
+├── browser-verification.json    # UI 验证截图 + 断言结果
+└── verification-summary.json    # 三类结果的统一汇总（/briefing 读取此文件）
+```
 
-### 3.3 标准输出结构
+---
+
+## 3. UI 验证模板
+
+> 适用于：前端 / 全栈项目，有可交互的页面
+
+### 最小模板（5 分钟）
+
+```markdown
+## UI 验证
+
+**验证时间**: [YYYY-MM-DD HH:MM]
+**触发原因**: [本次 /ship 改动了哪些前端路径]
+
+### 关键页面可用性
+
+| 路径 | HTTP 状态 | 可交互 | 截图 |
+|------|----------|--------|------|
+| /    | 200      | ✅     | [链接或说明] |
+| /[改动路径] | 200 | ✅  | [链接或说明] |
+
+### 改动路径冒烟
+
+- [ ] 入口正常渲染（无空白页、无明显报错）
+- [ ] 主要交互元素可点击（按钮、表单、导航）
+- [ ] 与本次变更最相关的一条 Happy Path 走通
+
+### 结论
+
+- **状态**: PASS / FAIL / PARTIAL
+- **阻断 CLEAN**: 是 / 否
+- **备注**: [若 FAIL，具体原因]
+```
+
+### 完整模板（30 分钟）
+
+```markdown
+## UI 验证（完整版）
+
+**验证时间**: [YYYY-MM-DD HH:MM]
+**测试环境**: [本地 / 预发 / 生产]
+**工具**: [Chrome DevTools / Playwright / 手动]
+
+### 页面可用性矩阵
+
+| 路径 | 状态码 | 首屏时间 | 交互状态 | 截图 |
+|------|-------|---------|---------|------|
+| (填写所有改动相关页面) |
+
+### Happy Path 验证
+
+针对本次变更涉及的核心用户流程，逐条记录：
+
+1. **流程名称**: [例：用户登录]
+   - 步骤：[点击"登录"→填写表单→提交]
+   - 预期：[跳转到首页，展示用户名]
+   - 实际：[✅ 符合预期 / ❌ 描述偏差]
+
+### 回归检查
+
+- [ ] 与本次变更无关的邻近页面没有出现视觉回归
+- [ ] 控制台无 uncaught error（非已知老问题）
+- [ ] 网络请求中无非预期的 4xx / 5xx
+
+### 结论
+
+- **覆盖路径数**: [N 条]
+- **通过率**: [N/N]
+- **状态**: PASS / FAIL / PARTIAL
+- **遗留问题**: [若有]
+```
+
+---
+
+## 4. API 验证模板
+
+> 适用于：后端服务、CLI 工具、有 API 接口的项目
+
+### 最小模板（5 分钟）
+
+```markdown
+## API 验证
+
+**验证时间**: [YYYY-MM-DD HH:MM]
+**触发原因**: [本次 /ship 改动了哪些接口/逻辑]
+
+### 接口可用性
+
+| 接口 | 方法 | 状态码 | 响应时间 | 结果 |
+|------|------|-------|---------|------|
+| [改动接口] | GET/POST | 200 | <500ms | ✅ |
+
+### 日志检查
+
+- [ ] 服务启动日志无 ERROR
+- [ ] 改动路径的请求日志无异常
+- [ ] 无新增的 WARN / ERROR 模式
+
+### 结论
+
+- **状态**: PASS / FAIL / PARTIAL
+- **阻断 CLEAN**: 是 / 否
+```
+
+### 完整模板（20 分钟）
+
+```markdown
+## API 验证（完整版）
+
+**验证时间**: [YYYY-MM-DD HH:MM]
+**测试环境**: [本地 / 预发]
+
+### 接口功能矩阵
+
+| 接口 | 方法 | 场景 | 预期状态码 | 实际 | 响应摘要 |
+|------|------|------|----------|------|---------|
+| (填写本次改动涉及的全部接口及边界场景) |
+
+### 指标基线对比
+
+| 指标 | 变更前 | 变更后 | 差异 | 判断 |
+|------|-------|-------|------|------|
+| P50 响应时间 | - | - | - | ✅/⚠️ |
+| 错误率 | - | - | - | ✅/⚠️ |
+| QPS（峰值） | - | - | - | ✅/⚠️ |
+
+### 日志模式扫描
+
+检查最近 50 条日志是否有新增 ERROR 模式，无新增 ERROR / 慢查询 / 超时即为通过。
+
+### 结论
+
+- **接口覆盖率**: [N/N]
+- **状态**: PASS / FAIL / PARTIAL
+- **遗留问题**: [若有]
+```
+
+---
+
+## 5. 链路验证模板
+
+> 适用于：微服务架构、有跨服务调用的项目
+
+### 最小模板（10 分钟）
+
+```markdown
+## 链路验证
+
+**验证时间**: [YYYY-MM-DD HH:MM]
+**触发原因**: [本次改动涉及的跨服务路径]
+
+### 关键链路检查
+
+| 链路 | 入口服务 | 出口服务 | trace_id | 状态 |
+|------|---------|---------|---------|------|
+| [改动涉及的链路] | - | - | [从日志取] | ✅/❌ |
+
+### 断点检查
+
+- [ ] 所有跨服务 span 均有完整的 parent_id
+- [ ] 无超时 span（> SLA 阈值）
+- [ ] 无孤儿 span（缺少 trace_id）
+
+### 结论
+
+- **状态**: PASS / FAIL / PARTIAL
+- **阻断 CLEAN**: 是 / 否
+```
+
+### 完整模板（30 分钟）
+
+```markdown
+## 链路验证（完整版）
+
+**验证时间**: [YYYY-MM-DD HH:MM]
+**Tracing 工具**: [Jaeger / Zipkin / OpenTelemetry / 其他]
+
+### 端到端请求链路
+
+| 请求场景 | trace_id | 总耗时 | span 数 | 错误 span | 状态 |
+|---------|---------|-------|--------|---------|------|
+| (填写关键业务请求) |
+
+### 服务依赖验证
+
+| 调用方 | 被调用方 | 协议 | P99 耗时 | 错误率 | 状态 |
+|-------|---------|------|---------|-------|------|
+
+### 变更影响扫描
+
+- [ ] 新增的跨服务调用有 trace_id 传递
+- [ ] 本次变更未引入新的同步阻塞调用
+- [ ] 超时配置与 SLA 阈值一致
+
+### 结论
+
+- **链路覆盖数**: [N 条]
+- **状态**: PASS / FAIL / PARTIAL
+- **遗留问题**: [若有]
+```
+
+---
+
+## 6. 汇总结构（verification-summary.json）
+
+`/briefing` 和 `/ship` 读取以下结构作为统一输入：
 
 ```json
 {
-  "template": "T-VUI",
-  "verified_at": "2026-06-12T00:00:00Z",
-  "project_url": "http://localhost:3000",
-  "results": [
-    {
-      "check": "page_load",
-      "url": "/",
+  "generated_at": "2026-06-12T12:00:00Z",
+  "triggered_by": "/ship",
+  "overall_status": "pass",
+  "coverage": {
+    "ui": "minimal",
+    "api": "full",
+    "trace": "skipped"
+  },
+  "results": {
+    "ui": {
       "status": "pass",
-      "evidence": "docs/reliability/evidence/ui-homepage.png"
+      "paths_checked": 3,
+      "screenshot_paths": []
     },
-    {
-      "check": "critical_flow",
-      "flow": "user_login",
-      "steps": ["navigate /login", "fill form", "submit"],
+    "api": {
       "status": "pass",
-      "evidence": "docs/reliability/evidence/ui-login-flow.png"
+      "endpoints_checked": 5,
+      "error_rate_delta": 0.0
     },
-    {
-      "check": "console_errors",
-      "count": 0,
-      "status": "pass"
+    "trace": {
+      "status": "skipped",
+      "reason": "no cross-service calls in this change"
     }
-  ],
-  "overall": "pass",
-  "notes": ""
+  },
+  "blockers": [],
+  "warnings": []
 }
 ```
 
-### 3.4 嵌入 validation-contract 示例
-
-```json
-{
-  "id": "VC-UI-001",
-  "type": "runtime",
-  "assertion": "关键页面可打开，主路径无阻断性错误",
-  "evidence": "docs/reliability/evidence/ui-verification.json",
-  "template_ref": "T-VUI",
-  "blocking": true
-}
-```
+**字段说明**：
+- `coverage`: `full` / `minimal` / `skipped`
+- `overall_status`: `pass` / `fail` / `partial` — 影响 `/ship` CLEAN 阶段是否阻断
+- `blockers`: 阻断 CLEAN 的具体原因列表
 
 ---
 
-## 4. T-VAPI：API 验证模板
+## 7. 与工作流的集成点
 
-### 4.1 适用场景
-
-- 后端服务、REST API、GraphQL、gRPC
-- 改动影响了接口响应、错误处理、数据结构
-
-### 4.2 最小验证集合
-
-| 检查项 | 动作 | 证据 |
-| :--- | :--- | :--- |
-| 服务可启动 | 进程启动，健康检查端点返回 2xx | 日志首行 + 健康检查响应 |
-| 关键接口可响应 | curl / http client 调用，状态码符合预期 | 响应体 JSON |
-| 错误处理正确 | 传入非法输入，返回正确错误码和消息 | 响应体 JSON |
-| 无意外日志错误 | 服务日志中无 `ERROR` / `FATAL` | 日志截断片段 |
-
-### 4.3 标准输出结构
-
-```json
-{
-  "template": "T-VAPI",
-  "verified_at": "2026-06-12T00:00:00Z",
-  "service": "my-api",
-  "base_url": "http://localhost:8080",
-  "results": [
-    {
-      "check": "health",
-      "endpoint": "/health",
-      "method": "GET",
-      "expected_status": 200,
-      "actual_status": 200,
-      "status": "pass"
-    },
-    {
-      "check": "critical_endpoint",
-      "endpoint": "/api/users",
-      "method": "GET",
-      "expected_status": 200,
-      "actual_status": 200,
-      "response_sample": { "count": 3 },
-      "status": "pass"
-    },
-    {
-      "check": "error_handling",
-      "endpoint": "/api/users/invalid-id",
-      "method": "GET",
-      "expected_status": 404,
-      "actual_status": 404,
-      "status": "pass"
-    },
-    {
-      "check": "log_errors",
-      "error_count": 0,
-      "fatal_count": 0,
-      "status": "pass"
-    }
-  ],
-  "overall": "pass",
-  "notes": ""
-}
-```
-
-### 4.4 嵌入 validation-contract 示例
-
-```json
-{
-  "id": "VC-API-001",
-  "type": "runtime",
-  "assertion": "关键接口可响应，错误处理符合预期，无 FATAL 日志",
-  "evidence": "docs/reliability/evidence/api-verification.json",
-  "template_ref": "T-VAPI",
-  "blocking": true
-}
-```
+| 工作流 | 集成方式 |
+|--------|---------|
+| `/ship` REVIEW | 执行对应最小模板，结果影响 Phase Gate |
+| `/ship` CLEAN | 读取 `verification-summary.json`，`fail` 时阻断 |
+| `/briefing` | 读取 `verification-summary.json` 展示上次验证状态 |
+| `mission` VALIDATE | 按 milestone 类型选择对应完整模板 |
 
 ---
 
-## 5. T-VCHAIN：链路验证模板
+## 8. 相关文档
 
-### 5.1 适用场景
-
-- 多服务调用链路（微服务、BFF、消息队列）
-- 改动影响了请求在多个服务间的流转
-
-### 5.2 最小验证集合
-
-| 检查项 | 动作 | 证据 |
-| :--- | :--- | :--- |
-| request_id 全链路可追踪 | 发起请求，在各服务日志中找到同一 request_id | 日志片段（含 request_id） |
-| 链路无断点 | Trace 展示 span 连续，无 missing span | Trace 截图或导出 JSON |
-| 端到端延迟在预期范围 | 总耗时 < SLA 阈值 | Trace summary 或 metrics |
-| 失败时降级正确 | 其中一个下游返回错误，上游正确降级 | 日志 + 响应体 |
-
-### 5.3 标准输出结构
-
-```json
-{
-  "template": "T-VCHAIN",
-  "verified_at": "2026-06-12T00:00:00Z",
-  "request_id": "req-abc123",
-  "entry_point": "POST /api/orders",
-  "results": [
-    {
-      "check": "trace_continuity",
-      "spans": ["gateway", "order-service", "inventory-service", "payment-service"],
-      "missing_spans": [],
-      "status": "pass"
-    },
-    {
-      "check": "e2e_latency",
-      "total_ms": 245,
-      "sla_ms": 500,
-      "status": "pass"
-    },
-    {
-      "check": "request_id_propagation",
-      "found_in": ["gateway-log", "order-service-log", "inventory-service-log"],
-      "status": "pass"
-    },
-    {
-      "check": "degradation",
-      "scenario": "inventory-service returns 503",
-      "expected_behavior": "order-service returns 202 with degraded flag",
-      "actual_behavior": "order-service returns 202 with degraded: true",
-      "status": "pass"
-    }
-  ],
-  "overall": "pass",
-  "notes": ""
-}
-```
-
-### 5.4 嵌入 validation-contract 示例
-
-```json
-{
-  "id": "VC-CHAIN-001",
-  "type": "runtime",
-  "assertion": "请求链路可端到端追踪，延迟符合 SLA，下游失败时降级正确",
-  "evidence": "docs/reliability/evidence/chain-verification.json",
-  "template_ref": "T-VCHAIN",
-  "blocking": true
-}
-```
-
----
-
-## 6. 使用边界
-
-| 场景 | 是否适用 |
-| :--- | :--- |
-| 单文件 bug 修复，无 UI/API 影响 | 不强制，可跳过 runtime 断言 |
-| 新增 API 端点 | **T-VAPI 必选** |
-| 新增前端页面或关键交互 | **T-VUI 必选** |
-| 跨服务改动或新增消息链路 | **T-VCHAIN 必选** |
-| Mission Lite milestone 验收 | 三类中至少选一个作为 `runtime` 断言 |
-
----
-
-## 7. 与现有工具的关系
-
-| 工具 | 关系 |
-| :--- | :--- |
-| `validation-contract` skill | `runtime` 断言的 `evidence` 指向本模板输出的 JSON 文件 |
-| `/ship` DONE 阶段 | 提交前检查 `blocking: true` 的 runtime 断言是否有对应 evidence |
-| `/briefing` runtime evidence 板块 | 读取 `docs/reliability/evidence/*.json` 摘要展示 |
-| `browser-verification.md` | T-VUI 模板的实施细节参考 |
-| `log-legibility.md` / `metrics-legibility.md` | T-VAPI 模板的实施细节参考 |
-| `trace-legibility.md` | T-VCHAIN 模板的实施细节参考 |
+- [log-legibility.md](./log-legibility.md) — 日志排查字段优先级与标准输出模板
+- [metrics-legibility.md](./metrics-legibility.md) — 指标分层与健康度表达
+- [trace-legibility.md](./trace-legibility.md) — Trace 断点判断与链路排查顺序
+- [browser-verification.md](./browser-verification.md) — 浏览器验证基线与截图留证
+- [runtime-evidence-integration.md](./runtime-evidence-integration.md) — /briefing 与 /ship 接入设计
