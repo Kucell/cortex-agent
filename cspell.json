@@ -60,7 +60,16 @@
     "AfterEffects",
     "graphify",
     "Graphify",
-    "graphifylabs"
+    "graphifylabs",
+    "animejs",
+    "Animejs",
+    "remotion",
+    "Remotion",
+    "stagger",
+    "easing",
+    "autoplay",
+    "stateMachines",
+    "unpkg"
   ],
   "ignoreRegExpList": [
     "/<!-- cspell:disable -->[\\s\\S]*?<!-- cspell:enable -->/g",
