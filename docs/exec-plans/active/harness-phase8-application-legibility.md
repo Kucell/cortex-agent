@@ -46,10 +46,11 @@
 - 新增 `docs/reliability/runtime-evidence-integration.md`
 - 设计 `/briefing` 与 `/ship` 如何消费 runtime evidence
 
-### T-H23 [待开始]
+### T-H23 [已完成]
 
 - 新增 `docs/reliability/verification-templates.md`
-- 整理 UI / API / 链路三类验证模板
+- 整理 UI（T-VUI）/ API（T-VAPI）/ 链路（T-VCHAIN）三类验证模板
+- 每类模板含最小验证集合、标准 JSON 输出结构、嵌入 validation-contract 的示例
 
 ## 验收标准
 
