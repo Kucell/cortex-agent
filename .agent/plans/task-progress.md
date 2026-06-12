@@ -148,8 +148,8 @@
 | T-C04 | P0 | Artifact Bus（`artifact-schema.json` + 读写辅助） | 100% |
 | T-C05 | P1 | Progress Lock（`acquire/renew/release` + TTL） | 100% |
 | T-C06 | P0 | handoff skill 升级：双产物 + `AGENT_RESUME` 模式 | 100% |
-| T-C07 | P1 | `routing-defaults.yml` 扩展 `model_registry` | 0% |
-| T-C08 | P1 | `/mission` 状态机改造：显式 HANDOFF + RESUME 状态 | 0% |
+| T-C07 | P1 | `routing-defaults.yml` 扩展 `model_registry` | 100% |
+| T-C08 | P1 | `/mission` 状态机改造：显式 HANDOFF + RESUME 状态 | 100% |
 | T-C09 | P1 | 端到端验证：Claude → Codex 切换场景 | 0% |
 | T-C10 | P2 | `/briefing` 接入 coordinator 健康度板块 | 0% |
 
