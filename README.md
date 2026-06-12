@@ -11,6 +11,7 @@
 - **结构化交接**：`/handoff` 为跨 Agent、跨会话和 sub-agent 接力生成轻量交接文档，避免依赖对话记忆。
 - **长周期任务编排**：`/mission` 通过 milestone、验证契约和命令日志支撑多阶段任务稳定推进。
 - **熵治理闭环**：`entropy-scanner` 周期扫描知识库漂移，PostCommit Hook 自动修复，保持 `.agent/` 长期健康。
+- **自举验证**：`self-check` skill 让框架使用自身能力验证自身，配合 `/ship` CLEAN 阶段实现自检自愈。
 - **工具无关**：同一套 `.agent/` 配置通过符号链接和指令文件适配 11 个主流 AI 平台。
 
 ## 快速开始
@@ -44,14 +45,21 @@ npx cortex-agent upgrade
 .agent/
 ├── rules/          # 核心规则：架构约束、代码规范、语言规则
 ├── workflows/      # 工作流：/start-task /ship /handoff /mission /configure 等斜杠命令
-├── skills/         # 专项技能：architecture-guard / context-budget / validation-contract
-├── sub-agents/     # 子代理：planner / implementer / researcher 等
+├── skills/         # 专项技能：architecture-guard / context-budget / validation-contract / self-check
+├── sub-agents/     # 子代理：planner / implementer / researcher / coordinator 等
 ├── hooks/          # 钩子：PostToolUse Lint 检查 + PostCommit 熵清理
 ├── config/         # 配置：reasoning-config.yml（模型 & API 配置）
 ├── plans/          # 进度管理：task-progress.md 路线图
 ├── handoffs/       # 任务交接：跨 Agent / 跨会话的轻量上下文包
 ├── missions/       # 长周期任务状态：/mission 按需创建
+├── registry/       # Agent Registry：coordinator 多 agent 协调
+├── artifacts/      # Artifact Bus：coordinator 结构化产物存储
+├── locks/          # Progress Lock：任务级 / 文件级互斥
 └── references/     # 知识库：/scan-project 生成的模块参考文档
+
+> **自举仓库**：cortex-agent 自身的 `.agent/` 目录作为独立仓库管理：[Kucell/cortex-agent-agent](https://github.com/Kucell/cortex-agent-agent)
+> 本仓库通过 `cortex-agent untrack`（默认）保持 `.agent/` 不被主仓库追踪，IDE 仍可通过符号链接识别 slash 命令菜单。
+> 详见 [docs/architecture/self-bootstrapping.md](docs/architecture/self-bootstrapping.md)
 
 docs/
 ├── architecture/   # 架构设计与演进方案
@@ -76,6 +84,7 @@ docs/
 | [docs/architecture/mission-lite-design.md](docs/architecture/mission-lite-design.md) | Mission Lite 长周期任务编排的详细架构方案 |
 | [docs/architecture/harness-optimization-design.md](docs/architecture/harness-optimization-design.md) | Harness Engineering 与 Mission Lite 演进设计 |
 | [docs/architecture/multi-agent-coordinator.md](docs/architecture/multi-agent-coordinator.md) | Multi-Agent Coordinator（多 agent × 多模型协调层）设计稿 |
+| [docs/architecture/self-bootstrapping.md](docs/architecture/self-bootstrapping.md) | 自举工作流：框架使用自身能力完成自我验证和实时更新 |
 | [docs/architecture/graphify-integration-proposal.md](docs/architecture/graphify-integration-proposal.md) | Graphify 知识图谱集成提案（Artifact Bus 扩展 + Handoff 协议联动） |
 
 ## 开源协议
