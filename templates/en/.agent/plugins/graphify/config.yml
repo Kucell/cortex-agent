@@ -1,0 +1,39 @@
+graphify:
+  version: ">=1.0.0"
+  map_path: ".graphify/map.json"
+
+  # 扫描范围（相对项目根目录）
+  include:
+    - "src/"
+    - "lib/"
+    - "bin/"
+    - ".agent/skills/"
+    - ".agent/sub-agents/"
+    - ".agent/workflows/"
+
+  # 排除范围
+  exclude:
+    - "node_modules/"
+    - "templates/"
+    - "dist/"
+    - "*.test.js"
+    - "*.spec.ts"
+    - "*.test.ts"
+
+subgraph:
+  # 单次 handoff 最多携带节点数（建议 30-80）
+  max_nodes: 50
+
+  # 从入口文件最多展开的依赖层数（建议 2-4）
+  max_depth: 3
+
+  # Graphify 不可用时的降级策略：skip（静默跳过）| warn（打印警告）
+  fallback: skip
+
+  # 子图输出目录（相对 .agent/artifacts/<task_id>/）
+  output_filename: "graphify-subgraph.json"
+
+artifact_bus:
+  # 是否自动将子图注册到 Artifact Bus
+  auto_register: true
+  kind: "knowledge-graph"
