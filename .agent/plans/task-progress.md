@@ -150,7 +150,7 @@
 | T-C06 | P0 | handoff skill 升级：双产物 + `AGENT_RESUME` 模式 | 100% |
 | T-C07 | P1 | `routing-defaults.yml` 扩展 `model_registry` | 100% |
 | T-C08 | P1 | `/mission` 状态机改造：显式 HANDOFF + RESUME 状态 | 100% |
-| T-C09 | P1 | 端到端验证：Claude → Codex 切换场景 | 0% |
+| T-C09 | P1 | 端到端验证：Claude → Codex 切换场景 | ✅ 验证完成，发现 TC9-F1 schema 不匹配，已通过 T-B02 修复 handoff-protocol.js |
 | T-C10 | P2 | `/briefing` 接入 coordinator 健康度板块 | 0% |
 
 ## 🧭 下一阶段候选（Graphify · 知识图谱集成）
@@ -179,6 +179,20 @@
 | T-A05 | P2 | Anime.js 试点：产出 Coordinator 调度 Web 原型 | 0% |
 | T-A06 | P2 | Remotion 试点：生成 Claude → Codex handoff 演示视频 | 0% |
 
+## 🧭 下一阶段候选（Self-Bootstrapping · 自举工作流）
+
+> 目标：Cortex Agent 使用自身 `.agent` 的能力完成自我验证和实时更新，实现框架自检自愈
+> 入口设计：`/arch-design` 自举工作流提案
+
+| 任务 ID | 优先级 | 描述 | 进度 |
+| :--- | :--- | :--- | :--- |
+| T-B01 | P0 | 设计自举工作流文档 `docs/architecture/self-bootstrapping.md` | 0% |
+| T-B02 | P0 | 修复 `handoff-protocol.js` 的 artifact wrapper 检测逻辑 | ✅ 已完成 |
+| T-B03 | P1 | 创建自举验证 skill `skills/self-check/` | 0% |
+| T-B04 | P1 | 将自检接入 `/ship` CLEAN 阶段 | 0% |
+| T-B05 | P1 | 将自检接入 `cortex-agent upgrade` 前后 | 0% |
+| T-B06 | P2 | 创建 `/agent-update-self` 工作流 | 0% |
+
 ---
 
 ## ✅ 最近完成
@@ -191,6 +205,8 @@
 - **T-C04**：新增 Artifact Bus schema、state schema 与零依赖 `artifact-bus.js` 脚本，支持 append、list、read、state、validate；同步本地 `.agent/` 与中英模板，coordinator 可通过 Artifact Bus 读写 plan/execution/review/handoff/validation artifacts
 - **T-C05**：新增 Progress Lock schema、`lock-events.json` 与零依赖 `progress-lock.js` 脚本，支持 acquire、renew、release、inspect、list-held、sweep-expired；同步本地 `.agent/` 与中英模板，coordinator 可在 dispatch/resume/handoff/health 阶段处理本地任务级与文件级互斥
 - **T-C06**：升级 handoff skill / workflow 为 Markdown + JSON 双产物协议，新增 `handoff.schema.json` 与零依赖 `handoff-protocol.js`，支持 validate、publish、resume-prompt；JSON handoff 可作为 Artifact Bus `kind: handoff` 供 `AGENT_RESUME` 消费，并预留 `graphify_context`
+- **T-C09**：执行端到端验证，发现 artifact wrapper 与 handoff schema 不匹配问题：artifact-bus.js 将 handoff JSON 包装在 `{artifact_id, seq, task_id, ..., payload}` 结构中，但 handoff.schema.json 期望字段在根级别，导致 `resume-prompt` 失败。验证报告见 `.agent/artifacts/T-C09/002-verification.json`
+- **T-B02**：修复 `handoff-protocol.js` 的 artifact wrapper 检测逻辑，新增 `extractHandoffPayload()` 函数自动识别并提取 artifact wrapper 中的 handoff payload，使 `validate` 和 `resume-prompt` 命令正确处理 artifact bus 包装格式
 - **T-H24**：完成 Mission Lite 架构设计，新增 `docs/architecture/mission-lite-design.md`，补充三角色模型、验证契约、命令日志、milestone 状态机与 `/handoff` 衔接方式
 - **T-H25**：新增 `validation-contract` skill，定义 CREATE / CHECK / SUMMARIZE 模式、assertion 类型、契约规则和最小 JSON 模板
 - **T-H26**：新增 `/mission` workflow，定义 create / status / resume / validate 子命令、mission 状态机、文件结构和质量标准
