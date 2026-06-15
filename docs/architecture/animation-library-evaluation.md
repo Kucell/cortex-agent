@@ -1,6 +1,6 @@
 # Animation Library Evaluation · README / Docs 演示增强
 
-> 状态：正式候选设计 · v0.2
+> 状态：正式候选设计 · v0.3 · Anime.js 试点完成
 > 触发：用户调研了"AI 对接的动画库"，询问后续用哪个库
 > 范围：cortex-agent 自身的 README / docs / 架构演示 / 视频化说明场景
 
@@ -210,9 +210,9 @@ Coordinator 设计（T-C02~T-C10）里需要一个 **agent 调度可视化**（a
 
 ### 阶段 2（工具试点）
 
-未来若出现"必须交互式动画或视频化说明"的需求，按以下顺序考虑：
+Anime.js 试点已完成（T-A05）。若出现"必须交互式动画或视频化说明"的进一步需求，按以下顺序推进：
 
-1. **Anime.js**：先做轻量 Web 原型，验证节奏和状态表达。
+1. **Anime.js**：轻量 Web 原型已试点落地，可复用验证节奏和状态表达。
 2. **Remotion**：把稳定原型生成 GIF/MP4，用于 README、release 和教程。
 3. **Rive**：当需要用户可交互的状态机时，再做 `.riv` 资产。
 4. **Lottie**：仅当已有 AE 资产可用。
@@ -233,7 +233,7 @@ Coordinator 设计（T-C02~T-C10）里需要一个 **agent 调度可视化**（a
 | T-A02 | 把 `quick-start.svg` 升级为 `quick-start.riv`（hover 重放 + 跳步） | 4h | P2 |
 | T-A03 | 产出 agent 调度演示原型（Coordinator 状态机） | 6h | P2（依赖 T-C02~C10） |
 | T-A04 | docs/assets/ 加入 Rive 加载说明 + cspell 加 `rive` 等词 | 1h | P2 |
-| T-A05 | Anime.js 试点：产出 Coordinator 调度 Web 原型 | 3h | P2（依赖 T-C02） |
+| T-A05 | Anime.js 试点：产出 Coordinator 调度 Web 原型 | 3h | P2（依赖 T-C02） | ✅ 已完成 |
 | T-A06 | Remotion 试点：生成 Claude → Codex handoff 演示视频 | 6h | P2（依赖 T-C09） |
 
 **总估时**：~22 小时

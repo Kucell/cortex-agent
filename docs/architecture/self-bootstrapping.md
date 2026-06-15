@@ -2,7 +2,7 @@
 
 > 自举工作流：Cortex Agent 使用自身 `.agent` 的能力完成自我验证和实时更新
 
-**状态**: 设计完成
+**状态**: 已实现（Implemented）
 **版本**: 1.0.0
 **最后更新**: 2026-06-12
 
@@ -263,12 +263,12 @@ function extractHandoffPayload(payload) {
 
 | 任务 ID | 描述 | 依赖 | 状态 |
 |---------|------|------|------|
-| T-B01 | 设计自举工作流文档 | - | 🔄 进行中 |
+| T-B01 | 设计自举工作流文档 | - | ✅ 已完成 |
 | T-B02 | 修复 handoff-protocol.js wrapper 检测 | T-C09 | ✅ 已完成 |
-| T-B03 | 创建 self-check skill | T-B01 | 待开始 |
-| T-B04 | 接入 `/ship` CLEAN 阶段 | T-B03 | 待开始 |
-| T-B05 | 接入 `cortex-agent upgrade` | T-B03 | 待开始 |
-| T-B06 | 创建 `/agent-update-self` 工作流 | T-B04 | 待开始 |
+| T-B03 | 创建 self-check skill | T-B01 | ✅ 已完成 |
+| T-B04 | 接入 `/ship` CLEAN 阶段 | T-B03 | ✅ 已完成 |
+| T-B05 | 接入 `cortex-agent upgrade` | T-B03 | ✅ 已完成 |
+| T-B06 | 创建 `/agent-update-self` 工作流 | T-B04 | ✅ 已完成 |
 
 ---
 

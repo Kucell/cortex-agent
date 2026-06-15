@@ -242,7 +242,7 @@ Mission Lite 第一阶段不做以下事情：
 
 ### 8.4 文件结构
 
-建议新增的任务状态结构如下：
+已落地的任务状态结构如下：
 
 ```text
 .agent/missions/M-xxx/
@@ -367,15 +367,15 @@ Harness Engineering 为 Coordinator 提供以下基础约束：
 
 ### 8.9 后续任务拆解
 
-建议新增一组 Mission Lite 任务：
+已落地一组 Mission Lite 任务：
 
-| 任务 ID | 优先级 | 描述 | 验收标准 |
-|--------|--------|------|----------|
-| T-H24 | P0 | Mission Lite 架构设计 | `docs/architecture.md` 明确 Mission Lite 角色、状态机、产物和边界 |
-| T-H25 | P0 | 新增 `validation-contract` skill | 定义 CREATE / CHECK 两种模式和 JSON 契约模板 |
-| T-H26 | P1 | 新增 `/mission` workflow | 支持 SCOPE / PLAN / CONTRACT / EXECUTE / VALIDATE 状态说明 |
-| T-H27 | P1 | 扩展 planner / reviewer 输出契约 | planner 输出 validation contract，reviewer 按 contract 验证 |
-| T-H28 | P2 | 命令日志与 milestone 模板标准化 | 提供 `command-log.md` 与 `milestones/MS-xxx.md` 模板 |
+| 任务 ID | 优先级 | 描述 | 验收标准 | 状态 |
+|--------|--------|------|----------|------|
+| T-H24 | P0 | Mission Lite 架构设计 | `docs/architecture.md` 明确 Mission Lite 角色、状态机、产物和边界 | ✅ 已完成 |
+| T-H25 | P0 | 新增 `validation-contract` skill | 定义 CREATE / CHECK 两种模式和 JSON 契约模板 | ✅ 已完成 |
+| T-H26 | P1 | 新增 `/mission` workflow | 支持 SCOPE / PLAN / CONTRACT / EXECUTE / VALIDATE 状态说明 | ✅ 已完成 |
+| T-H27 | P1 | 扩展 planner / reviewer 输出契约 | planner 输出 validation contract，reviewer 按 contract 验证 | ✅ 已完成 |
+| T-H28 | P2 | 命令日志与 milestone 模板标准化 | 提供 `command-log.md` 与 `milestones/MS-xxx.md` 模板 | ✅ 已完成 |
 
 ### 8.10 推荐落地顺序
 
