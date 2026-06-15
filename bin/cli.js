@@ -58,7 +58,7 @@ const ctx = { cwd, args, command, options, lang, templateDir };
     case "track":       trackAgent(ctx); break;
     case "untrack":     untrackAgent(ctx); break;
     case "link-global": linkGlobal(ctx); break;
-    case "doctor":      doctor(ctx); break;
+    case "doctor":      await doctor(ctx); break;
     default:            printHelp(); break;
   }
 })();
