@@ -3,7 +3,7 @@
 > 双路径原型工作流：从需求文字快速生成可验证的文档型原型（Mermaid + Anime.js）或 UI 型原型（Pixso MCP），统一输出 validation-contract，衔接需求与架构设计。
 
 **状态**: 设计完成
-**版本**: 1.0.0
+**版本**: v1.1（gap 补全完成：2026-06-15）
 **最后更新**: 2026-06-12
 
 ---
@@ -257,10 +257,10 @@ UI 路径 Phase 3b。当 `--mode` 为 `ui` 或 `both`、且 `--fidelity` ≥ `mi
 | 任务 ID | 描述 | 产物 | 依赖 | 状态 |
 |---------|------|------|------|------|
 | T-P01 | 架构设计文档 | `docs/architecture/prototype-workflow-design.md` | —— | ✅ 已完成 |
-| T-P02 | 核心工作流（Document 路径 + 本地 prototype.md） | `.agent/workflows/prototype.md` | T-P01 | 待开始 |
-| T-P03 | 中文模板同步 | `templates/zh/.agent/workflows/prototype.md` | T-P02 | 待开始 |
-| T-P04 | 英文模板同步 | `templates/en/.agent/workflows/prototype.md` | T-P02 | 待开始 |
-| T-P05 | 文档收尾（architecture.md + README.md + cspell.json） | 修改三处索引/字典 | T-P02 | 待开始 |
+| T-P02 | 核心工作流（Document 路径 + 本地 prototype.md） | `.agent/workflows/prototype.md` | T-P01 | ✅ 已完成 |
+| T-P03 | 中文模板同步 | `templates/zh/.agent/workflows/prototype.md` | T-P02 | ✅ 已完成 |
+| T-P04 | 英文模板同步 | `templates/en/.agent/workflows/prototype.md` | T-P02 | ✅ 已完成 |
+| T-P05 | 文档收尾（architecture.md + README.md + cspell.json） | 修改三处索引/字典 | T-P02 | ✅ 已完成 |
 
 ---
 
