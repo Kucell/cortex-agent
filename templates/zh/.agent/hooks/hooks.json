@@ -27,6 +27,18 @@
           }
         ],
         "description": "L0 熵治理：提交后自动清理 context-index.json 中已删除模块的条目（< 1 秒，不阻塞）"
+      },
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .agent/plugins/graphify/scripts/post-commit-update.js",
+            "async": true,
+            "timeout": 120
+          }
+        ],
+        "description": "Graphify：提交后自动增量更新 graphify-out/graph.json；未安装或未初始化时静默跳过"
       }
     ],
     "SessionStart": [
