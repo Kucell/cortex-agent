@@ -24,6 +24,12 @@ const cwd = process.cwd();
 const args = process.argv.slice(2);
 const command = args[0];
 
+if (command === "--version" || command === "-v") {
+  const { version } = require("../package.json");
+  console.log(version);
+  process.exit(0);
+}
+
 const options = { track: false };
 for (let i = 0; i < args.length; i++) {
   const arg = args[i];
