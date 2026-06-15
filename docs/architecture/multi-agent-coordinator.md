@@ -3,9 +3,9 @@
 
 # Multi-Agent Coordinator（多 agent × 多模型协调层）设计
 
-> 状态：主线架构 · v0.4
+> 状态：主线架构 · v1.0
 > 范围：A. Agent Registry · B. Artifact Bus · C. Progress Lock · D. Handoff 协议升级
-> 当前阶段：T-C06 Handoff 协议升级已完成，随后进入 T-C07 Model Registry
+> 当前阶段：T-C01~T-C10 全部完成（2026-06-15）
 
 ## 0. 问题陈述
 
@@ -483,10 +483,10 @@ model_registry:
 | T-C04 | Artifact Bus：`artifact-schema.json` + 读写辅助函数 | T-C02 | 4h | P0 · done |
 | T-C05 | Progress Lock：`acquire/renew/release` 脚本 + TTL 处理 | T-C02 | 3h | P1 · done |
 | T-C06 | handoff skill 升级：双产物 + `AGENT_RESUME` 模式 | T-C04 | 3h | P0 · done |
-| T-C07 | `routing-defaults.yml` 扩展 `model_registry` | T-C02 | 2h | P1 |
-| T-C08 | `/mission` 状态机改造：显式 HANDOFF + RESUME 状态 | T-C04, T-C06 | 4h | P1 |
-| T-C09 | 端到端验证：起一个 M 任务，模拟 Claude → Codex 切换 | T-C03~T-C08 | 4h | P1 |
-| T-C10 | 文档更新：`/briefing` 加入 coordinator 健康度板块 | T-C03, T-C05 | 2h | P2 |
+| T-C07 | `routing-defaults.yml` 扩展 `model_registry` | T-C02 | 2h | P1 · ✅ done |
+| T-C08 | `/mission` 状态机改造：显式 HANDOFF + RESUME 状态 | T-C04, T-C06 | 4h | P1 · ✅ done |
+| T-C09 | 端到端验证：起一个 M 任务，模拟 Claude → Codex 切换 | T-C03~T-C08 | 4h | P1 · ✅ done |
+| T-C10 | 文档更新：`/briefing` 加入 coordinator 健康度板块 | T-C03, T-C05 | 2h | P2 · ✅ done |
 
 **总估时**：~27 小时（约 3-4 个工作日）
 

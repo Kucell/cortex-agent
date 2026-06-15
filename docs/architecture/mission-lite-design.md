@@ -427,7 +427,7 @@ Status: completed in the first template-only version.
 | Worker / Validator 边界被破坏 | Medium | reviewer 输入只允许 contract、diff、command log、必要源码 |
 | `/parallel` 被误用于共享代码并行修改 | Medium | `/mission` 明确代码修改默认串行，只读研究和验证可并行 |
 | 纯加法升级导致旧项目拿不到改造 | Low | README 和 release notes 明确新文件通过 `upgrade` 加法安装 |
-| runtime evidence 尚未完全实现 | Low | `runtime` assertion 第一阶段可作为 advisory，不默认阻断 |
+| runtime evidence 部分已实现 | Low | `verification-summary.json` 已实现（2026-06-15）；`runtime-health.json` / `browser-verification.json` 对 CLI 项目为合理占位；`runtime` assertion 可作为 advisory，不默认阻断 |
 
 ---
 
