@@ -28,6 +28,19 @@ npx cortex-agent upgrade
 
 初始化后，在 AI 助手中运行 `/configure` 完成项目配置。
 
+常用工作流示例：
+
+```
+# 从需求描述生成原型（Mermaid 流程图 + Anime.js HTML），输出验收契约
+/prototype T-001
+
+# 指定 UI 模式和中等保真度（需 Pixso MCP）
+/prototype T-001 --mode ui --fidelity mid
+
+# 仅生成 Mermaid 流程图（最轻量，无工具依赖）
+/prototype T-001 --mode doc --fidelity low
+```
+
 ### 上手流程一览
 
 <p align="center">

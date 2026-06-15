@@ -204,6 +204,22 @@ flowchart TD
 
 > **推荐节奏**：`/briefing` 同步上下文 → `/arch-design` 收敛方案 → `/plan` 形成任务 → `/start-task` 执行 → `/ship` 交付。
 
+### 工作流命令速查
+
+| 命令 | 用途 | 典型场景 |
+| :--- | :--- | :--- |
+| `/configure` | 初始化项目配置 | 首次接入 |
+| `/briefing` | 同步当前上下文与任务状态 | 每日开工、跨会话恢复 |
+| `/arch-design` | 架构方案设计与评审 | 新功能/重构前收敛方案 |
+| `/plan` | 任务拆解与实施计划 | 功能开发启动 |
+| `/start-task` | 启动具体任务执行 | 进入编码阶段 |
+| `/prototype` | 从需求描述生成文档型原型（Mermaid + Anime.js）或 UI 型原型（Pixso MCP），输出 validation-contract | 需求确认前视觉锚点、UI-heavy 项目早期原型验证 |
+| `/ship` | 代码审查、提交、交付 | 完成编码后交付 |
+| `/handoff` | 跨 Agent / 跨会话的轻量交接 | Agent 切换、长任务中断恢复 |
+| `/mission` | 长周期多阶段任务编排 | 多天、多功能大任务 |
+| `/bug-fix` | 聚焦单点 bug 修复 | 快速修复 |
+| `/scan-project` | 生成/更新项目模块参考文档 | 大规模重构后同步知识库 |
+
 ---
 
 ## 六、Mission Lite 长周期任务编排
