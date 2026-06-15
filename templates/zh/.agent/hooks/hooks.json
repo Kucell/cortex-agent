@@ -33,7 +33,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node .agent/plugins/graphify/scripts/post-commit-update.js",
+            "command": "node .agent/plugins/graphify/scripts/post-commit-update.cjs",
             "async": true,
             "timeout": 120
           }
