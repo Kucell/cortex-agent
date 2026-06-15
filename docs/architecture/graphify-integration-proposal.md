@@ -221,7 +221,7 @@ subgraph:
 - [x] handoff JSON schema 包含可选 `graphify_context` 字段，并有 `enabled: false` 的 fallback 路径
 - [x] coordinator 在 HANDOFF 模式下：若 Graphify 可用则填充子图，否则静默跳过
 - [x] `cortex-agent doctor` 显示 Graphify 三项状态（CLI 安装 / 插件配置 / 图谱已生成）
-- [x] `post-commit-update.js` 在 PostCommit 后自动增量更新图谱（T-G04）
+- [x] `post-commit-update.cjs` 在 PostCommit 后自动增量更新图谱（T-G04）
 
 ---
 
@@ -236,7 +236,7 @@ subgraph:
 
 ### 方案
 
-新增 `post-commit-update.js`（模板驱动，零依赖）注入 PostCommit Hook：
+新增 `post-commit-update.cjs`（模板驱动，零依赖，使用 `.cjs` 扩展名以兼容 ESM 项目）注入 PostCommit Hook：
 
 ```mermaid
 flowchart TD
@@ -255,16 +255,16 @@ flowchart TD
 ### 新增文件
 
 ```
-templates/zh/.agent/plugins/graphify/scripts/post-commit-update.js
-templates/en/.agent/plugins/graphify/scripts/post-commit-update.js
+templates/zh/.agent/plugins/graphify/scripts/post-commit-update.cjs
+templates/en/.agent/plugins/graphify/scripts/post-commit-update.cjs
 ```
 
 Hook 注入位置：`hooks/hooks.json` PostCommit 段（async: true，timeout: 120s）
 
 实现状态：
 
-- `templates/zh/.agent/plugins/graphify/scripts/post-commit-update.js`
-- `templates/en/.agent/plugins/graphify/scripts/post-commit-update.js`
+- `templates/zh/.agent/plugins/graphify/scripts/post-commit-update.cjs`（CommonJS，兼容 ESM 项目）
+- `templates/en/.agent/plugins/graphify/scripts/post-commit-update.cjs`
 - `templates/zh/.agent/hooks/hooks.json` 已加入 Graphify PostCommit hook
 - `templates/en/.agent/hooks/hooks.json` 已加入 Graphify PostCommit hook
 - 验证环境中 `graphify update .` 成功更新 `4763 nodes / 5340 edges`
