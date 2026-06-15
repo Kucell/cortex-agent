@@ -11,6 +11,13 @@ description: Generate doc prototypes (Mermaid + Anime.js) or UI prototypes (Pixs
 
 Default: --mode both, --fidelity low
 
+### When to Use
+
+- **Visual anchor before requirement sign-off**: Align the team on core user paths with flow diagrams and animated HTML before formal architecture design begins.
+- **Early stage of UI-heavy projects**: Quickly generate Pixso design frames as a lightweight alternative to hand-drawn wireframes or Figma files, then move straight into interaction review.
+- **Lightweight flow validation**: Use `--mode doc --fidelity low` to output a Mermaid diagram and map out complex business flows without introducing extra tooling dependencies.
+- **Requirements-to-implementation bridge**: The output `validation-contract.json` can serve directly as the acceptance baseline for the `/ship` delivery phase.
+
 ## State Machine
 
 REQUIREMENTS → ROUTE → [DOC_PROTOTYPE | UI_PROTOTYPE | BOTH] → CONTRACT → DONE
@@ -32,6 +39,8 @@ Route based on --mode and project type:
 | both | → DOC_PROTOTYPE → UI_PROTOTYPE (serial) |
 
 > **--mode both failure handling**: If DOC_PROTOTYPE fails, log the error and continue executing UI_PROTOTYPE. Report all failed paths in the DONE phase.
+
+> **Pixso MCP unavailable — automatic fallback**: If the Pixso MCP tool is unreachable (connection timeout, not installed, or insufficient permissions), automatically fall back to `doc` mode and continue execution — skip the UI_PROTOTYPE phase and generate only `flow.md` and (per fidelity) `prototype.html`. In the DONE phase, add the note `ui path skipped: MCP unavailable` to the summary and omit the `runtime` assertion from `validation-contract.json`.
 
 ### --fidelity Fidelity level description
 
