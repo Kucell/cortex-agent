@@ -3,6 +3,7 @@
 "use strict";
 
 const path = require("path");
+const fs = require("fs");
 
 const {
   init,
@@ -39,9 +40,18 @@ for (let i = 0; i < args.length; i++) {
   }
 }
 
+function detectLangFromProject(dir) {
+  try {
+    const content = fs.readFileSync(path.join(dir, ".agent", "rules", "language.md"), "utf8");
+    if (/中文|zh[-_]CN|首选语言.*中/i.test(content)) return "zh";
+    if (/English|en[-_]US/i.test(content)) return "en";
+  } catch (_) {}
+  return null;
+}
+
 const defaultLang =
   process.env.LANG && process.env.LANG.startsWith("zh") ? "zh" : "en";
-const lang = options.lang || defaultLang;
+const lang = options.lang || detectLangFromProject(cwd) || defaultLang;
 const templateDir = path.join(__dirname, "../templates", lang);
 
 const ctx = { cwd, args, command, options, lang, templateDir };
