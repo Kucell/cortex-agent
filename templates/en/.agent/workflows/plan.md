@@ -12,7 +12,8 @@ After confirming a design proposal or requirement with AI, run this workflow to 
 ```
 /plan
 /plan "implement user login"
-/plan --from arch-proposal   (load proposal from .agent/resources/templates/arch-proposal.md)
+/plan --from-proposal <proposal-path>   (read a real proposal file — recommended)
+/plan --from arch-proposal              (read blank template — deprecated)
 ```
 
 ## Steps
@@ -22,8 +23,9 @@ After confirming a design proposal or requirement with AI, run this workflow to 
 Read these files in order (if they exist):
 
 1. `.agent/plans/task-progress.md` — understand current progress and existing task IDs
-2. `.agent/resources/templates/arch-proposal.md` — if `--from arch-proposal`, load the proposal
-3. `.agent/rules/architecture-design.md` — confirm architectural constraints
+2. If `--from-proposal <path>`: read the specified proposal file (`.agent/plans/proposals/xxx-proposal.md`)
+3. If `--from arch-proposal` (deprecated): read `.agent/resources/templates/arch-proposal.md`
+4. `.agent/rules/architecture-design.md` — confirm architectural constraints
 
 If the user described requirements directly (no proposal file), decompose based on conversation context.
 
@@ -61,12 +63,23 @@ Write these tasks to the plan? (y / adjust / cancel)
 After user confirmation:
 
 1. Add a new Phase in the **Roadmap** (if it's a new feature module) or append to an existing Phase
-2. Append new task rows to the **Active Tasks** table (default progress: 0%)
+2. Append new task rows to the **Active Tasks** table (default progress: 0%); if from a proposal, each row includes `Proposal: <path>`
 3. Update the `Last Updated` date in the file header
 
-### Step 4: Output Action Suggestion
+### Step 4: Back-fill the proposal (if --from-proposal was used)
+
+If this `/plan` was dispatched by `/approve` (or the user passed `--from-proposal` directly),
+update the proposal file header with execution vehicle and status:
+
+```markdown
+> **Status**: in-progress
+> **Execution Vehicle**: T-006~T-008
+```
+
+### Step 5: Output Action Suggestion
 
 ```
 ✅ Written 3 tasks (T-006 ~ T-008)
+🔗 Proposal execution vehicle back-filled: T-006~T-008
 📌 Suggested next step: /start-task T-006
 ```

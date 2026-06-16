@@ -1,8 +1,22 @@
 # Architectural Design Proposal and Comparison Report (Template)
 
-> **Document Status**: [Draft/Reviewed/Archived]  
-> **Related Task**: [Task ID or Link]  
+> **Status**: draft
+> **Execution Vehicle**: pending approval
+> **Archived Doc**: —
+> **Created**: YYYY-MM-DD
 > **Core Objective**: [One sentence describing the core problem or pain point this design aims to solve]
+
+<!--
+Status field — standard state machine (no other values allowed):
+  draft       → working draft, not yet reviewed
+  approved    → approved, waiting for execution vehicle (/approve command writes this)
+  in-progress → executing; vehicle created (T-xxx or M-xxx)
+  done        → complete; refined output archived to docs/architecture/
+  superseded  → replaced by a newer proposal (note replacement path after this field)
+
+Execution Vehicle: auto-filled by /approve (e.g. "T-006~T-008" or "M-002")
+Archived Doc: auto-filled by /done or mission COMPLETE (e.g. "docs/architecture/xxx.md")
+-->
 
 ---
 
@@ -72,13 +86,20 @@ _Self-evaluation based on project-defined architectural principles_
 
 ---
 
-## 4. Implementation & Risks
+## 4. Implementation Plan
 
-### 4.1 Implementation Plan
+> This section determines scale routing when /approve is run:
+> - ≤ 2 Phases, completable in a single session → /plan (small task)
+> - ≥ 3 Phases, or cross-session, or milestone validation required → /mission (large task)
 
-- **Phase 1**: [e.g., Interface definition and unit test framework preparation]
-- **Phase 2**: [e.g., Core logic rewrite and parallel verification]
-- **Phase 3**: [e.g., Full replacement and old logic cleanup]
+### Phase 1: [Phase Name]
+- Goal: [What this phase delivers]
+- Key files: [Main files involved]
+- Acceptance: [At least 1 verifiable condition]
+
+### Phase 2: [Phase Name]
+- Goal: ...
+- Acceptance: ...
 
 ### 4.2 Potential Risks
 

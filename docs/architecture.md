@@ -57,7 +57,8 @@ graph TD
 | `sub-agents/` | 专职代理，有独立模型、工具权限和上下文边界 | 新增专业领域代理时 |
 | `hooks/` | 事件驱动，在文件编辑、提交等关键操作前后自动执行 | 需要强制策略或自动化时 |
 | `plans/` | 存储当前路线图和任务进度，让 AI 随时掌握项目状态 | 每次任务规划/交付时更新 |
-| `docs/architecture/` | 记录架构设计、演进方案和高层设计决策 | 架构演进或设计收敛时 |
+| `.agent/plans/proposals/` | **执行期提案**：arch-design 产出的方案草案，含执行细节、状态流转；approved → in-progress 阶段持续更新 | 提案从 draft 推进到 done |
+| `docs/architecture/` | **沉淀架构文档**：提案完成后提炼的纯净架构描述，去掉执行噪音，长期可查阅 | 提案状态变为 done 时精炼写入 |
 | `docs/exec-plans/` | 记录跨会话、可追踪的执行计划资产 | 大任务启动、阶段切换或归档时 |
 | `docs/quality/` | 记录质量标准、质量度量和后续 lint 策略 | 质量规则收敛时 |
 | `docs/reliability/` | 记录可观测性、运行时验证与可靠性实践 | 增加验证与观测能力时 |
@@ -178,37 +179,47 @@ flowchart TD
         C -->|修改| B
     end
 
-    subgraph 任务规划
-        C -->|确认| D["/plan"]
-        D --> E["docs/exec-plans/active/<plan>.md"]
-        E --> F["/briefing"]
+    subgraph 批准与调度
+        C -->|确认| AP["/approve &lt;proposal&gt;"]
+        AP --> SC{规模判断}
+        SC -->|"≤2 Phase\n单会话"| D["/plan --from-proposal"]
+        SC -->|"≥3 Phase\n跨会话/里程碑"| MI["/mission create --from-proposal"]
     end
 
-    subgraph 任务执行
-        F --> G["/start-task T-xxx"]
+    subgraph 小任务执行
+        D --> G["/start-task T-xxx"]
         G --> H([🔨 编码])
-    end
-
-    subgraph 任务交付
         H --> I["/ship T-xxx"]
-        I --> J["code-review<br/>commit<br/>done<br/>sync-plans"]
-        J --> K([✅ 完成])
+        I --> K([✅ 完成])
     end
 
-    K -->|归档| L["docs/exec-plans/completed/"]
-    K -->|循环| F
+    subgraph 大任务执行
+        MI --> MS["milestone 循环\n/start-task → /ship × N"]
+        MS --> MC([✅ mission COMPLETE])
+    end
 
+    K -->|沉淀| L["docs/architecture/<主题>.md\n（提案 → done）"]
+    MC -->|沉淀| L
+    K -->|循环| B2["/briefing"]
+    MC -->|循环| B2
+
+    style AP fill:#f59e0b,color:#fff,stroke:none
     style D fill:#4a9eff,color:#fff,stroke:none
+    style MI fill:#6366f1,color:#fff,stroke:none
     style I fill:#4a9eff,color:#fff,stroke:none
+    style L fill:#10b981,color:#fff,stroke:none
 ```
 
-> **推荐节奏**：`/briefing` 同步上下文 → `/arch-design` 收敛方案 → `/plan` 形成任务 → `/start-task` 执行 → `/ship` 交付。
+> **推荐节奏**：`/briefing` 同步上下文 → `/arch-design` 收敛方案 → `/approve` 批准并调度 → 小任务走 `/plan + /start-task + /ship`，大任务走 `/mission` → 完成后沉淀到 `docs/architecture/`。
+
+> **提案生命周期**：`draft`（arch-design 产出）→ `approved`（/approve 写入）→ `in-progress`（执行中）→ `done`（沉淀后）。提案文件在 `.agent/plans/proposals/`，沉淀文档在 `docs/architecture/`，两者互不替代。
 
 ### 工作流命令速查
 
 | 命令 | 用途 | 典型场景 |
 | :--- | :--- | :--- |
 | `/configure` | 初始化项目配置 | 首次接入 |
+| `/approve` | 批准架构提案，按规模调度到 /plan 或 /mission | arch-design 完成、方案已确认时 |
 | `/briefing` | 同步当前上下文与任务状态 | 每日开工、跨会话恢复 |
 | `/arch-design` | 架构方案设计与评审 | 新功能/重构前收敛方案 |
 | `/plan` | 任务拆解与实施计划 | 功能开发启动 |
