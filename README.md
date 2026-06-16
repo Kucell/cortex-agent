@@ -44,11 +44,11 @@ npx cortex-agent upgrade
 ### 上手流程一览
 
 <p align="center">
-  <img src="docs/assets/quick-start.svg" alt="Cortex Agent 5 步快速上手" width="100%">
+  <img src="docs/assets/quick-start.svg" alt="Cortex Agent 完整开发链路：init → configure → arch-design → approve → start-task → ship" width="100%">
 </p>
 
 <p align="center">
-  <em>左：终端实际命令 · 右：每一步的指示 · 总时长约 12 秒 · 无限循环</em>
+  <em>左：终端实际命令 · 右：6 步开发链路 · 总时长约 12 秒 · 无限循环</em>
 </p>
 
 ## 目录结构
