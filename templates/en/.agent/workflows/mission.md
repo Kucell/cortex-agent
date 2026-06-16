@@ -67,6 +67,7 @@ Use these templates when creating files:
    - `.agent/rules/code-standards.md`
    - `.agent/plans/task-progress.md`
    - `.agent/plans/context-manifest.json` when it exists
+   - If `--from-proposal <path>` was passed: read the specified proposal file and use its Phase list as the milestone input source
 2. Confirm the work belongs in Mission Lite:
    - multiple features, multiple milestones, or multi-day scope
    - non-trivial validation requirements
@@ -77,11 +78,12 @@ Use these templates when creating files:
    - goal
    - non-goals
    - scope boundaries
-   - features
-   - milestones
+   - features (if from a proposal, map from the proposal's Phase list)
+   - milestones (if from a proposal, one milestone per Phase)
    - sequencing
    - risks
    - exit criteria
+   - if from a proposal, add to the header: `> **Source Proposal**: <proposal-file-path>`
 6. Use the `validation-contract` skill in CREATE mode to write `validation-contract.json`.
 7. Create `command-log.md` from `.agent/resources/templates/mission/command-log.md`.
 8. Create the first milestone file from `.agent/resources/templates/mission/milestone.md`.
@@ -167,7 +169,16 @@ Use these templates when creating files:
    - `node .agent/skills/knowledge-lint/scripts/index.js`
    - `node .agent/skills/doc-gardening/scripts/index.js`
 4. Update `.agent/plans/task-progress.md`.
-5. Summarize:
+5. **Proposal archiving** (if `mission-plan.md` has a `Source Proposal` field):
+   1. Read the source proposal file.
+   2. Prompt the user to distill the architecture output into a clean architecture document and write it to `docs/architecture/<topic>.md`.
+   3. Back-fill the proposal file header:
+      ```markdown
+      > **Status**: done
+      > **Archived Doc**: docs/architecture/<topic>.md
+      ```
+   4. Output: "📚 Architecture design archived to docs/architecture/<topic>.md — proposal status → done."
+6. Summarize:
    - mission outcome
    - commits or changed files
    - validation status

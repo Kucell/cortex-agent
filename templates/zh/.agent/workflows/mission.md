@@ -67,6 +67,7 @@ Mission 状态写入：
    - `.agent/rules/code-standards.md`
    - `.agent/plans/task-progress.md`
    - `.agent/plans/context-manifest.json`，如果存在
+   - 若传入 `--from-proposal <路径>`：读取指定提案文件，将提案的 Phase 列表作为 milestone 输入来源
 2. 确认任务确实适合 Mission Lite：
    - 多 feature、多 milestone 或多天范围
    - 有非平凡验证需求
@@ -77,11 +78,12 @@ Mission 状态写入：
    - goal
    - non-goals
    - scope boundaries
-   - features
-   - milestones
+   - features（若来自提案，按提案 Phase 列表映射）
+   - milestones（若来自提案，每个 Phase 对应一个 milestone）
    - sequencing
    - risks
    - exit criteria
+   - 若来自提案，头部加入：`> **来源提案**: <提案文件路径>`
 6. 使用 `validation-contract` skill 的 CREATE 模式写入 `validation-contract.json`。
 7. 从 `.agent/resources/templates/mission/command-log.md` 创建 `command-log.md`。
 8. 从 `.agent/resources/templates/mission/milestone.md` 创建第一个 milestone 文件。
@@ -167,7 +169,16 @@ Mission 状态写入：
    - `node .agent/skills/knowledge-lint/scripts/index.js`
    - `node .agent/skills/doc-gardening/scripts/index.js`
 4. 更新 `.agent/plans/task-progress.md`。
-5. 汇总：
+5. **提案沉淀**（若 mission-plan.md 头部有 `来源提案` 字段）：
+   1. 读取来源提案文件。
+   2. 提示用户将提案的架构要点提炼为纯净的架构文档，写入 `docs/architecture/<主题>.md`。
+   3. 在提案文件头部回填：
+      ```markdown
+      > **状态**: done
+      > **沉淀文档**: docs/architecture/<主题>.md
+      ```
+   4. 输出提示："📚 架构设计已沉淀到 docs/architecture/<主题>.md，提案状态 → done。"
+6. 汇总：
    - mission outcome
    - commits or changed files
    - validation status
