@@ -15,6 +15,14 @@ When you have new architectural ideas or need to refactor existing modules, foll
 
 ## 2. Design Output
 
+- **Determine proposal path**: Before writing the file, derive the topic from the proposal subject and save it under:
+  ```
+  .agent/plans/proposals/<topic>/<short-name>-proposal.md
+  ```
+  - `topic` is the core module or business domain in kebab-case (e.g. `auth`, `device-template`, `state-management`)
+  - Reuse an existing subfolder if one matches; create a new one if not
+  - **Never place a proposal directly under `.agent/plans/proposals/`**
+
 - **Write Proposal**: Provide clear design descriptions, recommended to include:
   - Description of structural changes.
   - Core flowcharts or class diagrams (Mermaid).
