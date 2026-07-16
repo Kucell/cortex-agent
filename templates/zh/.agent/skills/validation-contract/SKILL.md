@@ -70,6 +70,7 @@ Mission Lite milestone 必须使用本技能；高风险 `/start-task` 或 `/shi
 8. 没有 `command` 的 assertion 必须包含 `evidence` 或清晰的人工验证依据。
 9. Public API 变化必须包含至少一条 `api` 或 `docs` assertion。
 10. Runtime 断言必须引用 runtime evidence 来源或模板。
+11. 跨机器或跨进程 runtime 断言必须说明日志过滤使用的时间源。时间源应来自产生日志的被测端，而不是控制端进程。
 
 输出紧凑报告：
 
@@ -118,6 +119,7 @@ Mission Lite milestone 必须使用本技能；高风险 `/start-task` 或 `/shi
 - 不确定性不能隐藏；应记录为 warning、coverage gap 或 manual assertion。
 - 如果 assertion 被 waiver，必须记录原因、批准者和 follow-up task。
 - Validator 必须基于 contract、代码、diff、命令输出和 runtime evidence 检查。Worker 的自然语言解释不是证据。
+- 对跨机器或远程 UI 验证，必须包含阻断性 runtime 断言，确认按时间过滤日志时 evidence cursor 来自被测端时间。
 
 ## 最小模板
 
@@ -140,4 +142,3 @@ Mission Lite milestone 必须使用本技能；高风险 `/start-task` 或 `/shi
   ]
 }
 ```
-

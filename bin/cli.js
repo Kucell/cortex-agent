@@ -44,6 +44,11 @@ for (let i = 0; i < args.length; i++) {
   if (arg === "--track") {
     options.track = true;
   }
+  if (arg === "--platforms" || arg === "-p") {
+    options.platforms = args[i + 1];
+  } else if (arg && arg.startsWith("--platforms=")) {
+    options.platforms = arg.split("=")[1];
+  }
 }
 
 function detectLangFromProject(dir) {

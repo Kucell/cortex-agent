@@ -19,6 +19,8 @@ npx cortex-agent init --global
 
 初始化完成后，`.agent/` 目录会被填充核心文件，并根据检测到的 AI 工具自动生成对应的入口配置文件（`.cursorrules`、`.clauderules` 等）和符号链接。
 
+`.agent/` 是唯一维护源。若某些工具生成 `.agents/skills/source-command-*` 之类的兼容目录，它们只属于外部发现适配层，不应手工维护；`cortex-agent init/untrack` 会把 `.agents` 视为本地生成目录。
+
 ---
 
 ## CLI 命令参考
@@ -60,6 +62,21 @@ npx cortex-agent init
 - `.agent/plans/task-progress.md` — 项目路线图
 - 将选择的语言规范规则（TypeScript / Python / Go / Java / Swift）追加到 `tech-stack.md`
 
+如果项目存在特殊运行时、设备、桌面端、跨机器 UI 或领域业务验证，建议基于模板创建领域验证技能：
+
+```text
+.agent/resources/templates/domain-validation-skill.md
+.agent/skills/validate-<domain>/SKILL.md
+```
+
+AI 调试期间产生的截图、日志和临时 JSON 默认放入：
+
+```text
+.agent/debug/screenshots/
+.agent/debug/logs/
+.agent/debug/temp/
+```
+
 ---
 
 ### 场景 B：已有项目（有旧 AI 配置）
@@ -69,6 +86,8 @@ npx cortex-agent init
 ```
 npx cortex-agent init         ← 自动复制旧配置到 .agent/imported_rules/
         ↓
+自动注册 CLAUDE.md 项目信息到 .agent/references/project-context-from-claude.md
+        ↓
 /migrate-rules                ← 引导式逐文件合并旧规则到新体系
         ↓
 /scan-project                 ← 扫描项目模块，生成 .agent/references/ 知识库
@@ -77,6 +96,12 @@ npx cortex-agent init         ← 自动复制旧配置到 .agent/imported_rules
         ↓
     ✅ 接入完成
 ```
+
+旧 `CLAUDE.md` 会保留两份：
+- `.agent/imported_rules/imported_from_CLAUDE.md.md`：原文备份，便于人工核对
+- `.agent/references/project-context-from-claude.md`：正式项目上下文，并写入 `.agent/context-index.json`
+
+因此旧文件中的技术栈、命令、架构约定会立即进入 Cortex Agent 的 references/context-budget 体系；后续仍可再拆分到更细的 reference 或 `.agent/rules/tech-stack.md`。
 
 ---
 
