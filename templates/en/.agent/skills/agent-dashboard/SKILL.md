@@ -40,6 +40,8 @@ The server regenerates the HTML periodically and uses browser auto-refresh over 
 Read these when available:
 
 - `.agent/plans/task-progress.md`
+- `.agent/prd/index.json` and `.agent/prd/*/state.json`
+- `.agent/prd/*/prd.md`, `flows.md`, `screens.md`, and `acceptance-criteria.md`
 - `.agent/registry/agents.json`
 - `.agent/locks/lock-events.json`
 - `.agent/handoffs/*.md` and `.agent/handoffs/*.json`
@@ -52,5 +54,7 @@ Read these when available:
 - Do not copy source code or large diffs into the dashboard.
 - Show paths, task IDs, branches, lock scopes, handoff files, and validation state.
 - Always include a `Worktree State` and `Recommended Next Action`.
+- Always include PRD status and completeness when `.agent/prd/` exists.
 - If data is missing, show an empty state instead of failing.
 - The dashboard is local operational state and should stay under `.agent/metrics/`.
+- Do not commit `.agent/metrics/agent-dashboard.html`; commit the source state under `.agent/plans/`, `.agent/registry/`, `.agent/locks/`, `.agent/handoffs/`, and `.agent/artifacts/` instead.

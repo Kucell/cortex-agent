@@ -448,6 +448,18 @@ function prdSummary(prds) {
   };
 }
 
+function prdSummaryFromManaged(summary, prds) {
+  if (!summary || typeof summary !== "object") return prdSummary(prds);
+  return {
+    status: summary.status || "not_started",
+    design: summary.design || "not_started",
+    review: summary.review || "open",
+    completeness: Number.isFinite(Number(summary.completeness)) ? Number(summary.completeness) : 0,
+    missing: Array.isArray(summary.missing) ? summary.missing : [],
+    current: prds.find((item) => item.id === summary.current_id) || prds[0] || null,
+  };
+}
+
 function deriveState({ worktrees, locks, handoffs, tasks, agents }) {
   const nonMainWorktrees = worktrees.filter((w) => !w.isMain);
   const dirty = worktrees.some((w) => w.dirty);
@@ -577,8 +589,8 @@ function main() {
   const locks = managed?.locks || parseLocks();
   const handoffs = managed?.handoffs || parseHandoffs();
   const artifacts = managed?.artifacts || parseArtifacts();
-  const prds = parsePrds();
-  const prd = prdSummary(prds);
+  const prds = Array.isArray(managed?.prds) ? managed.prds : parsePrds();
+  const prd = managed?.prd_summary ? prdSummaryFromManaged(managed.prd_summary, prds) : prdSummary(prds);
   const runs = Array.isArray(managed?.runs) ? managed.runs : [];
   const queues = Array.isArray(managed?.queues) ? managed.queues : [];
   const sessions = Array.isArray(managed?.sessions) ? managed.sessions : [];
