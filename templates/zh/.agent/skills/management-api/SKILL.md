@@ -1,6 +1,6 @@
 ---
 name: management-api
-description: Read-only local management query layer for Cortex Agent runtime state, starting with dashboard-state.
+description: Local management query and controlled runtime-state writer for Cortex Agent dashboard, runs, queues, and sessions.
 ---
 
 # Management API Skill
@@ -9,12 +9,14 @@ description: Read-only local management query layer for Cortex Agent runtime sta
 
 Provide a stable local JSON query contract over `.agent/` runtime state. Dashboard, briefing, worktree, mission, and future CLI commands should read this layer instead of each parsing the same Markdown and JSON files differently.
 
-Phase 1 is read-only. It does not mutate tasks, locks, worktrees, sessions, queues, or runs.
+Runtime writers are intentionally narrow: write run state and run events through this skill so dashboard status reflects what agents are actually doing.
 
 ## Commands
 
 ```bash
 node .agent/skills/management-api/scripts/index.js query dashboard-state
+node .agent/skills/management-api/scripts/index.js runs upsert --run-id R-T005 --task-id T-005 --kind implement --status running --phase decomposing --activity "正在拆分 Adapter"
+node .agent/skills/management-api/scripts/index.js runs event --run-id R-T005 --type agent_invoked --phase invoking_agent --message "已调用 editor-adapter-agent"
 ```
 
 ## Output Contract
@@ -30,6 +32,9 @@ node .agent/skills/management-api/scripts/index.js query dashboard-state
     "root": "/path/to/project"
   },
   "tasks": [],
+  "runs": [],
+  "queues": [],
+  "sessions": [],
   "worktrees": [],
   "agents": [],
   "locks": [],
@@ -51,10 +56,32 @@ node .agent/skills/management-api/scripts/index.js query dashboard-state
 }
 ```
 
+## Runtime State Contract
+
+Use these fields for precise state:
+
+- `status`: lifecycle state, one of `queued`, `running`, `completed`, `failed`, `canceled`.
+- `phase`: current execution phase, such as `decomposing`, `creating_worktree`, `acquiring_lock`, `invoking_agent`, `reading`, `editing`, `running_command`, `validating`, `handoff`, `merging`, or `blocked`.
+- `activity`: short human-readable text for the current visible activity.
+- `events[]`: append-only timeline of important transitions.
+- `last_event`: cached latest event for dashboards and summaries.
+
+Agents should update state at these minimum checkpoints:
+
+1. task decomposition starts
+2. worktree creation starts or completes
+3. task/file lock acquisition starts or completes
+4. sub-agent invocation starts
+5. file reading or editing begins
+6. shell command or validation starts and finishes
+7. handoff, merge, publish, block, fail, cancel, or complete happens
+
 ## Rules
 
 - Keep this skill zero dependency.
 - Read from `.agent/` and Git only.
-- Do not write state in Phase 1.
+- Only mutate `.agent/runs/*.json` through the `runs upsert` and `runs event` commands.
+- Runtime objects live under `.agent/runs/`, `.agent/queues/`, and `.agent/sessions/`.
+- Running or paused sessions whose `last_heartbeat_at` is older than five minutes are reported as `stale`.
 - Preserve compatibility with older projects by tolerating missing files.
 - If a caller needs HTML, it should render JSON itself; this skill only returns data.

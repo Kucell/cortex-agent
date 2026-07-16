@@ -16,8 +16,12 @@
         "properties": {
           "task_id": { "type": "string" },
           "state": { "type": "string", "enum": ["queued", "running", "blocked", "done"] },
+          "phase": { "type": ["string", "null"] },
+          "activity": { "type": ["string", "null"] },
           "worktree_path": { "type": ["string", "null"] },
-          "agent_id": { "type": ["string", "null"] }
+          "agent_id": { "type": ["string", "null"] },
+          "run_id": { "type": ["string", "null"] },
+          "updated_at": { "type": ["string", "null"] }
         },
         "additionalProperties": true
       }

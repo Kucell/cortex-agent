@@ -11,6 +11,48 @@
     "role": { "type": ["string", "null"] },
     "kind": { "type": "string", "enum": ["plan", "implement", "validate", "merge", "handoff", "dashboard", "publish"] },
     "status": { "type": "string", "enum": ["queued", "running", "completed", "failed", "canceled"] },
+    "phase": {
+      "type": ["string", "null"],
+      "enum": [
+        null,
+        "initializing",
+        "briefing",
+        "decomposing",
+        "planning",
+        "queueing",
+        "creating_worktree",
+        "acquiring_lock",
+        "invoking_agent",
+        "reading",
+        "editing",
+        "running_command",
+        "validating",
+        "handoff",
+        "merging",
+        "publishing",
+        "waiting",
+        "blocked",
+        "completed"
+      ]
+    },
+    "activity": { "type": ["string", "null"] },
+    "last_event": { "type": ["object", "null"] },
+    "events": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["type", "at"],
+        "properties": {
+          "type": { "type": "string" },
+          "phase": { "type": ["string", "null"] },
+          "status": { "type": ["string", "null"] },
+          "activity": { "type": ["string", "null"] },
+          "message": { "type": ["string", "null"] },
+          "at": { "type": "string" }
+        },
+        "additionalProperties": true
+      }
+    },
     "worktree_path": { "type": ["string", "null"] },
     "branch": { "type": ["string", "null"] },
     "base_commit": { "type": ["string", "null"] },
