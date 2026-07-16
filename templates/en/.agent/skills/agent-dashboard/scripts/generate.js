@@ -93,6 +93,9 @@ const I18N = {
     locks: "Locks",
     handoffs: "Handoffs",
     artifacts: "Artifacts",
+    runs: "Runs",
+    queues: "Queues",
+    sessions: "Sessions",
     gitStatus: "Git 状态",
     stateWhy: "状态判断",
     empty: "暂无数据",
@@ -114,6 +117,10 @@ const I18N = {
     updated: "更新时间",
     count: "数量",
     latest: "最新产物",
+    kind: "类型",
+    started: "开始时间",
+    heartbeat: "心跳",
+    items: "条目",
     open: "打开",
     active: "进行中",
     done: "已完成",
@@ -139,6 +146,9 @@ const I18N = {
     locks: "Locks",
     handoffs: "Handoffs",
     artifacts: "Artifacts",
+    runs: "Runs",
+    queues: "Queues",
+    sessions: "Sessions",
     gitStatus: "Git Status",
     stateWhy: "State Reasoning",
     empty: "No data",
@@ -160,6 +170,10 @@ const I18N = {
     updated: "Updated",
     count: "Count",
     latest: "Latest",
+    kind: "Kind",
+    started: "Started",
+    heartbeat: "Heartbeat",
+    items: "Items",
     open: "Open",
     active: "Active",
     done: "Done",
@@ -386,6 +400,9 @@ function main() {
   const locks = managed?.locks || parseLocks();
   const handoffs = managed?.handoffs || parseHandoffs();
   const artifacts = managed?.artifacts || parseArtifacts();
+  const runs = Array.isArray(managed?.runs) ? managed.runs : [];
+  const queues = Array.isArray(managed?.queues) ? managed.queues : [];
+  const sessions = Array.isArray(managed?.sessions) ? managed.sessions : [];
   const gitStatus = typeof managed?.git_status === "string" ? managed.git_status : sh("git status --short --branch");
   const derived = managed?.derived || deriveState({ worktrees, locks, handoffs, tasks, agents });
   const generatedAt = new Date().toISOString();
@@ -446,6 +463,9 @@ pre{white-space:pre-wrap;background:#0d1016;border:1px solid var(--line);border-
   <section class="card"><h2 data-i18n="locks">${I18N.zh.locks}</h2>${renderTable(["scope","heldBy","expires","status"], locks.map((l) => `<tr><td><code>${esc(l.scope)}</code></td><td>${esc(l.held_by)}</td><td>${esc(l.expires_at)}</td><td>${pill(l.expired ? "expired" : "held")}</td></tr>`))}</section>
   <section class="card"><h2 data-i18n="handoffs">${I18N.zh.handoffs}</h2>${renderTable(["path","type","updated"], handoffs.map((h) => `<tr><td><code>${esc(h.path)}</code></td><td>${esc(h.type)}</td><td>${esc(h.updated)}</td></tr>`))}</section>
   <section class="card"><h2 data-i18n="artifacts">${I18N.zh.artifacts}</h2>${renderTable(["task","count","latest"], artifacts.map((a) => `<tr><td><code>${esc(a.task_id)}</code></td><td>${a.count}</td><td><code>${esc(a.latest)}</code></td></tr>`))}</section>
+  <section class="card"><h2 data-i18n="sessions">${I18N.zh.sessions}</h2>${renderTable(["agent","role","status","heartbeat"], sessions.map((s) => `<tr><td>${esc(s.agent_id || s.session_id)}</td><td>${esc(s.role || "")}</td><td>${pill(s.status)}</td><td>${esc(s.last_heartbeat_at || s.started_at || "")}</td></tr>`))}</section>
+  <section class="card"><h2 data-i18n="runs">${I18N.zh.runs}</h2>${renderTable(["id","kind","status","started"], runs.slice(0, 8).map((r) => `<tr><td><code>${esc(r.run_id || r.path)}</code></td><td>${esc(r.kind || "")}</td><td>${pill(r.status)}</td><td>${esc(r.started_at || "")}</td></tr>`))}</section>
+  <section class="card wide"><h2 data-i18n="queues">${I18N.zh.queues}</h2>${renderTable(["id","status","items"], queues.map((q) => `<tr><td><code>${esc(q.queue_id || q.path)}</code></td><td>${pill(q.status)}</td><td>${Array.isArray(q.items) ? q.items.length : 0}</td></tr>`))}</section>
   <section class="card wide"><h2 data-i18n="gitStatus">${I18N.zh.gitStatus}</h2><pre>${esc(gitStatus || I18N.zh.noGit)}</pre></section>
 </main>
 <script>

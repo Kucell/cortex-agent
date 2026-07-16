@@ -40,6 +40,16 @@ function listFiles(dir, filter) {
   }
 }
 
+function listJsonObjects(dir, options = {}) {
+  const skip = new Set(options.skip || ["index.json"]);
+  return listFiles(dir, (name) => {
+    if (!name.endsWith(".json")) return false;
+    if (skip.has(name)) return false;
+    if (name.endsWith(".schema.json")) return false;
+    return true;
+  }).map((file) => ({ file, data: readJson(file) })).filter((item) => item.data);
+}
+
 function rel(file) {
   return path.relative(root, file).split(path.sep).join("/");
 }
@@ -171,13 +181,51 @@ function parseArtifacts() {
   });
 }
 
-function deriveState({ worktrees, locks, handoffs, tasks, agents }) {
+function parseRuns() {
+  return listJsonObjects(path.join(agentRoot, "runs"))
+    .map(({ file, data }) => ({
+      ...data,
+      path: rel(file),
+    }))
+    .sort((a, b) => String(b.started_at || "").localeCompare(String(a.started_at || "")))
+    .slice(0, 20);
+}
+
+function parseQueues() {
+  return listJsonObjects(path.join(agentRoot, "queues"))
+    .map(({ file, data }) => ({
+      ...data,
+      path: rel(file),
+      items: Array.isArray(data.items) ? data.items : [],
+    }))
+    .sort((a, b) => String(a.queue_id || a.path).localeCompare(String(b.queue_id || b.path)));
+}
+
+function parseSessions() {
+  const staleAfterMs = 5 * 60 * 1000;
+  const now = Date.now();
+  return listJsonObjects(path.join(agentRoot, "sessions"))
+    .map(({ file, data }) => {
+      const heartbeat = Date.parse(data.last_heartbeat_at || data.started_at);
+      const stale = ["running", "paused"].includes(data.status) && Number.isFinite(heartbeat) && now - heartbeat > staleAfterMs;
+      return {
+        ...data,
+        path: rel(file),
+        status: stale ? "stale" : data.status,
+        stale,
+      };
+    })
+    .sort((a, b) => String(b.last_heartbeat_at || b.started_at || "").localeCompare(String(a.last_heartbeat_at || a.started_at || "")));
+}
+
+function deriveState({ worktrees, locks, handoffs, tasks, agents, sessions }) {
   const nonMainWorktrees = worktrees.filter((w) => !w.isMain);
   const dirty = worktrees.some((w) => w.dirty);
   const heldLocks = locks.filter((l) => !l.expired);
   const blockedTasks = tasks.filter((t) => t.status === "blocked");
   const activeTasks = tasks.filter((t) => t.status === "active" || t.status === "open");
   const activeAgents = agents.filter((a) => ["running", "active", "paused"].includes(a.status));
+  const staleSessions = (sessions || []).filter((s) => s.status === "stale");
 
   if (blockedTasks.length) {
     return {
@@ -186,6 +234,15 @@ function deriveState({ worktrees, locks, handoffs, tasks, agents }) {
       nextEn: "Resolve blocked tasks first. Create /handoff or return to /plan if needed.",
       why: `发现 ${blockedTasks.length} 个阻塞任务。`,
       whyEn: `${blockedTasks.length} blocked task(s) detected.`,
+    };
+  }
+  if (staleSessions.length) {
+    return {
+      state: "stale_sessions",
+      next: "/agent-dashboard --serve 或关闭 stale session 后重新 /briefing。",
+      nextEn: "/agent-dashboard --serve or close stale sessions, then run /briefing again.",
+      why: `发现 ${staleSessions.length} 个 stale session。`,
+      whyEn: `${staleSessions.length} stale session(s) detected.`,
     };
   }
   if (!nonMainWorktrees.length && !heldLocks.length && !activeAgents.length) {
@@ -241,8 +298,11 @@ function queryDashboardState() {
   const locks = parseLocks();
   const handoffs = parseHandoffs();
   const artifacts = parseArtifacts();
+  const runs = parseRuns();
+  const queues = parseQueues();
+  const sessions = parseSessions();
   const gitStatus = sh("git status --short --branch");
-  const derived = deriveState({ worktrees, locks, handoffs, tasks, agents });
+  const derived = deriveState({ worktrees, locks, handoffs, tasks, agents, sessions });
 
   return {
     ok: true,
@@ -255,6 +315,9 @@ function queryDashboardState() {
     tasks,
     worktrees,
     agents,
+    runs,
+    queues,
+    sessions,
     locks,
     handoffs,
     artifacts,
@@ -264,6 +327,9 @@ function queryDashboardState() {
       active_tasks: tasks.filter((t) => t.status !== "done").length,
       held_locks: locks.filter((l) => !l.expired).length,
       non_main_worktrees: worktrees.filter((w) => !w.isMain).length,
+      running_runs: runs.filter((r) => r.status === "running").length,
+      active_queues: queues.filter((q) => q.status === "active").length,
+      stale_sessions: sessions.filter((s) => s.status === "stale").length,
     },
   };
 }

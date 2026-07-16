@@ -57,6 +57,7 @@ node .agent/skills/agent-dashboard/scripts/serve.js --port 8787 --interval-ms 30
 - 通过本地 HTTP server 提供页面
 - 页面使用 SSE 自动刷新
 - 默认地址：`http://127.0.0.1:8787`
+- 如果端口被占用，server 会自动尝试下一个端口，并在 JSON 输出中返回实际 `url`
 
 `dashboard-manager` 只维护看板，不写业务代码、不提交、不合并。
 
