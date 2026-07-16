@@ -52,6 +52,7 @@ Specialized agents with isolated model, tools, and context boundaries.
 | `ai-behavior.md` | Git safety, minimal edits, plan-before-act, design confirmation, staged commits + `task-progress.md` resume |
 | `integration-safety.md` | Cross-module calls: verify signatures, payload vs schema, avoid swapped args |
 | `refactoring-safety.md` | Refactor without behavior change; don’t blindly “fix” all lints |
+| `task-decomposition.md` | Large-requirement breakdown, multi-agent parallel judgment, task boundaries, and closure rules |
 
 ## 🛠 Skills
 

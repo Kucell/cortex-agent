@@ -64,6 +64,7 @@ Use these templates when creating files:
    - `AGENTS.md`
    - `.agent/rules/core-principles.md`
    - `.agent/rules/architecture-design.md`
+   - `.agent/rules/task-decomposition.md`
    - `.agent/rules/code-standards.md`
    - `.agent/plans/task-progress.md`
    - `.agent/plans/context-manifest.json` when it exists
@@ -79,7 +80,7 @@ Use these templates when creating files:
    - non-goals
    - scope boundaries
    - features (if from a proposal, map from the proposal's Phase list)
-   - milestones (if from a proposal, one milestone per Phase)
+   - milestones (if from a proposal, one milestone per Phase; use `.agent/resources/templates/task-breakdown.md` to reason about task size, dependencies, and parallel opportunities before finalizing)
    - sequencing
    - risks
    - exit criteria

@@ -64,6 +64,7 @@ Mission 状态写入：
    - `AGENTS.md`
    - `.agent/rules/core-principles.md`
    - `.agent/rules/architecture-design.md`
+   - `.agent/rules/task-decomposition.md`
    - `.agent/rules/code-standards.md`
    - `.agent/plans/task-progress.md`
    - `.agent/plans/context-manifest.json`，如果存在
@@ -79,7 +80,7 @@ Mission 状态写入：
    - non-goals
    - scope boundaries
    - features（若来自提案，按提案 Phase 列表映射）
-   - milestones（若来自提案，每个 Phase 对应一个 milestone）
+   - milestones（若来自提案，每个 Phase 对应一个 milestone；定稿前使用 `.agent/resources/templates/task-breakdown.md` 判断任务粒度、依赖和并行机会）
    - sequencing
    - risks
    - exit criteria
