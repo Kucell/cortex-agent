@@ -26,6 +26,7 @@ For the full architecture design, see [docs/architecture.md](../docs/architectur
 | `/publish-docs` | Publish verified project knowledge into standalone developer docs under `docs/` |
 | `/parallel` | Dispatch independent tasks to sub-agents in parallel |
 | `/worktree` | Coordinate multi-worktree development, handoff, merge, and mainline validation |
+| `/agent-dashboard` | Generate an HTML task and multi-agent collaboration dashboard |
 | `/release` | SemVer release: analyze commits → bump version → commit + tag → npm publish |
 | `/weekly-report` | Generate weekly report from Git history |
 | `/sync-plans` | Align task states across concurrent tasks |
@@ -45,6 +46,7 @@ Specialized agents with isolated model, tools, and context boundaries.
 | `documenter` | haiku | changelog-generator | `/parallel`, `/ship` |
 | `session-manager` | haiku | — | Long sessions; `session assess` / `archive` / `restore` / `status` / `warm` |
 | `coordinator` | sonnet | context-budget, phase-gate, handoff, validation-contract, maturity-tracker | `/mission`, `/handoff`, `/parallel`, `/briefing` |
+| `dashboard-manager` | haiku | agent-dashboard | `/agent-dashboard --serve` |
 
 ## 📜 Rules (selected)
 
@@ -75,3 +77,4 @@ Reusable capabilities invoked by workflows or mounted on sub-agents.
 | `cleanup-debug` | Prune old files under `.agent/debug` (optional `.playwright-mcp/`) | Direct invocation |
 | `knowledge-lint` | Deterministic checks for knowledge structure and documentation integrity | Direct invocation |
 | `doc-gardening` | Turn knowledge lint findings into low-risk maintenance recommendations | Direct invocation |
+| `agent-dashboard` | Generate a local HTML collaboration dashboard and live-refresh server | `/agent-dashboard`, dashboard-manager |

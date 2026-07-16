@@ -65,10 +65,22 @@ git worktree add ../<repo>-<task-id> -b agent/<task-id>-<slug>
 
 Then in the new worktree:
 
-1. Run `cortex-agent upgrade --lang=<lang>` to fill `.agent` capabilities.
-2. Record `base_branch`, `base_commit`, `branch`, and `worktree_path`.
-3. Check in to registry.
-4. Acquire the task lock and include `worktree_path` and `branch` in lock metadata.
+1. Link the child worktree `.agent` to the primary worktree's shared `.agent`:
+
+```bash
+rm -rf ../<repo>-<task-id>/.agent
+ln -s "$(pwd)/.agent" ../<repo>-<task-id>/.agent
+```
+
+2. In the child worktree, verify `.agent` points to shared state:
+
+```bash
+test -L .agent && readlink .agent
+```
+
+3. Record `base_branch`, `base_commit`, `branch`, `worktree_path`, and `agent_state_path`.
+4. Check in to registry.
+5. Acquire the task lock and include `worktree_path`, `branch`, and `agent_state_path` in lock metadata.
 
 ## STATUS
 
@@ -80,6 +92,40 @@ Summarize all worktree state:
 4. held locks
 5. latest Artifact Bus state
 6. open handoffs
+
+Always output a state-machine result, not a fixed suggestion:
+
+| `worktree_state` | Condition | `next_action` |
+| :--- | :--- | :--- |
+| `idle` | no non-main worktree, no active lock, no active agent | `/worktree plan <tasks>` |
+| `planned` | tasks are planned but no worktree exists yet | `/worktree create <task-id>` |
+| `worktree_created` | worktree exists but has no writes and no lock | acquire task/file lock, then `/start-task` |
+| `in_progress` | worktree has changes, active agent, or held lock | after a verifiable point, `/worktree commit <task-id>` |
+| `handoff_required` | pending handoff or inconsistent state exists | `/handoff resume <handoff>` |
+| `merge_ready` | source worktree is clean, committed, and validation is recorded | `/worktree merge <task-id>` |
+| `merged` | branch is merged but mainline is not validated | `/worktree validate <task-id>` |
+| `validation_failed` | mainline validation failed | fix or create `/handoff` |
+| `validated` | mainline validation passed | `/sync-plans`, `/update-refs` |
+| `closed` | task is closed and locks are released | clean up or keep worktree |
+
+JSON output must include:
+
+```json
+{
+  "type": "worktree_coordination_report",
+  "worktree_state": "idle | planned | worktree_created | in_progress | handoff_required | merge_ready | merged | validation_failed | validated | closed",
+  "status": "ready | blocked | merge_ready | validated",
+  "worktrees": [],
+  "locks": [],
+  "handoffs": [],
+  "human_summary": "one-sentence progress explanation",
+  "blocked_reasons": [],
+  "next_action": "single recommended next step",
+  "next_actions": ["optional follow-up actions"]
+}
+```
+
+Also output a human-readable summary explaining why that next_action was chosen.
 
 ## HANDOFF
 
