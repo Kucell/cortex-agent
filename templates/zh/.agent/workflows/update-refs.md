@@ -100,3 +100,4 @@ git diff --name-only {上次 commit hash} HEAD
 - **`/ship` 流程结束后**：可选择性触发 `/update-refs`，保持文档随交付同步
 - **`/start-task` 开始前**：AI 自动读取 `.agent/references/` 中相关模块文档作为上下文
 - **`/scan-project`**：全量重扫，适合大版本重构后重建基线
+- **`/publish-docs`**：在本流程刷新事实源后，若开发者可读文档受影响，再发布到 `docs/`

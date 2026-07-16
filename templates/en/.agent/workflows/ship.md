@@ -9,7 +9,7 @@ description: 任务完成后的一键收尾：代码审查 → 提交 → 标记
 
 ## Phase 1 增强：状态机 + 重试控制
 
-**状态流转**：`PLAN → EXECUTE → LINT → REVIEW → COMMIT → DONE → CONTEXT_CLEANUP → ENTROPY_SCAN → KNOWLEDGE_LINT → DOC_GARDENING → CLEAN`
+**状态流转**：`PLAN → EXECUTE → LINT → REVIEW → COMMIT → DONE → CONTEXT_CLEANUP → ENTROPY_SCAN → KNOWLEDGE_LINT → DOC_GARDENING → PUBLISH_DOCS → CLEAN`
 
 **关键特性**：
 - ✅ **Phase Gate 检查**：每个转换有硬性前置条件
@@ -210,7 +210,28 @@ node .agent/skills/doc-gardening/scripts/index.js
 - Do not block `CLEAN` by default
 - If `P0` items exist, call them out in the delivery report
 
-**State transition**: `DOC_GARDENING` → `CLEAN` (final state)
+**State transition**: `DOC_GARDENING` → `PUBLISH_DOCS`
+
+---
+
+### Phase 10: PUBLISH_DOCS (optional)
+
+After `DOC_GARDENING`, decide whether this delivery affects developer-facing docs:
+
+- Public capabilities, module boundaries, architecture decisions, development commands, or deployment behavior changed
+- `.agent/references/` was refreshed by `/scan-project` or `/update-refs` and should be synced to `docs/`
+- The user explicitly requested PRD, architecture, module, or developer manual updates
+
+If matched, run `/publish-docs` or `/publish-docs --architecture`. If not matched, record that no developer docs need publishing and continue.
+
+**Execution policy**:
+
+- Publish only the current task scope; avoid full rewrites
+- Before publishing, list source files, target files, and out-of-scope content
+- After publishing, run the link, sanitization, and `git diff --check` checks from `/publish-docs`
+- Do not block `CLEAN` by default, but fix before continuing if secrets, `.agent/` path leaks, or code/doc fact mismatches are found
+
+**State transition**: `PUBLISH_DOCS` → `CLEAN` (final state)
 
 ---
 
