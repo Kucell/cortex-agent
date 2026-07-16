@@ -13,7 +13,7 @@ AI-generated screenshots, logs, temporary JSON files, and browser debugging outp
 
 ## Rules
 
-- Store UI screenshots and browser captures in `.agent/debug/screenshots/`.
+- Store Playwright, Browser, Computer Use, and other UI screenshots in `.agent/debug/screenshots/`.
 - Store temporary command, server, and browser logs in `.agent/debug/logs/`.
 - Store temporary API responses, probes, and scratch JSON/text files in `.agent/debug/temp/`.
 - Do not scatter debugging artifacts in the project root.

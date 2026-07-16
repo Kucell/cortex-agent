@@ -36,6 +36,7 @@ First output a publishing plan:
 Source files:
   - .agent/references/<module>.md
   - .agent/plans/proposals/<topic>/<proposal>.md
+  - .agent/plans/proposals/projects/<project-slug>/index.md
   - <code paths used for verification>
 
 Target files:
@@ -50,9 +51,16 @@ Scope rules:
 
 1. Prefer the matching `.agent/references/*.md` for the target module
 2. For architecture decisions, read only completed or user-approved proposals under `.agent/plans/proposals/`
-3. Re-check the current code for paths, APIs, commands, dependencies, and configuration
-4. If `.agent/references/` is missing or stale, suggest `/scan-project` or `/update-refs` first
-5. If no module is specified, only handle modules related to the current task or git diff
+3. For a project-level proposal group, use `projects/<project-slug>/index.md` as the entry: first confirm the project or target milestone is finalized, then follow the index to relevant child proposals that are completed or explicitly approved by the user
+4. Re-check the current code for paths, APIs, commands, dependencies, and configuration
+5. If `.agent/references/` is missing or stale, suggest `/scan-project` or `/update-refs` first
+6. If no module is specified, only handle modules related to the current task or git diff
+
+Project-level publishing order:
+
+1. Start with the finalized `index.md` and distill the project goal, scope, milestones, and final decisions into a standalone overview
+2. Then reference completed child proposal conclusions as needed; do not publish unapproved child proposals or process discussion
+3. Treat child proposals, `decisions/`, and `relations.md` as fact sources only; published `docs/` must not retain a reading dependency on `.agent/`
 
 ### Step 2: Choose Document Location
 

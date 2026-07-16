@@ -39,17 +39,37 @@ node .agent/skills/runtime-evidence/scripts/generate-summary.js
 
 当验证由一台机器或进程发起、另一台机器或进程产生日志时，日志过滤起点必须来自**产生日志的被测端**，不能使用控制端本机时间。
 
-示例：
+### 游标采集规则
 
-- Mac 控制 Windows UI MCP 时，`sinceUtc` 应来自 Windows Worker health 或 Windows 诊断服务时间。
-- 浏览器测试过滤服务端日志时，时间游标应来自服务端日志系统或服务端 health endpoint。
-- 多容器验证时，每个组件的 evidence cursor 应记录对应组件自己的时间源。
+1. 在触发被测动作前立即从产生日志的被测端获取时间，作为该次验证的日志游标。
+2. 游标必须来自与待查询日志相同的时间域，例如目标服务、目标运行时或日志系统提供的时间。
+3. 存在多个被测端时，为每个被测端分别采集并记录游标；不得复用其他组件的游标。
+4. 控制端时间只能用于诊断时钟偏差，不能作为被测端游标或缺失游标的替代值。
+5. 如果日志查询采用了精度补偿或回看窗口，必须同时记录实际使用的 `log_filter_start_utc`。
 
-运行时证据中应记录：
+### 必需元数据
 
-- `timestamp_source`: 例如 `target-health`, `server-log`, `browser`, `controller`
-- `target_timestamp_utc`: 被测端时间
-- `controller_timestamp_utc`: 控制端时间（可选，用于排查时钟偏差）
-- `clock_skew_ms`: 可计算时记录
+跨机器或跨进程证据必须包含以下机器可读信息：
 
-若无法获得被测端时间，必须在 `warnings` 中说明，并保留首次失败证据，避免把真实产品问题误判为时钟偏差。
+```json
+{
+  "type": "runtime_evidence_cursor",
+  "target_id": "<target-id>",
+  "timestamp_source": "target-system",
+  "target_timestamp_utc": "2026-01-01T00:00:00Z",
+  "controller_timestamp_utc": "2026-01-01T00:00:00Z",
+  "clock_skew_ms": 0,
+  "log_filter_start_utc": "2026-01-01T00:00:00Z"
+}
+```
+
+- `target_id`：本次游标对应的被测端稳定标识。
+- `timestamp_source`：被测端时间的具体来源；不得填写 `controller`。
+- `target_timestamp_utc`：从被测端取得的 RFC 3339 UTC 时间。
+- `controller_timestamp_utc`：同一采集阶段的控制端 UTC 时间，可选。
+- `clock_skew_ms`：控制端时间减被测端时间的毫秒数，可计算时记录。
+- `log_filter_start_utc`：日志查询实际使用的过滤起点；未采用回看窗口时应等于 `target_timestamp_utc`。
+
+### 不可用与判定
+
+若无法获得被测端时间，必须在 `warnings` 中记录原因并保留首次失败证据。任何依赖按时间过滤日志的阻断性断言都不能判定为通过，应标记为 `partial` 或 `fail`；除非验证契约明确允许不依赖时间过滤的替代证据，否则不得降级为控制端时间。

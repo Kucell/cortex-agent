@@ -105,6 +105,22 @@ const I18N = {
     visualDesign: "视觉设计",
     reviewStatus: "评审状态",
     relatedTasks: "关联任务",
+    deliveryChain: "交付链路",
+    publishReadiness: "发布就绪度",
+    taskStatus: "任务状态",
+    runStatus: "Run 状态",
+    validation: "验证",
+    evidence: "验证证据",
+    latestArtifact: "最新产物",
+    publishDocs: "发布文档",
+    linkedTasks: "关联任务",
+    linkedRuns: "关联 Runs",
+    validationsPassed: "验证通过",
+    unlinked: "未关联",
+    notReady: "未就绪",
+    needsValidation: "待验证",
+    needsEvidence: "待补证据",
+    published: "已发布",
     blockedDecisions: "阻塞决策",
     executionSignal: "执行信号",
     eventTimeline: "事件时间线",
@@ -183,6 +199,22 @@ const I18N = {
     visualDesign: "Visual Design",
     reviewStatus: "Review Status",
     relatedTasks: "Related Tasks",
+    deliveryChain: "Delivery Chain",
+    publishReadiness: "Publish Readiness",
+    taskStatus: "Task Status",
+    runStatus: "Run Status",
+    validation: "Validation",
+    evidence: "Validation Evidence",
+    latestArtifact: "Latest Artifact",
+    publishDocs: "Publish Docs",
+    linkedTasks: "Linked Tasks",
+    linkedRuns: "Linked Runs",
+    validationsPassed: "Validations Passed",
+    unlinked: "Unlinked",
+    notReady: "Not Ready",
+    needsValidation: "Needs Validation",
+    needsEvidence: "Needs Evidence",
+    published: "Published",
     blockedDecisions: "Blocked Decisions",
     executionSignal: "Execution Signal",
     eventTimeline: "Event Timeline",
@@ -592,6 +624,104 @@ function prdCard(prd) {
   </article>`;
 }
 
+function normalizedId(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function runsForTask(taskId, runs) {
+  const id = normalizedId(taskId);
+  return runs.filter((run) => normalizedId(run.task_id) === id);
+}
+
+function validationStatus(run) {
+  if (!run) return "not_recorded";
+  const events = Array.isArray(run.events) ? [...run.events].reverse() : [];
+  const event = events.find((item) => ["validation_passed", "validation_failed", "validation_started"].includes(item.type));
+  if (event?.type === "validation_failed") return "failed";
+  if (event?.type === "validation_passed") return "passed";
+  const result = String(run.validation?.status || run.validation?.result || "").toLowerCase();
+  if (/fail|error|invalid/.test(result)) return "failed";
+  if (/pass|success|valid/.test(result)) return "passed";
+  if (event?.type === "validation_started" || run.phase === "validating") return "in_progress";
+  if (run.kind === "validate" && run.status === "failed") return "failed";
+  return "not_recorded";
+}
+
+function validationArtifact(run) {
+  const items = Array.isArray(run?.artifacts) ? [...run.artifacts].reverse() : [];
+  const match = items.find((item) => {
+    const kind = typeof item === "object" && item ? item.kind : "";
+    const file = typeof item === "string" ? item : item?.path || item?.ref || "";
+    return kind === "validation" || /validation/i.test(file);
+  });
+  if (typeof match === "string") return match;
+  return match?.path || match?.ref || "";
+}
+
+function hasPublishCompleted(runs) {
+  return runs.some((run) => (run.events || []).some((event) => event.type === "publish_completed"));
+}
+
+function taskTrace(taskId, tasks, runs, artifacts) {
+  const task = tasks.find((item) => normalizedId(item.id) === normalizedId(taskId));
+  const linkedRuns = runsForTask(taskId, runs);
+  const latestRun = linkedRuns[0] || null;
+  const validationRun = linkedRuns.find((run) => validationStatus(run) !== "not_recorded") || latestRun;
+  const artifact = artifacts.find((item) => normalizedId(item.task_id) === normalizedId(taskId)) || null;
+  const validation = validationStatus(validationRun);
+  const evidence = validationArtifact(linkedRuns.find((run) => validationArtifact(run)));
+  let publish = "not_ready";
+  if (hasPublishCompleted(linkedRuns)) publish = "published";
+  else if (task?.status === "blocked" || validation === "failed") publish = "blocked";
+  else if (task?.status === "done" && validation === "passed" && evidence) publish = "ready";
+  else if (task?.status === "done" && validation === "passed") publish = "needs_evidence";
+  else if (task?.status === "done") publish = "needs_validation";
+  return { taskId, task, runs: linkedRuns, latestRun, validation, evidence, artifact, publish };
+}
+
+function buildPrdTrace(prd, tasks, runs, artifacts) {
+  const taskIds = Array.isArray(prd?.related_tasks) ? prd.related_tasks : [];
+  const rows = taskIds.map((taskId) => taskTrace(taskId, tasks, runs, artifacts));
+  let readiness = "unlinked";
+  if (prd?.status === "published") readiness = "published";
+  else if (rows.some((row) => row.publish === "blocked")) readiness = "blocked";
+  else if (rows.length && rows.every((row) => row.publish === "published")) readiness = "published";
+  else if (rows.length && rows.every((row) => ["ready", "published"].includes(row.publish))) readiness = "ready";
+  else if (rows.some((row) => !row.task || row.task.status !== "done")) readiness = "in_progress";
+  else if (rows.some((row) => row.publish === "needs_evidence")) readiness = "needs_evidence";
+  else if (rows.length) readiness = "needs_validation";
+  return { rows, readiness };
+}
+
+function traceStage(labelKey, value, detail) {
+  return `<div class="trace-stage"><span data-i18n="${labelKey}">${esc(I18N.zh[labelKey])}</span><strong>${value}</strong><small>${esc(detail)}</small></div>`;
+}
+
+function renderTraceSummary(prd, trace) {
+  if (!prd || !trace.rows.length) return `<div class="empty" data-i18n="unlinked">${I18N.zh.unlinked}</div>`;
+  const runCount = trace.rows.reduce((count, row) => count + row.runs.length, 0);
+  const doneCount = trace.rows.filter((row) => row.task?.status === "done").length;
+  const passedCount = trace.rows.filter((row) => row.validation === "passed").length;
+  return `<div class="trace-summary">
+    ${traceStage("prdStatus", pill(prd.status), prd.id)}
+    ${traceStage("linkedTasks", `${doneCount}/${trace.rows.length}`, "PRD -> task")}
+    ${traceStage("linkedRuns", pill(runCount ? "linked" : "not_recorded"), `${runCount} run(s)`)}
+    ${traceStage("validationsPassed", `${passedCount}/${trace.rows.length}`, "run -> validation")}
+    ${traceStage("publishDocs", pill(trace.readiness), trace.readiness === "ready" ? "/publish-docs" : "publish gate")}
+  </div>`;
+}
+
+function renderTraceTable(trace) {
+  const rows = trace.rows.map((row) => {
+    const run = row.latestRun;
+    const artifactDetail = row.evidence || row.artifact?.latest || "";
+    const artifactCount = row.artifact?.count ? `<span class="mini">${row.artifact.count}</span> ` : "";
+    const artifactLabel = artifactDetail && !row.evidence ? `<span class="mini" data-i18n="latestArtifact">${I18N.zh.latestArtifact}</span> ` : "";
+    return `<tr><td><code>${esc(row.taskId)}</code></td><td>${pill(row.task?.status || "unknown")}</td><td>${run ? `<code>${esc(run.run_id || run.path)}</code>` : `<span class="mini">-</span>`}</td><td>${pill(run?.status || "not_recorded")}</td><td>${pill(row.validation)}</td><td>${artifactDetail ? `${artifactLabel}${artifactCount}<code>${esc(artifactDetail)}</code>` : `<span class="mini">-</span>`}</td><td>${pill(row.publish)}</td></tr>`;
+  });
+  return `<div class="trace-table">${renderTable(["task", "taskStatus", "runs", "runStatus", "validation", "evidence", "publishReadiness"], rows, "unlinked")}</div>`;
+}
+
 function main() {
   const managed = queryManagementDashboardState();
   const tasks = managed?.tasks || parseTasks();
@@ -634,6 +764,7 @@ function main() {
         ? "active"
         : "idle";
   const recentEvents = runs.flatMap((r) => (Array.isArray(r.events) ? r.events.slice(-4).reverse().map((event) => ({ run: r, event })) : [])).slice(0, 16);
+  const prdTrace = buildPrdTrace(prd.current, tasks, runs, artifacts);
 
   const html = `<!doctype html>
 <html lang="zh-CN">
@@ -652,10 +783,11 @@ main{min-width:0}.topbar{padding:20px 28px;border-bottom:1px solid var(--line);d
 .phase-rail{display:grid;grid-template-columns:repeat(7,1fr);gap:8px}.phase-node{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:10px;min-height:76px}.phase-node span{display:block;width:10px;height:10px;border-radius:50%;background:var(--muted);margin-bottom:8px}.phase-node.active{border-color:var(--accent)}.phase-node.active span{background:var(--accent)}.phase-node.done span{background:var(--ok)}.phase-node strong{display:block}.phase-node small{display:block;color:var(--muted);margin-top:3px;overflow-wrap:anywhere}
 .lanes{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.lane{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:12px}.lane h3{margin:0 0 10px;color:var(--muted);font-size:13px}.task-card{border:1px solid var(--line);border-radius:7px;padding:10px;margin-bottom:8px;background:#0d1016}.task-card p{margin:4px 0 0;color:var(--muted)}
 .prd-item{display:flex;justify-content:space-between;gap:14px;border:1px solid var(--line);border-radius:8px;padding:12px;background:var(--panel2)}.prd-item p{margin:3px 0}.empty-panel{border:1px dashed var(--line);border-radius:8px;padding:18px;color:var(--muted)}.check-list{display:grid;gap:8px}.check-list div{display:flex;justify-content:space-between;gap:12px;border-bottom:1px solid var(--line);padding-bottom:7px}.check-list div:last-child{border-bottom:0}
+.trace-summary{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));border:1px solid var(--line);border-radius:8px;overflow:hidden}.trace-stage{min-width:0;padding:11px 12px;background:var(--panel2);border-right:1px solid var(--line)}.trace-stage:last-child{border-right:0}.trace-stage>span,.trace-stage small{display:block;color:var(--muted);font-size:12px}.trace-stage strong{display:block;margin:5px 0;overflow-wrap:anywhere}.trace-table{margin:14px 0 18px;overflow-x:auto}.trace-table code{white-space:normal;overflow-wrap:anywhere}.trace-table table{min-width:820px}
 .timeline{display:grid;gap:10px}.timeline-item{display:grid;grid-template-columns:140px minmax(0,1fr);gap:12px;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:11px}.timeline-item p{margin:2px 0;color:var(--muted)}
 table{width:100%;border-collapse:collapse}th,td{padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top;text-align:left}th{color:var(--muted);font-weight:600}code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:#d9e7ff}.empty{color:var(--muted);padding:10px 0}.pill{display:inline-block;border:1px solid var(--line);border-radius:999px;padding:2px 8px;color:var(--muted);white-space:nowrap}.status-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--muted);margin-right:7px}.status-dot.running,.status-dot.in_progress,.status-dot.invoking_agent{background:var(--accent)}.status-dot.done,.status-dot.ready,.status-dot.clean,.status-dot.approved{background:var(--ok)}.status-dot.blocked,.status-dot.dirty,.status-dot.stale{background:var(--bad)}
-.done,.ready,.validated,.clean,.approved{color:var(--ok);border-color:rgba(88,214,141,.45)}.blocked,.validation_failed,.dirty,.stale{color:var(--bad);border-color:rgba(255,107,107,.45)}.active,.in_progress,.running,.locked,.merge_ready,.handoff_required,.held,.draft,.review{color:var(--warn);border-color:rgba(241,180,76,.45)}pre{white-space:pre-wrap;background:#0d1016;border:1px solid var(--line);border-radius:6px;padding:10px;overflow:auto;max-height:260px}
-@media(max-width:1100px){.shell{display:block}aside{position:static;height:auto}.status-strip,.command-panel,.phase-rail,.lanes{grid-template-columns:1fr}.panel,.third,.quarter{grid-column:span 12}.section,.topbar{padding:16px}.timeline-item{grid-template-columns:1fr}}
+.done,.ready,.validated,.clean,.approved,.published{color:var(--ok);border-color:rgba(88,214,141,.45)}.blocked,.validation_failed,.failed,.dirty,.stale{color:var(--bad);border-color:rgba(255,107,107,.45)}.active,.in_progress,.running,.locked,.merge_ready,.handoff_required,.held,.draft,.review,.needs_validation,.needs_evidence,.not_ready{color:var(--warn);border-color:rgba(241,180,76,.45)}pre{white-space:pre-wrap;background:#0d1016;border:1px solid var(--line);border-radius:6px;padding:10px;overflow:auto;max-height:260px}
+@media(max-width:1100px){.shell{display:block}aside{position:static;height:auto}.status-strip,.command-panel,.phase-rail,.lanes,.trace-summary{grid-template-columns:1fr}.trace-stage{border-right:0;border-bottom:1px solid var(--line)}.trace-stage:last-child{border-bottom:0}.panel,.third,.quarter{grid-column:span 12}.section,.topbar{padding:16px}.timeline-item{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
@@ -722,12 +854,14 @@ table{width:100%;border-collapse:collapse}th,td{padding:8px 10px;border-bottom:1
         <div class="panel third">${prdCard(prd.current)}</div>
         <div class="panel third"><h2 data-i18n="prdHealth">${I18N.zh.prdHealth}</h2><div class="metric-value">${prd.completeness}%</div><div class="mini"><span data-i18n="missing">${I18N.zh.missing}</span>: ${esc(prd.missing.slice(0, 5).join(", ") || I18N.zh.ready)}</div></div>
         <div class="panel third"><h2 data-i18n="visualDesign">${I18N.zh.visualDesign}</h2><div>${pill(prd.design)}</div><div class="mini">${esc(prd.current?.design.tool || prd.current?.design.local_path || prd.current?.design.url || I18N.zh.notStarted)}</div></div>
-        <div class="panel wide"><h2 data-i18n="relatedTasks">${I18N.zh.relatedTasks}</h2>${prd.current?.related_tasks?.length ? prd.current.related_tasks.map((id) => `<span class="pill">${esc(id)}</span>`).join(" ") : `<div class="empty" data-i18n="empty">${I18N.zh.empty}</div>`}</div>
+        <div class="panel wide"><div class="section-head"><h2 data-i18n="deliveryChain">${I18N.zh.deliveryChain}</h2><span>${pill(prdTrace.readiness)}</span></div>${renderTraceSummary(prd.current, prdTrace)}</div>
       </div>
     </section>
 
     <section id="delivery" class="section">
       <div class="section-head"><h2 data-i18n="delivery">${I18N.zh.delivery}</h2><span>${pill(deliveryState)}</span></div>
+      <div class="section-head"><h2 data-i18n="deliveryChain">${I18N.zh.deliveryChain}</h2><span><span data-i18n="publishReadiness">${I18N.zh.publishReadiness}</span> ${pill(prdTrace.readiness)}</span></div>
+      ${renderTraceTable(prdTrace)}
       <div class="lanes">${taskColumn(tasks, "open", "open")}${taskColumn(tasks, "active", "active")}${taskColumn(tasks, "blocked", "blocked")}${taskColumn(tasks, "done", "done")}</div>
     </section>
 

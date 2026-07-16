@@ -36,6 +36,7 @@ description: 将 .agent/references 与已完成架构提案中的项目知识，
 来源文件：
   - .agent/references/<module>.md
   - .agent/plans/proposals/<topic>/<proposal>.md
+  - .agent/plans/proposals/projects/<project-slug>/index.md
   - <code paths used for verification>
 
 目标文件：
@@ -50,9 +51,16 @@ description: 将 .agent/references 与已完成架构提案中的项目知识，
 
 1. 优先读取目标模块对应的 `.agent/references/*.md`
 2. 若涉及架构决策，只读取 `.agent/plans/proposals/` 中已完成或用户确认通过的提案
-3. 必须回到当前代码重新验证路径、接口、命令、依赖和配置
-4. 若 `.agent/references/` 不存在或明显过期，先建议运行 `/scan-project` 或 `/update-refs`
-5. 若用户没有指定模块，只处理当前任务或 git diff 涉及的模块
+3. 若来源是项目级提案组，以 `projects/<project-slug>/index.md` 为入口：先确认项目或目标 milestone 已定稿，再跟随索引读取相关且已完成或用户确认通过的子提案
+4. 必须回到当前代码重新验证路径、接口、命令、依赖和配置
+5. 若 `.agent/references/` 不存在或明显过期，先建议运行 `/scan-project` 或 `/update-refs`
+6. 若用户没有指定模块，只处理当前任务或 git diff 涉及的模块
+
+项目级发布顺序：
+
+1. 先从定稿后的 `index.md` 提炼项目目标、范围、里程碑和最终决策，形成可独立阅读的总览
+2. 再按需引用已完成子提案的结论，不发布未批准的子提案或过程性讨论
+3. 子提案与 `decisions/`、`relations.md` 只作为事实来源，发布到 `docs/` 时不得保留对 `.agent/` 的阅读依赖
 
 ### 第二步：选择文档位置
 

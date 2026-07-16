@@ -70,7 +70,8 @@ Required checks:
 8. Assertions without `command` must include `evidence` or a clear manual verification basis.
 9. Public API changes must include at least one `api` or `docs` assertion.
 10. Runtime claims must reference a runtime evidence source or template.
-11. Cross-machine or cross-process runtime assertions must state the timestamp source used for log filtering. The source should be the target that produced the logs, not the controller process.
+11. Cross-machine or cross-process runtime assertions must require the log cursor to be captured from the target that produces the logs immediately before the action under test. Controller time is not an acceptable substitute.
+12. Time-filtered runtime assertions must require evidence for `target_id`, `timestamp_source`, `target_timestamp_utc`, and `log_filter_start_utc`; require a separate cursor for each target when more than one target produces logs.
 
 Output a compact report:
 
@@ -120,6 +121,29 @@ The summary must include:
 - If an assertion is waived, record the reason, approver, and follow-up task.
 - Validators must check the contract against code, diff, command output, and runtime evidence. Worker explanations are not evidence.
 - For cross-machine or remote UI validation, include a blocking runtime assertion that evidence cursors come from the target system timestamp when logs are filtered by time.
+- If target time is unavailable, a blocking assertion that depends on time-filtered logs cannot pass. Record the gap and use `partial` or `fail` unless the contract defines alternative evidence that does not depend on time filtering.
+
+## Cross-Machine Runtime Assertion
+
+Use a blocking assertion like this when evidence is filtered by time across machine or process boundaries:
+
+```json
+{
+  "id": "VC-002",
+  "type": "runtime",
+  "assertion": "Cross-machine evidence uses a target-side timestamp captured immediately before the action under test as the log cursor.",
+  "evidence": ".agent/metrics/runtime-health.json",
+  "evidence_requirements": [
+    "target_id",
+    "timestamp_source",
+    "target_timestamp_utc",
+    "log_filter_start_utc"
+  ],
+  "blocking": true
+}
+```
+
+The referenced evidence must identify each target separately. `timestamp_source` must identify a target-side source and must not be `controller`; `controller_timestamp_utc` and `clock_skew_ms` may be included as diagnostic metadata.
 
 ## Minimal Template
 

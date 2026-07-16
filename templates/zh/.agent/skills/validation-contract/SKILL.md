@@ -70,7 +70,8 @@ Mission Lite milestone 必须使用本技能；高风险 `/start-task` 或 `/shi
 8. 没有 `command` 的 assertion 必须包含 `evidence` 或清晰的人工验证依据。
 9. Public API 变化必须包含至少一条 `api` 或 `docs` assertion。
 10. Runtime 断言必须引用 runtime evidence 来源或模板。
-11. 跨机器或跨进程 runtime 断言必须说明日志过滤使用的时间源。时间源应来自产生日志的被测端，而不是控制端进程。
+11. 跨机器或跨进程 runtime 断言必须要求在被测动作开始前立即从产生日志的被测端获取日志游标。控制端时间不能作为替代值。
+12. 依赖时间过滤的 runtime 断言必须要求证据包含 `target_id`、`timestamp_source`、`target_timestamp_utc` 和 `log_filter_start_utc`；存在多个日志被测端时，每个被测端必须使用独立游标。
 
 输出紧凑报告：
 
@@ -120,6 +121,29 @@ Mission Lite milestone 必须使用本技能；高风险 `/start-task` 或 `/shi
 - 如果 assertion 被 waiver，必须记录原因、批准者和 follow-up task。
 - Validator 必须基于 contract、代码、diff、命令输出和 runtime evidence 检查。Worker 的自然语言解释不是证据。
 - 对跨机器或远程 UI 验证，必须包含阻断性 runtime 断言，确认按时间过滤日志时 evidence cursor 来自被测端时间。
+- 如果无法取得被测端时间，依赖按时间过滤日志的阻断性断言不能通过。除非契约定义了不依赖时间过滤的替代证据，否则必须记录证据缺口并标记为 `partial` 或 `fail`。
+
+## 跨机器 Runtime 断言
+
+跨机器或跨进程按时间过滤证据时，使用如下阻断性断言：
+
+```json
+{
+  "id": "VC-002",
+  "type": "runtime",
+  "assertion": "跨机器证据使用在被测动作开始前立即从被测端获取的时间戳作为日志游标。",
+  "evidence": ".agent/metrics/runtime-health.json",
+  "evidence_requirements": [
+    "target_id",
+    "timestamp_source",
+    "target_timestamp_utc",
+    "log_filter_start_utc"
+  ],
+  "blocking": true
+}
+```
+
+引用的证据必须分别标识每个被测端。`timestamp_source` 必须标识被测端时间源且不得为 `controller`；可以附加 `controller_timestamp_utc` 和 `clock_skew_ms` 作为诊断元数据。
 
 ## 最小模板
 
