@@ -96,6 +96,10 @@ const I18N = {
     runs: "Runs",
     queues: "Queues",
     sessions: "Sessions",
+    currentActivity: "当前活动",
+    phase: "阶段",
+    event: "事件",
+    message: "消息",
     gitStatus: "Git 状态",
     stateWhy: "状态判断",
     empty: "暂无数据",
@@ -149,6 +153,10 @@ const I18N = {
     runs: "Runs",
     queues: "Queues",
     sessions: "Sessions",
+    currentActivity: "Current Activity",
+    phase: "Phase",
+    event: "Event",
+    message: "Message",
     gitStatus: "Git Status",
     stateWhy: "State Reasoning",
     empty: "No data",
@@ -409,6 +417,8 @@ function main() {
   const activeTaskCount = tasks.filter((t) => t.status !== "done").length;
   const heldLockCount = locks.filter((l) => !l.expired).length;
   const nonMainWorktreeCount = worktrees.filter((w) => !w.isMain).length;
+  const runningRuns = runs.filter((r) => r.status === "running");
+  const currentActivity = runningRuns[0]?.activity || runningRuns[0]?.last_event?.message || derived.next || "";
 
   const html = `<!doctype html>
 <html lang="zh-CN">
@@ -449,6 +459,7 @@ pre{white-space:pre-wrap;background:#0d1016;border:1px solid var(--line);border-
   <section class="card third"><h2 data-i18n="worktreeState">${I18N.zh.worktreeState}</h2><div class="stat">${pill(derived.state)}</div></section>
   <section class="card third"><h2 data-i18n="activeTasks">${I18N.zh.activeTasks}</h2><div class="stat">${activeTaskCount}</div></section>
   <section class="card third"><h2 data-i18n="heldLocks">${I18N.zh.heldLocks}</h2><div class="stat">${heldLockCount}</div></section>
+  <section class="card wide"><h2 data-i18n="currentActivity">${I18N.zh.currentActivity}</h2><div class="next">${esc(currentActivity || I18N.zh.empty)}</div>${runningRuns[0]?.phase ? `<div class="reason"><span data-i18n="phase">${I18N.zh.phase}</span>: ${pill(runningRuns[0].phase)}</div>` : ""}</section>
   <section class="card wide"><h2 data-i18n="nextAction">${I18N.zh.nextAction}</h2><div class="next"><code data-next-zh="${esc(derived.next)}" data-next-en="${esc(derived.nextEn)}">${esc(derived.next)}</code></div><div class="reason" data-why-zh="${esc(derived.why)}" data-why-en="${esc(derived.whyEn)}">${esc(derived.why)}</div></section>
   <section class="card wide"><h2 data-i18n="progressMap">${I18N.zh.progressMap}</h2><div class="progress">
     <div class="step ${derived.state === "idle" ? "active" : ""}"><strong>1. Plan</strong><span>/plan · /worktree plan</span></div>
@@ -463,9 +474,10 @@ pre{white-space:pre-wrap;background:#0d1016;border:1px solid var(--line);border-
   <section class="card"><h2 data-i18n="locks">${I18N.zh.locks}</h2>${renderTable(["scope","heldBy","expires","status"], locks.map((l) => `<tr><td><code>${esc(l.scope)}</code></td><td>${esc(l.held_by)}</td><td>${esc(l.expires_at)}</td><td>${pill(l.expired ? "expired" : "held")}</td></tr>`))}</section>
   <section class="card"><h2 data-i18n="handoffs">${I18N.zh.handoffs}</h2>${renderTable(["path","type","updated"], handoffs.map((h) => `<tr><td><code>${esc(h.path)}</code></td><td>${esc(h.type)}</td><td>${esc(h.updated)}</td></tr>`))}</section>
   <section class="card"><h2 data-i18n="artifacts">${I18N.zh.artifacts}</h2>${renderTable(["task","count","latest"], artifacts.map((a) => `<tr><td><code>${esc(a.task_id)}</code></td><td>${a.count}</td><td><code>${esc(a.latest)}</code></td></tr>`))}</section>
-  <section class="card"><h2 data-i18n="sessions">${I18N.zh.sessions}</h2>${renderTable(["agent","role","status","heartbeat"], sessions.map((s) => `<tr><td>${esc(s.agent_id || s.session_id)}</td><td>${esc(s.role || "")}</td><td>${pill(s.status)}</td><td>${esc(s.last_heartbeat_at || s.started_at || "")}</td></tr>`))}</section>
-  <section class="card"><h2 data-i18n="runs">${I18N.zh.runs}</h2>${renderTable(["id","kind","status","started"], runs.slice(0, 8).map((r) => `<tr><td><code>${esc(r.run_id || r.path)}</code></td><td>${esc(r.kind || "")}</td><td>${pill(r.status)}</td><td>${esc(r.started_at || "")}</td></tr>`))}</section>
-  <section class="card wide"><h2 data-i18n="queues">${I18N.zh.queues}</h2>${renderTable(["id","status","items"], queues.map((q) => `<tr><td><code>${esc(q.queue_id || q.path)}</code></td><td>${pill(q.status)}</td><td>${Array.isArray(q.items) ? q.items.length : 0}</td></tr>`))}</section>
+  <section class="card"><h2 data-i18n="sessions">${I18N.zh.sessions}</h2>${renderTable(["agent","role","status","phase","heartbeat"], sessions.map((s) => `<tr><td>${esc(s.agent_id || s.session_id)}</td><td>${esc(s.role || "")}</td><td>${pill(s.status)}</td><td>${s.phase ? pill(s.phase) : esc(s.activity || "")}</td><td>${esc(s.last_heartbeat_at || s.started_at || "")}</td></tr>`))}</section>
+  <section class="card"><h2 data-i18n="runs">${I18N.zh.runs}</h2>${renderTable(["id","kind","status","phase","message"], runs.slice(0, 8).map((r) => `<tr><td><code>${esc(r.run_id || r.path)}</code></td><td>${esc(r.kind || "")}</td><td>${pill(r.status)}</td><td>${r.phase ? pill(r.phase) : ""}</td><td>${esc(r.activity || r.last_event?.message || "")}</td></tr>`))}</section>
+  <section class="card wide"><h2 data-i18n="queues">${I18N.zh.queues}</h2>${renderTable(["id","status","items","currentActivity"], queues.map((q) => `<tr><td><code>${esc(q.queue_id || q.path)}</code></td><td>${pill(q.status)}</td><td>${Array.isArray(q.items) ? q.items.length : 0}</td><td>${esc((q.items || []).find((item) => item.state === "running")?.activity || "")}</td></tr>`))}</section>
+  <section class="card wide"><h2 data-i18n="event">${I18N.zh.event}</h2>${renderTable(["id","phase","status","message"], runs.flatMap((r) => (Array.isArray(r.events) ? r.events.slice(-3).reverse().map((event) => ({ run: r, event })) : [])).slice(0, 12).map(({ run, event }) => `<tr><td><code>${esc(run.run_id || run.path)}</code></td><td>${event.phase ? pill(event.phase) : ""}</td><td>${event.status ? pill(event.status) : ""}</td><td>${esc(event.message || event.activity || event.type || "")}<div class="mini">${esc(event.at || "")}</div></td></tr>`))}</section>
   <section class="card wide"><h2 data-i18n="gitStatus">${I18N.zh.gitStatus}</h2><pre>${esc(gitStatus || I18N.zh.noGit)}</pre></section>
 </main>
 <script>

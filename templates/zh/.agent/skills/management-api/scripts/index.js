@@ -9,6 +9,27 @@ const root = process.cwd();
 const agentRoot = path.join(root, ".agent");
 const args = process.argv.slice(2);
 
+const RUN_PHASES = new Set([
+  "initializing",
+  "briefing",
+  "decomposing",
+  "planning",
+  "queueing",
+  "creating_worktree",
+  "acquiring_lock",
+  "invoking_agent",
+  "reading",
+  "editing",
+  "running_command",
+  "validating",
+  "handoff",
+  "merging",
+  "publishing",
+  "waiting",
+  "blocked",
+  "completed",
+]);
+
 function sh(command, cwd = root) {
   try {
     return execSync(command, {
@@ -27,6 +48,60 @@ function read(file) {
 
 function readJson(file) {
   try { return JSON.parse(read(file)); } catch { return null; }
+}
+
+function writeJson(file, data) {
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, `${JSON.stringify(data, null, 2)}\n`, "utf8");
+}
+
+function option(name, fallback = null) {
+  const idx = args.indexOf(name);
+  if (idx === -1 || !args[idx + 1]) return fallback;
+  return args[idx + 1];
+}
+
+function flag(name) {
+  return args.includes(name);
+}
+
+function parsePayload() {
+  const raw = option("--payload-json");
+  if (!raw) return {};
+  try {
+    return JSON.parse(raw);
+  } catch (err) {
+    fail("invalid_payload_json", err.message);
+    return {};
+  }
+}
+
+function nowIso() {
+  return new Date().toISOString();
+}
+
+function safeId(value, prefix) {
+  const base = String(value || "").trim();
+  if (base) return base.replace(/[^A-Za-z0-9_.:-]+/g, "-");
+  return `${prefix}-${nowIso().replace(/[-:.TZ]/g, "").slice(0, 14)}`;
+}
+
+function runFile(runId) {
+  return path.join(agentRoot, "runs", `${safeId(runId, "R")}.json`);
+}
+
+function normalizePhase(phase) {
+  if (!phase) return null;
+  const normalized = String(phase).trim();
+  return RUN_PHASES.has(normalized) ? normalized : normalized;
+}
+
+function compactEvent(event) {
+  const payload = { ...event };
+  for (const key of Object.keys(payload)) {
+    if (payload[key] === undefined || payload[key] === null || payload[key] === "") delete payload[key];
+  }
+  return payload;
 }
 
 function listFiles(dir, filter) {
@@ -186,6 +261,8 @@ function parseRuns() {
     .map(({ file, data }) => ({
       ...data,
       path: rel(file),
+      events: Array.isArray(data.events) ? data.events : [],
+      last_event: data.last_event || (Array.isArray(data.events) ? data.events[data.events.length - 1] : null) || null,
     }))
     .sort((a, b) => String(b.started_at || "").localeCompare(String(a.started_at || "")))
     .slice(0, 20);
@@ -212,20 +289,34 @@ function parseSessions() {
         ...data,
         path: rel(file),
         status: stale ? "stale" : data.status,
+        activity: stale ? "Session heartbeat is stale." : data.activity,
         stale,
       };
     })
     .sort((a, b) => String(b.last_heartbeat_at || b.started_at || "").localeCompare(String(a.last_heartbeat_at || a.started_at || "")));
 }
 
-function deriveState({ worktrees, locks, handoffs, tasks, agents, sessions }) {
+function deriveState({ worktrees, locks, handoffs, tasks, agents, runs, sessions }) {
   const nonMainWorktrees = worktrees.filter((w) => !w.isMain);
   const dirty = worktrees.some((w) => w.dirty);
   const heldLocks = locks.filter((l) => !l.expired);
   const blockedTasks = tasks.filter((t) => t.status === "blocked");
   const activeTasks = tasks.filter((t) => t.status === "active" || t.status === "open");
   const activeAgents = agents.filter((a) => ["running", "active", "paused"].includes(a.status));
+  const runningRuns = (runs || []).filter((r) => r.status === "running");
   const staleSessions = (sessions || []).filter((s) => s.status === "stale");
+
+  if (runningRuns.length) {
+    const run = runningRuns[0];
+    const action = run.activity || run.last_event?.message || run.phase || "Agent run is active.";
+    return {
+      state: "in_progress",
+      next: action,
+      nextEn: action,
+      why: `Run ${run.run_id || run.path} 正在执行${run.phase ? `：${run.phase}` : ""}。`,
+      whyEn: `Run ${run.run_id || run.path} is running${run.phase ? `: ${run.phase}` : ""}.`,
+    };
+  }
 
   if (blockedTasks.length) {
     return {
@@ -302,7 +393,7 @@ function queryDashboardState() {
   const queues = parseQueues();
   const sessions = parseSessions();
   const gitStatus = sh("git status --short --branch");
-  const derived = deriveState({ worktrees, locks, handoffs, tasks, agents, sessions });
+  const derived = deriveState({ worktrees, locks, handoffs, tasks, agents, runs, sessions });
 
   return {
     ok: true,
@@ -330,6 +421,7 @@ function queryDashboardState() {
       running_runs: runs.filter((r) => r.status === "running").length,
       active_queues: queues.filter((q) => q.status === "active").length,
       stale_sessions: sessions.filter((s) => s.status === "stale").length,
+      active_phases: runs.filter((r) => r.status === "running" && r.phase).map((r) => r.phase),
     },
   };
 }
@@ -338,17 +430,114 @@ function printJson(payload) {
   process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);
 }
 
+function fail(error, message, code = 2) {
+  printJson({ ok: false, error, message });
+  process.exit(code);
+}
+
+function upsertRun() {
+  const payload = parsePayload();
+  const runId = safeId(option("--run-id", payload.run_id), "R");
+  const file = runFile(runId);
+  const existing = readJson(file) || {};
+  const timestamp = nowIso();
+  const patch = {
+    ...payload,
+    run_id: runId,
+    task_id: option("--task-id", payload.task_id ?? existing.task_id ?? null),
+    mission_id: option("--mission-id", payload.mission_id ?? existing.mission_id ?? null),
+    agent_id: option("--agent-id", payload.agent_id ?? existing.agent_id ?? null),
+    role: option("--role", payload.role ?? existing.role ?? null),
+    kind: option("--kind", payload.kind ?? existing.kind ?? "implement"),
+    status: option("--status", payload.status ?? existing.status ?? "running"),
+    phase: normalizePhase(option("--phase", payload.phase ?? existing.phase ?? null)),
+    activity: option("--activity", payload.activity ?? existing.activity ?? null),
+    worktree_path: option("--worktree-path", payload.worktree_path ?? existing.worktree_path ?? null),
+    branch: option("--branch", payload.branch ?? existing.branch ?? null),
+    started_at: option("--started-at", payload.started_at ?? existing.started_at ?? timestamp),
+    finished_at: option("--finished-at", payload.finished_at ?? existing.finished_at ?? null),
+    updated_at: timestamp,
+  };
+  if (["completed", "failed", "canceled"].includes(patch.status) && !patch.finished_at) {
+    patch.finished_at = timestamp;
+    if (!patch.phase || patch.status === "completed") patch.phase = patch.status === "completed" ? "completed" : patch.phase;
+  }
+  const events = Array.isArray(existing.events) ? existing.events : [];
+  const next = { ...existing, ...patch, events };
+  if (!Array.isArray(next.commands)) next.commands = Array.isArray(payload.commands) ? payload.commands : [];
+  if (!Array.isArray(next.artifacts)) next.artifacts = Array.isArray(payload.artifacts) ? payload.artifacts : [];
+  if (!next.validation || typeof next.validation !== "object") next.validation = {};
+  if (flag("--event") || option("--message") || patch.activity !== existing.activity || patch.phase !== existing.phase || patch.status !== existing.status) {
+    const event = compactEvent({
+      type: option("--event-type", flag("--event") ? "state_changed" : "run_updated"),
+      phase: patch.phase,
+      status: patch.status,
+      activity: patch.activity,
+      message: option("--message", patch.activity),
+      at: timestamp,
+    });
+    next.events = [...events, event].slice(-200);
+    next.last_event = event;
+  } else if (existing.last_event) {
+    next.last_event = existing.last_event;
+  }
+  writeJson(file, next);
+  printJson({ ok: true, action: "runs upsert", path: rel(file), run: next });
+}
+
+function appendRunEvent() {
+  const payload = parsePayload();
+  const runId = safeId(option("--run-id", payload.run_id), "R");
+  const file = runFile(runId);
+  const existing = readJson(file) || {
+    run_id: runId,
+    kind: option("--kind", payload.kind || "implement"),
+    status: "running",
+    started_at: nowIso(),
+  };
+  const timestamp = nowIso();
+  const event = compactEvent({
+    ...payload,
+    type: option("--type", payload.type || "event"),
+    phase: normalizePhase(option("--phase", payload.phase || existing.phase || null)),
+    status: option("--status", payload.status || existing.status || null),
+    activity: option("--activity", payload.activity || null),
+    message: option("--message", payload.message || null),
+    at: option("--at", payload.at || timestamp),
+  });
+  const next = {
+    ...existing,
+    status: event.status || existing.status,
+    phase: event.phase || existing.phase || null,
+    activity: event.activity || event.message || existing.activity || null,
+    updated_at: timestamp,
+    events: [...(Array.isArray(existing.events) ? existing.events : []), event].slice(-200),
+    last_event: event,
+  };
+  if (["completed", "failed", "canceled"].includes(next.status) && !next.finished_at) next.finished_at = timestamp;
+  writeJson(file, next);
+  printJson({ ok: true, action: "runs event", path: rel(file), event, run: next });
+}
+
 function main() {
   const [command, query] = args;
   if (command === "query" && query === "dashboard-state") {
     printJson(queryDashboardState());
     return;
   }
+  if (command === "runs" && query === "upsert") {
+    upsertRun();
+    return;
+  }
+  if (command === "runs" && query === "event") {
+    appendRunEvent();
+    return;
+  }
 
   printJson({
     ok: false,
     error: "unsupported_command",
-    usage: "node .agent/skills/management-api/scripts/index.js query dashboard-state",
+    usage: "node .agent/skills/management-api/scripts/index.js query dashboard-state | runs upsert | runs event",
   });
   process.exitCode = 2;
 }
