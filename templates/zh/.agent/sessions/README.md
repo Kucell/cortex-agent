@@ -1,7 +1,11 @@
 # Sessions
 
-Session records describe active agent processes, dashboard-manager servers, or long-running worktree owners.
+Session 记录描述活跃 agent 进程、dashboard-manager server 或长时间运行的 worktree owner。
 
-Management API marks a running or paused session as `stale` when `last_heartbeat_at` is older than five minutes.
+当 `last_heartbeat_at` 超过五分钟时，Management API 会在读取时把 running 或 paused session 标记为 `stale`。
 
-Sessions may include `phase`, `activity`, `current_run_id`, and `current_task_id` so dashboards can distinguish idle services from sessions that are actively decomposing tasks, invoking agents, editing files, or validating.
+Session 可以包含 `phase`、`activity`、`current_run_id` 和 `current_task_id`，方便 dashboard 区分 idle service 与正在拆解任务、调用 agent、编辑文件或验证的 session。
+
+Session 写入必须经过显式 workflow 或 owner-process gate。Management API 可以在读取时派生 `stale`，但 read-only query 不得仅因为 heartbeat 过旧就回写 session status。
+
+写入 gate 合约见 `.agent/skills/management-api/write-gates.md`。

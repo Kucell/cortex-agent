@@ -127,6 +127,7 @@ Prefer these stable `events[].type` values:
 - Keep this skill zero dependency.
 - Read from `.agent/` and Git only.
 - Only mutate `.agent/runs/*.json` through the `runs upsert`, `runs event`, and `runs checkpoint` commands.
+- Queue/session mutations require workflow gates; see `write-gates.md`.
 - Runtime objects live under `.agent/runs/`, `.agent/queues/`, and `.agent/sessions/`.
 - PRD objects live under `.agent/prd/` or `.agent/prds/`; dashboard-state exposes `prds` and `prd_summary`.
 - Running or paused sessions whose `last_heartbeat_at` is older than five minutes are reported as `stale`.
