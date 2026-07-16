@@ -33,6 +33,7 @@ Use Git worktrees to give multiple agents isolated working directories while kee
 - After a worktree completes a verifiable task, run `/ship` or `/commit` promptly.
 - Before merge, registry, locks, artifacts, handoff, and git state must agree.
 - After merge, rerun functional validation in the target mainline worktree.
+- When Management API exists, record worktree creation, lock acquisition, commit, merge, and validation in the Run journal.
 
 ## PLAN
 
@@ -81,6 +82,7 @@ test -L .agent && readlink .agent
 3. Record `base_branch`, `base_commit`, `branch`, `worktree_path`, and `agent_state_path`.
 4. Check in to registry.
 5. Acquire the task lock and include `worktree_path`, `branch`, and `agent_state_path` in lock metadata.
+6. Call `management-api runs checkpoint` for `creating_worktree` / `lock_acquired`.
 
 ## STATUS
 
@@ -161,8 +163,10 @@ Promptly close a verifiable task inside the worktree:
 1. Confirm the current `task_id`, `branch`, and `base_commit`.
 2. Run task-level validation commands and record results in Artifact Bus or mission milestone.
 3. Run `/ship <task-id>`; for an intermediate checkpoint, run `/commit`.
-4. After commit, record task_id, worktree_path, branch, commit, and validation.
-5. Update handoff or coordination report so coordinator knows whether this worktree is `merge_ready` or should continue.
+4. Append `command_started` / `command_finished` around validation commands, then append `validation_passed` or `validation_failed`.
+5. After commit, record task_id, worktree_path, branch, commit, and validation.
+6. Update handoff or coordination report so coordinator knows whether this worktree is `merge_ready` or should continue.
+7. Append a `command_finished` Run event indicating the worktree commit completed.
 
 ## MERGE
 
@@ -176,6 +180,8 @@ Pre-merge gate:
 - There is no unresolved handoff.
 - Rebase or merge with the base branch has no conflicts.
 
+Append `merge_started` / `merge_completed` Run events around the merge. If the merge conflicts or fails, append `failed` or `blocked`.
+
 ## VALIDATE
 
 After merge, rerun validation in the target mainline worktree:
@@ -185,6 +191,7 @@ After merge, rerun validation in the target mainline worktree:
 3. Run `git diff --check`.
 4. If validation fails, record failed commands and evidence, fix in the target worktree first, or create `/handoff` if work must return to the source worktree.
 5. If validation passes, mark the task as merge-ready/closed and update Artifact Bus or mission milestone.
+6. Update Run journal to `status=completed`, `phase=completed`, and append a `completed` event.
 
 After merge and validation pass:
 
