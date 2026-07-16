@@ -3,3 +3,5 @@ node_modules/
 dist/
 *.log
 graphify-out/
+.agent/metrics/agent-dashboard.html
+metrics/agent-dashboard.html
