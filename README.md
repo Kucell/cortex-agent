@@ -15,6 +15,34 @@
 
 ## 快速开始
 
+### 给 LLM / 本地已安装用户
+
+如果当前机器已经通过 `npm link`、全局安装或 Volta 暴露了 `cortex-agent` 命令，AI 助手可以直接在目标项目根目录执行初始化，不需要再下载 npm 包：
+
+```bash
+# 1. 确认本地命令可用
+command -v cortex-agent
+cortex-agent --version
+
+# 2. 在要接入的项目根目录执行
+cortex-agent init --lang zh
+
+# 3. 已有 .agent 的项目使用纯加法升级
+cortex-agent upgrade --lang zh
+```
+
+给 AI 助手的最小指令：
+
+```text
+在当前项目根目录检查 `command -v cortex-agent`。
+如果命令存在，直接运行 `cortex-agent init --lang zh`。
+如果已存在 `.agent/`，改为运行 `cortex-agent upgrade --lang zh`。
+初始化后运行 `/configure` 和 `/scan-project` 补齐项目上下文。
+不要修改实战项目自己的 Git user.name / user.email。
+```
+
+### 通过 npm 临时使用
+
 ```bash
 # 初始化当前项目（默认中文模板）
 npx cortex-agent init
