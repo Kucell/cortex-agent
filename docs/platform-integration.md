@@ -2,6 +2,8 @@
 
 > Cortex Agent 的核心设计理念是"工具无关"——`.agent/` 目录是所有规则、工作流和知识的唯一真理来源（Single Source of Truth），通过不同集成策略适配各种 AI 工具。
 
+> **目录边界**：`.agent/` 是唯一维护源。`.agents/skills/source-command-*` 等复数目录如果出现，通常是外部工具把 slash command 转换为 skill 的生成适配层，不应作为 Cortex Agent 规则、工作流或技能的编辑入口。
+
 ---
 
 ## 集成模式
@@ -23,7 +25,7 @@
 | 平台 | 集成配置文件 | 集成方式 | 说明 |
 | --- | :---: | --- | --- |
 | **Cursor** | `.cursorrules` | 符号链接 | 创建 `.cursor/commands`、`.cursor/rules`、`.cursor/skills` 符号链接，工作流映射为原生斜杠命令 |
-| **Claude Code** | `.clauderules` / `CLAUDE.md` | 指令文件 + 符号链接 | 创建 `.claude/commands`、`.claude/agents`、`.claude/plugins` 符号链接，实现深度原生集成 |
+| **Claude Code** | `.clauderules` / `CLAUDE.md` | 指令入口文件 + 符号链接 | `CLAUDE.md` 引导加载 `.agent/`；创建 `.claude/commands`、`.claude/agents`、`.claude/plugins` 符号链接，实现深度原生集成 |
 | **Windsurf** | `.windsurfrules` | 指令文件 + 符号链接 | 创建 `.windsurf/workflows`、`.windsurf/rules` 符号链接 |
 | **Aider** | `.aider.instructions.md` | 指令文件 | 将 `/` 命令路由到 `.agent/workflows/` 对应文件 |
 | **Continue** | `.continuerules` | 指令文件 | 遵循 `.agent/` 目录中的指导方针 |

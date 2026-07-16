@@ -70,6 +70,7 @@ Required checks:
 8. Assertions without `command` must include `evidence` or a clear manual verification basis.
 9. Public API changes must include at least one `api` or `docs` assertion.
 10. Runtime claims must reference a runtime evidence source or template.
+11. Cross-machine or cross-process runtime assertions must state the timestamp source used for log filtering. The source should be the target that produced the logs, not the controller process.
 
 Output a compact report:
 
@@ -118,6 +119,7 @@ The summary must include:
 - Do not hide uncertainty; record it as a warning, coverage gap, or manual assertion.
 - If an assertion is waived, record the reason, approver, and follow-up task.
 - Validators must check the contract against code, diff, command output, and runtime evidence. Worker explanations are not evidence.
+- For cross-machine or remote UI validation, include a blocking runtime assertion that evidence cursors come from the target system timestamp when logs are filtered by time.
 
 ## Minimal Template
 
@@ -140,4 +142,3 @@ The summary must include:
   ]
 }
 ```
-

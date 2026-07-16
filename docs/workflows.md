@@ -89,6 +89,8 @@ PLAN → EXECUTE → LINT → REVIEW → COMMIT → DONE → CONTEXT_CLEANUP →
 | `/done` | 轻量版完成标记：更新路线图 `[ ]→[x]`，刷新进度百分比 | `/done T-001 T-002` |
 | `/update-refs` | 检测变更模块，增量更新 `.agent/references/`，保持知识库与代码同步 | `/update-refs` |
 
+> 对有特殊运行时、设备、桌面端或跨机器验证要求的项目，建议用 `.agent/resources/templates/domain-validation-skill.md` 创建 `.agent/skills/validate-<domain>/SKILL.md`，并在 `validation-contract` 中引用该领域验证证据。
+
 ### ⚙️ 高级 / 维护
 
 | 工作流 | 描述 | 使用示例 |

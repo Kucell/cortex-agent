@@ -7,3 +7,4 @@
 5.  **Skills First**: For specialized tasks (e.g., architecture audits), prefer using the skills defined in `.agent/skills/`.
 6.  **Plan-Driven**: All tasks should be guided by the plans in `.agent/plans/`.
 7.  **Explicit Maintenance**: When adding instructions that are general-purpose, prefer storing them in the global configuration `~/.agent/`; when involving project-specific business or private logic, they must be stored in the local `.agent/` directory. Use `/agent-update` to maintain these configurations.
+8.  **Single Source Boundary**: `.agent/` is the only maintained Cortex Agent source. External compatibility folders such as `.agents/skills/source-command-*` are generated adapters and must not be edited as rules, workflows, or skills.

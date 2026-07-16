@@ -67,6 +67,8 @@ npx cortex-agent upgrade
 ├── registry/       # Agent Registry：coordinator 多 agent 协调
 ├── artifacts/      # Artifact Bus：coordinator 结构化产物存储
 ├── locks/          # Progress Lock：任务级 / 文件级互斥
+├── debug/          # AI 调试产物：截图 / 日志 / 临时文件
+├── resources/      # 模板资源：架构提案、领域验证 skill 等
 └── references/     # 知识库：/scan-project 生成的模块参考文档
 
 > **自举仓库**：cortex-agent 自身的 `.agent/` 目录作为独立仓库管理：[Kucell/cortex-agent-agent](https://github.com/Kucell/cortex-agent-agent)
