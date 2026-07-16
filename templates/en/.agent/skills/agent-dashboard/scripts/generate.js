@@ -36,6 +36,22 @@ function readJson(file) {
   try { return JSON.parse(read(file)); } catch { return null; }
 }
 
+function queryManagementDashboardState() {
+  const script = path.join(agentRoot, "skills", "management-api", "scripts", "index.js");
+  if (!fs.existsSync(script)) return null;
+  try {
+    const raw = execSync(`node ${JSON.stringify(script)} query dashboard-state`, {
+      cwd: root,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    const data = JSON.parse(raw);
+    return data && data.ok ? data : null;
+  } catch {
+    return null;
+  }
+}
+
 function listFiles(dir, filter) {
   try {
     return fs.readdirSync(dir)
@@ -363,14 +379,15 @@ function taskColumn(tasks, status, labelKey) {
 }
 
 function main() {
-  const tasks = parseTasks();
-  const worktrees = parseWorktrees();
-  const agents = parseRegistry();
-  const locks = parseLocks();
-  const handoffs = parseHandoffs();
-  const artifacts = parseArtifacts();
-  const gitStatus = sh("git status --short --branch");
-  const derived = deriveState({ worktrees, locks, handoffs, tasks, agents });
+  const managed = queryManagementDashboardState();
+  const tasks = managed?.tasks || parseTasks();
+  const worktrees = managed?.worktrees || parseWorktrees();
+  const agents = managed?.agents || parseRegistry();
+  const locks = managed?.locks || parseLocks();
+  const handoffs = managed?.handoffs || parseHandoffs();
+  const artifacts = managed?.artifacts || parseArtifacts();
+  const gitStatus = typeof managed?.git_status === "string" ? managed.git_status : sh("git status --short --branch");
+  const derived = managed?.derived || deriveState({ worktrees, locks, handoffs, tasks, agents });
   const generatedAt = new Date().toISOString();
   const activeTaskCount = tasks.filter((t) => t.status !== "done").length;
   const heldLockCount = locks.filter((l) => !l.expired).length;
