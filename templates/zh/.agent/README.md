@@ -25,6 +25,7 @@ For the full architecture design, see [docs/architecture.md](../docs/architectur
 | `/update-refs` | After iterations, detect changed modules and incrementally update reference docs |
 | `/publish-docs` | Publish verified project knowledge into standalone developer docs under `docs/` |
 | `/parallel` | Dispatch independent tasks to sub-agents in parallel |
+| `/worktree` | Coordinate multi-worktree development, handoff, merge, and mainline validation |
 | `/release` | SemVer release: analyze commits → bump version → commit + tag → npm publish |
 | `/weekly-report` | Generate weekly report from Git history |
 | `/sync-plans` | Align task states across concurrent tasks |
@@ -53,6 +54,7 @@ Specialized agents with isolated model, tools, and context boundaries.
 | `integration-safety.md` | Cross-module calls: verify signatures, payload vs schema, avoid swapped args |
 | `refactoring-safety.md` | Refactor without behavior change; don’t blindly “fix” all lints |
 | `task-decomposition.md` | Large-requirement breakdown, multi-agent parallel judgment, task boundaries, and closure rules |
+| `worktree-collaboration.md` | Git worktree collaboration, timely commits, handoff, merge, and mainline validation rules |
 
 ## 🛠 Skills
 
