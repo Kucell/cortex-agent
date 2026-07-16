@@ -76,6 +76,30 @@ Agents should update state at these minimum checkpoints:
 6. shell command or validation starts and finishes
 7. handoff, merge, publish, block, fail, cancel, or complete happens
 
+Prefer these stable `events[].type` values:
+
+- `state_changed`
+- `task_decomposed`
+- `worktree_created`
+- `lock_acquired`
+- `agent_invoked`
+- `file_read`
+- `file_edited`
+- `command_started`
+- `command_finished`
+- `validation_started`
+- `validation_passed`
+- `validation_failed`
+- `handoff_created`
+- `merge_started`
+- `merge_completed`
+- `publish_started`
+- `publish_completed`
+- `blocked`
+- `failed`
+- `canceled`
+- `completed`
+
 ## Rules
 
 - Keep this skill zero dependency.

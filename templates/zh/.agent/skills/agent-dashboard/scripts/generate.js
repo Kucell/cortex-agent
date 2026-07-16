@@ -78,7 +78,28 @@ function rel(file) {
 const I18N = {
   zh: {
     appTitle: "Agent 协作看板",
-    subtitle: "任务、worktree、handoff、锁与多 Agent 状态",
+    subtitle: "PRD、任务、运行态、worktree 与验证状态",
+    overview: "总览",
+    prdStudio: "PRD 工作台",
+    delivery: "交付看板",
+    runtime: "运行现场",
+    knowledge: "知识与文档",
+    projectHealth: "项目健康",
+    prdStatus: "PRD 状态",
+    designStatus: "设计状态",
+    runtimeStatus: "运行态",
+    deliveryStatus: "交付状态",
+    prdHealth: "PRD 完整度",
+    missing: "缺失项",
+    visualDesign: "视觉设计",
+    reviewStatus: "评审状态",
+    relatedTasks: "关联任务",
+    blockedDecisions: "阻塞决策",
+    executionSignal: "执行信号",
+    eventTimeline: "事件时间线",
+    ready: "就绪",
+    unknown: "未知",
+    notStarted: "未开始",
     langLabel: "语言",
     generated: "生成时间",
     worktreeState: "Worktree 状态",
@@ -135,7 +156,28 @@ const I18N = {
   },
   en: {
     appTitle: "Agent Collaboration Dashboard",
-    subtitle: "Tasks, worktrees, handoffs, locks, and multi-agent state",
+    subtitle: "PRD, tasks, runtime, worktrees, and validation state",
+    overview: "Overview",
+    prdStudio: "PRD Studio",
+    delivery: "Delivery",
+    runtime: "Runtime",
+    knowledge: "Knowledge",
+    projectHealth: "Project Health",
+    prdStatus: "PRD Status",
+    designStatus: "Design Status",
+    runtimeStatus: "Runtime Status",
+    deliveryStatus: "Delivery Status",
+    prdHealth: "PRD Health",
+    missing: "Missing",
+    visualDesign: "Visual Design",
+    reviewStatus: "Review Status",
+    relatedTasks: "Related Tasks",
+    blockedDecisions: "Blocked Decisions",
+    executionSignal: "Execution Signal",
+    eventTimeline: "Event Timeline",
+    ready: "Ready",
+    unknown: "Unknown",
+    notStarted: "Not Started",
     langLabel: "Language",
     generated: "Generated",
     worktreeState: "Worktree State",
@@ -319,6 +361,93 @@ function parseArtifacts() {
   });
 }
 
+function parsePrds() {
+  const roots = [path.join(agentRoot, "prd"), path.join(agentRoot, "prds")];
+  const prds = [];
+  for (const prdRoot of roots) {
+    const index = readJson(path.join(prdRoot, "index.json"));
+    const indexed = Array.isArray(index?.prds) ? index.prds : [];
+    for (const item of indexed) {
+      const dir = item.path ? path.resolve(prdRoot, item.path) : path.join(prdRoot, item.prd_id || item.id || "");
+      const state = readJson(path.join(dir, "state.json")) || {};
+      prds.push(normalizePrd({ ...item, ...state }, dir));
+    }
+    for (const dir of listFiles(prdRoot, (name) => {
+      try { return fs.statSync(path.join(prdRoot, name)).isDirectory(); } catch { return false; }
+    })) {
+      const state = readJson(path.join(dir, "state.json"));
+      if (!state) continue;
+      const id = state.prd_id || path.basename(dir);
+      if (prds.some((prd) => prd.id === id)) continue;
+      prds.push(normalizePrd(state, dir));
+    }
+  }
+  return prds.sort((a, b) => String(b.updated_at || "").localeCompare(String(a.updated_at || ""))).slice(0, 12);
+}
+
+function normalizePrd(data, dir) {
+  const design = data.design && typeof data.design === "object" ? data.design : {};
+  const review = data.review && typeof data.review === "object" ? data.review : {};
+  return {
+    id: data.prd_id || data.id || path.basename(dir),
+    title: data.title || data.name || data.prd_id || path.basename(dir),
+    status: data.status || "idea",
+    owner: data.owner || "",
+    path: rel(dir),
+    updated_at: data.updated_at || "",
+    related_tasks: Array.isArray(data.related_tasks) ? data.related_tasks : [],
+    design: {
+      tool: design.tool || "",
+      status: design.status || "not_started",
+      url: design.url || "",
+      local_path: design.local_path || "",
+      screen_count: design.screen_count ?? null,
+    },
+    review: {
+      status: review.status || "",
+      decision_id: review.decision_id || "",
+    },
+    missing: prdMissingFields(dir),
+  };
+}
+
+function prdMissingFields(dir) {
+  const checks = [
+    ["context", ["prd.md"]],
+    ["user stories", ["user-stories.md", "stories.md"]],
+    ["flows", ["flows.md", "user-flow.md"]],
+    ["screens", ["screens.md", "screen-map.json"]],
+    ["acceptance criteria", ["acceptance-criteria.md", "validation-contract.json"]],
+    ["decisions", ["decisions.md"]],
+  ];
+  return checks
+    .filter(([, files]) => !files.some((file) => fs.existsSync(path.join(dir, file))))
+    .map(([name]) => name);
+}
+
+function prdSummary(prds) {
+  if (!prds.length) {
+    return {
+      status: "not_started",
+      design: "not_started",
+      review: "open",
+      completeness: 0,
+      missing: ["prd", "user stories", "flows", "screens", "acceptance criteria"],
+      current: null,
+    };
+  }
+  const current = prds[0];
+  const total = current.missing.length + 6;
+  return {
+    status: current.status,
+    design: current.design.status || "not_started",
+    review: current.review.status || "open",
+    completeness: Math.round(((total - current.missing.length) / total) * 100),
+    missing: current.missing,
+    current,
+  };
+}
+
 function deriveState({ worktrees, locks, handoffs, tasks, agents }) {
   const nonMainWorktrees = worktrees.filter((w) => !w.isMain);
   const dirty = worktrees.some((w) => w.dirty);
@@ -394,10 +523,50 @@ function renderTable(headers, rows, emptyKey = "empty") {
 
 function taskColumn(tasks, status, labelKey) {
   const items = tasks.filter((task) => task.status === status);
+  const visible = items.slice(0, 12);
+  const remaining = items.length - visible.length;
   return `<section class="lane">
-    <h3 data-i18n="${labelKey}">${esc(I18N.zh[labelKey])}</h3>
-    ${items.length ? items.map((task) => `<article class="task-card"><strong>${esc(task.id)}</strong><p>${esc(task.title)}</p><p class="mini">${[task.priority, task.progress, task.plan].filter(Boolean).map(esc).join(" · ")}</p></article>`).join("") : `<div class="empty" data-i18n="empty">${I18N.zh.empty}</div>`}
+    <h3><span data-i18n="${labelKey}">${esc(I18N.zh[labelKey])}</span> <span class="mini">${items.length}</span></h3>
+    ${visible.length ? visible.map((task) => `<article class="task-card"><strong>${esc(task.id)}</strong><p>${esc(task.title)}</p><p class="mini">${[task.priority, task.progress, task.plan].filter(Boolean).map(esc).join(" · ")}</p></article>`).join("") : `<div class="empty" data-i18n="empty">${I18N.zh.empty}</div>`}
+    ${remaining > 0 ? `<div class="mini">+${remaining}</div>` : ""}
   </section>`;
+}
+
+function metric(labelKey, value, detail, tone = "") {
+  return `<section class="metric ${esc(tone)}"><div class="metric-label" data-i18n="${labelKey}">${esc(I18N.zh[labelKey] || labelKey)}</div><div class="metric-value">${value}</div>${detail ? `<div class="metric-detail">${detail}</div>` : ""}</section>`;
+}
+
+function statusDot(value) {
+  const cls = String(value || "unknown").toLowerCase().replace(/[^a-z0-9_-]+/g, "-");
+  return `<span class="status-dot ${cls}"></span>${esc(value || I18N.zh.unknown)}`;
+}
+
+function navItem(id, labelKey) {
+  return `<a href="#${id}" data-i18n="${labelKey}">${esc(I18N.zh[labelKey])}</a>`;
+}
+
+function phaseRail(activePhase) {
+  const phases = [
+    ["decomposing", "拆分"],
+    ["creating_worktree", "Worktree"],
+    ["acquiring_lock", "锁定"],
+    ["invoking_agent", "Agent"],
+    ["editing", "编辑"],
+    ["validating", "验证"],
+    ["merging", "合并"],
+  ];
+  const activeIdx = Math.max(0, phases.findIndex(([phase]) => phase === activePhase));
+  return `<div class="phase-rail">${phases.map(([phase, label], index) => `<div class="phase-node ${phase === activePhase ? "active" : index < activeIdx ? "done" : ""}"><span></span><strong>${esc(label)}</strong><small>${esc(phase)}</small></div>`).join("")}</div>`;
+}
+
+function prdCard(prd) {
+  if (!prd) {
+    return `<div class="empty-panel"><strong data-i18n="notStarted">${I18N.zh.notStarted}</strong><p>/prd create</p></div>`;
+  }
+  return `<article class="prd-item">
+    <div><strong>${esc(prd.id)}</strong><p>${esc(prd.title)}</p><span class="mini">${esc(prd.path)}</span></div>
+    <div>${pill(prd.status)}</div>
+  </article>`;
 }
 
 function main() {
@@ -408,6 +577,8 @@ function main() {
   const locks = managed?.locks || parseLocks();
   const handoffs = managed?.handoffs || parseHandoffs();
   const artifacts = managed?.artifacts || parseArtifacts();
+  const prds = parsePrds();
+  const prd = prdSummary(prds);
   const runs = Array.isArray(managed?.runs) ? managed.runs : [];
   const queues = Array.isArray(managed?.queues) ? managed.queues : [];
   const sessions = Array.isArray(managed?.sessions) ? managed.sessions : [];
@@ -419,6 +590,12 @@ function main() {
   const nonMainWorktreeCount = worktrees.filter((w) => !w.isMain).length;
   const runningRuns = runs.filter((r) => r.status === "running");
   const currentActivity = runningRuns[0]?.activity || runningRuns[0]?.last_event?.message || derived.next || "";
+  const activePhase = runningRuns[0]?.phase || sessions.find((s) => s.phase)?.phase || "";
+  const blockedTasks = tasks.filter((t) => t.status === "blocked");
+  const validationReady = tasks.length && tasks.every((t) => t.status === "done");
+  const deliveryState = blockedTasks.length ? "blocked" : validationReady ? "ready" : activeTaskCount ? "in_progress" : "idle";
+  const runtimeState = sessions.some((s) => s.status === "stale") ? "stale" : runningRuns.length ? "running" : derived.state;
+  const recentEvents = runs.flatMap((r) => (Array.isArray(r.events) ? r.events.slice(-4).reverse().map((event) => ({ run: r, event })) : [])).slice(0, 16);
 
   const html = `<!doctype html>
 <html lang="zh-CN">
@@ -427,59 +604,117 @@ function main() {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Agent Dashboard</title>
 <style>
-:root{color-scheme:light dark;--bg:#0f1115;--panel:#171a21;--panel2:#11141a;--text:#e6e9ef;--muted:#9aa4b2;--line:#2a2f3a;--accent:#65a8ff;--ok:#58d68d;--warn:#f5b041;--bad:#ff6b6b}
-body{margin:0;background:var(--bg);color:var(--text);font:14px/1.55 ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
-header{padding:22px 28px;border-bottom:1px solid var(--line);background:#12151b;display:flex;justify-content:space-between;gap:18px;align-items:flex-start}
-h1{margin:0 0 6px;font-size:24px}h2{margin:0 0 12px;font-size:16px}h3{margin:0 0 10px;font-size:14px;color:var(--muted)}
-.muted{color:var(--muted)}.toolbar{display:flex;align-items:center;gap:8px}.toolbar button{background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:6px 10px;cursor:pointer}.toolbar button.active{border-color:var(--accent);color:var(--accent)}
-.grid{display:grid;grid-template-columns:repeat(12,1fr);gap:14px;padding:18px 28px}.card{grid-column:span 6;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:16px;min-width:0}.wide{grid-column:span 12}.third{grid-column:span 4}
-.stat{font-size:28px;font-weight:700}.next{font-size:16px;color:var(--accent)}.reason{margin-top:8px;color:var(--muted)}
-.progress{display:grid;grid-template-columns:repeat(5,1fr);gap:8px}.step{background:var(--panel2);border:1px solid var(--line);border-radius:7px;padding:10px}.step.active{border-color:var(--accent)}.step strong{display:block;margin-bottom:3px}
-.lanes{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.lane{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:12px}.task-card{border:1px solid var(--line);border-radius:7px;padding:10px;margin-bottom:8px;background:#0d1016}.task-card p{margin:4px 0 0;color:var(--muted)}
-table{width:100%;border-collapse:collapse}th,td{padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top;text-align:left}th{color:var(--muted);font-weight:600}
-code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:#d9e7ff}.empty{color:var(--muted);padding:10px 0}.pill{display:inline-block;border:1px solid var(--line);border-radius:999px;padding:2px 8px;color:var(--muted)}.done,.ready,.validated,.clean{color:var(--ok);border-color:rgba(88,214,141,.45)}.blocked,.validation_failed,.dirty{color:var(--bad);border-color:rgba(255,107,107,.45)}.active,.in_progress,.merge_ready,.handoff_required,.held{color:var(--warn);border-color:rgba(245,176,65,.45)}
-pre{white-space:pre-wrap;background:#0d1016;border:1px solid var(--line);border-radius:6px;padding:10px;overflow:auto;max-height:260px}.mini{font-size:12px;color:var(--muted)}
-@media(max-width:1000px){.card,.third{grid-column:span 12}.lanes,.progress{grid-template-columns:1fr}.grid{padding:14px}header{display:block}.toolbar{margin-top:12px}}
+:root{color-scheme:light dark;--bg:#0f1115;--rail:#11141a;--panel:#171a21;--panel2:#101319;--text:#e7ebf2;--muted:#9aa4b2;--line:#2a303b;--accent:#5aa7ff;--ok:#58d68d;--warn:#f1b44c;--bad:#ff6b6b;--cyan:#61d6d6}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;letter-spacing:0}.shell{min-height:100vh;display:grid;grid-template-columns:236px minmax(0,1fr)}
+aside{position:sticky;top:0;height:100vh;background:var(--rail);border-right:1px solid var(--line);padding:20px 16px}aside h1{font-size:18px;margin:0 0 6px}aside .project{color:var(--muted);font-size:12px;margin-bottom:22px;overflow:hidden;text-overflow:ellipsis}nav{display:grid;gap:6px}nav a{color:var(--muted);text-decoration:none;padding:9px 10px;border-radius:7px}nav a:hover{background:var(--panel);color:var(--text)}.toolbar{margin-top:18px;display:flex;gap:8px}.toolbar button{background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:6px 9px;cursor:pointer}.toolbar button.active{border-color:var(--accent);color:var(--accent)}
+main{min-width:0}.topbar{padding:20px 28px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;gap:18px;align-items:flex-start;background:#12151b}.topbar h2{font-size:22px;margin:0 0 4px}.muted,.mini{color:var(--muted)}.mini{font-size:12px}
+.section{padding:20px 28px;border-bottom:1px solid var(--line)}.section h2{font-size:16px;margin:0 0 14px}.section-head{display:flex;justify-content:space-between;gap:12px;align-items:baseline}.grid{display:grid;grid-template-columns:repeat(12,1fr);gap:14px}.panel{grid-column:span 6;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:16px;min-width:0}.wide{grid-column:span 12}.third{grid-column:span 4}.quarter{grid-column:span 3}
+.status-strip{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}.metric{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:13px}.metric-label{color:var(--muted);font-size:12px;margin-bottom:8px}.metric-value{font-size:24px;font-weight:750;line-height:1.15}.metric-detail{margin-top:7px;color:var(--muted);font-size:12px}.metric.blocked{border-color:rgba(255,107,107,.55)}.metric.running,.metric.in_progress{border-color:rgba(90,167,255,.6)}.metric.ready,.metric.approved,.metric.validated{border-color:rgba(88,214,141,.55)}
+.command-panel{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(280px,.7fr);gap:14px}.current{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:18px}.current .label{color:var(--muted);font-size:12px;margin-bottom:10px}.current .activity{font-size:20px;color:var(--accent);overflow-wrap:anywhere}.reason{margin-top:10px;color:var(--muted)}.signal-list{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px;display:grid;gap:10px}.signal{display:flex;justify-content:space-between;gap:12px;border-bottom:1px solid var(--line);padding-bottom:8px}.signal:last-child{border-bottom:0;padding-bottom:0}
+.phase-rail{display:grid;grid-template-columns:repeat(7,1fr);gap:8px}.phase-node{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:10px;min-height:76px}.phase-node span{display:block;width:10px;height:10px;border-radius:50%;background:var(--muted);margin-bottom:8px}.phase-node.active{border-color:var(--accent)}.phase-node.active span{background:var(--accent)}.phase-node.done span{background:var(--ok)}.phase-node strong{display:block}.phase-node small{display:block;color:var(--muted);margin-top:3px;overflow-wrap:anywhere}
+.lanes{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.lane{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:12px}.lane h3{margin:0 0 10px;color:var(--muted);font-size:13px}.task-card{border:1px solid var(--line);border-radius:7px;padding:10px;margin-bottom:8px;background:#0d1016}.task-card p{margin:4px 0 0;color:var(--muted)}
+.prd-item{display:flex;justify-content:space-between;gap:14px;border:1px solid var(--line);border-radius:8px;padding:12px;background:var(--panel2)}.prd-item p{margin:3px 0}.empty-panel{border:1px dashed var(--line);border-radius:8px;padding:18px;color:var(--muted)}.check-list{display:grid;gap:8px}.check-list div{display:flex;justify-content:space-between;gap:12px;border-bottom:1px solid var(--line);padding-bottom:7px}.check-list div:last-child{border-bottom:0}
+.timeline{display:grid;gap:10px}.timeline-item{display:grid;grid-template-columns:140px minmax(0,1fr);gap:12px;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:11px}.timeline-item p{margin:2px 0;color:var(--muted)}
+table{width:100%;border-collapse:collapse}th,td{padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top;text-align:left}th{color:var(--muted);font-weight:600}code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:#d9e7ff}.empty{color:var(--muted);padding:10px 0}.pill{display:inline-block;border:1px solid var(--line);border-radius:999px;padding:2px 8px;color:var(--muted);white-space:nowrap}.status-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--muted);margin-right:7px}.status-dot.running,.status-dot.in_progress,.status-dot.invoking_agent{background:var(--accent)}.status-dot.done,.status-dot.ready,.status-dot.clean,.status-dot.approved{background:var(--ok)}.status-dot.blocked,.status-dot.dirty,.status-dot.stale{background:var(--bad)}
+.done,.ready,.validated,.clean,.approved{color:var(--ok);border-color:rgba(88,214,141,.45)}.blocked,.validation_failed,.dirty,.stale{color:var(--bad);border-color:rgba(255,107,107,.45)}.active,.in_progress,.running,.merge_ready,.handoff_required,.held,.draft,.review{color:var(--warn);border-color:rgba(241,180,76,.45)}pre{white-space:pre-wrap;background:#0d1016;border:1px solid var(--line);border-radius:6px;padding:10px;overflow:auto;max-height:260px}
+@media(max-width:1100px){.shell{display:block}aside{position:static;height:auto}.status-strip,.command-panel,.phase-rail,.lanes{grid-template-columns:1fr}.panel,.third,.quarter{grid-column:span 12}.section,.topbar{padding:16px}.timeline-item{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
-<header>
-  <div>
+<div class="shell">
+  <aside>
     <h1 data-i18n="appTitle">${I18N.zh.appTitle}</h1>
-    <div class="muted"><span data-i18n="subtitle">${I18N.zh.subtitle}</span> · ${esc(path.basename(root))}</div>
-    <div class="mini"><span data-i18n="generated">${I18N.zh.generated}</span>: ${esc(generatedAt)}</div>
-  </div>
-  <div class="toolbar" aria-label="language switcher">
-    <span class="muted" data-i18n="langLabel">${I18N.zh.langLabel}</span>
-    <button type="button" data-lang="zh" class="active">中文</button>
-    <button type="button" data-lang="en">EN</button>
-  </div>
-</header>
-<main class="grid">
-  <section class="card third"><h2 data-i18n="worktreeState">${I18N.zh.worktreeState}</h2><div class="stat">${pill(derived.state)}</div></section>
-  <section class="card third"><h2 data-i18n="activeTasks">${I18N.zh.activeTasks}</h2><div class="stat">${activeTaskCount}</div></section>
-  <section class="card third"><h2 data-i18n="heldLocks">${I18N.zh.heldLocks}</h2><div class="stat">${heldLockCount}</div></section>
-  <section class="card wide"><h2 data-i18n="currentActivity">${I18N.zh.currentActivity}</h2><div class="next">${esc(currentActivity || I18N.zh.empty)}</div>${runningRuns[0]?.phase ? `<div class="reason"><span data-i18n="phase">${I18N.zh.phase}</span>: ${pill(runningRuns[0].phase)}</div>` : ""}</section>
-  <section class="card wide"><h2 data-i18n="nextAction">${I18N.zh.nextAction}</h2><div class="next"><code data-next-zh="${esc(derived.next)}" data-next-en="${esc(derived.nextEn)}">${esc(derived.next)}</code></div><div class="reason" data-why-zh="${esc(derived.why)}" data-why-en="${esc(derived.whyEn)}">${esc(derived.why)}</div></section>
-  <section class="card wide"><h2 data-i18n="progressMap">${I18N.zh.progressMap}</h2><div class="progress">
-    <div class="step ${derived.state === "idle" ? "active" : ""}"><strong>1. Plan</strong><span>/plan · /worktree plan</span></div>
-    <div class="step ${["planned","worktree_created"].includes(derived.state) ? "active" : ""}"><strong>2. Dispatch</strong><span>/worktree create · locks</span></div>
-    <div class="step ${derived.state === "in_progress" ? "active" : ""}"><strong>3. Build</strong><span>/start-task · /parallel</span></div>
-    <div class="step ${["merge_ready","merged"].includes(derived.state) ? "active" : ""}"><strong>4. Merge</strong><span>/ship · /worktree merge</span></div>
-    <div class="step ${["validated","closed"].includes(derived.state) ? "active" : ""}"><strong>5. Validate</strong><span>/worktree validate · /update-refs</span></div>
-  </div></section>
-  <section class="card wide"><h2 data-i18n="kanban">${I18N.zh.kanban}</h2><div class="lanes">${taskColumn(tasks, "open", "open")}${taskColumn(tasks, "active", "active")}${taskColumn(tasks, "blocked", "blocked")}${taskColumn(tasks, "done", "done")}</div></section>
-  <section class="card wide"><h2 data-i18n="worktrees">${I18N.zh.worktrees}</h2>${renderTable(["path","branch","status","head"], worktrees.map((w) => `<tr><td><code>${esc(w.path)}</code>${w.isMain ? ' <span class="mini">main</span>' : ""}</td><td>${esc(w.branch)}</td><td>${pill(w.dirty ? "dirty" : "clean")}</td><td><code>${esc(w.head.slice(0,12))}</code></td></tr>`))}</section>
-  <section class="card"><h2 data-i18n="activeAgents">${I18N.zh.activeAgents}</h2>${renderTable(["agent","role","task","status"], agents.map((a) => `<tr><td>${esc(a.agent_id || a.id)}</td><td>${esc(a.role)}</td><td><code>${esc(a.task_id || "")}</code></td><td>${pill(a.status)}</td></tr>`))}</section>
-  <section class="card"><h2 data-i18n="locks">${I18N.zh.locks}</h2>${renderTable(["scope","heldBy","expires","status"], locks.map((l) => `<tr><td><code>${esc(l.scope)}</code></td><td>${esc(l.held_by)}</td><td>${esc(l.expires_at)}</td><td>${pill(l.expired ? "expired" : "held")}</td></tr>`))}</section>
-  <section class="card"><h2 data-i18n="handoffs">${I18N.zh.handoffs}</h2>${renderTable(["path","type","updated"], handoffs.map((h) => `<tr><td><code>${esc(h.path)}</code></td><td>${esc(h.type)}</td><td>${esc(h.updated)}</td></tr>`))}</section>
-  <section class="card"><h2 data-i18n="artifacts">${I18N.zh.artifacts}</h2>${renderTable(["task","count","latest"], artifacts.map((a) => `<tr><td><code>${esc(a.task_id)}</code></td><td>${a.count}</td><td><code>${esc(a.latest)}</code></td></tr>`))}</section>
-  <section class="card"><h2 data-i18n="sessions">${I18N.zh.sessions}</h2>${renderTable(["agent","role","status","phase","heartbeat"], sessions.map((s) => `<tr><td>${esc(s.agent_id || s.session_id)}</td><td>${esc(s.role || "")}</td><td>${pill(s.status)}</td><td>${s.phase ? pill(s.phase) : esc(s.activity || "")}</td><td>${esc(s.last_heartbeat_at || s.started_at || "")}</td></tr>`))}</section>
-  <section class="card"><h2 data-i18n="runs">${I18N.zh.runs}</h2>${renderTable(["id","kind","status","phase","message"], runs.slice(0, 8).map((r) => `<tr><td><code>${esc(r.run_id || r.path)}</code></td><td>${esc(r.kind || "")}</td><td>${pill(r.status)}</td><td>${r.phase ? pill(r.phase) : ""}</td><td>${esc(r.activity || r.last_event?.message || "")}</td></tr>`))}</section>
-  <section class="card wide"><h2 data-i18n="queues">${I18N.zh.queues}</h2>${renderTable(["id","status","items","currentActivity"], queues.map((q) => `<tr><td><code>${esc(q.queue_id || q.path)}</code></td><td>${pill(q.status)}</td><td>${Array.isArray(q.items) ? q.items.length : 0}</td><td>${esc((q.items || []).find((item) => item.state === "running")?.activity || "")}</td></tr>`))}</section>
-  <section class="card wide"><h2 data-i18n="event">${I18N.zh.event}</h2>${renderTable(["id","phase","status","message"], runs.flatMap((r) => (Array.isArray(r.events) ? r.events.slice(-3).reverse().map((event) => ({ run: r, event })) : [])).slice(0, 12).map(({ run, event }) => `<tr><td><code>${esc(run.run_id || run.path)}</code></td><td>${event.phase ? pill(event.phase) : ""}</td><td>${event.status ? pill(event.status) : ""}</td><td>${esc(event.message || event.activity || event.type || "")}<div class="mini">${esc(event.at || "")}</div></td></tr>`))}</section>
-  <section class="card wide"><h2 data-i18n="gitStatus">${I18N.zh.gitStatus}</h2><pre>${esc(gitStatus || I18N.zh.noGit)}</pre></section>
-</main>
+    <div class="project">${esc(path.basename(root))}</div>
+    <nav>
+      ${navItem("overview", "overview")}
+      ${navItem("prd", "prdStudio")}
+      ${navItem("delivery", "delivery")}
+      ${navItem("runtime", "runtime")}
+      ${navItem("knowledge", "knowledge")}
+    </nav>
+    <div class="toolbar" aria-label="language switcher">
+      <button type="button" data-lang="zh" class="active">中文</button>
+      <button type="button" data-lang="en">EN</button>
+    </div>
+  </aside>
+  <main>
+    <header class="topbar">
+      <div>
+        <h2 data-i18n="overview">${I18N.zh.overview}</h2>
+        <div class="muted"><span data-i18n="subtitle">${I18N.zh.subtitle}</span></div>
+        <div class="mini"><span data-i18n="generated">${I18N.zh.generated}</span>: ${esc(generatedAt)}</div>
+      </div>
+      <div>${pill(derived.state)}</div>
+    </header>
+
+    <section id="overview" class="section">
+      <div class="status-strip">
+        ${metric("prdStatus", pill(prd.status), `${prd.completeness}% · ${esc(prd.current?.id || I18N.zh.notStarted)}`, prd.status)}
+        ${metric("deliveryStatus", pill(deliveryState), `${activeTaskCount} active · ${blockedTasks.length} blocked`, deliveryState)}
+        ${metric("runtimeStatus", pill(runtimeState), `${runningRuns.length} runs · ${sessions.length} sessions`, runtimeState)}
+        ${metric("worktreeState", pill(derived.state), `${nonMainWorktreeCount} worktrees · ${heldLockCount} locks`, derived.state)}
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="command-panel">
+        <div class="current">
+          <div class="label" data-i18n="currentActivity">${I18N.zh.currentActivity}</div>
+          <div class="activity">${esc(currentActivity || I18N.zh.empty)}</div>
+          <div class="reason"><code data-next-zh="${esc(derived.next)}" data-next-en="${esc(derived.nextEn)}">${esc(derived.next)}</code></div>
+          <div class="reason" data-why-zh="${esc(derived.why)}" data-why-en="${esc(derived.whyEn)}">${esc(derived.why)}</div>
+        </div>
+        <div class="signal-list">
+          <div class="signal"><span data-i18n="phase">${I18N.zh.phase}</span><strong>${statusDot(activePhase || derived.state)}</strong></div>
+          <div class="signal"><span data-i18n="prdHealth">${I18N.zh.prdHealth}</span><strong>${prd.completeness}%</strong></div>
+          <div class="signal"><span data-i18n="blockedDecisions">${I18N.zh.blockedDecisions}</span><strong>${blockedTasks.length}</strong></div>
+          <div class="signal"><span data-i18n="activeAgents">${I18N.zh.activeAgents}</span><strong>${agents.length}</strong></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-head"><h2 data-i18n="progressMap">${I18N.zh.progressMap}</h2><span class="mini" data-i18n="executionSignal">${I18N.zh.executionSignal}</span></div>
+      ${phaseRail(activePhase)}
+    </section>
+
+    <section id="prd" class="section">
+      <div class="section-head"><h2 data-i18n="prdStudio">${I18N.zh.prdStudio}</h2><span>${pill(prd.status)}</span></div>
+      <div class="grid">
+        <div class="panel third">${prdCard(prd.current)}</div>
+        <div class="panel third"><h2 data-i18n="prdHealth">${I18N.zh.prdHealth}</h2><div class="metric-value">${prd.completeness}%</div><div class="mini"><span data-i18n="missing">${I18N.zh.missing}</span>: ${esc(prd.missing.slice(0, 5).join(", ") || I18N.zh.ready)}</div></div>
+        <div class="panel third"><h2 data-i18n="visualDesign">${I18N.zh.visualDesign}</h2><div>${pill(prd.design)}</div><div class="mini">${esc(prd.current?.design.tool || prd.current?.design.local_path || prd.current?.design.url || I18N.zh.notStarted)}</div></div>
+        <div class="panel wide"><h2 data-i18n="relatedTasks">${I18N.zh.relatedTasks}</h2>${prd.current?.related_tasks?.length ? prd.current.related_tasks.map((id) => `<span class="pill">${esc(id)}</span>`).join(" ") : `<div class="empty" data-i18n="empty">${I18N.zh.empty}</div>`}</div>
+      </div>
+    </section>
+
+    <section id="delivery" class="section">
+      <div class="section-head"><h2 data-i18n="delivery">${I18N.zh.delivery}</h2><span>${pill(deliveryState)}</span></div>
+      <div class="lanes">${taskColumn(tasks, "open", "open")}${taskColumn(tasks, "active", "active")}${taskColumn(tasks, "blocked", "blocked")}${taskColumn(tasks, "done", "done")}</div>
+    </section>
+
+    <section id="runtime" class="section">
+      <div class="section-head"><h2 data-i18n="runtime">${I18N.zh.runtime}</h2><span>${pill(runtimeState)}</span></div>
+      <div class="grid">
+        <section class="panel wide"><h2 data-i18n="eventTimeline">${I18N.zh.eventTimeline}</h2>${recentEvents.length ? `<div class="timeline">${recentEvents.map(({ run, event }) => `<div class="timeline-item"><div><code>${esc(run.run_id || run.path)}</code><div class="mini">${esc(event.at || "")}</div></div><div>${event.phase ? pill(event.phase) : ""} ${event.status ? pill(event.status) : ""}<p>${esc(event.message || event.activity || event.type || "")}</p></div></div>`).join("")}</div>` : `<div class="empty" data-i18n="empty">${I18N.zh.empty}</div>`}</section>
+        <section class="panel"><h2 data-i18n="sessions">${I18N.zh.sessions}</h2>${renderTable(["agent","role","status","phase","heartbeat"], sessions.map((s) => `<tr><td>${esc(s.agent_id || s.session_id)}</td><td>${esc(s.role || "")}</td><td>${pill(s.status)}</td><td>${s.phase ? pill(s.phase) : esc(s.activity || "")}</td><td>${esc(s.last_heartbeat_at || s.started_at || "")}</td></tr>`))}</section>
+        <section class="panel"><h2 data-i18n="runs">${I18N.zh.runs}</h2>${renderTable(["id","kind","status","phase","message"], runs.slice(0, 8).map((r) => `<tr><td><code>${esc(r.run_id || r.path)}</code></td><td>${esc(r.kind || "")}</td><td>${pill(r.status)}</td><td>${r.phase ? pill(r.phase) : ""}</td><td>${esc(r.activity || r.last_event?.message || "")}</td></tr>`))}</section>
+        <section class="panel wide"><h2 data-i18n="queues">${I18N.zh.queues}</h2>${renderTable(["id","status","items","currentActivity"], queues.map((q) => `<tr><td><code>${esc(q.queue_id || q.path)}</code></td><td>${pill(q.status)}</td><td>${Array.isArray(q.items) ? q.items.length : 0}</td><td>${esc((q.items || []).find((item) => item.state === "running")?.activity || "")}</td></tr>`))}</section>
+        <section class="panel wide"><h2 data-i18n="worktrees">${I18N.zh.worktrees}</h2>${renderTable(["path","branch","status","head"], worktrees.map((w) => `<tr><td><code>${esc(w.path)}</code>${w.isMain ? ' <span class="mini">main</span>' : ""}</td><td>${esc(w.branch)}</td><td>${pill(w.dirty ? "dirty" : "clean")}</td><td><code>${esc(w.head.slice(0,12))}</code></td></tr>`))}</section>
+        <section class="panel"><h2 data-i18n="activeAgents">${I18N.zh.activeAgents}</h2>${renderTable(["agent","role","task","status"], agents.map((a) => `<tr><td>${esc(a.agent_id || a.id)}</td><td>${esc(a.role)}</td><td><code>${esc(a.task_id || "")}</code></td><td>${pill(a.status)}</td></tr>`))}</section>
+        <section class="panel"><h2 data-i18n="locks">${I18N.zh.locks}</h2>${renderTable(["scope","heldBy","expires","status"], locks.map((l) => `<tr><td><code>${esc(l.scope)}</code></td><td>${esc(l.held_by)}</td><td>${esc(l.expires_at)}</td><td>${pill(l.expired ? "expired" : "held")}</td></tr>`))}</section>
+      </div>
+    </section>
+
+    <section id="knowledge" class="section">
+      <div class="grid">
+        <section class="panel"><h2 data-i18n="handoffs">${I18N.zh.handoffs}</h2>${renderTable(["path","type","updated"], handoffs.map((h) => `<tr><td><code>${esc(h.path)}</code></td><td>${esc(h.type)}</td><td>${esc(h.updated)}</td></tr>`))}</section>
+        <section class="panel"><h2 data-i18n="artifacts">${I18N.zh.artifacts}</h2>${renderTable(["task","count","latest"], artifacts.map((a) => `<tr><td><code>${esc(a.task_id)}</code></td><td>${a.count}</td><td><code>${esc(a.latest)}</code></td></tr>`))}</section>
+        <section class="panel wide"><h2 data-i18n="gitStatus">${I18N.zh.gitStatus}</h2><pre>${esc(gitStatus || I18N.zh.noGit)}</pre></section>
+      </div>
+    </section>
+  </main>
+</div>
 <script>
 const i18n = ${JSON.stringify(I18N)};
 function applyLang(lang) {
