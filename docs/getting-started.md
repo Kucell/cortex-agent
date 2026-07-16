@@ -6,6 +6,34 @@
 
 ## 安装
 
+### 本地命令优先
+
+如果机器已经通过 `npm link`、全局安装或 Volta 暴露了 `cortex-agent`，直接在目标项目根目录运行：
+
+```bash
+command -v cortex-agent
+cortex-agent --version
+cortex-agent init --lang zh
+```
+
+如果项目已经存在 `.agent/`，使用纯加法升级：
+
+```bash
+cortex-agent upgrade --lang zh
+```
+
+给 LLM / AI 助手的初始化指令：
+
+```text
+先执行 `command -v cortex-agent`。
+如果命令存在，不要使用 npx，直接执行 `cortex-agent init --lang zh`。
+如果当前项目已有 `.agent/`，执行 `cortex-agent upgrade --lang zh`。
+完成后运行 `/configure` 和 `/scan-project`。
+保留当前项目自己的 Git user.name / user.email。
+```
+
+### npx 临时使用
+
 ```bash
 # 初始化当前项目（默认中文模板）
 npx cortex-agent init
@@ -48,7 +76,7 @@ npx cortex-agent init --global
 ### 场景 A：全新项目
 
 ```
-npx cortex-agent init
+cortex-agent init
         ↓
 /configure   ← 在 AI 助手中运行
   填写：项目简介 · 技术栈 · 主力语言 · 架构原则
@@ -84,7 +112,7 @@ AI 调试期间产生的截图、日志和临时 JSON 默认放入：
 检测到 `.cursorrules`、`CLAUDE.md` 等旧配置文件时自动进入迁移模式：
 
 ```
-npx cortex-agent init         ← 自动复制旧配置到 .agent/imported_rules/
+cortex-agent init             ← 自动复制旧配置到 .agent/imported_rules/
         ↓
 自动注册 CLAUDE.md 项目信息到 .agent/references/project-context-from-claude.md
         ↓
@@ -108,7 +136,7 @@ npx cortex-agent init         ← 自动复制旧配置到 .agent/imported_rules
 ### 场景 C：已有项目（无旧 AI 配置）
 
 ```
-npx cortex-agent init
+cortex-agent init
         ↓
 /scan-project                 ← 扫描项目模块，生成 .agent/references/ 知识库
         ↓
