@@ -9,18 +9,34 @@ When you have new architectural ideas or need to refactor existing modules, foll
 ## 1. Solution Conception and Current State Analysis
 
 - **Read Core Principles**: **You must first read** the `.agent/rules/architecture-design.md` file, treating the core principles of the project architecture as the highest priority.
+- **Read Proposal Structure**: **You must also read** `.agent/rules/proposal-structure.md` before deciding where the proposal should be stored.
 - **Understand Context**: Deeply explore the requirements proposed by the user or the technical bottlenecks encountered by the existing system.
 - **Current State Review**: Search for relevant implementation logic in the current codebase.
 - **Conflict Detection**: Analyze whether the new solution conflicts with the loaded architectural principles.
 
 ## 2. Design Output
 
-- **Determine proposal path**: Before writing the file, derive the topic from the proposal subject and save it under:
+- **Determine proposal scope and path**: Before writing the file, decide whether this is a standalone proposal or a project-level proposal group.
+
+  Standalone proposal:
   ```
   .agent/plans/proposals/<topic>/<short-name>-proposal.md
   ```
   - `topic` is the core module or business domain in kebab-case (e.g. `auth`, `device-template`, `state-management`)
   - Reuse an existing subfolder if one matches; create a new one if not
+
+  Project-level proposal group:
+  ```
+  .agent/plans/proposals/projects/<project-slug>/
+    index.md
+    proposals/P-001-<short-name>-proposal.md
+    decisions/
+    references.md
+    relations.md
+  ```
+  - Use a project folder when the proposal spans multiple phases, multiple workflows/skills/CLI capabilities, multiple real projects, or multiple related sub-proposals.
+  - Create or update `index.md` using `.agent/resources/templates/proposal-project-index.md`.
+  - Record related projects and dependencies in `relations.md`.
   - **Never place a proposal directly under `.agent/plans/proposals/`**
 
 - **Write Proposal**: Provide clear design descriptions, recommended to include:
