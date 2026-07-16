@@ -180,58 +180,68 @@
     <line x1="20" y1="42" x2="20" y2="68" stroke="#2a2f4a" stroke-width="2"/>
 
     <!-- 步骤 2 -->
-    <g class="step step-2" transform="translate(0, 70)">
-      <circle cx="20" cy="20" r="20" class="step-num-active"/>
-      <text x="20" y="26" text-anchor="middle" fill="#fff" font-family="Inter,system-ui" font-size="15" font-weight="700">2</text>
-      <text x="52" y="16" class="step-title-active">配置平台 &amp; 语言</text>
-      <text x="52" y="34" class="step-desc">/configure · Claude Code · TypeScript</text>
+    <g transform="translate(0, 70)">
+      <g class="step step-2">
+        <circle cx="20" cy="20" r="20" class="step-num-active"/>
+        <text x="20" y="26" text-anchor="middle" fill="#fff" font-family="Inter,system-ui" font-size="15" font-weight="700">2</text>
+        <text x="52" y="16" class="step-title-active">配置平台 &amp; 语言</text>
+        <text x="52" y="34" class="step-desc">/configure · Claude Code · TypeScript</text>
+      </g>
     </g>
 
     <!-- 连接线 2→3 -->
     <line x1="20" y1="112" x2="20" y2="138" stroke="#2a2f4a" stroke-width="2"/>
 
     <!-- 步骤 3 -->
-    <g class="step step-3" transform="translate(0, 140)">
-      <circle cx="20" cy="20" r="20" class="step-num-active"/>
-      <text x="20" y="26" text-anchor="middle" fill="#fff" font-family="Inter,system-ui" font-size="15" font-weight="700">3</text>
-      <text x="52" y="16" class="step-title-active">/arch-design 设计方案</text>
-      <text x="52" y="34" class="step-desc">产出提案 plans/proposals/</text>
+    <g transform="translate(0, 140)">
+      <g class="step step-3">
+        <circle cx="20" cy="20" r="20" class="step-num-active"/>
+        <text x="20" y="26" text-anchor="middle" fill="#fff" font-family="Inter,system-ui" font-size="15" font-weight="700">3</text>
+        <text x="52" y="16" class="step-title-active">/arch-design 设计方案</text>
+        <text x="52" y="34" class="step-desc">产出提案 plans/proposals/</text>
+      </g>
     </g>
 
     <!-- 连接线 3→4 -->
     <line x1="20" y1="182" x2="20" y2="208" stroke="#f59e0b" stroke-width="2" stroke-dasharray="4,3"/>
 
     <!-- 步骤 4 (NEW - 橙色高亮) -->
-    <g class="step step-4" transform="translate(0, 210)">
-      <circle cx="20" cy="20" r="20" class="step-num-new"/>
-      <text x="20" y="26" text-anchor="middle" fill="#fff" font-family="Inter,system-ui" font-size="15" font-weight="700">4</text>
-      <text x="52" y="14" class="step-title-new">/approve 批准并调度</text>
-      <!-- NEW badge -->
-      <rect x="52" y="20" width="32" height="14" rx="7" fill="#f59e0b"/>
-      <text x="68" y="31" text-anchor="middle" class="step-badge" fill="#0f1226">NEW</text>
-      <text x="90" y="31" class="step-desc">小→/plan  大→/mission</text>
+    <g transform="translate(0, 210)">
+      <g class="step step-4">
+        <circle cx="20" cy="20" r="20" class="step-num-new"/>
+        <text x="20" y="26" text-anchor="middle" fill="#fff" font-family="Inter,system-ui" font-size="15" font-weight="700">4</text>
+        <text x="52" y="16" class="step-title-new">/approve 批准并调度</text>
+        <!-- NEW badge -->
+        <rect x="52" y="24" width="34" height="14" rx="7" fill="#f59e0b"/>
+        <text x="69" y="34" text-anchor="middle" class="step-badge" fill="#0f1226">NEW</text>
+        <text x="94" y="34" class="step-desc">小→/plan  大→/mission</text>
+      </g>
     </g>
 
     <!-- 连接线 4→5 (分叉) -->
     <line x1="20" y1="252" x2="20" y2="278" stroke="#2a2f4a" stroke-width="2"/>
 
     <!-- 步骤 5 -->
-    <g class="step step-5" transform="translate(0, 280)">
-      <circle cx="20" cy="20" r="20" class="step-num-active"/>
-      <text x="20" y="26" text-anchor="middle" fill="#fff" font-family="Inter,system-ui" font-size="15" font-weight="700">5</text>
-      <text x="52" y="16" class="step-title-active">/start-task 执行</text>
-      <text x="52" y="34" class="step-desc">researcher → planner → implementer → reviewer</text>
+    <g transform="translate(0, 280)">
+      <g class="step step-5">
+        <circle cx="20" cy="20" r="20" class="step-num-active"/>
+        <text x="20" y="26" text-anchor="middle" fill="#fff" font-family="Inter,system-ui" font-size="15" font-weight="700">5</text>
+        <text x="52" y="16" class="step-title-active">/start-task 执行</text>
+        <text x="52" y="34" class="step-desc">researcher → planner → implementer → reviewer</text>
+      </g>
     </g>
 
     <!-- 连接线 5→6 -->
     <line x1="20" y1="322" x2="20" y2="348" stroke="#2a2f4a" stroke-width="2"/>
 
     <!-- 步骤 6 -->
-    <g class="step step-6" transform="translate(0, 350)">
-      <circle cx="20" cy="20" r="20" class="step-num-done"/>
-      <text x="20" y="26" text-anchor="middle" fill="#fff" font-family="Inter,system-ui" font-size="15" font-weight="700">6</text>
-      <text x="52" y="16" class="step-title-active">/ship → 沉淀归档</text>
-      <text x="52" y="34" class="step-desc">提交 · 提案 done · docs/architecture/</text>
+    <g transform="translate(0, 350)">
+      <g class="step step-6">
+        <circle cx="20" cy="20" r="20" class="step-num-done"/>
+        <text x="20" y="26" text-anchor="middle" fill="#fff" font-family="Inter,system-ui" font-size="15" font-weight="700">6</text>
+        <text x="52" y="16" class="step-title-active">/ship → 沉淀归档</text>
+        <text x="52" y="34" class="step-desc">提交 · 提案 done · docs/architecture/</text>
+      </g>
     </g>
 
   </g>
