@@ -46,6 +46,15 @@ T-C06 handoff output is dual-format:
    node .agent/handoffs/scripts/handoff-protocol.js publish --payload-file .agent/handoffs/H-YYYYMMDD-HHMMSS-focus.json --markdown-path .agent/handoffs/YYYYMMDD-HHMMSS-focus.md --agent-id coordinator
    ```
 9. End the Markdown with a `Resume Prompt` that the next agent can follow directly.
+10. If Management API exists, append a `handoff_created` Run event for the active task:
+    ```bash
+    node .agent/skills/management-api/scripts/index.js runs checkpoint \
+      --run-id R-<task-id> \
+      --status running \
+      --phase handoff \
+      --type handoff_created \
+      --message "Handoff artifact created"
+    ```
 
 ## RESUME
 
@@ -60,6 +69,7 @@ T-C06 handoff output is dual-format:
 6. Compare the handoff with current repository state.
 7. For writable continuation, acquire required Progress Lock scopes when available.
 8. Continue from `Next Steps` or `next_action`, or report conflicts if the handoff is stale.
+9. If Management API exists, update Run journal with `status=running`, `phase=handoff`, and a `state_changed` event before writable continuation.
 
 ## Quality Bar
 

@@ -7,6 +7,17 @@ description: 开始新开发任务的工作流
 1. **环境准备与上下文同步**:
     - 查阅任务进度文档（如 `.agent/plans/task-progress.md`）了解当前项目的开发状态。
     - 确保工作空间是最新的，并运行必要的环境检查。
+    - 若 `.agent/skills/management-api/scripts/index.js` 存在，为本次任务创建或更新 Run journal：
+      ```bash
+      node .agent/skills/management-api/scripts/index.js runs checkpoint \
+        --run-id R-<task-id> \
+        --task-id <task-id> \
+        --kind implement \
+        --status running \
+        --phase briefing \
+        --type state_changed \
+        --activity "Starting task context sync"
+      ```
 
 2. **上下文预算选择**（调用 `context-budget` skill）:
     - 读取 `.agent/context-index.json`，基于任务描述进行关键词匹配和相关性评分。
@@ -27,6 +38,14 @@ description: 开始新开发任务的工作流
     - **委托 `planner` 子代理**: **将”为当前任务制定详细的、分步骤的实施计划”这个目标委托给 `planner` 子代理**。
     - planner 只接收 context-manifest 选中的上下文（Tier 1 完整文档 + Tier 2 完整文档 + Tier 3 摘要首行）。
     - planner 应在 `.agent/plans/` 目录下创建具体的任务实施文档，并包含接口定义、测试规划等。
+    - 计划生成后追加 Run event：
+      ```bash
+      node .agent/skills/management-api/scripts/index.js runs checkpoint \
+        --run-id R-<task-id> \
+        --type task_decomposed \
+        --phase planning \
+        --message "Task plan created"
+      ```
 
 6. **方案评估**:
     - 对设计方案进行评估，重点关注可扩展性、性能及复杂性。
@@ -37,11 +56,22 @@ description: 开始新开发任务的工作流
 8. **编码实施**:
     - 遵循 `.agent/rules/` 下的编码标准。
     - 保持代码的简洁性与一致性。
+    - 开始实际编辑前追加 `file_edited` 或 `state_changed` Run event，便于 dashboard 显示当前活动。
 
 9. **验证与回归**:
     - 编写并运行测试用例。
     - 运行类型检查及 Lint 检查。
+    - 每个关键验证命令开始/结束时追加 `command_started` / `command_finished`，最终追加 `validation_passed` 或 `validation_failed`。
 
 10. **任务收尾**:
     - 同步更新相关的技术文档或 README。
     - 更新任务进度文档，记录已完成的工作及遗留问题。
+    - 任务完成、阻塞或失败时更新 Run journal：
+      ```bash
+      node .agent/skills/management-api/scripts/index.js runs checkpoint \
+        --run-id R-<task-id> \
+        --status completed \
+        --phase completed \
+        --type completed \
+        --activity "Task completed"
+      ```

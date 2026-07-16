@@ -616,6 +616,62 @@ function appendRunEvent() {
   printJson({ ok: true, action: "runs event", path: rel(file), event, run: next });
 }
 
+function checkpointRun() {
+  const payload = parsePayload();
+  const runId = safeId(option("--run-id", payload.run_id), "R");
+  const file = runFile(runId);
+  const existing = readJson(file) || {};
+  const timestamp = nowIso();
+  const status = option("--status", payload.status ?? existing.status ?? "running");
+  const phase = normalizePhase(option("--phase", payload.phase ?? existing.phase ?? null));
+  const activity = option("--activity", payload.activity ?? option("--message", payload.message ?? existing.activity ?? null));
+  const eventType = option("--type", payload.type || payload.event_type || "state_changed");
+  const message = option("--message", payload.message || activity || eventType);
+  const patch = {
+    ...payload,
+    run_id: runId,
+    task_id: option("--task-id", payload.task_id ?? existing.task_id ?? null),
+    mission_id: option("--mission-id", payload.mission_id ?? existing.mission_id ?? null),
+    agent_id: option("--agent-id", payload.agent_id ?? existing.agent_id ?? null),
+    role: option("--role", payload.role ?? existing.role ?? null),
+    kind: option("--kind", payload.kind ?? existing.kind ?? "implement"),
+    status,
+    phase,
+    activity,
+    worktree_path: option("--worktree-path", payload.worktree_path ?? existing.worktree_path ?? null),
+    branch: option("--branch", payload.branch ?? existing.branch ?? null),
+    started_at: option("--started-at", payload.started_at ?? existing.started_at ?? timestamp),
+    finished_at: option("--finished-at", payload.finished_at ?? existing.finished_at ?? null),
+    updated_at: timestamp,
+  };
+  if (["completed", "failed", "canceled"].includes(patch.status) && !patch.finished_at) {
+    patch.finished_at = timestamp;
+    if (!patch.phase || patch.status === "completed") patch.phase = patch.status === "completed" ? "completed" : patch.phase;
+  }
+
+  const event = compactEvent({
+    type: eventType,
+    phase: patch.phase,
+    status: patch.status,
+    activity: patch.activity,
+    message,
+    at: option("--at", payload.at || timestamp),
+  });
+  const events = Array.isArray(existing.events) ? existing.events : [];
+  const next = {
+    ...existing,
+    ...patch,
+    events: [...events, event].slice(-200),
+    last_event: event,
+  };
+  if (!Array.isArray(next.commands)) next.commands = Array.isArray(payload.commands) ? payload.commands : [];
+  if (!Array.isArray(next.artifacts)) next.artifacts = Array.isArray(payload.artifacts) ? payload.artifacts : [];
+  if (!next.validation || typeof next.validation !== "object") next.validation = {};
+
+  writeJson(file, next);
+  printJson({ ok: true, action: "runs checkpoint", path: rel(file), event, run: next });
+}
+
 function main() {
   const [command, query] = args;
   if (command === "query" && query === "dashboard-state") {
@@ -630,11 +686,15 @@ function main() {
     appendRunEvent();
     return;
   }
+  if (command === "runs" && query === "checkpoint") {
+    checkpointRun();
+    return;
+  }
 
   printJson({
     ok: false,
     error: "unsupported_command",
-    usage: "node .agent/skills/management-api/scripts/index.js query dashboard-state | runs upsert | runs event",
+    usage: "node .agent/skills/management-api/scripts/index.js query dashboard-state | runs upsert | runs event | runs checkpoint",
   });
   process.exitCode = 2;
 }

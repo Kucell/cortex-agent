@@ -17,6 +17,7 @@ Runtime writers are intentionally narrow: write run state and run events through
 node .agent/skills/management-api/scripts/index.js query dashboard-state
 node .agent/skills/management-api/scripts/index.js runs upsert --run-id R-T005 --task-id T-005 --kind implement --status running --phase decomposing --activity "正在拆分 Adapter"
 node .agent/skills/management-api/scripts/index.js runs event --run-id R-T005 --type agent_invoked --phase invoking_agent --message "已调用 editor-adapter-agent"
+node .agent/skills/management-api/scripts/index.js runs checkpoint --run-id R-T005 --task-id T-005 --type validation_started --phase validating --activity "Running focused tests"
 ```
 
 ## Output Contract
@@ -74,6 +75,7 @@ Use these fields for precise state:
 - `activity`: short human-readable text for the current visible activity.
 - `events[]`: append-only timeline of important transitions.
 - `last_event`: cached latest event for dashboards and summaries.
+- `runs checkpoint`: preferred workflow helper that updates run state and appends one event in a single command.
 
 Agents should update state at these minimum checkpoints:
 
@@ -113,7 +115,7 @@ Prefer these stable `events[].type` values:
 
 - Keep this skill zero dependency.
 - Read from `.agent/` and Git only.
-- Only mutate `.agent/runs/*.json` through the `runs upsert` and `runs event` commands.
+- Only mutate `.agent/runs/*.json` through the `runs upsert`, `runs event`, and `runs checkpoint` commands.
 - Runtime objects live under `.agent/runs/`, `.agent/queues/`, and `.agent/sessions/`.
 - PRD objects live under `.agent/prd/` or `.agent/prds/`; dashboard-state exposes `prds` and `prd_summary`.
 - Running or paused sessions whose `last_heartbeat_at` is older than five minutes are reported as `stale`.

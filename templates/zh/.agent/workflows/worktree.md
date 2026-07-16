@@ -33,6 +33,7 @@ description: 使用 Git worktree 隔离多个 Agent 的并行开发，并通过 
 - worktree 内完成一个可验证任务后必须及时 `/ship` 或 `/commit`。
 - 合并前必须确认 registry、locks、artifacts、handoff 和 git 状态一致。
 - 合并后必须在目标主线 worktree 重新验证功能。
+- 若 Management API 存在，worktree 创建、锁获取、提交、合并、验证都必须写入 Run journal。
 
 ## PLAN
 
@@ -81,6 +82,7 @@ test -L .agent && readlink .agent
 3. 记录 `base_branch`、`base_commit`、`branch`、`worktree_path`、`agent_state_path`。
 4. 在 registry 中 check-in。
 5. 获取任务锁，并把 `worktree_path`、`branch` 和 `agent_state_path` 写入 lock metadata。
+6. 调用 `management-api runs checkpoint` 记录 `creating_worktree` / `lock_acquired`。
 
 ## STATUS
 
@@ -161,8 +163,10 @@ test -L .agent && readlink .agent
 1. 确认当前 worktree 对应的 `task_id`、`branch`、`base_commit`。
 2. 运行任务级验证命令，并把结果写入 Artifact Bus 或 mission milestone。
 3. 执行 `/ship <task-id>`；若只是中间检查点，执行 `/commit`。
-4. 提交后记录 task_id、worktree_path、branch、commit、validation。
-5. 更新 handoff 或 coordination report，让 coordinator 知道该 worktree 已进入 `merge_ready` 或 `continue`。
+4. 验证命令开始/结束时追加 `command_started` / `command_finished`，验证结果追加 `validation_passed` 或 `validation_failed`。
+5. 提交后记录 task_id、worktree_path、branch、commit、validation。
+6. 更新 handoff 或 coordination report，让 coordinator 知道该 worktree 已进入 `merge_ready` 或 `continue`。
+7. 追加 `command_finished` Run event，说明 worktree commit 已完成。
 
 ## MERGE
 
@@ -176,6 +180,8 @@ test -L .agent && readlink .agent
 - 没有未处理 handoff。
 - 与 base branch rebase 或 merge 后无冲突。
 
+合并前后分别追加 `merge_started` / `merge_completed` Run event；如果冲突或失败，追加 `failed` 或 `blocked`。
+
 ## VALIDATE
 
 合并后必须在目标主线 worktree 重新验证：
@@ -185,6 +191,7 @@ test -L .agent && readlink .agent
 3. 运行 `git diff --check`。
 4. 若验证失败，记录失败命令和证据，优先在目标主线 worktree 修复；若要回源 worktree 继续，创建 `/handoff`。
 5. 若验证通过，标记任务可关闭或已合并，并更新 Artifact Bus / mission milestone。
+6. 将 Run journal 更新为 `status=completed`、`phase=completed`，并追加 `completed` event。
 
 合并并验证通过后：
 

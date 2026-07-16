@@ -46,6 +46,15 @@ T-C06 handoff 输出为双格式：
    node .agent/handoffs/scripts/handoff-protocol.js publish --payload-file .agent/handoffs/H-YYYYMMDD-HHMMSS-focus.json --markdown-path .agent/handoffs/YYYYMMDD-HHMMSS-focus.md --agent-id coordinator
    ```
 9. Markdown 以 `Resume Prompt` 结尾，让下一个 Agent 可以直接继续。
+10. 若 Management API 存在，为当前任务追加 `handoff_created` Run event：
+    ```bash
+    node .agent/skills/management-api/scripts/index.js runs checkpoint \
+      --run-id R-<task-id> \
+      --status running \
+      --phase handoff \
+      --type handoff_created \
+      --message "Handoff artifact created"
+    ```
 
 ## RESUME
 
@@ -60,6 +69,7 @@ T-C06 handoff 输出为双格式：
 6. 对比 handoff 与当前仓库状态。
 7. 对需要写入的续接工作，在可用时获取必要的 Progress Lock scopes。
 8. 从 `Next Steps` 或 `next_action` 继续；如果 handoff 已过期，先报告冲突。
+9. 若 Management API 存在，在可写续接前将 Run journal 更新为 `status=running`、`phase=handoff`，并追加 `state_changed` event。
 
 ## 质量标准
 
