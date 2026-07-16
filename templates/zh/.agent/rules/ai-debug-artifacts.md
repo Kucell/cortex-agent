@@ -13,7 +13,7 @@ AI 生成的截图、日志、临时 JSON、浏览器调试输出等产物，默
 
 ## 规则
 
-- UI 截图、浏览器截图、视觉验证截图放入 `.agent/debug/screenshots/`。
+- Playwright、Browser、Computer Use 及其他 UI 截图统一放入 `.agent/debug/screenshots/`。
 - 临时命令输出、服务日志、浏览器日志放入 `.agent/debug/logs/`。
 - API 响应、探针结果、临时 JSON/text 文件放入 `.agent/debug/temp/`。
 - 禁止把调试产物散落在项目根目录。

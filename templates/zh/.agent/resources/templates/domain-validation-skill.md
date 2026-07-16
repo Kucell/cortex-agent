@@ -26,6 +26,34 @@ description: 使用明确命令和证据验证项目特定运行时、设备、U
 - 截图或运行时捕获路径
 - 日志或结构化 JSON 结果路径
 - 必要时的人工验证说明
+- 跨机器或跨进程检查所用的被测端日志游标及其时间源
+
+条件允许时，使用机器可读清单记录证据：
+
+```json
+{
+  "type": "domain_validation_evidence",
+  "status": "pass",
+  "started_at": "2026-01-01T00:00:00Z",
+  "finished_at": "2026-01-01T00:05:00Z",
+  "artifacts": [
+    {
+      "type": "command_output",
+      "path": "<artifact-path>"
+    }
+  ],
+  "time_basis": {
+    "target_id": "<target-id>",
+    "timestamp_source": "target-system",
+    "target_timestamp_utc": "2026-01-01T00:00:00Z",
+    "controller_timestamp_utc": "2026-01-01T00:00:00Z",
+    "clock_skew_ms": 0,
+    "log_filter_start_utc": "2026-01-01T00:00:00Z"
+  }
+}
+```
+
+同进程检查如果不按时间过滤证据，可以省略 `time_basis`。跨机器或跨进程检查必须在被测动作开始前立即从被测端获取游标，禁止用控制端时钟替代。
 
 ## Pass Criteria
 
@@ -36,6 +64,7 @@ description: 使用明确命令和证据验证项目特定运行时、设备、U
 
 - 重启服务前保留首次失败证据。
 - 记录环境、时间戳来源和命令参数。
+- 如果无法取得被测端时间，记录该证据缺口，且不得宣称按时间过滤的检查已通过。
 
 ## Cleanup
 
