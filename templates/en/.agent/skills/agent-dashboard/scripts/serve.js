@@ -34,8 +34,18 @@ function generate() {
   };
 }
 
+function readOut() {
+  try { return fs.readFileSync(outPath, "utf8"); } catch { return ""; }
+}
+
+function contentFingerprint(html) {
+  return String(html || "")
+    .replace(/(<span data-i18n="generated">[^<]*<\/span>:\s*)[^<]+/g, "$1<generated>")
+    .replace(/("generated_at":\s*")[^"]+(")/g, "$1<generated>$2");
+}
+
 let last = generate();
-let lastMtime = fs.existsSync(outPath) ? fs.statSync(outPath).mtimeMs : 0;
+let lastFingerprint = contentFingerprint(readOut());
 const clients = new Set();
 
 function broadcast(payload) {
@@ -45,9 +55,9 @@ function broadcast(payload) {
 
 setInterval(() => {
   last = generate();
-  const mtime = fs.existsSync(outPath) ? fs.statSync(outPath).mtimeMs : 0;
-  if (mtime !== lastMtime) {
-    lastMtime = mtime;
+  const nextFingerprint = contentFingerprint(readOut());
+  if (nextFingerprint && nextFingerprint !== lastFingerprint) {
+    lastFingerprint = nextFingerprint;
     broadcast({ type: "reload", generated_at: last.at, ok: last.ok });
   }
 }, Math.max(1000, intervalMs));
@@ -55,11 +65,26 @@ setInterval(() => {
 function withLiveReload(html) {
   const snippet = `<script>
 (() => {
+  const key = 'agent-dashboard-scroll';
+  try {
+    const saved = JSON.parse(sessionStorage.getItem(key) || 'null');
+    if (saved && saved.path === location.pathname && saved.hash === location.hash) {
+      requestAnimationFrame(() => scrollTo(saved.x || 0, saved.y || 0));
+    }
+  } catch (_) {}
   const source = new EventSource('/events');
   source.onmessage = (event) => {
     try {
       const payload = JSON.parse(event.data);
-      if (payload.type === 'reload') location.reload();
+      if (payload.type === 'reload') {
+        sessionStorage.setItem(key, JSON.stringify({
+          path: location.pathname,
+          hash: location.hash,
+          x: scrollX,
+          y: scrollY
+        }));
+        location.reload();
+      }
     } catch (_) {}
   };
 })();
