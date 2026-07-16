@@ -15,6 +15,9 @@ Runtime writers are intentionally narrow: write run state and run events through
 
 ```bash
 node .agent/skills/management-api/scripts/index.js query dashboard-state
+node .agent/skills/management-api/scripts/index.js query runs
+node .agent/skills/management-api/scripts/index.js query queues
+node .agent/skills/management-api/scripts/index.js query sessions
 node .agent/skills/management-api/scripts/index.js runs upsert --run-id R-T005 --task-id T-005 --kind implement --status running --phase decomposing --activity "正在拆分 Adapter"
 node .agent/skills/management-api/scripts/index.js runs event --run-id R-T005 --type agent_invoked --phase invoking_agent --message "已调用 editor-adapter-agent"
 node .agent/skills/management-api/scripts/index.js runs checkpoint --run-id R-T005 --task-id T-005 --type validation_started --phase validating --activity "Running focused tests"
@@ -65,6 +68,14 @@ node .agent/skills/management-api/scripts/index.js runs checkpoint --run-id R-T0
   }
 }
 ```
+
+Focused runtime queries are read-only and return smaller payloads:
+
+- `query runs`: `{ ok, query, generated_at, runs, summary }`
+- `query queues`: `{ ok, query, generated_at, queues, summary }`
+- `query sessions`: `{ ok, query, generated_at, sessions, summary }`
+
+Use focused queries for CLI/status views that do not need the full dashboard payload.
 
 ## Runtime State Contract
 
