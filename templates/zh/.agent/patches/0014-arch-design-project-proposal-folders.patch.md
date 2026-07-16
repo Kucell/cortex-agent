@@ -24,4 +24,3 @@ insert_after: "- **编写提案**: 提供清晰的设计说明，建议包含：
   - 在 `relations.md` 记录关联项目、上下游依赖、同步范围和验证状态
   - 禁止将提案直接放在 `.agent/plans/proposals/` 根目录
   - 禁止提交 `.DS_Store`、临时文件或导出缓存
-

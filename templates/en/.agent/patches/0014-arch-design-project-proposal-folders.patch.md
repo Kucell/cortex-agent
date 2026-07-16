@@ -24,4 +24,3 @@ insert_after: "- **Write Proposal**: Provide clear design descriptions, recommen
   - Record related projects, upstream and downstream dependencies, synchronization scope, and validation status in `relations.md`
   - Never place a proposal directly under `.agent/plans/proposals/`
   - Never commit `.DS_Store`, temporary files, or export caches
-
