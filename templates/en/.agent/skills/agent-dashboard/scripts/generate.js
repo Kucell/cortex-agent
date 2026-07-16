@@ -80,6 +80,12 @@ function formatLocalTime(date = new Date()) {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 }
 
+function formatDisplayTime(value) {
+  if (!value) return "";
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime()) ? String(value) : formatLocalTime(date);
+}
+
 const I18N = {
   zh: {
     appTitle: "Agent 协作看板",
@@ -345,7 +351,7 @@ function parseHandoffs() {
       return {
         path: rel(file),
         type: file.endsWith(".json") ? "json" : "markdown",
-        updated: stat.mtime.toISOString(),
+        updated: formatDisplayTime(stat.mtime),
       };
     });
 }
@@ -728,19 +734,19 @@ table{width:100%;border-collapse:collapse}th,td{padding:8px 10px;border-bottom:1
     <section id="runtime" class="section">
       <div class="section-head"><h2 data-i18n="runtime">${I18N.zh.runtime}</h2><span>${pill(runtimeState)}</span></div>
       <div class="grid">
-        <section class="panel wide"><h2 data-i18n="eventTimeline">${I18N.zh.eventTimeline}</h2>${recentEvents.length ? `<div class="timeline">${recentEvents.map(({ run, event }) => `<div class="timeline-item"><div><code>${esc(run.run_id || run.path)}</code><div class="mini">${esc(event.at || "")}</div></div><div>${event.phase ? pill(event.phase) : ""} ${event.status ? pill(event.status) : ""}<p>${esc(event.message || event.activity || event.type || "")}</p></div></div>`).join("")}</div>` : `<div class="empty" data-i18n="empty">${I18N.zh.empty}</div>`}</section>
-        <section class="panel"><h2 data-i18n="sessions">${I18N.zh.sessions}</h2>${renderTable(["agent","role","status","phase","heartbeat"], sessions.map((s) => `<tr><td>${esc(s.agent_id || s.session_id)}</td><td>${esc(s.role || "")}</td><td>${pill(s.status)}</td><td>${s.phase ? pill(s.phase) : esc(s.activity || "")}</td><td>${esc(s.last_heartbeat_at || s.started_at || "")}</td></tr>`))}</section>
+        <section class="panel wide"><h2 data-i18n="eventTimeline">${I18N.zh.eventTimeline}</h2>${recentEvents.length ? `<div class="timeline">${recentEvents.map(({ run, event }) => `<div class="timeline-item"><div><code>${esc(run.run_id || run.path)}</code><div class="mini">${esc(formatDisplayTime(event.at))}</div></div><div>${event.phase ? pill(event.phase) : ""} ${event.status ? pill(event.status) : ""}<p>${esc(event.message || event.activity || event.type || "")}</p></div></div>`).join("")}</div>` : `<div class="empty" data-i18n="empty">${I18N.zh.empty}</div>`}</section>
+        <section class="panel"><h2 data-i18n="sessions">${I18N.zh.sessions}</h2>${renderTable(["agent","role","status","phase","heartbeat"], sessions.map((s) => `<tr><td>${esc(s.agent_id || s.session_id)}</td><td>${esc(s.role || "")}</td><td>${pill(s.status)}</td><td>${s.phase ? pill(s.phase) : esc(s.activity || "")}</td><td>${esc(formatDisplayTime(s.last_heartbeat_at || s.started_at))}</td></tr>`))}</section>
         <section class="panel"><h2 data-i18n="runs">${I18N.zh.runs}</h2>${renderTable(["id","kind","status","phase","message"], runs.slice(0, 8).map((r) => `<tr><td><code>${esc(r.run_id || r.path)}</code></td><td>${esc(r.kind || "")}</td><td>${pill(r.status)}</td><td>${r.phase ? pill(r.phase) : ""}</td><td>${esc(r.activity || r.last_event?.message || "")}</td></tr>`))}</section>
         <section class="panel wide"><h2 data-i18n="queues">${I18N.zh.queues}</h2>${renderTable(["id","status","items","currentActivity"], queues.map((q) => `<tr><td><code>${esc(q.queue_id || q.path)}</code></td><td>${pill(q.status)}</td><td>${Array.isArray(q.items) ? q.items.length : 0}</td><td>${esc((q.items || []).find((item) => item.state === "running")?.activity || "")}</td></tr>`))}</section>
         <section class="panel wide"><h2 data-i18n="worktrees">${I18N.zh.worktrees}</h2>${renderTable(["path","branch","status","head"], worktrees.map((w) => `<tr><td><code>${esc(w.path)}</code>${w.isMain ? ' <span class="mini">main</span>' : ""}</td><td>${esc(w.branch)}</td><td>${pill(w.dirty ? "dirty" : "clean")}</td><td><code>${esc(w.head.slice(0,12))}</code></td></tr>`))}</section>
         <section class="panel"><h2 data-i18n="activeAgents">${I18N.zh.activeAgents}</h2>${renderTable(["agent","role","task","status"], agents.map((a) => `<tr><td>${esc(a.agent_id || a.id)}</td><td>${esc(a.role)}</td><td><code>${esc(a.task_id || "")}</code></td><td>${pill(a.status)}</td></tr>`))}</section>
-        <section class="panel"><h2 data-i18n="locks">${I18N.zh.locks}</h2>${renderTable(["scope","heldBy","expires","status"], locks.map((l) => `<tr><td><code>${esc(l.scope)}</code></td><td>${esc(l.held_by)}</td><td>${esc(l.expires_at)}</td><td>${pill(l.expired ? "expired" : "held")}</td></tr>`))}</section>
+        <section class="panel"><h2 data-i18n="locks">${I18N.zh.locks}</h2>${renderTable(["scope","heldBy","expires","status"], locks.map((l) => `<tr><td><code>${esc(l.scope)}</code></td><td>${esc(l.held_by)}</td><td>${esc(formatDisplayTime(l.expires_at))}</td><td>${pill(l.expired ? "expired" : "held")}</td></tr>`))}</section>
       </div>
     </section>
 
     <section id="knowledge" class="section">
       <div class="grid">
-        <section class="panel"><h2 data-i18n="handoffs">${I18N.zh.handoffs}</h2>${renderTable(["path","type","updated"], handoffs.map((h) => `<tr><td><code>${esc(h.path)}</code></td><td>${esc(h.type)}</td><td>${esc(h.updated)}</td></tr>`))}</section>
+        <section class="panel"><h2 data-i18n="handoffs">${I18N.zh.handoffs}</h2>${renderTable(["path","type","updated"], handoffs.map((h) => `<tr><td><code>${esc(h.path)}</code></td><td>${esc(h.type)}</td><td>${esc(formatDisplayTime(h.updated))}</td></tr>`))}</section>
         <section class="panel"><h2 data-i18n="artifacts">${I18N.zh.artifacts}</h2>${renderTable(["task","count","latest"], artifacts.map((a) => `<tr><td><code>${esc(a.task_id)}</code></td><td>${a.count}</td><td><code>${esc(a.latest)}</code></td></tr>`))}</section>
         <section class="panel wide"><h2 data-i18n="gitStatus">${I18N.zh.gitStatus}</h2><pre>${esc(gitStatus || I18N.zh.noGit)}</pre></section>
       </div>
