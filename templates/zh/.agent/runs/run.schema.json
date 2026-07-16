@@ -43,7 +43,10 @@
         "type": "object",
         "required": ["type", "at"],
         "properties": {
-          "type": { "type": "string" },
+          "type": {
+            "type": "string",
+            "description": "Stable event type, preferably one of: state_changed, task_decomposed, worktree_created, lock_acquired, agent_invoked, file_read, file_edited, command_started, command_finished, validation_started, validation_passed, validation_failed, handoff_created, merge_started, merge_completed, publish_started, publish_completed, blocked, failed, canceled, completed."
+          },
           "phase": { "type": ["string", "null"] },
           "status": { "type": ["string", "null"] },
           "activity": { "type": ["string", "null"] },
