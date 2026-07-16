@@ -22,12 +22,18 @@ flowchart
 
     subgraph 任务执行
         E --> F["/start-task T-xxx<br>加载上下文<br>调用 planner"]
-        F --> G([🔨 编码实施])
+        F --> WT{需要多<br>worktree?}
+        WT -->|是| W["/worktree plan/create<br>隔离并行工作区"]
+        WT -->|否| G
+        W --> G([🔨 编码实施])
     end
 
     subgraph 任务交付
         G --> H["/ship T-xxx<br>一键交付"]
-        H --> I["① code-review<br>② commit<br>③ done<br>④ sync-plans"]
+        H --> WM{来自<br>worktree?}
+        WM -->|是| WV["/worktree merge/validate<br>合并后主线验证"]
+        WM -->|否| I
+        WV --> I["① code-review<br>② commit<br>③ done<br>④ sync-plans"]
         I --> K{模块有<br>结构变更?}
         K -->|是| L["/update-refs<br>增量更新参考文档"]
         K -->|否| J
@@ -80,6 +86,7 @@ PLAN → EXECUTE → LINT → REVIEW → COMMIT → DONE → CONTEXT_CLEANUP →
 | `/plan` | 方案→任务清单：将确认方案拆解为带 ID/优先级/验收标准的任务条目，写入 `task-progress.md` | `/plan` |
 | `/start-task` | 开始执行任务：加载上下文预算、架构预审、委托 planner 制定详细计划 | `/start-task T-001` |
 | `/bug-fix` | Bug 分析、定位、修复完整流程 | `/bug-fix "登录按钮无响应"` |
+| `/worktree` | 为多 Agent 并行开发创建隔离 worktree，并协调 handoff、及时提交、合并和主线验证 | `/worktree plan T-001 T-002` |
 
 ### 📦 任务交付
 
