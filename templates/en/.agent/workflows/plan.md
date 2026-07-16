@@ -26,6 +26,8 @@ Read these files in order (if they exist):
 2. If `--from-proposal <path>`: read the specified proposal file (`.agent/plans/proposals/xxx-proposal.md`)
 3. If `--from arch-proposal` (deprecated): read `.agent/resources/templates/arch-proposal.md`
 4. `.agent/rules/architecture-design.md` — confirm architectural constraints
+5. `.agent/rules/task-decomposition.md` — decide task size, dependencies, and parallel opportunities
+6. `.agent/resources/templates/task-breakdown.md` — use as the preview format
 
 If the user described requirements directly (no proposal file), decompose based on conversation context.
 
@@ -38,6 +40,10 @@ Break the proposal into independent, verifiable task units. Each task must inclu
 - **Description**: One sentence describing what to do
 - **Acceptance Criteria**: At least 1 verifiable done condition
 - **Dependencies**: Whether it depends on other tasks completing first
+- **Parallel Judgment**: Whether it can run in the same batch as other tasks, and why
+- **Recommended Agent**: planner / researcher / implementer / code-reviewer / documenter / coordinator
+
+If the requirement is suitable for multi-agent collaboration, first output the breakdown using `.agent/resources/templates/task-breakdown.md`, then ask whether to write it to the plan.
 
 Show the decomposition for user confirmation:
 
