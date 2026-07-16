@@ -11,6 +11,7 @@ When you have new architectural ideas or need to refactor existing modules, foll
 - **Read Core Principles**: **You must first read** the `.agent/rules/architecture-design.md` file, treating the core principles of the project architecture as the highest priority.
 - **Read Proposal Structure**: **You must also read** `.agent/rules/proposal-structure.md` before deciding where the proposal should be stored.
 - **Understand Context**: Deeply explore the requirements proposed by the user or the technical bottlenecks encountered by the existing system.
+- **Read PRD Assets First**: If `.agent/prd/` or `.agent/prds/` contains a PRD in `review`, `approved`, or `designed` status, read its `state.json`, `prd.md`, `flows.md`, `screens.md`, and `acceptance-criteria.md` before writing architecture proposals.
 - **Current State Review**: Search for relevant implementation logic in the current codebase.
 - **Conflict Detection**: Analyze whether the new solution conflicts with the loaded architectural principles.
 
@@ -65,3 +66,4 @@ When you have new architectural ideas or need to refactor existing modules, foll
 - **Update Documentation**: Archive approved designs to the project's documentation library (e.g., `docs/architecture/`).
 - **Publish Developer Docs**: If the approved proposal changes developer-facing architecture, run `/publish-docs --architecture` after the proposal is finalized so `docs/` receives a sanitized, standalone version.
 - **Task Decomposition**: Convert the design solution into a specific task list and update the implementation plans under `.agent/plans/`.
+- **PRD Traceability**: When the proposal implements or changes a PRD, record the PRD id and related tasks in the proposal frontmatter or first section.

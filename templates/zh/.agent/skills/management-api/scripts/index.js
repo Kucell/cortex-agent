@@ -256,6 +256,97 @@ function parseArtifacts() {
   });
 }
 
+function parsePrds() {
+  const roots = [path.join(agentRoot, "prd"), path.join(agentRoot, "prds")];
+  const prds = [];
+  for (const prdRoot of roots) {
+    const index = readJson(path.join(prdRoot, "index.json"));
+    const indexed = Array.isArray(index?.prds) ? index.prds : [];
+    for (const item of indexed) {
+      const dir = item.path ? path.resolve(prdRoot, item.path) : path.join(prdRoot, item.prd_id || item.id || "");
+      const state = readJson(path.join(dir, "state.json")) || {};
+      prds.push(normalizePrd({ ...item, ...state }, dir));
+    }
+    for (const dir of listFiles(prdRoot, (name) => {
+      try { return fs.statSync(path.join(prdRoot, name)).isDirectory(); } catch { return false; }
+    })) {
+      const state = readJson(path.join(dir, "state.json"));
+      if (!state) continue;
+      const id = state.prd_id || path.basename(dir);
+      if (prds.some((prd) => prd.id === id)) continue;
+      prds.push(normalizePrd(state, dir));
+    }
+  }
+  return prds.sort((a, b) => String(b.updated_at || "").localeCompare(String(a.updated_at || ""))).slice(0, 12);
+}
+
+function normalizePrd(data, dir) {
+  const design = data.design && typeof data.design === "object" ? data.design : {};
+  const review = data.review && typeof data.review === "object" ? data.review : {};
+  return {
+    id: data.prd_id || data.id || path.basename(dir),
+    title: data.title || data.name || data.prd_id || path.basename(dir),
+    status: data.status || "idea",
+    owner: data.owner || "",
+    summary: data.summary || "",
+    path: rel(dir),
+    updated_at: data.updated_at || "",
+    related_mission_id: data.related_mission_id || null,
+    related_tasks: Array.isArray(data.related_tasks) ? data.related_tasks : [],
+    design: {
+      tool: design.tool || "",
+      status: design.status || "not_started",
+      url: design.url || "",
+      local_path: design.local_path || "",
+      screen_count: design.screen_count ?? null,
+      export_target: design.export_target || "",
+    },
+    review: {
+      status: review.status || "",
+      decision_id: review.decision_id || "",
+      reviewer: review.reviewer || "",
+    },
+    missing: prdMissingFields(dir),
+  };
+}
+
+function prdMissingFields(dir) {
+  const checks = [
+    ["context", ["prd.md"]],
+    ["user stories", ["user-stories.md", "stories.md"]],
+    ["flows", ["flows.md", "user-flow.md"]],
+    ["screens", ["screens.md", "screen-map.json"]],
+    ["acceptance criteria", ["acceptance-criteria.md", "validation-contract.json"]],
+    ["decisions", ["decisions.md"]],
+  ];
+  return checks
+    .filter(([, files]) => !files.some((file) => fs.existsSync(path.join(dir, file))))
+    .map(([name]) => name);
+}
+
+function summarizePrds(prds) {
+  if (!prds.length) {
+    return {
+      status: "not_started",
+      design: "not_started",
+      review: "open",
+      completeness: 0,
+      missing: ["prd", "user stories", "flows", "screens", "acceptance criteria"],
+      current_id: null,
+    };
+  }
+  const current = prds[0];
+  const total = current.missing.length + 6;
+  return {
+    status: current.status,
+    design: current.design.status || "not_started",
+    review: current.review.status || "open",
+    completeness: Math.round(((total - current.missing.length) / total) * 100),
+    missing: current.missing,
+    current_id: current.id,
+  };
+}
+
 function parseRuns() {
   return listJsonObjects(path.join(agentRoot, "runs"))
     .map(({ file, data }) => ({
@@ -389,6 +480,8 @@ function queryDashboardState() {
   const locks = parseLocks();
   const handoffs = parseHandoffs();
   const artifacts = parseArtifacts();
+  const prds = parsePrds();
+  const prdSummary = summarizePrds(prds);
   const runs = parseRuns();
   const queues = parseQueues();
   const sessions = parseSessions();
@@ -412,6 +505,8 @@ function queryDashboardState() {
     locks,
     handoffs,
     artifacts,
+    prds,
+    prd_summary: prdSummary,
     git_status: gitStatus,
     derived,
     summary: {
@@ -422,6 +517,8 @@ function queryDashboardState() {
       active_queues: queues.filter((q) => q.status === "active").length,
       stale_sessions: sessions.filter((s) => s.status === "stale").length,
       active_phases: runs.filter((r) => r.status === "running" && r.phase).map((r) => r.phase),
+      prds: prds.length,
+      prd_completeness: prdSummary.completeness,
     },
   };
 }

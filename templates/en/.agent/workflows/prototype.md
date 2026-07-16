@@ -20,7 +20,7 @@ Default: --mode both, --fidelity low
 
 ## State Machine
 
-REQUIREMENTS → ROUTE → [DOC_PROTOTYPE | UI_PROTOTYPE | BOTH] → CONTRACT → DONE
+REQUIREMENTS -> ROUTE -> [DOC_PROTOTYPE | UI_PROTOTYPE | BOTH] -> CONTRACT -> DONE
 
 ## Phase 1: REQUIREMENTS
 
@@ -29,18 +29,28 @@ Read task description, extract:
 - Key entities and interaction nodes
 - Project type (UI-heavy / API / mixed)
 
+If `.agent/prd/` or `.agent/prds/` contains a related PRD, read these files first:
+
+- `state.json`
+- `prd.md`
+- `flows.md`
+- `screens.md`
+- `acceptance-criteria.md`
+
+Use them as prototype design input instead of relying only on the conversation requirement.
+
 ## Phase 2: ROUTE
 
 Route based on --mode and project type:
 | mode | execution path |
 |------|----------------|
-| doc  | → DOC_PROTOTYPE |
-| ui   | → UI_PROTOTYPE |
-| both | → DOC_PROTOTYPE → UI_PROTOTYPE (serial) |
+| doc  | -> DOC_PROTOTYPE |
+| ui   | -> UI_PROTOTYPE |
+| both | -> DOC_PROTOTYPE -> UI_PROTOTYPE (serial) |
 
 > **--mode both failure handling**: If DOC_PROTOTYPE fails, log the error and continue executing UI_PROTOTYPE. Report all failed paths in the DONE phase.
 
-> **Pixso MCP unavailable — automatic fallback**: If the Pixso MCP tool is unreachable (connection timeout, not installed, or insufficient permissions), automatically fall back to `doc` mode and continue execution — skip the UI_PROTOTYPE phase and generate only `flow.md` and (per fidelity) `prototype.html`. In the DONE phase, add the note `ui path skipped: MCP unavailable` to the summary and omit the `runtime` assertion from `validation-contract.json`.
+> **Pixso MCP unavailable - automatic fallback**: If the Pixso MCP tool is unreachable (connection timeout, not installed, or insufficient permissions), automatically fall back to `doc` mode and continue execution: skip the UI_PROTOTYPE phase and generate only `flow.md` and (per fidelity) `prototype.html`. In the DONE phase, add the note `ui path skipped: MCP unavailable` to the summary and omit the `runtime` assertion from `validation-contract.json`.
 
 ### --fidelity Fidelity level description
 
@@ -94,7 +104,7 @@ Record output to `.agent/prototypes/<task-id>/pixso-frames.json`:
   "frames": [
     { "name": "Step N - [page name]", "url": "<pixso-frame-url>" }
   ],
-  "export_hint": "In Pixso, select all frames → export as PNG/SVG → place in docs/assets/prototypes/<task-id>/"
+  "export_hint": "In Pixso, select all frames -> export as PNG/SVG -> place in docs/assets/prototypes/<task-id>/"
 }
 ```
 
@@ -105,36 +115,39 @@ Skip condition: Do not call Pixso MCP or generate this file when `--fidelity low
 Call `.agent/skills/validation-contract/` skill (CREATE mode) to generate a validation contract based on prototype artifacts.
 
 Required assertion types in the contract:
-- `type: "manual"` — whether the prototype aligns with the requirements description (manual confirmation)
-- `type: "docs"`   — whether the flow.md Mermaid diagram covers all user flows
-- `type: "runtime"` (UI path) — whether the Pixso frame links are accessible
+- `type: "manual"` - whether the prototype aligns with the requirements description (manual confirmation)
+- `type: "docs"` - whether the flow.md Mermaid diagram covers all user flows
+- `type: "runtime"` (UI path) - whether the Pixso frame links are accessible
 
 > **Note (--fidelity low)**: The `runtime` assertion for the UI path is only generated when `pixso-frames.json` exists; it is automatically skipped when `--fidelity low`.
 
 Output to `.agent/prototypes/<task-id>/validation-contract.json`.
 
+If a related PRD exists, write generated prototype paths or Pixso frame information back to the PRD `links.json`, or mention in DONE that a human should run `/prd design <prd-id>` to update design status.
+
 ## Phase 5: DONE
 
 Output summary:
 
-```
-🎨 /prototype complete: <task-id>
+```text
+/prototype complete: <task-id>
 
-  📐 Mode: <doc|ui|both>
-  📄 Flow diagram: .agent/prototypes/<task-id>/flow.md
-  🌐 HTML prototype: .agent/prototypes/<task-id>/prototype.html (doc path, skipped at low fidelity)
-  🖼  Pixso frames: .agent/prototypes/<task-id>/pixso-frames.json (ui path, skipped at low fidelity)
-  ✅ Validation contract: .agent/prototypes/<task-id>/validation-contract.json
+  Mode: <doc|ui|both>
+  Flow diagram: .agent/prototypes/<task-id>/flow.md
+  HTML prototype: .agent/prototypes/<task-id>/prototype.html (doc path, skipped at low fidelity)
+  Pixso frames: .agent/prototypes/<task-id>/pixso-frames.json (ui path, skipped at low fidelity)
+  Validation contract: .agent/prototypes/<task-id>/validation-contract.json
 
   Recommended next step: /arch-design (if architecture design needed) | /ship <task-id> (if implementing directly)
 ```
 
 ## Output Directory Structure
 
-```
+```text
 .agent/prototypes/<task-id>/
-├── flow.md                    # Mermaid flow diagram (always present)
-├── prototype.html             # Anime.js HTML prototype (doc path, --fidelity mid|high)
-├── pixso-frames.json          # Pixso frame links (ui path, --fidelity mid|high)
-└── validation-contract.json   # Validation contract (always present)
+├── flow.md
+├── prototype.html
+├── pixso-frames.json
+└── validation-contract.json
 ```
+

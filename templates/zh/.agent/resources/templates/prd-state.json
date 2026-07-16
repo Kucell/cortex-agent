@@ -1,0 +1,24 @@
+{
+  "prd_id": "PRD-001",
+  "title": "<title>",
+  "status": "draft",
+  "owner": "product-agent",
+  "summary": "",
+  "related_mission_id": null,
+  "related_tasks": [],
+  "design": {
+    "tool": null,
+    "status": "not_started",
+    "url": null,
+    "local_path": null,
+    "screen_count": null,
+    "export_target": null
+  },
+  "review": {
+    "decision_id": null,
+    "status": "open",
+    "reviewer": null
+  },
+  "updated_at": "<iso-time>"
+}
+

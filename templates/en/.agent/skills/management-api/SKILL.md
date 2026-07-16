@@ -35,6 +35,15 @@ node .agent/skills/management-api/scripts/index.js runs event --run-id R-T005 --
   "runs": [],
   "queues": [],
   "sessions": [],
+  "prds": [],
+  "prd_summary": {
+    "status": "not_started",
+    "design": "not_started",
+    "review": "open",
+    "completeness": 0,
+    "missing": [],
+    "current_id": null
+  },
   "worktrees": [],
   "agents": [],
   "locks": [],
@@ -106,6 +115,7 @@ Prefer these stable `events[].type` values:
 - Read from `.agent/` and Git only.
 - Only mutate `.agent/runs/*.json` through the `runs upsert` and `runs event` commands.
 - Runtime objects live under `.agent/runs/`, `.agent/queues/`, and `.agent/sessions/`.
+- PRD objects live under `.agent/prd/` or `.agent/prds/`; dashboard-state exposes `prds` and `prd_summary`.
 - Running or paused sessions whose `last_heartbeat_at` is older than five minutes are reported as `stale`.
 - Preserve compatibility with older projects by tolerating missing files.
 - If a caller needs HTML, it should render JSON itself; this skill only returns data.
