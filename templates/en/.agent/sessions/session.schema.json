@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Cortex Agent Session",
+  "type": "object",
+  "required": ["session_id", "agent_id", "role", "status", "started_at"],
+  "properties": {
+    "session_id": { "type": "string" },
+    "agent_id": { "type": "string" },
+    "role": { "type": "string" },
+    "status": { "type": "string", "enum": ["running", "paused", "closed", "stale"] },
+    "worktree_path": { "type": ["string", "null"] },
+    "started_at": { "type": "string" },
+    "last_heartbeat_at": { "type": ["string", "null"] },
+    "server": {
+      "type": "object",
+      "properties": {
+        "url": { "type": "string" },
+        "port": { "type": "number" }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Cortex Agent Run",
+  "type": "object",
+  "required": ["run_id", "kind", "status", "started_at"],
+  "properties": {
+    "run_id": { "type": "string" },
+    "task_id": { "type": ["string", "null"] },
+    "mission_id": { "type": ["string", "null"] },
+    "agent_id": { "type": ["string", "null"] },
+    "role": { "type": ["string", "null"] },
+    "kind": { "type": "string", "enum": ["plan", "implement", "validate", "merge", "handoff", "dashboard", "publish"] },
+    "status": { "type": "string", "enum": ["queued", "running", "completed", "failed", "canceled"] },
+    "worktree_path": { "type": ["string", "null"] },
+    "branch": { "type": ["string", "null"] },
+    "base_commit": { "type": ["string", "null"] },
+    "head_commit": { "type": ["string", "null"] },
+    "started_at": { "type": "string" },
+    "finished_at": { "type": ["string", "null"] },
+    "commands": { "type": "array" },
+    "artifacts": { "type": "array" },
+    "validation": { "type": "object" },
+    "next_action": { "type": ["string", "null"] }
+  },
+  "additionalProperties": true
+}
