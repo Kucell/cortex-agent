@@ -32,14 +32,32 @@
 
 这些信息必须记录到 Agent Registry 或 handoff JSON 中。
 
-## 3. 锁与写入边界
+## 3. 共享 .agent
+
+多个 worktree 必须共享同一份 `.agent` 状态目录，避免 task-progress、locks、handoffs、artifacts、dashboard 分裂。
+
+推荐方式是在子 worktree 中使用符号链接：
+
+```bash
+rm -rf <child-worktree>/.agent
+ln -s <primary-worktree>/.agent <child-worktree>/.agent
+```
+
+说明：
+
+- 不推荐硬链接目录；多数文件系统不支持目录硬链接，且容易破坏目录一致性。
+- 不要在每个 worktree 复制一份 `.agent` 后各自写入。
+- 所有 worktree 应共享同一套 `.agent/locks/`、`.agent/handoffs/`、`.agent/artifacts/` 和 `.agent/metrics/agent-dashboard.html`。
+- 如果确实需要隔离实验状态，必须在 handoff 或 coordination report 中明确说明该 worktree 不参与共享状态。
+
+## 4. 锁与写入边界
 
 - 开始写代码前必须获取 `task:<id>` 或 `file:<path>` Progress Lock。
 - 不同 worktree 仍然可能修改同一文件；worktree 不能替代锁。
 - `owned_files` 之外的改动必须先在 handoff 或 coordination report 中说明原因。
 - 如果锁冲突，停止写入并交给 coordinator 输出恢复方案。
 
-## 4. Handoff 要求
+## 5. Handoff 要求
 
 跨 worktree handoff 必须记录：
 
@@ -53,7 +71,7 @@
 
 handoff 不复制大段 diff；使用路径、commit 和 artifact 引用。
 
-## 5. 状态同步
+## 6. 状态同步
 
 多 worktree 协同必须遵循：
 
@@ -63,7 +81,7 @@ handoff 不复制大段 diff；使用路径、commit 和 artifact 引用。
 4. 合并前必须检查 registry、locks、handoff 和 git 状态是否一致。
 5. 合并后运行 `/update-refs`；若影响开发者文档，运行 `/publish-docs`。
 
-## 6. 及时提交与主线验证
+## 7. 及时提交与主线验证
 
 - 每个 worktree 完成一个可验证任务后，应立即运行 `/ship <task-id>` 或 `/commit`，不要长期保留大批未提交改动。
 - worktree 内的验证只能证明该分支局部可用；合并后必须在目标主线 worktree 再跑一次关键验证。
@@ -71,7 +89,7 @@ handoff 不复制大段 diff；使用路径、commit 和 artifact 引用。
 - 合并后，目标 worktree 应满足：功能验证通过、`git diff --check` 通过、任务计划已同步、锁已释放或转移。
 - 如果合并后验证失败，优先在合并目标 worktree 修复；若需要回到源 worktree，必须创建 handoff 说明失败证据和恢复路径。
 
-## 7. 合并顺序
+## 8. 合并顺序
 
 推荐合并顺序：
 

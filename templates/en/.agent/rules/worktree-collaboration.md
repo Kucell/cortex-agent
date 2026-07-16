@@ -32,14 +32,32 @@ Each worktree must have recoverable identity:
 
 Record these fields in Agent Registry or handoff JSON.
 
-## 3. Locks and Write Boundaries
+## 3. Shared .agent
+
+Multiple worktrees must share one `.agent` state directory so task-progress, locks, handoffs, artifacts, and dashboard state do not split.
+
+Recommended approach: create a symbolic link in child worktrees:
+
+```bash
+rm -rf <child-worktree>/.agent
+ln -s <primary-worktree>/.agent <child-worktree>/.agent
+```
+
+Notes:
+
+- Do not hard-link directories; most file systems do not support directory hard links safely.
+- Do not copy `.agent` into every worktree and let each copy diverge.
+- All worktrees should share `.agent/locks/`, `.agent/handoffs/`, `.agent/artifacts/`, and `.agent/metrics/agent-dashboard.html`.
+- If an experimental worktree intentionally uses isolated state, explain that in handoff or coordination report.
+
+## 4. Locks and Write Boundaries
 
 - Acquire `task:<id>` or `file:<path>` Progress Locks before writing code.
 - Different worktrees can still edit the same file; worktrees do not replace locks.
 - Changes outside `owned_files` must be explained in handoff or coordination reports first.
 - If a lock conflicts, stop writing and ask coordinator for recovery options.
 
-## 4. Handoff Requirements
+## 5. Handoff Requirements
 
 Cross-worktree handoff must record:
 
@@ -53,7 +71,7 @@ Cross-worktree handoff must record:
 
 Do not copy large diffs into handoffs; use paths, commits, and artifact references.
 
-## 5. State Sync
+## 6. State Sync
 
 Multi-worktree coordination must follow:
 
@@ -63,7 +81,7 @@ Multi-worktree coordination must follow:
 4. Before merge, check registry, locks, handoff, and git state for consistency.
 5. After merge, run `/update-refs`; if developer docs changed, run `/publish-docs`.
 
-## 6. Timely Commits and Mainline Validation
+## 7. Timely Commits and Mainline Validation
 
 - After each worktree completes a verifiable task, run `/ship <task-id>` or `/commit` promptly. Do not keep large uncommitted changes for long.
 - Validation inside a worktree proves only that branch's local state; after merge, rerun key validation in the target mainline worktree.
@@ -71,7 +89,7 @@ Multi-worktree coordination must follow:
 - After merge, the target worktree should pass functional validation, pass `git diff --check`, synchronize task plans, and release or transfer locks.
 - If post-merge validation fails, fix in the merge target first. If work must return to the source worktree, create a handoff with failure evidence and recovery steps.
 
-## 7. Merge Order
+## 8. Merge Order
 
 Recommended merge order:
 

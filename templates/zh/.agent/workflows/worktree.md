@@ -65,10 +65,22 @@ git worktree add ../<repo>-<task-id> -b agent/<task-id>-<slug>
 
 然后在新 worktree 中：
 
-1. 运行 `cortex-agent upgrade --lang=<lang>` 补齐 `.agent` 能力。
-2. 记录 `base_branch`、`base_commit`、`branch`、`worktree_path`。
-3. 在 registry 中 check-in。
-4. 获取任务锁，并把 `worktree_path` 和 `branch` 写入 lock metadata。
+1. 将子 worktree 的 `.agent` 链接到主 worktree 的同一份 `.agent`：
+
+```bash
+rm -rf ../<repo>-<task-id>/.agent
+ln -s "$(pwd)/.agent" ../<repo>-<task-id>/.agent
+```
+
+2. 在子 worktree 中确认 `.agent` 指向共享目录：
+
+```bash
+test -L .agent && readlink .agent
+```
+
+3. 记录 `base_branch`、`base_commit`、`branch`、`worktree_path`、`agent_state_path`。
+4. 在 registry 中 check-in。
+5. 获取任务锁，并把 `worktree_path`、`branch` 和 `agent_state_path` 写入 lock metadata。
 
 ## STATUS
 
@@ -80,6 +92,40 @@ git worktree add ../<repo>-<task-id> -b agent/<task-id>-<slug>
 4. held locks
 5. latest Artifact Bus state
 6. open handoffs
+
+必须输出状态机结果，而不是固定建议：
+
+| `worktree_state` | 判定条件 | `next_action` |
+| :--- | :--- | :--- |
+| `idle` | 没有非主 worktree、没有 active lock、没有 active agent | `/worktree plan <tasks>` |
+| `planned` | 已有任务拆分或计划，但尚未创建 worktree | `/worktree create <task-id>` |
+| `worktree_created` | worktree 已创建但无写入和无 lock | 获取 task/file lock 后 `/start-task` |
+| `in_progress` | worktree 有改动、active agent 或 held lock | 达到可验证点后 `/worktree commit <task-id>` |
+| `handoff_required` | 存在待接收 handoff 或状态不一致 | `/handoff resume <handoff>` |
+| `merge_ready` | 源 worktree 干净且已有提交，验证已记录 | `/worktree merge <task-id>` |
+| `merged` | 分支已合并但主线未验证 | `/worktree validate <task-id>` |
+| `validation_failed` | 主线验证失败 | 修复或创建 `/handoff` |
+| `validated` | 主线验证通过 | `/sync-plans`、`/update-refs` |
+| `closed` | 任务已关闭，locks 已释放 | 清理或保留 worktree |
+
+输出 JSON 必须包含：
+
+```json
+{
+  "type": "worktree_coordination_report",
+  "worktree_state": "idle | planned | worktree_created | in_progress | handoff_required | merge_ready | merged | validation_failed | validated | closed",
+  "status": "ready | blocked | merge_ready | validated",
+  "worktrees": [],
+  "locks": [],
+  "handoffs": [],
+  "human_summary": "一句话说明当前进度",
+  "blocked_reasons": [],
+  "next_action": "唯一推荐下一步",
+  "next_actions": ["可选后续动作"]
+}
+```
+
+同时输出一段人类可读摘要，说明为什么给出该 next_action。
 
 ## HANDOFF
 
