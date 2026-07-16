@@ -75,6 +75,11 @@ function rel(file) {
   return path.relative(root, file).split(path.sep).join("/");
 }
 
+function formatLocalTime(date = new Date()) {
+  const pad = (value) => String(value).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+}
+
 const I18N = {
   zh: {
     appTitle: "Agent 协作看板",
@@ -596,17 +601,32 @@ function main() {
   const sessions = Array.isArray(managed?.sessions) ? managed.sessions : [];
   const gitStatus = typeof managed?.git_status === "string" ? managed.git_status : sh("git status --short --branch");
   const derived = managed?.derived || deriveState({ worktrees, locks, handoffs, tasks, agents });
-  const generatedAt = new Date().toISOString();
+  const generatedAt = formatLocalTime();
   const activeTaskCount = tasks.filter((t) => t.status !== "done").length;
   const heldLockCount = locks.filter((l) => !l.expired).length;
   const nonMainWorktreeCount = worktrees.filter((w) => !w.isMain).length;
   const runningRuns = runs.filter((r) => r.status === "running");
-  const currentActivity = runningRuns[0]?.activity || runningRuns[0]?.last_event?.message || derived.next || "";
+  const activeAgents = agents.filter((agent) => ["running", "active", "paused"].includes(agent.status));
+  const dirtyWorktrees = worktrees.filter((worktree) => worktree.dirty);
+  const currentActivity = runningRuns[0]?.activity || runningRuns[0]?.last_event?.message || activeAgents[0]?.activity || derived.next || "";
   const activePhase = runningRuns[0]?.phase || sessions.find((s) => s.phase)?.phase || "";
   const blockedTasks = tasks.filter((t) => t.status === "blocked");
   const validationReady = tasks.length && tasks.every((t) => t.status === "done");
   const deliveryState = blockedTasks.length ? "blocked" : validationReady ? "ready" : activeTaskCount ? "in_progress" : "idle";
-  const runtimeState = sessions.some((s) => s.status === "stale") ? "stale" : runningRuns.length ? "running" : derived.state;
+  const runtimeState = sessions.some((s) => s.status === "stale")
+    ? "stale"
+    : runningRuns.length
+      ? "running"
+      : activeAgents.length
+        ? "active"
+        : "idle";
+  const worktreeState = dirtyWorktrees.length
+    ? "dirty"
+    : heldLockCount
+      ? "locked"
+      : nonMainWorktreeCount
+        ? "active"
+        : "idle";
   const recentEvents = runs.flatMap((r) => (Array.isArray(r.events) ? r.events.slice(-4).reverse().map((event) => ({ run: r, event })) : [])).slice(0, 16);
 
   const html = `<!doctype html>
@@ -628,7 +648,7 @@ main{min-width:0}.topbar{padding:20px 28px;border-bottom:1px solid var(--line);d
 .prd-item{display:flex;justify-content:space-between;gap:14px;border:1px solid var(--line);border-radius:8px;padding:12px;background:var(--panel2)}.prd-item p{margin:3px 0}.empty-panel{border:1px dashed var(--line);border-radius:8px;padding:18px;color:var(--muted)}.check-list{display:grid;gap:8px}.check-list div{display:flex;justify-content:space-between;gap:12px;border-bottom:1px solid var(--line);padding-bottom:7px}.check-list div:last-child{border-bottom:0}
 .timeline{display:grid;gap:10px}.timeline-item{display:grid;grid-template-columns:140px minmax(0,1fr);gap:12px;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:11px}.timeline-item p{margin:2px 0;color:var(--muted)}
 table{width:100%;border-collapse:collapse}th,td{padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top;text-align:left}th{color:var(--muted);font-weight:600}code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:#d9e7ff}.empty{color:var(--muted);padding:10px 0}.pill{display:inline-block;border:1px solid var(--line);border-radius:999px;padding:2px 8px;color:var(--muted);white-space:nowrap}.status-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--muted);margin-right:7px}.status-dot.running,.status-dot.in_progress,.status-dot.invoking_agent{background:var(--accent)}.status-dot.done,.status-dot.ready,.status-dot.clean,.status-dot.approved{background:var(--ok)}.status-dot.blocked,.status-dot.dirty,.status-dot.stale{background:var(--bad)}
-.done,.ready,.validated,.clean,.approved{color:var(--ok);border-color:rgba(88,214,141,.45)}.blocked,.validation_failed,.dirty,.stale{color:var(--bad);border-color:rgba(255,107,107,.45)}.active,.in_progress,.running,.merge_ready,.handoff_required,.held,.draft,.review{color:var(--warn);border-color:rgba(241,180,76,.45)}pre{white-space:pre-wrap;background:#0d1016;border:1px solid var(--line);border-radius:6px;padding:10px;overflow:auto;max-height:260px}
+.done,.ready,.validated,.clean,.approved{color:var(--ok);border-color:rgba(88,214,141,.45)}.blocked,.validation_failed,.dirty,.stale{color:var(--bad);border-color:rgba(255,107,107,.45)}.active,.in_progress,.running,.locked,.merge_ready,.handoff_required,.held,.draft,.review{color:var(--warn);border-color:rgba(241,180,76,.45)}pre{white-space:pre-wrap;background:#0d1016;border:1px solid var(--line);border-radius:6px;padding:10px;overflow:auto;max-height:260px}
 @media(max-width:1100px){.shell{display:block}aside{position:static;height:auto}.status-strip,.command-panel,.phase-rail,.lanes{grid-template-columns:1fr}.panel,.third,.quarter{grid-column:span 12}.section,.topbar{padding:16px}.timeline-item{grid-template-columns:1fr}}
 </style>
 </head>
@@ -663,8 +683,8 @@ table{width:100%;border-collapse:collapse}th,td{padding:8px 10px;border-bottom:1
       <div class="status-strip">
         ${metric("prdStatus", pill(prd.status), `${prd.completeness}% · ${esc(prd.current?.id || I18N.zh.notStarted)}`, prd.status)}
         ${metric("deliveryStatus", pill(deliveryState), `${activeTaskCount} active · ${blockedTasks.length} blocked`, deliveryState)}
-        ${metric("runtimeStatus", pill(runtimeState), `${runningRuns.length} runs · ${sessions.length} sessions`, runtimeState)}
-        ${metric("worktreeState", pill(derived.state), `${nonMainWorktreeCount} worktrees · ${heldLockCount} locks`, derived.state)}
+        ${metric("runtimeStatus", pill(runtimeState), `${runningRuns.length} runs · ${sessions.length} sessions · ${activeAgents.length} agents`, runtimeState)}
+        ${metric("worktreeState", pill(worktreeState), `${nonMainWorktreeCount} worktrees · ${heldLockCount} locks`, worktreeState)}
       </div>
     </section>
 
@@ -677,10 +697,10 @@ table{width:100%;border-collapse:collapse}th,td{padding:8px 10px;border-bottom:1
           <div class="reason" data-why-zh="${esc(derived.why)}" data-why-en="${esc(derived.whyEn)}">${esc(derived.why)}</div>
         </div>
         <div class="signal-list">
-          <div class="signal"><span data-i18n="phase">${I18N.zh.phase}</span><strong>${statusDot(activePhase || derived.state)}</strong></div>
+          <div class="signal"><span data-i18n="phase">${I18N.zh.phase}</span><strong>${statusDot(activePhase || runtimeState)}</strong></div>
           <div class="signal"><span data-i18n="prdHealth">${I18N.zh.prdHealth}</span><strong>${prd.completeness}%</strong></div>
           <div class="signal"><span data-i18n="blockedDecisions">${I18N.zh.blockedDecisions}</span><strong>${blockedTasks.length}</strong></div>
-          <div class="signal"><span data-i18n="activeAgents">${I18N.zh.activeAgents}</span><strong>${agents.length}</strong></div>
+          <div class="signal"><span data-i18n="activeAgents">${I18N.zh.activeAgents}</span><strong>${activeAgents.length}</strong></div>
         </div>
       </div>
     </section>
