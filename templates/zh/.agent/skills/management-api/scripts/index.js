@@ -523,6 +523,57 @@ function queryDashboardState() {
   };
 }
 
+function queryRuns() {
+  const runs = parseRuns();
+  return {
+    ok: true,
+    query: "runs",
+    generated_at: new Date().toISOString(),
+    runs,
+    summary: {
+      total: runs.length,
+      running: runs.filter((run) => run.status === "running").length,
+      completed: runs.filter((run) => run.status === "completed").length,
+      failed: runs.filter((run) => run.status === "failed").length,
+      canceled: runs.filter((run) => run.status === "canceled").length,
+    },
+  };
+}
+
+function queryQueues() {
+  const queues = parseQueues();
+  return {
+    ok: true,
+    query: "queues",
+    generated_at: new Date().toISOString(),
+    queues,
+    summary: {
+      total: queues.length,
+      active: queues.filter((queue) => queue.status === "active").length,
+      paused: queues.filter((queue) => queue.status === "paused").length,
+      drained: queues.filter((queue) => queue.status === "drained").length,
+      items: queues.reduce((sum, queue) => sum + (Array.isArray(queue.items) ? queue.items.length : 0), 0),
+    },
+  };
+}
+
+function querySessions() {
+  const sessions = parseSessions();
+  return {
+    ok: true,
+    query: "sessions",
+    generated_at: new Date().toISOString(),
+    sessions,
+    summary: {
+      total: sessions.length,
+      running: sessions.filter((session) => session.status === "running").length,
+      paused: sessions.filter((session) => session.status === "paused").length,
+      closed: sessions.filter((session) => session.status === "closed").length,
+      stale: sessions.filter((session) => session.status === "stale").length,
+    },
+  };
+}
+
 function printJson(payload) {
   process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);
 }
@@ -678,6 +729,18 @@ function main() {
     printJson(queryDashboardState());
     return;
   }
+  if (command === "query" && query === "runs") {
+    printJson(queryRuns());
+    return;
+  }
+  if (command === "query" && query === "queues") {
+    printJson(queryQueues());
+    return;
+  }
+  if (command === "query" && query === "sessions") {
+    printJson(querySessions());
+    return;
+  }
   if (command === "runs" && query === "upsert") {
     upsertRun();
     return;
@@ -694,7 +757,7 @@ function main() {
   printJson({
     ok: false,
     error: "unsupported_command",
-    usage: "node .agent/skills/management-api/scripts/index.js query dashboard-state | runs upsert | runs event | runs checkpoint",
+    usage: "node .agent/skills/management-api/scripts/index.js query dashboard-state|runs|queues|sessions | runs upsert | runs event | runs checkpoint",
   });
   process.exitCode = 2;
 }
