@@ -78,3 +78,4 @@ Reusable capabilities invoked by workflows or mounted on sub-agents.
 | `knowledge-lint` | Deterministic checks for knowledge structure and documentation integrity | Direct invocation |
 | `doc-gardening` | Turn knowledge lint findings into low-risk maintenance recommendations | Direct invocation |
 | `agent-dashboard` | Generate a local HTML collaboration dashboard and live-refresh server | `/agent-dashboard`, dashboard-manager |
+| `management-api` | Provide a read-only local management query layer for dashboard-state and runtime JSON | dashboard-manager, future CLI |
