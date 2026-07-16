@@ -32,6 +32,44 @@ cortex-agent upgrade --lang zh
 保留当前项目自己的 Git user.name / user.email。
 ```
 
+### GitHub 链接安装
+
+用户也可以只把 cortex-agent 的 GitHub 项目链接和目标项目路径交给 AI 助手。AI 助手按下面步骤安装本地命令并初始化目标项目：
+
+```bash
+AGENT_REPO="https://github.com/Kucell/cortex-agent.git"
+TARGET_PROJECT="/path/to/your/project"
+INSTALL_DIR="$HOME/.local/share/cortex-agent"
+
+if ! command -v cortex-agent >/dev/null 2>&1; then
+  if [ -d "$INSTALL_DIR/.git" ]; then
+    git -C "$INSTALL_DIR" pull --ff-only
+  else
+    git clone --depth 1 "$AGENT_REPO" "$INSTALL_DIR"
+  fi
+  cd "$INSTALL_DIR"
+  npm link
+fi
+
+cd "$TARGET_PROJECT"
+if [ -d ".agent" ]; then
+  cortex-agent upgrade --lang zh
+else
+  cortex-agent init --lang zh
+fi
+```
+
+适合直接发给 AI 助手的指令：
+
+```text
+这是 cortex-agent GitHub 链接：<repo-url>。
+这是目标项目路径：<project-path>。
+如果本机没有 `cortex-agent` 命令，请 clone 该 GitHub 仓库到 `$HOME/.local/share/cortex-agent` 并执行 `npm link`。
+然后进入目标项目；已有 `.agent/` 就执行 `cortex-agent upgrade --lang zh`，否则执行 `cortex-agent init --lang zh`。
+初始化后运行 `/configure` 与 `/scan-project`。
+不要修改目标项目自己的 Git user.name / user.email。
+```
+
 ### npx 临时使用
 
 ```bash
