@@ -23,6 +23,7 @@ For the full architecture design, see [docs/architecture.md](../docs/architectur
 | `/agent-update` | Add or modify rules, workflows, or skills |
 | `/scan-project` | Scan existing project, auto-generate module reference docs in `.agent/references/` |
 | `/update-refs` | After iterations, detect changed modules and incrementally update reference docs |
+| `/publish-docs` | Publish verified project knowledge into standalone developer docs under `docs/` |
 | `/parallel` | Dispatch independent tasks to sub-agents in parallel |
 | `/release` | SemVer release: analyze commits → bump version → commit + tag → npm publish |
 | `/weekly-report` | Generate weekly report from Git history |

@@ -47,4 +47,5 @@ When you have new architectural ideas or need to refactor existing modules, foll
 ## 5. Integration and Implementation
 
 - **Update Documentation**: Archive approved designs to the project's documentation library (e.g., `docs/architecture/`).
+- **Publish Developer Docs**: If the approved proposal changes developer-facing architecture, run `/publish-docs --architecture` after the proposal is finalized so `docs/` receives a sanitized, standalone version.
 - **Task Decomposition**: Convert the design solution into a specific task list and update the implementation plans under `.agent/plans/`.

@@ -9,7 +9,7 @@ description: 任务完成后的一键收尾：代码审查 → 提交 → 标记
 
 ## Phase 1 增强：状态机 + 重试控制
 
-**状态流转**：`PLAN → EXECUTE → LINT → REVIEW → COMMIT → DONE → CONTEXT_CLEANUP → ENTROPY_SCAN → KNOWLEDGE_LINT → DOC_GARDENING → CLEAN`
+**状态流转**：`PLAN → EXECUTE → LINT → REVIEW → COMMIT → DONE → CONTEXT_CLEANUP → ENTROPY_SCAN → KNOWLEDGE_LINT → DOC_GARDENING → PUBLISH_DOCS → CLEAN`
 
 **关键特性**：
 - ✅ **Phase Gate 检查**：每个转换有硬性前置条件
@@ -210,7 +210,28 @@ node .agent/skills/doc-gardening/scripts/index.js
 - 默认不阻断 `CLEAN`
 - 若存在 `P0` 项，应在交付报告中明确提示
 
-**状态流转**：`DOC_GARDENING` → `CLEAN`（最终状态）
+**状态流转**：`DOC_GARDENING` → `PUBLISH_DOCS`
+
+---
+
+### Phase 10: PUBLISH_DOCS（可选执行）
+
+DOC_GARDENING 完成后，判断本次交付是否影响开发者可读文档：
+
+- 新增或修改对外能力、模块边界、架构决策、开发命令、部署方式
+- `.agent/references/` 已由 `/scan-project` 或 `/update-refs` 刷新，且需要同步到 `docs/`
+- 用户明确要求发布 PRD、架构说明、模块说明或开发手册
+
+若命中，执行 `/publish-docs` 或 `/publish-docs --architecture`。若未命中，记录“无需发布开发者文档”并继续。
+
+**执行策略**：
+
+- 只发布当前任务相关范围，避免全量重写
+- 发布前列出来源文件、目标文件和不发布范围
+- 发布后执行 `/publish-docs` 中的链接、脱敏和 `git diff --check` 校验
+- 默认不阻断 `CLEAN`，但若发现 secrets、`.agent/` 路径泄漏或文档事实与代码不一致，必须修复后继续
+
+**状态流转**：`PUBLISH_DOCS` → `CLEAN`（最终状态）
 
 ---
 

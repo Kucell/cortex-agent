@@ -31,7 +31,10 @@ flowchart
         I --> K{模块有<br>结构变更?}
         K -->|是| L["/update-refs<br>增量更新参考文档"]
         K -->|否| J
-        L --> J([🔓 解锁下一任务])
+        L --> M{开发者文档<br>需要更新?}
+        M -->|是| N["/publish-docs<br>发布到 docs/"]
+        M -->|否| J
+        N --> J([🔓 解锁下一任务])
     end
 
     J -->|循环| E
@@ -41,7 +44,7 @@ flowchart
     style L fill:#0ea5e9,color:#fff,stroke:none
 ```
 
-**每日节奏**：`/briefing` → `/start-task` → 编码 → `/ship` → （有变更）`/update-refs` → 次日循环。
+**每日节奏**：`/briefing` → `/start-task` → 编码 → `/ship` → （有变更）`/update-refs` → （需要开发者文档）`/publish-docs` → 次日循环。
 
 ---
 
@@ -50,10 +53,10 @@ flowchart
 `/ship` 是核心交付命令，内部运行完整的 Phase Gate 状态机：
 
 ```
-PLAN → EXECUTE → LINT → REVIEW → COMMIT → DONE → CONTEXT_CLEANUP → ENTROPY_SCAN → CLEAN
+PLAN → EXECUTE → LINT → REVIEW → COMMIT → DONE → CONTEXT_CLEANUP → ENTROPY_SCAN → KNOWLEDGE_LINT → DOC_GARDENING → PUBLISH_DOCS → CLEAN
 ```
 
-每个阶段转换前执行 `phase-gate` 硬性检查，`max_retry=2` 超限阻断，`review verdict` 必须 `PASS`（score≥7，blocking_issues=0）。
+每个阶段转换前执行 `phase-gate` 硬性检查，`max_retry=2` 超限阻断，`review verdict` 必须 `PASS`（score≥7，blocking_issues=0）。`PUBLISH_DOCS` 是可选阶段，只在开发者文档受影响时发布到 `docs/`。
 
 ---
 
@@ -88,6 +91,7 @@ PLAN → EXECUTE → LINT → REVIEW → COMMIT → DONE → CONTEXT_CLEANUP →
 | `/commit` | 遵循 Conventional Commits，AI 生成提交信息 | `/commit` |
 | `/done` | 轻量版完成标记：更新路线图 `[ ]→[x]`，刷新进度百分比 | `/done T-001 T-002` |
 | `/update-refs` | 检测变更模块，增量更新 `.agent/references/`，保持知识库与代码同步 | `/update-refs` |
+| `/publish-docs` | 将 `.agent/references/` 和已完成架构提案中的知识脱敏发布到 `docs/` | `/publish-docs auth` |
 
 > 对有特殊运行时、设备、桌面端或跨机器验证要求的项目，建议用 `.agent/resources/templates/domain-validation-skill.md` 创建 `.agent/skills/validate-<domain>/SKILL.md`，并在 `validation-contract` 中引用该领域验证证据。
 
