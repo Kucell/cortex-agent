@@ -193,3 +193,11 @@ Use these templates when creating files:
 - Command logs must include exit codes or a clear reason a command was not run.
 - Handoffs must reference existing artifacts by path instead of copying bulky content.
 - The workflow must remain template-driven and platform-independent.
+
+## Runtime State Writes
+
+- `CREATE` opens coordinator session `S-<mission-id>` and checkpoints Run `R-<mission-id>` with `phase=planning`.
+- `STATUS` and `RESUME` heartbeat the same owner session with the current milestone and activity.
+- Milestone execution may use `queues upsert/item --gate mission`; validation records `done` or `blocked` only after contract evidence exists.
+- `HANDOFF` pauses the source session through `--gate handoff`; `COMPLETE` closes it through `--gate mission` and completes the Run.
+- A read-only query or Dashboard render never performs these transitions.

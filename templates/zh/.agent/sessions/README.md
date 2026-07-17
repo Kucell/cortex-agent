@@ -8,4 +8,6 @@ Session 可以包含 `phase`、`activity`、`current_run_id` 和 `current_task_i
 
 Session 写入必须经过显式 workflow 或 owner-process gate。Management API 可以在读取时派生 `stale`，但 read-only query 不得仅因为 heartbeat 过旧就回写 session status。
 
+Owner 使用相同 `agent_id` 打开并 heartbeat session。Pause/close 还需声明 `--gate owner|handoff|user|mission`；owner gate 会拒绝不匹配的 agent。
+
 写入 gate 合约见 `.agent/skills/management-api/write-gates.md`。

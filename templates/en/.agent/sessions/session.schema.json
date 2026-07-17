@@ -15,6 +15,9 @@
     "worktree_path": { "type": ["string", "null"] },
     "started_at": { "type": "string" },
     "last_heartbeat_at": { "type": ["string", "null"] },
+    "updated_at": { "type": "string", "format": "date-time" },
+    "updated_by_gate": { "type": "string", "enum": ["owner", "handoff", "user", "mission"] },
+    "closed_at": { "type": "string", "format": "date-time" },
     "server": {
       "type": "object",
       "properties": {

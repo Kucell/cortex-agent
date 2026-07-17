@@ -21,6 +21,11 @@ node .agent/skills/management-api/scripts/index.js query sessions
 node .agent/skills/management-api/scripts/index.js runs upsert --run-id R-T005 --task-id T-005 --kind implement --status running --phase decomposing --activity "正在拆分 Adapter"
 node .agent/skills/management-api/scripts/index.js runs event --run-id R-T005 --type agent_invoked --phase invoking_agent --message "已调用 editor-adapter-agent"
 node .agent/skills/management-api/scripts/index.js runs checkpoint --run-id R-T005 --task-id T-005 --type validation_started --phase validating --activity "Running focused tests"
+node .agent/skills/management-api/scripts/index.js queues upsert --queue-id Q-batch-1 --gate parallel --name "Batch 1" --concurrency-limit 2
+node .agent/skills/management-api/scripts/index.js queues item --queue-id Q-batch-1 --gate parallel --task-id T-005 --state running --run-id R-T005
+node .agent/skills/management-api/scripts/index.js sessions open --session-id S-dashboard --agent-id dashboard-manager --role dashboard-manager
+node .agent/skills/management-api/scripts/index.js sessions heartbeat --session-id S-dashboard --agent-id dashboard-manager --activity "Refreshing dashboard"
+node .agent/skills/management-api/scripts/index.js sessions close --session-id S-dashboard --agent-id dashboard-manager --gate owner
 ```
 
 ## Output Contract
@@ -127,7 +132,8 @@ Prefer these stable `events[].type` values:
 - Keep this skill zero dependency.
 - Read from `.agent/` and Git only.
 - Only mutate `.agent/runs/*.json` through the `runs upsert`, `runs event`, and `runs checkpoint` commands.
-- Queue/session mutations require workflow gates; see `write-gates.md`.
+- Queue mutations require `--gate parallel|worktree|approve|mission`; session heartbeats require the recorded owner, while pause/close require `--gate owner|handoff|user|mission`.
+- Runtime JSON writes use a temporary sibling file followed by atomic rename; read-only queries never write derived stale state.
 - Runtime objects live under `.agent/runs/`, `.agent/queues/`, and `.agent/sessions/`.
 - PRD objects live under `.agent/prd/` or `.agent/prds/`; dashboard-state exposes `prds` and `prd_summary`.
 - Running or paused sessions whose `last_heartbeat_at` is older than five minutes are reported as `stale`.

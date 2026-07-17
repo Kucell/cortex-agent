@@ -9,8 +9,12 @@ Management API is query-first. Runtime mutations must stay narrow, explicit, and
 | `runs checkpoint` | `.agent/runs/*.json` | Append/upsert observable execution state. |
 | `runs upsert` | `.agent/runs/*.json` | Low-level run state upsert for specialized callers. |
 | `runs event` | `.agent/runs/*.json` | Low-level append-only event writer. |
+| `queues upsert --gate ...` | `.agent/queues/*.json` | Create or update a workflow-owned queue. |
+| `queues item --gate ...` | `.agent/queues/*.json` | Update one task item under its owning workflow. |
+| `sessions open/heartbeat` | `.agent/sessions/*.json` | Owner-process lifecycle and heartbeat. |
+| `sessions pause/close --gate ...` | `.agent/sessions/*.json` | Explicit owner, handoff, user, or mission transition. |
 
-No Management API command may directly mutate task-progress, locks, worktrees, proposals, queues, or sessions unless a future milestone adds an explicit workflow gate.
+No Management API command may directly mutate task-progress, locks, worktrees, or proposals. Queue/session commands reject missing or invalid gates, and heartbeats reject a mismatched owner.
 
 ## Queue Write Gates
 
@@ -43,6 +47,7 @@ Management API may report stale sessions from read-time derivation. It should no
 ## Safety Rules
 
 - All queue/session write gates must be additive to current read behavior.
+- Persist runtime JSON through atomic replacement; do not leave partial files visible to readers.
 - Every mutating gate must have a human-readable reason and timestamp.
 - Risky actions require `/approve` or an explicit user command.
 - Dashboard controls may request a decision; they must not directly mutate queue/session state.

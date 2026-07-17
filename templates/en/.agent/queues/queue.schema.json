@@ -8,6 +8,8 @@
     "name": { "type": "string" },
     "status": { "type": "string", "enum": ["active", "paused", "drained"] },
     "concurrency_limit": { "type": "number" },
+    "updated_at": { "type": "string", "format": "date-time" },
+    "updated_by_gate": { "type": "string", "enum": ["parallel", "worktree", "approve", "mission"] },
     "items": {
       "type": "array",
       "items": {

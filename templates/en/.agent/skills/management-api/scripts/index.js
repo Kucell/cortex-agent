@@ -52,7 +52,13 @@ function readJson(file) {
 
 function writeJson(file, data) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(file, `${JSON.stringify(data, null, 2)}\n`, "utf8");
+  const temp = `${file}.${process.pid}.${Date.now()}.tmp`;
+  try {
+    fs.writeFileSync(temp, `${JSON.stringify(data, null, 2)}\n`, "utf8");
+    fs.renameSync(temp, file);
+  } finally {
+    if (fs.existsSync(temp)) fs.unlinkSync(temp);
+  }
 }
 
 function option(name, fallback = null) {
@@ -88,6 +94,22 @@ function safeId(value, prefix) {
 
 function runFile(runId) {
   return path.join(agentRoot, "runs", `${safeId(runId, "R")}.json`);
+}
+
+function queueFile(queueId) {
+  return path.join(agentRoot, "queues", `${safeId(queueId, "Q")}.json`);
+}
+
+function sessionFile(sessionId) {
+  return path.join(agentRoot, "sessions", `${safeId(sessionId, "S")}.json`);
+}
+
+function requireGate(allowed) {
+  const gate = option("--gate");
+  if (!allowed.includes(gate)) {
+    fail("workflow_gate_required", `--gate must be one of: ${allowed.join(", ")}`);
+  }
+  return gate;
 }
 
 function normalizePhase(phase) {
@@ -723,6 +745,138 @@ function checkpointRun() {
   printJson({ ok: true, action: "runs checkpoint", path: rel(file), event, run: next });
 }
 
+function upsertQueue() {
+  const gate = requireGate(["parallel", "worktree", "approve", "mission"]);
+  const payload = parsePayload();
+  const queueId = safeId(option("--queue-id", payload.queue_id), "Q");
+  const file = queueFile(queueId);
+  const existing = readJson(file) || {};
+  const timestamp = nowIso();
+  const next = {
+    ...existing,
+    ...payload,
+    queue_id: queueId,
+    name: option("--name", payload.name ?? existing.name ?? queueId),
+    status: option("--status", payload.status ?? existing.status ?? "active"),
+    concurrency_limit: Number(option("--concurrency-limit", payload.concurrency_limit ?? existing.concurrency_limit ?? 1)),
+    items: Array.isArray(payload.items) ? payload.items : Array.isArray(existing.items) ? existing.items : [],
+    updated_at: timestamp,
+    updated_by_gate: gate,
+  };
+  if (!["active", "paused", "drained"].includes(next.status)) fail("invalid_queue_status", next.status);
+  writeJson(file, next);
+  printJson({ ok: true, action: "queues upsert", path: rel(file), queue: next });
+}
+
+function updateQueueItem() {
+  const gate = requireGate(["parallel", "worktree", "approve", "mission"]);
+  const payload = parsePayload();
+  const queueId = safeId(option("--queue-id", payload.queue_id), "Q");
+  const taskId = option("--task-id", payload.task_id);
+  if (!taskId) fail("task_id_required", "--task-id is required");
+  const file = queueFile(queueId);
+  const existing = readJson(file);
+  if (!existing) fail("queue_not_found", queueId, 1);
+  const timestamp = nowIso();
+  const item = {
+    ...payload,
+    task_id: taskId,
+    state: option("--state", payload.state || "queued"),
+    phase: option("--phase", payload.phase ?? null),
+    activity: option("--activity", payload.activity ?? null),
+    worktree_path: option("--worktree-path", payload.worktree_path ?? null),
+    agent_id: option("--agent-id", payload.agent_id ?? null),
+    run_id: option("--run-id", payload.run_id ?? null),
+    updated_at: timestamp,
+  };
+  if (!["queued", "running", "blocked", "done"].includes(item.state)) fail("invalid_queue_item_state", item.state);
+  const items = Array.isArray(existing.items) ? existing.items : [];
+  const index = items.findIndex((candidate) => candidate.task_id === taskId);
+  const nextItems = [...items];
+  if (index === -1) nextItems.push(item);
+  else nextItems[index] = { ...nextItems[index], ...item };
+  const next = { ...existing, items: nextItems, updated_at: timestamp, updated_by_gate: gate };
+  writeJson(file, next);
+  printJson({ ok: true, action: "queues item", path: rel(file), item, queue: next });
+}
+
+function openSession() {
+  const payload = parsePayload();
+  const sessionId = safeId(option("--session-id", payload.session_id), "S");
+  const agentId = option("--agent-id", payload.agent_id);
+  const role = option("--role", payload.role);
+  if (!agentId || !role) fail("session_owner_required", "--agent-id and --role are required");
+  const file = sessionFile(sessionId);
+  const existing = readJson(file);
+  if (existing && existing.agent_id !== agentId) fail("session_owner_mismatch", sessionId, 1);
+  const timestamp = nowIso();
+  const next = {
+    ...(existing || {}),
+    ...payload,
+    session_id: sessionId,
+    agent_id: agentId,
+    role,
+    status: "running",
+    phase: option("--phase", payload.phase ?? existing?.phase ?? null),
+    activity: option("--activity", payload.activity ?? existing?.activity ?? null),
+    current_run_id: option("--run-id", payload.current_run_id ?? existing?.current_run_id ?? null),
+    current_task_id: option("--task-id", payload.current_task_id ?? existing?.current_task_id ?? null),
+    worktree_path: option("--worktree-path", payload.worktree_path ?? existing?.worktree_path ?? null),
+    started_at: existing?.started_at || option("--started-at", payload.started_at ?? timestamp),
+    last_heartbeat_at: timestamp,
+    updated_at: timestamp,
+  };
+  writeJson(file, next);
+  printJson({ ok: true, action: "sessions open", path: rel(file), session: next });
+}
+
+function heartbeatSession() {
+  const payload = parsePayload();
+  const sessionId = safeId(option("--session-id", payload.session_id), "S");
+  const agentId = option("--agent-id", payload.agent_id);
+  const file = sessionFile(sessionId);
+  const existing = readJson(file);
+  if (!existing) fail("session_not_found", sessionId, 1);
+  if (!agentId || existing.agent_id !== agentId) fail("session_owner_mismatch", sessionId, 1);
+  const timestamp = nowIso();
+  const next = {
+    ...existing,
+    phase: option("--phase", payload.phase ?? existing.phase ?? null),
+    activity: option("--activity", payload.activity ?? existing.activity ?? null),
+    current_run_id: option("--run-id", payload.current_run_id ?? existing.current_run_id ?? null),
+    current_task_id: option("--task-id", payload.current_task_id ?? existing.current_task_id ?? null),
+    status: existing.status === "paused" ? "paused" : "running",
+    last_heartbeat_at: timestamp,
+    updated_at: timestamp,
+  };
+  writeJson(file, next);
+  printJson({ ok: true, action: "sessions heartbeat", path: rel(file), session: next });
+}
+
+function transitionSession(status) {
+  const gate = requireGate(["owner", "handoff", "user", "mission"]);
+  const payload = parsePayload();
+  const sessionId = safeId(option("--session-id", payload.session_id), "S");
+  const agentId = option("--agent-id", payload.agent_id);
+  const file = sessionFile(sessionId);
+  const existing = readJson(file);
+  if (!existing) fail("session_not_found", sessionId, 1);
+  if (gate === "owner" && (!agentId || existing.agent_id !== agentId)) fail("session_owner_mismatch", sessionId, 1);
+  const timestamp = nowIso();
+  const next = {
+    ...existing,
+    status,
+    phase: option("--phase", payload.phase ?? existing.phase ?? null),
+    activity: option("--activity", payload.activity ?? existing.activity ?? null),
+    last_heartbeat_at: timestamp,
+    updated_at: timestamp,
+    updated_by_gate: gate,
+  };
+  if (status === "closed") next.closed_at = timestamp;
+  writeJson(file, next);
+  printJson({ ok: true, action: `sessions ${status === "closed" ? "close" : "pause"}`, path: rel(file), session: next });
+}
+
 function main() {
   const [command, query] = args;
   if (command === "query" && query === "dashboard-state") {
@@ -753,11 +907,35 @@ function main() {
     checkpointRun();
     return;
   }
+  if (command === "queues" && query === "upsert") {
+    upsertQueue();
+    return;
+  }
+  if (command === "queues" && query === "item") {
+    updateQueueItem();
+    return;
+  }
+  if (command === "sessions" && query === "open") {
+    openSession();
+    return;
+  }
+  if (command === "sessions" && query === "heartbeat") {
+    heartbeatSession();
+    return;
+  }
+  if (command === "sessions" && query === "pause") {
+    transitionSession("paused");
+    return;
+  }
+  if (command === "sessions" && query === "close") {
+    transitionSession("closed");
+    return;
+  }
 
   printJson({
     ok: false,
     error: "unsupported_command",
-    usage: "node .agent/skills/management-api/scripts/index.js query dashboard-state|runs|queues|sessions | runs upsert | runs event | runs checkpoint",
+    usage: "node .agent/skills/management-api/scripts/index.js query dashboard-state|runs|queues|sessions | runs upsert|event|checkpoint | queues upsert|item | sessions open|heartbeat|pause|close",
   });
   process.exitCode = 2;
 }

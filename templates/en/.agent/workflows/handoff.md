@@ -79,3 +79,9 @@ T-C06 handoff output is dual-format:
 - It must avoid duplicating plans, PRDs, commits, diffs, ADRs, and API docs.
 - JSON handoff payloads must be valid before publish.
 - Artifact Bus publish is skipped only when the bus is not installed or the task deliberately stays human-only.
+
+## Session Transition
+
+- After publishing a handoff, pause the source owner session with `sessions pause --session-id <id> --gate handoff --activity "Handoff published"`.
+- On resume, the target opens its own session or heartbeats an existing owner-matched session; it must not refresh the source owner heartbeat.
+- Session transition evidence must reference the handoff and active Run; stale remains a read-time derived status.

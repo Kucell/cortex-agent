@@ -79,3 +79,9 @@ T-C06 handoff 输出为双格式：
 - handoff 不得重复复制 plan、PRD、commit、diff、ADR 和 API 文档。
 - JSON handoff payload 必须先通过验证再发布。
 - 只有 Artifact Bus 未安装，或任务明确保持 human-only 时，才跳过 Artifact Bus 发布。
+
+## Session 转换
+
+- handoff 发布后，使用 `sessions pause --session-id <id> --gate handoff --activity "Handoff published"` pause 来源 owner session。
+- resume 时由目标 Agent 打开自己的 session，或 heartbeat 与其 owner 匹配的 session；不得刷新来源 owner heartbeat。
+- Session 转换证据必须引用 handoff 和 active Run；`stale` 仍然只在读取时派生。

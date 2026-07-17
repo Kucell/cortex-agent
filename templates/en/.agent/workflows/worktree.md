@@ -209,3 +209,10 @@ After merge and validation pass:
 - `/mission`: milestones may map to one or more worktrees.
 - `/handoff`: the only formal cross-worktree context transfer path.
 - `/ship`: closes each worktree task.
+
+## Queue And Session Runtime Writes
+
+- `/worktree plan` creates a batch with `queues upsert --gate worktree`; after worktree creation and lock acquisition, `queues item --gate worktree` records the running task, path, agent, and run.
+- `/worktree commit` marks an item `done` only after validation evidence exists. Failures become `blocked`; never delete an item to hide failure.
+- A long-running worktree owner may open and heartbeat a Session, then pause or close it through owner or handoff gates.
+- Queue and Session writes must agree with Run checkpoints and lock state.
