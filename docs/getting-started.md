@@ -101,6 +101,10 @@ npx cortex-agent init --global
 | `cortex-agent track` | 开启 Git 追踪：移除本地忽略，自动 `git add .agent` |
 | `cortex-agent untrack` | 关闭 Git 追踪：`git rm --cached` + 写入本地忽略，不删除文件 |
 | `cortex-agent doctor` | 健康检查：验证 `.agent`/`AGENTS.md`/`GEMINI.md` 识别与 Git 状态 |
+| `cortex-agent runs list` | 通过 Management API 列出最近的 Run，输出 JSON |
+| `cortex-agent runs show <run-id>` | 从 Management API read model 查看指定 Run，输出 JSON |
+| `cortex-agent queues list` | 通过 Management API 列出 Queue，输出 JSON |
+| `cortex-agent sessions list` | 通过 Management API 列出 Session（包括查询时派生的 stale 状态），输出 JSON |
 | `cortex-agent add <platform>` | 添加平台集成（如 `cline`、`roo`、`codex`）|
 | `cortex-agent remove <platform>` | 移除平台集成 |
 | `cortex-agent list` | 列出当前已安装的平台集成 |

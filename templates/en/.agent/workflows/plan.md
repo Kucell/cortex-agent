@@ -67,7 +67,19 @@ T-008  [P2]  Add login rate limiting (5 req/min)
 Write these tasks to the plan? (y / adjust / cancel)
 ```
 
-### Step 3: Write to task-progress.md
+### Step 3: Write The Task Pipeline
+
+After confirmation, create or update `.agent/tasks/<task-id>.json` for every new task and synchronize `.agent/tasks/index.json`. Follow `.agent/tasks/README.md` and `task.schema.json`:
+
+1. Record the title, description, priority, acceptance criteria, dependencies, subtasks, source references, recommended owner, and validation commands.
+2. Append the requirement and acceptance boundary as a final `spec` artifact under `.agent/artifacts/<task-id>/`; the task stores only the canonical `kind: spec` and its reference. For compatibility with the current Artifact Bus, use `kind: plan` plus `payload.artifact_kind: spec`.
+3. Append the confirmed breakdown as a final `plan` artifact, including dependencies, writable and forbidden scope, and validation commands.
+4. Advance to `spec` after the `draft -> spec` gate passes. The `spec -> plan` gate passes only when final `spec` and final `plan` artifacts exist. When `architecture_required = true`, it also requires a user-approved final `architecture` artifact.
+5. If a gate is not satisfied, keep the current stage, mark the gate `blocked`, and record the missing evidence. Never skip stages or copy artifact bodies into task JSON.
+
+For older projects without `.agent/tasks/`, add the template directory and index first. Do not rewrite existing task-progress entries or write task records through Management API.
+
+### Step 4: Write to task-progress.md
 
 After user confirmation:
 
@@ -75,7 +87,7 @@ After user confirmation:
 2. Append new task rows to the **Active Tasks** table (default progress: 0%); if from a proposal, each row includes `Proposal: <path>`; for a project entry, also record the milestone and child proposal ID
 3. Update the `Last Updated` date in the file header
 
-### Step 4: Back-fill the proposal (if --from-proposal was used)
+### Step 5: Back-fill the proposal (if --from-proposal was used)
 
 If this `/plan` was dispatched by `/approve` (or the user passed `--from-proposal` directly), update only the approved scope:
 
@@ -87,10 +99,11 @@ If this `/plan` was dispatched by `/approve` (or the user passed `--from-proposa
 > **Execution Vehicle**: T-006~T-008
 ```
 
-### Step 5: Output Action Suggestion
+### Step 6: Output Action Suggestion
 
 ```
 ✅ Written 3 tasks (T-006 ~ T-008)
+Task pipeline: T-006 ~ T-008 are at the plan stage
 🔗 Proposal execution vehicle back-filled: T-006~T-008
 📌 Suggested next step: /start-task T-006
 ```

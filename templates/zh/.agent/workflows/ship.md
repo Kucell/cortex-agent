@@ -17,6 +17,23 @@ description: 任务完成后的一键收尾：代码审查 → 提交 → 标记
 - ✅ **Auto Rollback**：失败时自动回滚到上一稳定状态
 - ✅ **成本可控**：基于 `cost_mode` 选择模型（balanced 模式默认）
 
+## 任务流水线接入
+
+`/ship` 执行前读取 `.agent/tasks/<task-id>.json` 与 `.agent/tasks/README.md`。存在任务记录时，task pipeline gate 是阶段推进的权威依据；`task-progress.md` 继续用于路线图展示。旧任务没有记录时保留传统流程，但必须在报告中注明“未启用 task pipeline”，不得伪造已通过的 gate。
+
+状态机与 task stage 的映射如下：
+
+| `/ship` 状态 | Task stage / artifact 动作 |
+| :--- | :--- |
+| `PLAN -> EXECUTE` | 检查 `plan -> implement`：依赖均为 `done`，final `plan` 与条件性的 final `architecture` 工件存在；通过后进入 `implement`。 |
+| `EXECUTE -> LINT` | 追加 final `implementation` 工件，引用 diff、commit 或执行报告；通过 `implement -> validate`。 |
+| `LINT -> REVIEW` | lint、测试和安全检查通过后追加 final `validation` 工件；通过 `validate -> review`。失败时 gate 为 `blocked`，stage 保持 `validate`。 |
+| `REVIEW -> COMMIT` | 追加 final `review` 工件。存在 Must Fix 时保持 `review` 并阻断；`--no-review` 仅在用户显式选择时记录 `waived` gate 和原因。 |
+| `COMMIT -> DONE` | 检查 review 结论、提交证据，以及条件性的 `release-note` / `published-doc` 要求；通过 `review -> done` 后设置 `status: completed`。 |
+| `PUBLISH_DOCS` | 若执行文档发布，消费 final 工件并把 `/publish-docs` 返回的 final `published-doc` 引用回填任务；不单独改变 stage。 |
+
+每次变更同步任务文件、`.agent/tasks/index.json`、`updated_at` 和 gate `evidence_refs`。工件正文保持在 `.agent/artifacts/<task-id>/` 或其原始真理源中；任务文件只保存规范 kind 与引用。失败后追加修复工件并重检当前 gate，不倒退 stage、不覆盖旧工件，也不通过 Management API 直接修改任务。
+
 ## 使用方式
 
 ```

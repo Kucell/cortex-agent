@@ -15,6 +15,9 @@ const {
   untrackAgent,
   linkGlobal,
   doctor,
+  runs,
+  queues,
+  sessions,
   printHelp,
 } = require("../lib/commands");
 
@@ -80,6 +83,9 @@ const ctx = { cwd, args, command, options, lang, templateDir };
     case "untrack":     untrackAgent(ctx); break;
     case "link-global": linkGlobal(ctx); break;
     case "doctor":      await doctor(ctx); break;
+    case "runs":        runs(ctx); break;
+    case "queues":      queues(ctx); break;
+    case "sessions":    sessions(ctx); break;
     default:            printHelp(); break;
   }
 })();
