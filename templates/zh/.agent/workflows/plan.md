@@ -67,7 +67,19 @@ T-008  [P2]  添加登录限流（5次/分钟）
 是否将以上任务写入计划？(y / 调整 / 取消)
 ```
 
-### 第三步：写入 task-progress.md
+### 第三步：写入任务流水线
+
+用户确认后，为每个新任务创建或更新 `.agent/tasks/<task-id>.json`，并同步 `.agent/tasks/index.json`。遵循 `.agent/tasks/README.md` 与 `task.schema.json`：
+
+1. 先记录标题、描述、优先级、验收标准、依赖、子任务、来源引用、推荐 owner 和验证命令。
+2. 将需求与验收边界作为 final `spec` 工件追加到 `.agent/artifacts/<task-id>/`，任务文件只记录规范 `kind: spec` 和引用；兼容现有 Artifact Bus 时使用 `kind: plan` + `payload.artifact_kind: spec`。
+3. 将确认后的拆解结果作为 final `plan` 工件追加，并记录依赖、可写范围、不可写范围和验证命令。
+4. `draft -> spec` gate 通过后进入 `spec`；`spec -> plan` gate 只有在 final `spec`、final `plan` 均存在时才能通过。若 `architecture_required = true`，还必须引用用户批准的 final `architecture` 工件。
+5. Gate 未满足时保持当前 stage，将 gate 标为 `blocked` 并记录缺失证据；不得跳过阶段或把 artifact 正文复制进任务 JSON。
+
+旧项目没有 `.agent/tasks/` 时，先按模板新增目录和索引；不要重写已有 task-progress 条目，也不要通过 Management API 直接写任务记录。
+
+### 第四步：写入 task-progress.md
 
 用户确认后：
 
@@ -75,7 +87,7 @@ T-008  [P2]  添加登录限流（5次/分钟）
 2. 在 **活跃任务表** 中追加新任务行（进度默认 0%）；若来自提案，每行带 `Proposal: <路径>` 引用；若来自项目级入口，同时记录 milestone 与子提案 ID
 3. 更新文件头部的 `最后更新` 日期
 
-### 第四步：回填提案（若来自 --from-proposal）
+### 第五步：回填提案（若来自 --from-proposal）
 
 若本次 `/plan` 由 `/approve` 调度（或用户手动传入 `--from-proposal`），只回填本次批准范围：
 
@@ -87,10 +99,11 @@ T-008  [P2]  添加登录限流（5次/分钟）
 > **执行载体**: T-006~T-008
 ```
 
-### 第五步：输出行动建议
+### 第六步：输出行动建议
 
 ```
 ✅ 已写入 3 个任务（T-006 ~ T-008）
+任务流水线：T-006 ~ T-008 已进入 plan stage
 🔗 提案执行载体已回填：T-006~T-008
 📌 建议下一步：/start-task T-006
 ```

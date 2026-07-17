@@ -17,6 +17,23 @@ description: 任务完成后的一键收尾：代码审查 → 提交 → 标记
 - ✅ **Auto Rollback**：失败时自动回滚到上一稳定状态
 - ✅ **成本可控**：基于 `cost_mode` 选择模型（balanced 模式默认）
 
+## Task Pipeline Integration
+
+Before running, `/ship` reads `.agent/tasks/<task-id>.json` and `.agent/tasks/README.md`. When a task record exists, task pipeline gates are authoritative for stage advancement; `task-progress.md` remains the human roadmap. Preserve the legacy flow for old tasks without records, but report that the task pipeline is not enabled and never fabricate passed gates.
+
+Map the state machine to task stages as follows:
+
+| `/ship` state | Task stage / artifact action |
+| :--- | :--- |
+| `PLAN -> EXECUTE` | Check `plan -> implement`: dependencies are at `done`, and final `plan` plus any conditional final `architecture` artifacts exist; then enter `implement`. |
+| `EXECUTE -> LINT` | Append a final `implementation` artifact referencing the diff, commit, or execution report; pass `implement -> validate`. |
+| `LINT -> REVIEW` | After lint, tests, and security checks pass, append a final `validation` artifact and pass `validate -> review`. On failure, mark the gate `blocked` and keep stage `validate`. |
+| `REVIEW -> COMMIT` | Append a final `review` artifact. Must Fix findings keep stage `review` and block progress; `--no-review` records a `waived` gate and reason only when explicitly chosen by the user. |
+| `COMMIT -> DONE` | Check the review verdict, commit evidence, and conditional `release-note` / `published-doc` requirements; after `review -> done` passes, set `status: completed`. |
+| `PUBLISH_DOCS` | When docs are published, consume final artifacts and add the final `published-doc` reference returned by `/publish-docs`; do not change stage independently. |
+
+Synchronize the task file, `.agent/tasks/index.json`, `updated_at`, and gate `evidence_refs` after each mutation. Artifact bodies stay under `.agent/artifacts/<task-id>/` or their original source of truth; task files store only canonical kinds and references. After failure, append remediation artifacts and recheck the current gate without regressing the stage, overwriting old artifacts, or mutating tasks through Management API.
+
 ## 使用方式
 
 ```

@@ -37,6 +37,7 @@ Source files:
   - .agent/references/<module>.md
   - .agent/plans/proposals/<topic>/<proposal>.md
   - .agent/plans/proposals/projects/<project-slug>/index.md
+  - final artifacts referenced by .agent/tasks/<task-id>.json
   - <code paths used for verification>
 
 Target files:
@@ -55,6 +56,7 @@ Scope rules:
 4. Re-check the current code for paths, APIs, commands, dependencies, and configuration
 5. If `.agent/references/` is missing or stale, suggest `/scan-project` or `/update-refs` first
 6. If no module is specified, only handle modules related to the current task or git diff
+7. When `.agent/tasks/<task-id>.json` exists, consume only `architecture`, `validation`, `decision`, `learning`, and `release-note` entries whose `status` is `final` and whose referenced files exist. Never publish draft, superseded, or gate-blocked artifacts
 
 Project-level publishing order:
 
@@ -148,10 +150,22 @@ Also manually confirm:
 - The diff does not include unrelated code changes
 - No secrets, machine credentials, temporary logs, or internal governance details were published
 
+### Step 7: Record The Published Artifact
+
+When the current task uses the task pipeline:
+
+1. Append an artifact under `.agent/artifacts/<task-id>/` with envelope `kind: note` and `payload.artifact_kind: published-doc`. Keep the payload to target doc paths, source artifact refs, and validation command summaries and results.
+2. Add the returned path to `.agent/tasks/<task-id>.json` as canonical `kind: published-doc` with `status: final`, then synchronize `.agent/tasks/index.json` and `updated_at`.
+3. When `published-doc` is a conditional `review -> done` requirement, add the reference to that gate's `evidence_refs`; otherwise record the artifact without changing the task stage.
+4. Do not create a final artifact when sanitization or factual validation fails. Keep the gate blocked, fix the issue, and append a new publishing artifact without overwriting history.
+
+`/publish-docs` cannot independently mark a task `done` and cannot mutate task records through Management API.
+
 ## Workflow Integration
 
 - `/scan-project`: creates `.agent/references/` during initial setup and feeds `/publish-docs`
 - `/update-refs`: refreshes the fact base after iteration or refactoring before docs are published
 - `/arch-design`: after an architecture proposal is approved, call `/publish-docs --architecture` for developer-facing architecture docs
 - `/ship`: after `/update-refs`, enter the optional `PUBLISH_DOCS` phase when user-facing docs are affected
+- `.agent/tasks/`: consume finalized task artifacts and record a final `published-doc` reference for `/ship` gates
 - `/agent-update`: maintains this workflow or project-local docs mapping rules

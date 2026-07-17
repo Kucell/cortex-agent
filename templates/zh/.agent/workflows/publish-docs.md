@@ -37,6 +37,7 @@ description: 将 .agent/references 与已完成架构提案中的项目知识，
   - .agent/references/<module>.md
   - .agent/plans/proposals/<topic>/<proposal>.md
   - .agent/plans/proposals/projects/<project-slug>/index.md
+  - .agent/tasks/<task-id>.json 中引用的 final artifacts
   - <code paths used for verification>
 
 目标文件：
@@ -55,6 +56,7 @@ description: 将 .agent/references 与已完成架构提案中的项目知识，
 4. 必须回到当前代码重新验证路径、接口、命令、依赖和配置
 5. 若 `.agent/references/` 不存在或明显过期，先建议运行 `/scan-project` 或 `/update-refs`
 6. 若用户没有指定模块，只处理当前任务或 git diff 涉及的模块
+7. 若当前任务存在 `.agent/tasks/<task-id>.json`，只消费 `artifacts[]` 中 `status: final` 且引用文件存在的 `architecture`、`validation`、`decision`、`learning`、`release-note` 工件；draft、superseded 或 gate 未通过的工件不得发布
 
 项目级发布顺序：
 
@@ -148,10 +150,22 @@ git diff --check
 - 本次 diff 没有夹带无关代码改动
 - 没有发布 secrets、机器凭证、临时日志或内部治理细节
 
+### 第七步：回填发布工件
+
+若当前任务启用了 task pipeline：
+
+1. 向 `.agent/artifacts/<task-id>/` 追加 envelope `kind: note`、`payload.artifact_kind: published-doc` 的工件，payload 只包含目标文档路径、来源 artifact refs、验证命令摘要和结果。
+2. 在 `.agent/tasks/<task-id>.json` 的 `artifacts[]` 中加入规范 `kind: published-doc`、`status: final` 和返回的 artifact 路径，并同步 `.agent/tasks/index.json` 与 `updated_at`。
+3. 若 `published-doc` 是 `review -> done` 的条件性要求，把引用加入该 gate 的 `evidence_refs`；否则只记录工件，不改变 task stage。
+4. 脱敏或事实校验失败时不得创建 final 工件；保持 gate blocked，修复后追加新的发布工件，不覆盖旧记录。
+
+`/publish-docs` 不能独立把任务标为 `done`，也不能通过 Management API 修改任务记录。
+
 ## 与其他工作流的协作
 
 - `/scan-project`：首次接入时生成 `.agent/references/`，为 `/publish-docs` 提供事实源
 - `/update-refs`：功能迭代或重构后刷新事实源，再决定是否发布到 `docs/`
 - `/arch-design`：架构提案确认完成后，可调用 `/publish-docs --architecture` 输出开发者可读的架构文档
 - `/ship`：交付闭环中完成 `/update-refs` 后，若用户可读文档受影响，进入可选 `PUBLISH_DOCS` 阶段
+- `.agent/tasks/`：消费已定稿任务工件，并回填 final `published-doc` 引用供 `/ship` gate 使用
 - `/agent-update`：维护本工作流或项目本地的 docs 目录映射规则

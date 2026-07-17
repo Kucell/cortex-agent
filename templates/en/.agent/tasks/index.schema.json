@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Cortex Agent Task Index",
+  "type": "object",
+  "required": ["tasks"],
+  "properties": {
+    "tasks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["task_id", "path", "status", "stage", "updated_at"],
+        "properties": {
+          "task_id": { "type": "string", "minLength": 1 },
+          "path": { "type": "string", "pattern": "^\\.agent/tasks/[^/]+\\.json$" },
+          "title": { "type": "string" },
+          "status": { "type": "string", "enum": ["draft", "active", "blocked", "completed", "canceled"] },
+          "stage": { "type": "string", "enum": ["draft", "spec", "plan", "implement", "validate", "review", "done"] },
+          "priority": { "type": "string", "enum": ["P0", "P1", "P2", "P3"] },
+          "updated_at": { "type": "string", "format": "date-time" }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

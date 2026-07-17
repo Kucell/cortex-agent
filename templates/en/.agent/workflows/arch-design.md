@@ -61,7 +61,15 @@ When you have new architectural ideas or need to refactor existing modules, foll
 - **Present Conclusions**: Show the comparison analysis results to the user and provide the AI's recommendation.
 - **Wait for Confirmation**: Fine-tune or confirm the solution based on user feedback.
 
-## 5. Integration and Implementation
+## 5. Task Pipeline And Architecture Artifact
+
+- **Resolve task context**: If the design belongs to an existing task, read `.agent/tasks/<task-id>.json`. Otherwise create a `draft` task record only after the scope and acceptance criteria are known, and synchronize `.agent/tasks/index.json`.
+- **Append the artifact**: Store the proposal in its normal proposal path, then append an Artifact Bus entry using envelope `kind: plan` and `payload.artifact_kind: architecture`. Add the resulting path to the task as canonical `kind: architecture`, initially with `status: draft`.
+- **Approval gate**: User confirmation is required before changing the task artifact to `status: final`. Record the approval evidence in the artifact summary or refs; do not change proposal status as an implicit side effect.
+- **Advance deliberately**: `/arch-design` may pass `draft -> spec` when the task contract is complete. It must not pass `spec -> plan`; `/plan` owns that gate and must verify the final architecture artifact when `architecture_required = true`.
+- **Handle revision**: A rejected or replaced design remains referenced as `superseded`. Do not delete or overwrite prior artifacts, regress the task stage, or advance a blocked gate.
+
+## 6. Integration and Implementation
 
 - **Update Documentation**: Archive approved designs to the project's documentation library (e.g., `docs/architecture/`).
 - **Publish Developer Docs**: If the approved proposal changes developer-facing architecture, run `/publish-docs --architecture` after the proposal is finalized so `docs/` receives a sanitized, standalone version.
