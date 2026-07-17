@@ -6,6 +6,7 @@ const os = require("node:os");
 const path = require("node:path");
 const { spawnSync } = require("node:child_process");
 const test = require("node:test");
+const vm = require("node:vm");
 
 const ROOT = path.resolve(__dirname, "..");
 const GENERATOR = path.join(ROOT, ".agent", "skills", "agent-dashboard", "scripts", "generate.js");
@@ -43,7 +44,7 @@ function baseFixture() {
     agents: [],
     runs: [],
     queues: [],
-    sessions: [],
+    sessions: [{ session_id: "S-dashboard", agent_id: "dashboard-manager", role: "dashboard-manager", status: "running", phase: "running_command", last_heartbeat_at: "2026-07-17T10:11:12Z" }],
     locks: [],
     handoffs: [],
     artifacts: [],
@@ -96,11 +97,12 @@ test("renders bilingual read-only communication and approval state from Manageme
   assert.ok(!html.includes("D-closed"), "resolved Decisions must not appear in Open Decisions");
   assert.ok(!html.includes("WP-released"), "released Waitpoints must not appear in Blocking Waitpoints");
 
-  const buttons = [...html.matchAll(/<button\b[^>]*>(.*?)<\/button>/g)].map((match) => match[1]);
-  assert.deepEqual(buttons, ["中文", "EN"]);
+  const languageButtons = [...html.matchAll(/<button\b[^>]*data-lang="[^"]+"[^>]*>(.*?)<\/button>/g)].map((match) => match[1]);
+  assert.deepEqual(languageButtons, ["中文", "EN"]);
   assert.doesNotMatch(html, /decisions\s+resolve|waitpoints\s+release|management-api[^<]*(approve|release)/i);
   assert.doesNotMatch(html, /location\.reload\s*\(/);
   assert.match(html, /\.panel\{[^}]*min-width:0;overflow-x:auto\}/);
+  assert.match(html, /<td data-volatile="heartbeat">/);
 });
 
 test("degrades missing communication fields to empty read-only sections", (t) => {
@@ -114,4 +116,43 @@ test("degrades missing communication fields to empty read-only sections", (t) =>
   assert.match(html, /data-i18n="openDecisions">待决决策<\/h2><span class="mini">0<\/span>/);
   assert.match(html, /data-i18n="blockingWaitpoints">阻塞等待点<\/h2><span class="mini">0<\/span>/);
   assert.ok((html.match(/data-i18n="empty"/g) || []).length >= 3);
+});
+
+test("task cards open a read-only Markdown preview with related proposals and tasks", (t) => {
+  const fixture = {
+    ...baseFixture(),
+    tasks: [{
+      id: "T-preview",
+      title: "Preview task",
+      status: "active",
+      priority: "P1",
+      progress: "40%",
+      source_refs: [".agent/plans/proposals/preview/preview-proposal.md"],
+      dependencies: ["T-related"],
+    }],
+  };
+  const cwd = project(fixture);
+  t.after(() => fs.rmSync(cwd, { recursive: true, force: true }));
+  const proposalDir = path.join(cwd, ".agent", "plans", "proposals", "preview");
+  fs.mkdirSync(proposalDir, { recursive: true });
+  fs.writeFileSync(path.join(proposalDir, "preview-proposal.md"), "# Preview proposal\n\nImplements T-preview.\n", "utf8");
+
+  const { html } = generate(cwd);
+
+  assert.match(html, /class="task-card" data-task-id="T-preview"/);
+  assert.match(html, /id="preview-dialog"/);
+  assert.match(html, /id="overview-text"/);
+  assert.match(html, /Content Overview/);
+  assert.match(html, /Related Documents &amp; Proposals|Related Documents & Proposals/);
+  assert.ok(html.includes(".agent/plans/proposals/preview/preview-proposal.md"));
+  assert.ok(html.includes("T-related"));
+  assert.match(html, /fetch\('\/api\/preview\?path='/);
+  assert.match(html, /function renderMarkdown\(markdown\)/);
+  assert.match(html, /function documentOverview\(content, path, lang\)/);
+  assert.match(html, /The goal is: Preview task/);
+  assert.match(html, /dict\.openPreview/);
+  const browserScript = (html.match(/<script>([\s\S]*?)<\/script>/) || [])[1];
+  assert.ok(browserScript, "missing dashboard browser script");
+  assert.doesNotThrow(() => new vm.Script(browserScript));
+  assert.doesNotMatch(html, /<button[^>]+(?:approve|release|resolve)/i);
 });

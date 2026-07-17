@@ -33,13 +33,23 @@ Serve with live updates:
 node .agent/skills/agent-dashboard/scripts/serve.js --port 8787 --interval-ms 3000
 ```
 
-The server regenerates the HTML periodically and uses browser auto-refresh over SSE.
+The server regenerates the HTML periodically and uses browser auto-refresh over SSE. Task cards open a read-only Markdown preview drawer. Related task records, proposals, source refs, artifacts, and gate evidence can be opened without leaving the dashboard.
+
+The preview drawer reads documents through:
+
+```text
+GET /api/preview?path=<project-relative-path>
+```
+
+Only `.agent/**`, `docs/**`, and root `README.md`, `AGENTS.md`, `CLAUDE.md`, or `GEMINI.md` files with Markdown, JSON, or text extensions are allowed. Absolute paths, traversal, escaped symlinks, directories, and files over 1 MiB are rejected.
 
 ## Data Sources
 
 Read these when available:
 
 - `.agent/plans/task-progress.md`
+- `.agent/tasks/*.json` task relations, source refs, artifacts, and gate evidence
+- `.agent/plans/proposals/**/*.md` files that explicitly reference a task ID
 - `.agent/prd/index.json` and `.agent/prd/*/state.json`
 - `.agent/prd/*/prd.md`, `flows.md`, `screens.md`, and `acceptance-criteria.md`
 - `.agent/registry/agents.json`
@@ -52,6 +62,7 @@ Read these when available:
 ## Rules
 
 - Do not copy source code or large diffs into the dashboard.
+- Keep task and document previews read-only. Never add approval, release, task mutation, or arbitrary filesystem access to the preview surface.
 - Show paths, task IDs, branches, lock scopes, handoff files, and validation state.
 - Always include a `Worktree State` and `Recommended Next Action`.
 - Always include PRD status and completeness when `.agent/prd/` exists.

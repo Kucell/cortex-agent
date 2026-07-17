@@ -978,10 +978,14 @@ function openSession() {
     current_run_id: option("--run-id", payload.current_run_id ?? existing?.current_run_id ?? null),
     current_task_id: option("--task-id", payload.current_task_id ?? existing?.current_task_id ?? null),
     worktree_path: option("--worktree-path", payload.worktree_path ?? existing?.worktree_path ?? null),
-    started_at: existing?.started_at || option("--started-at", payload.started_at ?? timestamp),
+    started_at: existing?.status === "closed"
+      ? option("--started-at", payload.started_at ?? timestamp)
+      : existing?.started_at || option("--started-at", payload.started_at ?? timestamp),
     last_heartbeat_at: timestamp,
     updated_at: timestamp,
   };
+  delete next.closed_at;
+  delete next.updated_by_gate;
   writeJson(file, next);
   printJson({ ok: true, action: "sessions open", path: rel(file), session: next });
 }
@@ -994,6 +998,7 @@ function heartbeatSession() {
   const existing = readJson(file);
   if (!existing) fail("session_not_found", sessionId, 1);
   if (!agentId || existing.agent_id !== agentId) fail("session_owner_mismatch", sessionId, 1);
+  if (existing.status === "closed") fail("session_closed", sessionId, 1);
   const timestamp = nowIso();
   const next = {
     ...existing,

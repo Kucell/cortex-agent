@@ -98,6 +98,22 @@ npx cortex-agent upgrade
 
 初始化后，在 AI 助手中运行 `/configure` 完成项目配置。
 
+### 启动协作 Dashboard
+
+在已初始化的项目根目录运行开发服务：
+
+```bash
+cortex-agent dev
+```
+
+命令会在前台启动 Agent 协作 Dashboard、注册当前服务 Session，并输出可访问地址。默认从 `8787` 端口开始；端口被占用时会自动选择后续可用端口。可通过 `--port`、`--interval-ms` 和 `--session-id` 调整端口、刷新周期与 Session 标识：
+
+```bash
+cortex-agent dev --port 8787 --interval-ms 3000 --session-id local-dashboard
+```
+
+按 `Ctrl+C` 停止服务并结束 Session。开发服务停止后，静态 Dashboard 生成器与 Management API 的只读查询仍可独立使用。
+
 常用工作流示例：
 
 ```

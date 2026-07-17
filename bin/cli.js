@@ -18,6 +18,7 @@ const {
   runs,
   queues,
   sessions,
+  dev,
   printHelp,
 } = require("../lib/commands");
 
@@ -86,6 +87,7 @@ const ctx = { cwd, args, command, options, lang, templateDir };
     case "runs":        runs(ctx); break;
     case "queues":      queues(ctx); break;
     case "sessions":    sessions(ctx); break;
+    case "dev":         await dev(ctx); break;
     default:            printHelp(); break;
   }
 })();
