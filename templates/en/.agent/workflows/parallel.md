@@ -180,3 +180,10 @@ node .agent/skills/management-api/scripts/index.js runs checkpoint \
 | 代码写完要审查和写文档 | `code-reviewer` + `documenter` 并行 |
 | 任务太大难以拆分 | 先 `/plan` 拆解，再 `/parallel` 执行 |
 | 不确定能否并行 | 加 `--dry-run` 先看调度计划 |
+
+## Queue Runtime Writes
+
+- After dependency decomposition, `/parallel` creates the batch with `queues upsert --queue-id Q-<batch-id> --gate parallel --concurrency-limit <n>`.
+- Before dispatch, call `queues item --queue-id Q-<batch-id> --gate parallel --task-id <task-id> --state running --run-id R-<task-id> --agent-id <agent-id>`.
+- Completion, blocking, or validation failure updates the item to `done` or `blocked` and writes the matching Run checkpoint.
+- Dashboard may query the Queue but never update its items.

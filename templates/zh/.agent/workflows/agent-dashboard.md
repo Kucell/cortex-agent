@@ -82,3 +82,9 @@ node .agent/skills/agent-dashboard/scripts/serve.js --port 8787 --interval-ms 30
 - `/agent-dashboard`：输出人可读 HTML。
 - `dashboard-manager`：负责生成页面与启动本地实时 server。
 - `/publish-docs`：发布开发者文档，不替代本地协作看板。
+
+## Dashboard Session
+
+- `serve.js` 在实际端口监听成功后自动打开 `dashboard-manager` Session，并记录真实 URL/port。
+- 每轮刷新由同一 owner heartbeat；`SIGINT`/`SIGTERM` 时通过 owner gate 关闭 Session。
+- 静态 HTML 生成不创建 Session，Dashboard 页面和查询接口也不得写业务状态。

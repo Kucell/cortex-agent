@@ -209,3 +209,10 @@ test -L .agent && readlink .agent
 - `/mission`：每个 milestone 可映射到一个或多个 worktree。
 - `/handoff`：跨 worktree 转移上下文的唯一正式入口。
 - `/ship`：每个 worktree 的任务收口入口。
+
+## Queue / Session 运行态写入
+
+- `/worktree plan` 使用 `queues upsert --gate worktree` 建立批次；创建 worktree 并取得锁后，使用 `queues item --gate worktree` 写入 `running`、worktree path、agent 和 run。
+- `/worktree commit` 仅在验证证据已记录后把 item 更新为 `done`；失败时写 `blocked`，不得删除 item 隐藏失败。
+- 长时间持有 worktree 的 owner 可以 `sessions open` 并定期 heartbeat；handoff 或结束时通过 owner/handoff gate pause 或 close。
+- 每次 Queue/Session 写入必须与对应 Run checkpoint 和 lock 状态一致。

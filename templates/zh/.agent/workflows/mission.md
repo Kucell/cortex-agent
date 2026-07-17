@@ -193,3 +193,11 @@ Mission 状态写入：
 - command log 必须包含 exit code，或明确说明命令未运行的原因。
 - handoff 必须通过路径引用已有产物，不复制大段内容。
 - workflow 必须保持模板驱动和平台无关。
+
+## 运行态写入
+
+- `CREATE` 打开 coordinator session `S-<mission-id>`，并把 Run `R-<mission-id>` checkpoint 到 `phase=planning`。
+- `STATUS` 与 `RESUME` 由相同 owner heartbeat，写入当前 milestone 和 activity。
+- milestone 执行可使用 `queues upsert/item --gate mission`；只有 validation contract 存在证据后才写 `done` 或 `blocked`。
+- `HANDOFF` 通过 `--gate handoff` pause 来源 session；`COMPLETE` 通过 `--gate mission` close session 并完成 Run。
+- read-only query 或 Dashboard render 不得执行这些转换。

@@ -8,6 +8,7 @@ const { spawnSync } = require("child_process");
 
 const root = process.cwd();
 const scriptPath = path.join(root, ".agent", "skills", "agent-dashboard", "scripts", "generate.js");
+const managementPath = path.join(root, ".agent", "skills", "management-api", "scripts", "index.js");
 const defaultOut = path.join(root, ".agent", "metrics", "agent-dashboard.html");
 
 function arg(name, fallback) {
@@ -19,6 +20,26 @@ function arg(name, fallback) {
 const requestedPort = Number(arg("--port", process.env.AGENT_DASHBOARD_PORT || "8787"));
 const intervalMs = Number(arg("--interval-ms", "3000"));
 const outPath = path.resolve(root, arg("--out", defaultOut));
+const sessionId = arg("--session-id", `S-dashboard-${process.pid}`);
+const agentId = arg("--agent-id", "dashboard-manager");
+
+function updateSession(action, extra = []) {
+  if (!fs.existsSync(managementPath)) return;
+  spawnSync(process.execPath, [
+    managementPath,
+    "sessions",
+    action,
+    "--session-id",
+    sessionId,
+    "--agent-id",
+    agentId,
+    ...extra,
+  ], {
+    cwd: root,
+    encoding: "utf8",
+    stdio: "ignore",
+  });
+}
 
 function generate() {
   const result = spawnSync(process.execPath, [scriptPath, "--out", outPath], {
@@ -53,8 +74,9 @@ function broadcast(payload) {
   for (const res of clients) res.write(data);
 }
 
-setInterval(() => {
+const refreshTimer = setInterval(() => {
   last = generate();
+  updateSession("heartbeat", ["--phase", "running_command", "--activity", "Refreshing dashboard state"]);
   const nextFingerprint = contentFingerprint(readOut());
   if (nextFingerprint && nextFingerprint !== lastFingerprint) {
     lastFingerprint = nextFingerprint;
@@ -137,9 +159,20 @@ function listen(port, attemptsLeft = 20) {
 
   server.listen(port, "127.0.0.1", () => {
     const actualPort = server.address().port;
+    const url = `http://127.0.0.1:${actualPort}`;
+    updateSession("open", [
+      "--role",
+      "dashboard-manager",
+      "--phase",
+      "running_command",
+      "--activity",
+      "Serving live dashboard",
+      "--payload-json",
+      JSON.stringify({ server: { url, port: actualPort } }),
+    ]);
     console.log(JSON.stringify({
       ok: true,
-      url: `http://127.0.0.1:${actualPort}`,
+      url,
       requested_port: requestedPort,
       port: actualPort,
       port_shifted: actualPort !== requestedPort,
@@ -148,5 +181,15 @@ function listen(port, attemptsLeft = 20) {
     }, null, 2));
   });
 }
+
+function shutdown(signal) {
+  clearInterval(refreshTimer);
+  updateSession("close", ["--gate", "owner", "--activity", `Dashboard stopped by ${signal}`]);
+  for (const client of clients) client.end();
+  server.close(() => process.exit(0));
+}
+
+process.once("SIGINT", () => shutdown("SIGINT"));
+process.once("SIGTERM", () => shutdown("SIGTERM"));
 
 listen(requestedPort);
