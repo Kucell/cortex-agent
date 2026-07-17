@@ -19,18 +19,18 @@ description: 任务完成后的一键收尾：代码审查 → 提交 → 标记
 
 ## Task Pipeline Integration
 
-Before running, `/ship` reads `.agent/tasks/<task-id>.json` and `.agent/tasks/README.md`. When a task record exists, task pipeline gates are authoritative for stage advancement; `task-progress.md` remains the human roadmap. Preserve the legacy flow for old tasks without records, but report that the task pipeline is not enabled and never fabricate passed gates.
+Before running, `/ship` reads `.agent/tasks/<task-id>.json` and `.agent/tasks/README.md`. When a task record exists, task pipeline gates are authoritative for stage advancement; `task-progress.md` remains the human roadmap. `/ship` must start at stage `implement` and must not write `plan -> implement`; `/start-task` exclusively owns that gate. Preserve the legacy flow for old tasks without records, but report that the task pipeline is not enabled and never fabricate passed gates.
 
 Map the state machine to task stages as follows:
 
 | `/ship` state | Task stage / artifact action |
 | :--- | :--- |
-| `PLAN -> EXECUTE` | Check `plan -> implement`: dependencies are at `done`, and final `plan` plus any conditional final `architecture` artifacts exist; then enter `implement`. |
-| `EXECUTE -> LINT` | Append a final `implementation` artifact referencing the diff, commit, or execution report; pass `implement -> validate`. |
+| Entry | Require `/start-task` to have moved the task to `implement`; `/ship` neither rechecks nor rewrites `plan -> implement`. |
+| `EXECUTE -> LINT` | First write an existing Artifact Bus envelope or execution-report file whose payload records commit IDs, a diff summary, and changed paths. The final task `implementation.ref` references only that file. After the file exists and its ref is in gate `evidence_refs`, pass `implement -> validate`. |
 | `LINT -> REVIEW` | After lint, tests, and security checks pass, append a final `validation` artifact and pass `validate -> review`. On failure, mark the gate `blocked` and keep stage `validate`. |
 | `REVIEW -> COMMIT` | Append a final `review` artifact. Must Fix findings keep stage `review` and block progress; `--no-review` records a `waived` gate and reason only when explicitly chosen by the user. |
-| `COMMIT -> DONE` | Check the review verdict, commit evidence, and conditional `release-note` / `published-doc` requirements; after `review -> done` passes, set `status: completed`. |
-| `PUBLISH_DOCS` | When docs are published, consume final artifacts and add the final `published-doc` reference returned by `/publish-docs`; do not change stage independently. |
+| `COMMIT -> DONE` | Check the review verdict, commit evidence, and conditional `release-note` / `published-doc` requirements. When a condition is not applicable, record the decision in gate `reason` and cite final `decision` evidence without waiving the whole gate; after `review -> done` passes, set `status: completed`. |
+| `PUBLISH_DOCS` | Receive either a final `published-doc` ref or failure evidence from `/publish-docs`. `/ship` verifies that the referenced file exists, adds the final artifact to the task, and updates completion-gate `evidence_refs`; on failure, `/ship` keeps the gate `blocked`. |
 
 Synchronize the task file, `.agent/tasks/index.json`, `updated_at`, and gate `evidence_refs` after each mutation. Artifact bodies stay under `.agent/artifacts/<task-id>/` or their original source of truth; task files store only canonical kinds and references. After failure, append remediation artifacts and recheck the current gate without regressing the stage, overwriting old artifacts, or mutating tasks through Management API.
 
@@ -57,10 +57,10 @@ Synchronize the task file, `.agent/tasks/index.json`, `updated_at`, and gate `ev
 ### Phase 1: EXECUTE
 
 **Gate Check**: `phase-gate --from PLAN --to EXECUTE`
-- ✅ 实施计划已完成（或明确验收标准已提供）
-- ✅ 架构预审通过（`architecture-guard`）
+- ✅ For a recorded task, `/start-task` has already advanced stage to `implement`
+- ✅ The `plan -> implement` gate passed; `/ship` does not mutate it
 
-**执行**: 代理完成编码实现
+**Execution**: Collect evidence for the completed implementation and create an Artifact Bus envelope or execution-report file. Store commit IDs, the diff summary, and changed paths only in its payload.
 
 **Max Retry**: 2 次（若连续 2 次实现失败，阻断并请求人工介入）
 
@@ -240,6 +240,8 @@ After `DOC_GARDENING`, decide whether this delivery affects developer-facing doc
 - The user explicitly requested PRD, architecture, module, or developer manual updates
 
 If matched, run `/publish-docs` or `/publish-docs --architecture`. If not matched, record that no developer docs need publishing and continue.
+
+`/publish-docs` returns only a final `published-doc` ref or failure evidence. `/ship` is the only workflow that verifies the referenced file, writes task `artifacts[]` and completion-gate `evidence_refs`, and changes gate status. When docs are not applicable, `/ship` records the decision in gate `reason` and cites final `decision` evidence without waiving the whole `review -> done` gate.
 
 **Execution policy**:
 
