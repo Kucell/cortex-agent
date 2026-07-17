@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Cortex Agent Waitpoint Index",
+  "type": "object",
+  "required": ["waitpoints"],
+  "properties": {
+    "waitpoints": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["waitpoint_id", "path", "status", "owner_workflow", "gate_action", "resource_ref", "updated_at"],
+        "properties": {
+          "waitpoint_id": { "type": "string", "pattern": "^WP-[A-Za-z0-9][A-Za-z0-9._-]*$" },
+          "path": { "type": "string", "pattern": "^\\.agent/waitpoints/WP-[^/]+\\.json$" },
+          "status": { "type": "string", "enum": ["pending", "blocked", "released", "canceled", "expired"] },
+          "owner_workflow": { "type": "string", "pattern": "^/[A-Za-z0-9][A-Za-z0-9-]*$" },
+          "gate_action": { "type": "string", "enum": ["architecture", "merge", "release", "destructive", "credential", "external_side_effect"] },
+          "resource_ref": { "type": "string", "minLength": 1 },
+          "decision_id": { "type": ["string", "null"], "pattern": "^D-[A-Za-z0-9][A-Za-z0-9._-]*$" },
+          "updated_at": { "type": "string", "format": "date-time" }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

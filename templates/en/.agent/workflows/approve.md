@@ -1,122 +1,79 @@
 ---
 name: approve
-description: Approve an architecture proposal and dispatch it to /plan (small) or /mission (large), establishing bidirectional links.
+description: Approve and schedule architecture proposals, or resolve a resource-bound Decision after an explicit user choice.
 ---
 
-# Proposal Approval and Dispatch Workflow (/approve)
+# Proposal Approval, Scheduling, and Decision Resolution (/approve)
 
-Advances a confirmed architecture design proposal from `draft` to execution.
-This command is the single handoff point between `/arch-design` and `/plan` / `/mission`.
+This workflow has two mutually exclusive modes:
+
+- **Proposal mode** advances a reviewed architecture proposal from `draft` into `/plan` or `/mission` execution.
+- **Decision mode** records an explicit user choice for one resource-bound Decision. It never performs the protected action or releases a Waitpoint.
 
 ## Usage
 
-```
-/approve <proposal-file-path>
-/approve .agent/plans/proposals/xxx-proposal.md
+```text
+/approve <proposal-path>
+/approve .agent/plans/proposals/example-proposal.md
 /approve .agent/plans/proposals/projects/<project-slug>/index.md
+/approve decision D-<id> --choice approve|reject|revise
 ```
 
-## Prerequisites
+Input beginning with `decision` selects Decision mode. All other input selects Proposal mode. Never infer approval from a Dashboard action, message, prior preference, silence, or a caller-provided `--gate approve` string.
 
-- The input is a standalone proposal, project-level `index.md`, or project child proposal under `.agent/plans/proposals/`.
-- The selected approval scope has `draft` status (if already `approved` or higher, a notice is shown and the command stops).
-- The selected scope contains an `Implementation Plan`, `Phase`, or milestone suitable for scale assessment.
+## Decision Mode
 
----
+1. Query and read the target Decision without mutating it:
 
-## Steps
+   ```bash
+   node .agent/skills/management-api/scripts/index.js query decisions
+   ```
 
-### Step 1: Read and validate the proposal
+2. Verify `.agent/decisions/D-<id>.json` exists and has `status=open`.
+3. Show the user its `prompt`, every option, `gate.action`, `gate.resource_ref`, requesting workflow, and related blocking Waitpoint.
+4. Require an explicit `approve`, `reject`, or `revise` choice in the current interaction.
+5. Map the choice to `approved/approve`, `rejected/reject`, or `revision_requested/revise`, collect a user identity and non-empty rationale, then run:
 
-1. Read the specified proposal file. For a project-level `index.md`, read the entry first and then the child proposals associated with the selected milestone; for a child proposal, also read its project's `index.md`.
-2. Determine the approval scope: standalone proposal, entire project, milestone, or child proposal. If a project-level input does not state the scope, ask the user to select it; never approve the whole project by default.
-3. Confirm the selected scope's `> **Status**:` field or index status exists and is `draft`.
-   - If already `approved` or higher: show "Proposal already approved — no action needed." and stop.
-   - If the status field is missing: ask the user to add the standard status fields to the proposal header, then stop.
-4. Extract details for the selected scope:
-   - Core objective (one sentence)
-   - Number of Phases (count `### Phase` headings)
-   - Milestones and child proposals included in a project-level scope
-   - Any mention of cross-session or multi-day scope
+   ```bash
+   node .agent/skills/management-api/scripts/index.js decisions resolve \
+     --decision-id D-<id> \
+     --gate user \
+     --status <approved|rejected|revision_requested> \
+     --selected-option <approve|reject|revise> \
+     --resolved-by <user-id> \
+     --rationale "<user rationale>"
+   ```
 
-### Step 2: Scale assessment
+6. Read the Decision again and report the result. `/approve` must not call `waitpoints release` or perform merge, release, destructive, credential, or external-side-effect operations. The owning workflow must validate the exact action and resource before consuming the approval.
 
-Apply the following rules to the selected approval scope and present a routing suggestion (user confirms; not enforced):
+## Proposal Mode
 
-| Condition | Suggested route |
-| :-------- | :-------------- |
-| ≤ 2 Phases and no cross-session mention | `/plan` (small task) |
-| ≥ 3 Phases, or multi-day/cross-session, or milestone validation required | `/mission` (large task) |
+### Preconditions
 
-Output suggestion format:
+- The input is a proposal, project `index.md`, or project subproposal under `.agent/plans/proposals/`.
+- The selected scope is `draft` and contains implementation phases or milestones.
+- Architecture proposals carrying a Decision/Waitpoint must already have an explicitly approved `action=architecture` Decision and a Waitpoint released by `/arch-design`. Scheduling confirmation is not a substitute.
 
-```
-📋 Proposal: xxx-proposal.md
-🎯 Core Objective: [one-sentence goal]
-📊 Scale Assessment: [N] Phases → Recommended: [/plan | /mission]
+### Procedure
 
-Reason: [Phase count / cross-session scope / validation requirements]
+1. Read the complete proposal scope. For project proposals, read the index and the selected milestone's subproposals. Never approve an entire project by default.
+2. Extract the objective, phase count, milestone mapping, and cross-session indicators.
+3. Recommend `/plan` for at most two phases without cross-session work; recommend `/mission` for three or more phases, multi-day work, or milestone validation. Let the user override the recommendation.
+4. After confirmation, update only the selected scope from `draft` to `approved`.
+5. Dispatch exactly one path:
+   - `/plan --from-proposal <path>` and record the Task IDs, or
+   - `/mission create --from-proposal <path>` and record the Mission ID.
+6. Change the dispatched scope to `in-progress`, maintain links in the project index, and report the next command.
 
-Confirm dispatch? (plan / mission / cancel)
-```
+Standard lifecycle:
 
-Wait for user confirmation. Users may override the suggestion (e.g., choose `plan` even if `mission` is recommended).
-
-### Step 3: Update proposal status
-
-After confirmation, update only the selected approval scope:
-
-- Standalone or child proposal: change its header status from `draft` to `approved`; for a child proposal, also update its row in `index.md`.
-- Entire project: update the project status in `index.md` without automatically approving child proposals that require separate review.
-- Milestone: update that milestone in `index.md` and only the child proposals explicitly included in this approval.
-
-Proposal file status format:
-
-```markdown
-> **Status**: approved
+```text
+draft -> approved -> in-progress -> done | superseded
 ```
 
-### Step 4: Dispatch to execution
+## Safety Boundary
 
-**Route A: /plan (small task)**
-
-Run `/plan --from-proposal <proposal-file-path>`:
-- For a project-level scope, pass `index.md`; `/plan` then reads the selected milestone and related child proposals from the entry
-- For a standalone or child proposal, use its Phase list as task decomposition input
-- Back-fill the resulting Task IDs into the proposal's `Execution Vehicle` field
-- Change proposal status from `approved` to `in-progress`
-
-**Route B: /mission (large task)**
-
-Run `/mission create --from-proposal <proposal-file-path>`:
-- For a project-level scope, pass `index.md` and build execution milestones from the selected milestone and related child proposals
-- For a standalone or child proposal, map each Phase to a milestone
-- Back-fill the Mission ID into the proposal's `Execution Vehicle` field
-- Change proposal status from `approved` to `in-progress`
-
-### Step 5: Output confirmation
-
-```
-✅ Proposal approved: xxx-proposal.md
-📌 Execution Vehicle: [T-006~T-008 | M-002]
-🔗 Bidirectional links established
-
-Suggested next step:
-  Small task → /start-task T-006
-  Large task → /mission status M-002
-```
-
----
-
-## Proposal Header Standard Fields Reference
-
-```markdown
-> **Status**: draft → approved → in-progress → done | superseded
-> **Execution Vehicle**: pending approval (auto-filled by /approve)
-> **Archived Doc**: — (auto-filled when done)
-> **Created**: YYYY-MM-DD
-```
-
-After all execution vehicles complete, run `/done T-xxx` or reach `mission COMPLETE` to trigger
-the archiving step — refine the architecture output and write it to `docs/architecture/`;
-the proposal status then becomes `done`.
+- A Decision Gate is valid only for its exact `gate.action` and `gate.resource_ref`; an ID or `--gate approve` string is not authorization.
+- `architecture`, `destructive`, `credential`, and `external_side_effect` operations require Decisions and Waitpoints created by the owning workflow.
+- Architecture approval never grants destructive or external-side-effect permission.
+- Never automatically run `reset`, `revert`, `push`, `deploy`, or another external side effect.
