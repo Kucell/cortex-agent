@@ -144,6 +144,17 @@ const I18N = {
     runs: "Runs",
     queues: "Queues",
     sessions: "Sessions",
+    communication: "通信与审批",
+    inbox: "Inbox",
+    openDecisions: "待决决策",
+    blockingWaitpoints: "阻塞等待点",
+    unreadMessages: "未读消息",
+    action: "动作",
+    resource: "资源",
+    requesterOwner: "请求人 / Owner",
+    reviewMessage: "查看并确认消息",
+    resolveDecision: "等待用户明确决策",
+    releaseWaitpoint: "由所属工作流验证证据后释放",
     currentActivity: "当前活动",
     phase: "阶段",
     event: "事件",
@@ -238,6 +249,17 @@ const I18N = {
     runs: "Runs",
     queues: "Queues",
     sessions: "Sessions",
+    communication: "Communication & Approvals",
+    inbox: "Inbox",
+    openDecisions: "Open Decisions",
+    blockingWaitpoints: "Blocking Waitpoints",
+    unreadMessages: "Unread Messages",
+    action: "Action",
+    resource: "Resource",
+    requesterOwner: "Requester / Owner",
+    reviewMessage: "Review and acknowledge the message",
+    resolveDecision: "Await an explicit user decision",
+    releaseWaitpoint: "Owning workflow validates evidence, then releases",
     currentActivity: "Current Activity",
     phase: "Phase",
     event: "Event",
@@ -503,13 +525,25 @@ function prdSummaryFromManaged(summary, prds) {
   };
 }
 
-function deriveState({ worktrees, locks, handoffs, tasks, agents }) {
+function deriveState({ worktrees, locks, handoffs, tasks, agents, decisions = [], waitpoints = [] }) {
   const nonMainWorktrees = worktrees.filter((w) => !w.isMain);
   const dirty = worktrees.some((w) => w.dirty);
   const heldLocks = locks.filter((l) => !l.expired);
   const blockedTasks = tasks.filter((t) => t.status === "blocked");
   const activeTasks = tasks.filter((t) => t.status === "active" || t.status === "open");
   const activeAgents = agents.filter((a) => ["running", "active", "paused"].includes(a.status));
+  const openDecisions = decisions.filter((decision) => decision.status === "open");
+  const blockingWaitpoints = waitpoints.filter((waitpoint) => ["pending", "blocked"].includes(waitpoint.effective_status || waitpoint.status));
+
+  if (openDecisions.length || blockingWaitpoints.length) {
+    return {
+      state: "waiting_approval",
+      next: "处理待决 Decision，并由所属工作流验证证据后释放 Waitpoint。",
+      nextEn: "Resolve the pending Decision, then let the owning workflow validate evidence and release the Waitpoint.",
+      why: `发现 ${openDecisions.length} 个待决 Decision 和 ${blockingWaitpoints.length} 个阻塞 Waitpoint。`,
+      whyEn: `${openDecisions.length} open Decision(s) and ${blockingWaitpoints.length} blocking Waitpoint(s) detected.`,
+    };
+  }
 
   if (blockedTasks.length) {
     return {
@@ -574,6 +608,32 @@ function pill(value) {
 function renderTable(headers, rows, emptyKey = "empty") {
   if (!rows.length) return `<div class="empty" data-i18n="${emptyKey}">${esc(I18N.zh[emptyKey])}</div>`;
   return `<table><thead><tr>${headers.map((h) => `<th data-i18n="${esc(h)}">${esc(I18N.zh[h] || h)}</th>`).join("")}</tr></thead><tbody>${rows.join("")}</tbody></table>`;
+}
+
+function communicationResource(item) {
+  const relations = item?.relations || {};
+  return item?.gate?.resource_ref
+    || item?.resource_ref
+    || item?.artifact_refs?.[0]
+    || relations.artifact_refs?.[0]
+    || relations.task_ids?.[0]
+    || relations.mission_ids?.[0]
+    || relations.worktree_paths?.[0]
+    || item?.subject
+    || "";
+}
+
+function renderCommunicationTable(items, config) {
+  const rows = items.slice(0, 12).map((item) => `<tr>
+    <td><code>${esc(item[config.id])}</code></td>
+    <td>${esc(config.action(item))}</td>
+    <td><code>${esc(communicationResource(item))}</code></td>
+    <td>${esc(config.owner(item))}</td>
+    <td>${pill(item.effective_status || item.status)}</td>
+    <td>${esc(formatDisplayTime(item.updated_at || item.created_at))}</td>
+    <td data-i18n="${config.nextActionKey}">${esc(I18N.zh[config.nextActionKey])}</td>
+  </tr>`);
+  return renderTable(["id", "action", "resource", "requesterOwner", "status", "updated", "nextAction"], rows);
 }
 
 function taskColumn(tasks, status, labelKey) {
@@ -735,8 +795,27 @@ function main() {
   const runs = Array.isArray(managed?.runs) ? managed.runs : [];
   const queues = Array.isArray(managed?.queues) ? managed.queues : [];
   const sessions = Array.isArray(managed?.sessions) ? managed.sessions : [];
+  const inbox = Array.isArray(managed?.inbox) ? managed.inbox : [];
+  const decisions = Array.isArray(managed?.decisions) ? managed.decisions : [];
+  const waitpoints = Array.isArray(managed?.waitpoints) ? managed.waitpoints : [];
+  const summary = managed?.summary && typeof managed.summary === "object" ? managed.summary : {};
+  const openDecisions = decisions.filter((decision) => decision.status === "open");
+  const blockingWaitpoints = waitpoints.filter((waitpoint) => ["pending", "blocked"].includes(waitpoint.effective_status || waitpoint.status));
+  const summaryCount = (key, fallback) => Number.isFinite(Number(summary[key])) ? Number(summary[key]) : fallback;
+  const unreadMessageCount = summaryCount("unread_messages", inbox.filter((message) => message.status === "unread").length);
+  const openDecisionCount = summaryCount("open_decisions", openDecisions.length);
+  const blockingWaitpointCount = summaryCount("blocking_waitpoints", blockingWaitpoints.length);
   const gitStatus = typeof managed?.git_status === "string" ? managed.git_status : sh("git status --short --branch");
-  const derived = managed?.derived || deriveState({ worktrees, locks, handoffs, tasks, agents });
+  const baseDerived = managed?.derived || deriveState({ worktrees, locks, handoffs, tasks, agents, decisions, waitpoints });
+  const derived = openDecisionCount || blockingWaitpointCount
+    ? {
+        state: "waiting_approval",
+        next: "处理待决 Decision，并由所属工作流验证证据后释放 Waitpoint。",
+        nextEn: "Resolve the pending Decision, then let the owning workflow validate evidence and release the Waitpoint.",
+        why: `发现 ${openDecisionCount} 个待决 Decision 和 ${blockingWaitpointCount} 个阻塞 Waitpoint。`,
+        whyEn: `${openDecisionCount} open Decision(s) and ${blockingWaitpointCount} blocking Waitpoint(s) detected.`,
+      }
+    : baseDerived;
   const generatedAt = formatLocalTime();
   const activeTaskCount = tasks.filter((t) => t.status !== "done").length;
   const heldLockCount = locks.filter((l) => !l.expired).length;
@@ -744,7 +823,9 @@ function main() {
   const runningRuns = runs.filter((r) => r.status === "running");
   const activeAgents = agents.filter((agent) => ["running", "active", "paused"].includes(agent.status));
   const dirtyWorktrees = worktrees.filter((worktree) => worktree.dirty);
-  const currentActivity = runningRuns[0]?.activity || runningRuns[0]?.last_event?.message || activeAgents[0]?.activity || derived.next || "";
+  const currentActivity = derived.state === "waiting_approval"
+    ? derived.next
+    : runningRuns[0]?.activity || runningRuns[0]?.last_event?.message || activeAgents[0]?.activity || derived.next || "";
   const activePhase = runningRuns[0]?.phase || sessions.find((s) => s.phase)?.phase || "";
   const blockedTasks = tasks.filter((t) => t.status === "blocked");
   const validationReady = tasks.length && tasks.every((t) => t.status === "done");
@@ -777,7 +858,7 @@ function main() {
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;letter-spacing:0}.shell{min-height:100vh;display:grid;grid-template-columns:236px minmax(0,1fr)}
 aside{position:sticky;top:0;height:100vh;background:var(--rail);border-right:1px solid var(--line);padding:20px 16px}aside h1{font-size:18px;margin:0 0 6px}aside .project{color:var(--muted);font-size:12px;margin-bottom:22px;overflow:hidden;text-overflow:ellipsis}nav{display:grid;gap:6px}nav a{color:var(--muted);text-decoration:none;padding:9px 10px;border-radius:7px}nav a:hover{background:var(--panel);color:var(--text)}.toolbar{margin-top:18px;display:flex;gap:8px}.toolbar button{background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:6px 9px;cursor:pointer}.toolbar button.active{border-color:var(--accent);color:var(--accent)}
 main{min-width:0}.topbar{padding:20px 28px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;gap:18px;align-items:flex-start;background:#12151b}.topbar h2{font-size:22px;margin:0 0 4px}.muted,.mini{color:var(--muted)}.mini{font-size:12px}
-.section{padding:20px 28px;border-bottom:1px solid var(--line)}.section h2{font-size:16px;margin:0 0 14px}.section-head{display:flex;justify-content:space-between;gap:12px;align-items:baseline}.grid{display:grid;grid-template-columns:repeat(12,1fr);gap:14px}.panel{grid-column:span 6;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:16px;min-width:0}.wide{grid-column:span 12}.third{grid-column:span 4}.quarter{grid-column:span 3}
+.section{padding:20px 28px;border-bottom:1px solid var(--line)}.section h2{font-size:16px;margin:0 0 14px}.section-head{display:flex;justify-content:space-between;gap:12px;align-items:baseline}.grid{display:grid;grid-template-columns:repeat(12,1fr);gap:14px}.panel{grid-column:span 6;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:16px;min-width:0;overflow-x:auto}.wide{grid-column:span 12}.third{grid-column:span 4}.quarter{grid-column:span 3}
 .status-strip{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}.metric{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:13px}.metric-label{color:var(--muted);font-size:12px;margin-bottom:8px}.metric-value{font-size:24px;font-weight:750;line-height:1.15}.metric-detail{margin-top:7px;color:var(--muted);font-size:12px}.metric.blocked{border-color:rgba(255,107,107,.55)}.metric.running,.metric.in_progress{border-color:rgba(90,167,255,.6)}.metric.ready,.metric.approved,.metric.validated{border-color:rgba(88,214,141,.55)}
 .command-panel{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(280px,.7fr);gap:14px}.current{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:18px}.current .label{color:var(--muted);font-size:12px;margin-bottom:10px}.current .activity{font-size:20px;color:var(--accent);overflow-wrap:anywhere}.reason{margin-top:10px;color:var(--muted)}.signal-list{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px;display:grid;gap:10px}.signal{display:flex;justify-content:space-between;gap:12px;border-bottom:1px solid var(--line);padding-bottom:8px}.signal:last-child{border-bottom:0;padding-bottom:0}
 .phase-rail{display:grid;grid-template-columns:repeat(7,1fr);gap:8px}.phase-node{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:10px;min-height:76px}.phase-node span{display:block;width:10px;height:10px;border-radius:50%;background:var(--muted);margin-bottom:8px}.phase-node.active{border-color:var(--accent)}.phase-node.active span{background:var(--accent)}.phase-node.done span{background:var(--ok)}.phase-node strong{display:block}.phase-node small{display:block;color:var(--muted);margin-top:3px;overflow-wrap:anywhere}
@@ -786,7 +867,7 @@ main{min-width:0}.topbar{padding:20px 28px;border-bottom:1px solid var(--line);d
 .trace-summary{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));border:1px solid var(--line);border-radius:8px;overflow:hidden}.trace-stage{min-width:0;padding:11px 12px;background:var(--panel2);border-right:1px solid var(--line)}.trace-stage:last-child{border-right:0}.trace-stage>span,.trace-stage small{display:block;color:var(--muted);font-size:12px}.trace-stage strong{display:block;margin:5px 0;overflow-wrap:anywhere}.trace-table{margin:14px 0 18px;overflow-x:auto}.trace-table code{white-space:normal;overflow-wrap:anywhere}.trace-table table{min-width:820px}
 .timeline{display:grid;gap:10px}.timeline-item{display:grid;grid-template-columns:140px minmax(0,1fr);gap:12px;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:11px}.timeline-item p{margin:2px 0;color:var(--muted)}
 table{width:100%;border-collapse:collapse}th,td{padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top;text-align:left}th{color:var(--muted);font-weight:600}code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:#d9e7ff}.empty{color:var(--muted);padding:10px 0}.pill{display:inline-block;border:1px solid var(--line);border-radius:999px;padding:2px 8px;color:var(--muted);white-space:nowrap}.status-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--muted);margin-right:7px}.status-dot.running,.status-dot.in_progress,.status-dot.invoking_agent{background:var(--accent)}.status-dot.done,.status-dot.ready,.status-dot.clean,.status-dot.approved{background:var(--ok)}.status-dot.blocked,.status-dot.dirty,.status-dot.stale{background:var(--bad)}
-.done,.ready,.validated,.clean,.approved,.published{color:var(--ok);border-color:rgba(88,214,141,.45)}.blocked,.validation_failed,.failed,.dirty,.stale{color:var(--bad);border-color:rgba(255,107,107,.45)}.active,.in_progress,.running,.locked,.merge_ready,.handoff_required,.held,.draft,.review,.needs_validation,.needs_evidence,.not_ready{color:var(--warn);border-color:rgba(241,180,76,.45)}pre{white-space:pre-wrap;background:#0d1016;border:1px solid var(--line);border-radius:6px;padding:10px;overflow:auto;max-height:260px}
+.done,.ready,.validated,.clean,.approved,.published,.released,.acknowledged{color:var(--ok);border-color:rgba(88,214,141,.45)}.blocked,.validation_failed,.failed,.dirty,.stale,.rejected,.expired{color:var(--bad);border-color:rgba(255,107,107,.45)}.active,.in_progress,.running,.locked,.merge_ready,.handoff_required,.held,.draft,.review,.needs_validation,.needs_evidence,.not_ready,.waiting_approval,.open,.pending,.unread{color:var(--warn);border-color:rgba(241,180,76,.45)}pre{white-space:pre-wrap;background:#0d1016;border:1px solid var(--line);border-radius:6px;padding:10px;overflow:auto;max-height:260px}
 @media(max-width:1100px){.shell{display:block}aside{position:static;height:auto}.status-strip,.command-panel,.phase-rail,.lanes,.trace-summary{grid-template-columns:1fr}.trace-stage{border-right:0;border-bottom:1px solid var(--line)}.trace-stage:last-child{border-bottom:0}.panel,.third,.quarter{grid-column:span 12}.section,.topbar{padding:16px}.timeline-item{grid-template-columns:1fr}}
 </style>
 </head>
@@ -800,6 +881,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:8px 10px;border-bottom:1
       ${navItem("prd", "prdStudio")}
       ${navItem("delivery", "delivery")}
       ${navItem("runtime", "runtime")}
+      ${navItem("communication", "communication")}
       ${navItem("knowledge", "knowledge")}
     </nav>
     <div class="toolbar" aria-label="language switcher">
@@ -837,7 +919,8 @@ table{width:100%;border-collapse:collapse}th,td{padding:8px 10px;border-bottom:1
         <div class="signal-list">
           <div class="signal"><span data-i18n="phase">${I18N.zh.phase}</span><strong>${statusDot(activePhase || runtimeState)}</strong></div>
           <div class="signal"><span data-i18n="prdHealth">${I18N.zh.prdHealth}</span><strong>${prd.completeness}%</strong></div>
-          <div class="signal"><span data-i18n="blockedDecisions">${I18N.zh.blockedDecisions}</span><strong>${blockedTasks.length}</strong></div>
+          <div class="signal"><span data-i18n="openDecisions">${I18N.zh.openDecisions}</span><strong>${openDecisionCount}</strong></div>
+          <div class="signal"><span data-i18n="blockingWaitpoints">${I18N.zh.blockingWaitpoints}</span><strong>${blockingWaitpointCount}</strong></div>
           <div class="signal"><span data-i18n="activeAgents">${I18N.zh.activeAgents}</span><strong>${activeAgents.length}</strong></div>
         </div>
       </div>
@@ -875,6 +958,15 @@ table{width:100%;border-collapse:collapse}th,td{padding:8px 10px;border-bottom:1
         <section class="panel wide"><h2 data-i18n="worktrees">${I18N.zh.worktrees}</h2>${renderTable(["path","branch","status","head"], worktrees.map((w) => `<tr><td><code>${esc(w.path)}</code>${w.isMain ? ' <span class="mini">main</span>' : ""}</td><td>${esc(w.branch)}</td><td>${pill(w.dirty ? "dirty" : "clean")}</td><td><code>${esc(w.head.slice(0,12))}</code></td></tr>`))}</section>
         <section class="panel"><h2 data-i18n="activeAgents">${I18N.zh.activeAgents}</h2>${renderTable(["agent","role","task","status"], agents.map((a) => `<tr><td>${esc(a.agent_id || a.id)}</td><td>${esc(a.role)}</td><td><code>${esc(a.task_id || "")}</code></td><td>${pill(a.status)}</td></tr>`))}</section>
         <section class="panel"><h2 data-i18n="locks">${I18N.zh.locks}</h2>${renderTable(["scope","heldBy","expires","status"], locks.map((l) => `<tr><td><code>${esc(l.scope)}</code></td><td>${esc(l.held_by)}</td><td>${esc(formatDisplayTime(l.expires_at))}</td><td>${pill(l.expired ? "expired" : "held")}</td></tr>`))}</section>
+      </div>
+    </section>
+
+    <section id="communication" class="section">
+      <div class="section-head"><h2 data-i18n="communication">${I18N.zh.communication}</h2><span>${pill(derived.state === "waiting_approval" ? "waiting_approval" : "clear")}</span></div>
+      <div class="grid">
+        <section class="panel wide"><div class="section-head"><h2 data-i18n="inbox">${I18N.zh.inbox}</h2><span class="mini"><span data-i18n="unreadMessages">${I18N.zh.unreadMessages}</span>: ${unreadMessageCount}</span></div>${renderCommunicationTable(inbox, { id: "message_id", action: (item) => item.type || "message", owner: (item) => item.sender_id || "", nextActionKey: "reviewMessage" })}</section>
+        <section class="panel wide"><div class="section-head"><h2 data-i18n="openDecisions">${I18N.zh.openDecisions}</h2><span class="mini">${openDecisionCount}</span></div>${renderCommunicationTable(openDecisions, { id: "decision_id", action: (item) => [item.type, item.gate?.action].filter(Boolean).join(" / "), owner: (item) => item.requested_by || "", nextActionKey: "resolveDecision" })}</section>
+        <section class="panel wide"><div class="section-head"><h2 data-i18n="blockingWaitpoints">${I18N.zh.blockingWaitpoints}</h2><span class="mini">${blockingWaitpointCount}</span></div>${renderCommunicationTable(blockingWaitpoints, { id: "waitpoint_id", action: (item) => item.gate?.action || "", owner: (item) => item.owner_workflow || "", nextActionKey: "releaseWaitpoint" })}</section>
       </div>
     </section>
 

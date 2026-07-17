@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Cortex Agent Inbox Index",
+  "type": "object",
+  "required": ["messages"],
+  "properties": {
+    "messages": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["message_id", "path", "type", "status", "updated_at"],
+        "properties": {
+          "message_id": { "type": "string", "pattern": "^IM-[A-Za-z0-9][A-Za-z0-9._-]*$" },
+          "path": { "type": "string", "pattern": "^\\.agent/inbox/IM-[^/]+\\.json$" },
+          "type": { "type": "string", "enum": ["information", "request", "handoff", "decision_request", "alert"] },
+          "status": { "type": "string", "enum": ["unread", "read", "acknowledged", "archived"] },
+          "subject": { "type": "string" },
+          "updated_at": { "type": "string", "format": "date-time" }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

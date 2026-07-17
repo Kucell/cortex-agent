@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Cortex Agent Waitpoint",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "waitpoint_id",
+    "status",
+    "owner_workflow",
+    "reason",
+    "gate",
+    "decision_id",
+    "evidence_refs",
+    "relations",
+    "created_at",
+    "updated_at"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "waitpoint_id": { "type": "string", "pattern": "^WP-[A-Za-z0-9][A-Za-z0-9._-]*$" },
+    "status": {
+      "type": "string",
+      "enum": ["pending", "blocked", "released", "canceled", "expired"]
+    },
+    "owner_workflow": { "type": "string", "pattern": "^/[A-Za-z0-9][A-Za-z0-9-]*$" },
+    "reason": { "type": "string", "minLength": 1 },
+    "gate": {
+      "type": "object",
+      "required": ["action", "resource_ref"],
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": ["architecture", "merge", "release", "destructive", "credential", "external_side_effect"]
+        },
+        "resource_ref": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+    "decision_id": {
+      "type": ["string", "null"],
+      "pattern": "^D-[A-Za-z0-9][A-Za-z0-9._-]*$"
+    },
+    "evidence_refs": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "release_note": { "type": ["string", "null"] },
+    "released_by": { "type": ["string", "null"] },
+    "released_at": { "type": ["string", "null"], "format": "date-time" },
+    "expires_at": { "type": ["string", "null"], "format": "date-time" },
+    "relations": {
+      "type": "object",
+      "required": ["task_ids", "mission_ids", "run_ids", "queue_ids", "session_ids", "artifact_refs", "worktree_paths"],
+      "properties": {
+        "task_ids": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+        "mission_ids": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+        "run_ids": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+        "queue_ids": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+        "session_ids": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+        "artifact_refs": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+        "worktree_paths": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } }
+      },
+      "additionalProperties": false
+    },
+    "created_at": { "type": "string", "format": "date-time" },
+    "updated_at": { "type": "string", "format": "date-time" }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "status": { "const": "released" } }, "required": ["status"] },
+      "then": {
+        "properties": {
+          "decision_id": { "type": "string", "pattern": "^D-[A-Za-z0-9][A-Za-z0-9._-]*$" },
+          "evidence_refs": { "type": "array", "minItems": 1 },
+          "released_by": { "type": "string", "minLength": 1 },
+          "released_at": { "type": "string", "format": "date-time" }
+        },
+        "required": ["decision_id", "evidence_refs", "released_by", "released_at"]
+      }
+    }
+  ],
+  "additionalProperties": false
+}

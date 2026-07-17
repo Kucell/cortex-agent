@@ -80,9 +80,44 @@ test -L .agent && readlink .agent
 ```
 
 3. 记录 `base_branch`、`base_commit`、`branch`、`worktree_path`、`agent_state_path`。
-4. 在 registry 中 check-in。
-5. 获取任务锁，并把 `worktree_path`、`branch` 和 `agent_state_path` 写入 lock metadata。
-6. 调用 `management-api runs checkpoint` 记录 `creating_worktree` / `lock_acquired`。
+4. 在 registry 中 check-in：
+
+```bash
+node .agent/registry/scripts/agent-registry.js check-in \
+  --agent-id <agent-id> \
+  --role <role> \
+  --model <model> \
+  --task-id <task-id> \
+  --owned-files <paths>
+```
+
+5. 获取任务锁：
+
+```bash
+node .agent/locks/scripts/progress-lock.js acquire \
+  --scope task:<task-id> \
+  --agent-id <agent-id> \
+  --ttl-seconds 3600 \
+  --metadata-json '{"worktree_path":"../repo-T-001","branch":"agent/T-001-auth","agent_state_path":"../repo/.agent"}'
+```
+
+6. 记录 worktree 创建和锁获取事件：
+
+```bash
+node .agent/skills/management-api/scripts/index.js runs checkpoint \
+  --run-id R-<task-id> \
+  --task-id <task-id> \
+  --agent-id <agent-id> \
+  --role <role> \
+  --kind implement \
+  --status running \
+  --phase acquiring_lock \
+  --type lock_acquired \
+  --worktree-path ../<repo>-<task-id> \
+  --branch agent/<task-id>-<slug> \
+  --activity "Worktree created and task lock acquired" \
+  --message "Task lock acquired for worktree"
+```
 
 ## STATUS
 
@@ -110,7 +145,7 @@ test -L .agent && readlink .agent
 | `validated` | 主线验证通过 | `/sync-plans`、`/update-refs` |
 | `closed` | 任务已关闭，locks 已释放 | 清理或保留 worktree |
 
-输出 JSON 必须包含：
+输出 JSON：
 
 ```json
 {
@@ -163,10 +198,28 @@ test -L .agent && readlink .agent
 1. 确认当前 worktree 对应的 `task_id`、`branch`、`base_commit`。
 2. 运行任务级验证命令，并把结果写入 Artifact Bus 或 mission milestone。
 3. 执行 `/ship <task-id>`；若只是中间检查点，执行 `/commit`。
-4. 验证命令开始/结束时追加 `command_started` / `command_finished`，验证结果追加 `validation_passed` 或 `validation_failed`。
-5. 提交后记录 task_id、worktree_path、branch、commit、validation。
-6. 更新 handoff 或 coordination report，让 coordinator 知道该 worktree 已进入 `merge_ready` 或 `continue`。
-7. 追加 `command_finished` Run event，说明 worktree commit 已完成。
+   - 验证命令开始/结束时追加 `command_started` / `command_finished`。
+   - 验证通过追加 `validation_passed`；失败追加 `validation_failed` 并保持 run `status=running` 或 `failed`（按任务是否还能继续决定）。
+4. 提交后记录：
+
+```text
+task_id: T-001
+worktree_path: ../repo-T-001
+branch: agent/T-001-auth
+commit: <HEAD>
+validation: <commands and exit codes>
+```
+
+5. 更新 handoff 或 coordination report，让 coordinator 知道该 worktree 已进入 `merge_ready` 或 `continue`。
+6. 更新 Run journal：
+
+```bash
+node .agent/skills/management-api/scripts/index.js runs checkpoint \
+  --run-id R-<task-id> \
+  --type command_finished \
+  --phase running_command \
+  --message "Worktree commit completed"
+```
 
 ## MERGE
 
@@ -178,9 +231,74 @@ test -L .agent && readlink .agent
 - `/ship` 已完成或有明确豁免。
 - worktree 内验证命令已记录。
 - 没有未处理 handoff。
-- 与 base branch rebase 或 merge 后无冲突。
+- 已通过只读 diff/status 和必要的项目验证评估冲突风险；如果需要 fetch/rebase，必须在冻结合并候选前完成。
 
-合并前后分别追加 `merge_started` / `merge_completed` Run event；如果冲突或失败，追加 `failed` 或 `blocked`。
+### 资源绑定审批
+
+`/worktree` 是单任务分支合并的 owning workflow。先读取仓库规则、分支保护与任务计划，确定已批准的 integration strategy：`fast-forward`、`squash`、`local-merge` 或 `pr-handoff`。不得自行默认为某一种策略。
+
+策略尚未冻结时，先提出一个明确策略并创建独立 Decision/Waitpoint；其 `resource_ref` 必须包含 proposed strategy、source/target branch 与当前 short SHA，ID 使用 `D-worktree-<task-id>-strategy-<source-short-sha>-<target-short-sha>-<resource-digest8>` 和对应 `WP-` ID。该请求使用 `type=merge`、`action=merge`，Waitpoint owner 为 `/worktree`。用户批准并由 `/worktree` 消费后，才把该策略作为本次候选的冻结输入。
+
+完成必要的同步和冲突处理并固定最终 source/target commit 后，计算完整资源摘要，生成精确资源引用：
+
+```text
+git:<repository>#integrate:<source-branch>@<source-head>-><target-branch>@<target-head>#strategy:<integration-strategy>#digest:<resource-digest>
+```
+
+用同一个 `resource_ref` 创建 Decision 和 blocking Waitpoint：
+
+```bash
+node .agent/skills/management-api/scripts/index.js decisions request \
+  --decision-id D-worktree-<task-id>-<source-short-sha>-<target-short-sha>-<resource-digest8> \
+  --gate worktree \
+  --type merge \
+  --requested-by worktree-coordinator \
+  --prompt "Approve this exact worktree merge?" \
+  --action merge \
+  --resource-ref "<resource-ref>"
+
+node .agent/skills/management-api/scripts/index.js waitpoints create \
+  --waitpoint-id WP-worktree-<task-id>-<source-short-sha>-<target-short-sha>-<resource-digest8> \
+  --gate worktree \
+  --owner-workflow /worktree \
+  --reason "Exact commits and integration strategy require user approval" \
+  --action merge \
+  --resource-ref "<resource-ref>" \
+  --decision-id D-worktree-<task-id>-<source-short-sha>-<target-short-sha>-<resource-digest8>
+```
+
+创建后停止，向用户显示包含本次资源摘要的 `/approve decision <decision-id>`。Dashboard 只能展示该请求，不能批准。用户解析后，由 `/worktree merge` 重新读取 Decision，确认状态为 `approved`、选项为 `approve`、用户解析证据完整，且 action/resource 与当前 source/target commit 和 integration strategy 完全一致，再消费 Waitpoint：
+
+```bash
+node .agent/skills/management-api/scripts/index.js waitpoints release \
+  --waitpoint-id WP-worktree-<task-id>-<source-short-sha>-<target-short-sha>-<resource-digest8> \
+  --gate owner \
+  --owner-workflow /worktree \
+  --decision-id D-worktree-<task-id>-<source-short-sha>-<target-short-sha>-<resource-digest8> \
+  --released-by worktree-coordinator \
+  --release-note "Approved Decision matches commits, strategy and resource digest"
+```
+
+若任一 commit 或 strategy 已变化，旧 Decision 不得复用；使用新的 short SHA/resource digest 创建新 Decision/Waitpoint。阶段级、多来源集成只报告“项目级 Checkpoint 集成路由尚未批准”，不得调用尚不存在的工作流。
+
+准备合并候选时可以运行只读检查：
+
+```bash
+git diff --check
+```
+
+`git status`、`git diff`、`git diff --check` 和本地日志读取是普通只读检查，不需要 Decision。`git fetch` 会访问远端但不重写工作区，应在执行前明确展示远端和目的，并创建 `external_side_effect` Decision/Waitpoint；rebase 会重写 source commits，必须单独走 `destructive` Decision/Waitpoint。二者都必须在 merge Decision 创建前完成。Waitpoint 释放后不得再 rebase 或改变 source/target HEAD。
+
+执行时只采用资源中已批准的仓库策略：
+
+| Strategy | 执行边界 |
+| :--- | :--- |
+| `fast-forward` | 使用仓库批准的 fast-forward 命令，并验证 target 正好推进到 approved source。 |
+| `squash` | 使用仓库批准的 squash 流程；生成提交时转入 `/commit`，不得隐式提交。 |
+| `local-merge` | 使用仓库配置的本地 merge 参数，不硬编码 `--no-ff` 或其他策略。 |
+| `pr-handoff` | 不在本地合并；创建 PR/handoff 所需证据，push 和创建 PR 分别遵循外部副作用审批。 |
+
+不得自动 reset、revert、push 或强推。合并前后分别追加 `merge_started` / `merge_completed` Run event；如果冲突或失败，追加 `failed` 或 `blocked`。
 
 ## VALIDATE
 
@@ -189,9 +307,14 @@ test -L .agent && readlink .agent
 1. 运行项目关键测试、构建、lint 或用户指定验证命令。
 2. 对 UI/设备/跨机器项目，按领域验证 skill 或 validation-contract 收集运行证据。
 3. 运行 `git diff --check`。
-4. 若验证失败，记录失败命令和证据，优先在目标主线 worktree 修复；若要回源 worktree 继续，创建 `/handoff`。
-5. 若验证通过，标记任务可关闭或已合并，并更新 Artifact Bus / mission milestone。
-6. 将 Run journal 更新为 `status=completed`、`phase=completed`，并追加 `completed` event。
+4. 若验证失败：
+   - 记录失败命令和证据
+   - 优先在目标主线 worktree 修复
+   - 若要回源 worktree 继续，创建 `/handoff`
+5. 若验证通过：
+   - 标记任务可关闭或已合并
+   - 更新 Artifact Bus / mission milestone
+   - 将 Run journal 更新为 `status=completed`、`phase=completed`，并追加 `completed` event。
 
 合并并验证通过后：
 
@@ -209,6 +332,7 @@ test -L .agent && readlink .agent
 - `/mission`：每个 milestone 可映射到一个或多个 worktree。
 - `/handoff`：跨 worktree 转移上下文的唯一正式入口。
 - `/ship`：每个 worktree 的任务收口入口。
+- 项目级 Checkpoint、多来源排序集成：相关提案仍待批准；当前只报告待路由状态，不引用或执行不存在的工作流。
 
 ## Queue / Session 运行态写入
 

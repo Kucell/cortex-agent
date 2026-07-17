@@ -1,203 +1,97 @@
 ---
 name: mission
-description: Orchestrate long-running, multi-milestone work with scoped plans, validation contracts, structured handoffs, command logs, and independent validation.
+description: Coordinate durable multi-milestone work with resumable state, independent validation, and explicit human Decisions.
 ---
 
-# Mission Lite Workflow (/mission)
+# Mission Workflow (/mission)
 
-Use `/mission` for work that is too large for a single `/start-task` → `/ship` loop: multi-feature changes, multi-day work, or tasks that need milestone validation before advancing.
+Use Mission for work spanning multiple phases, sessions, or independent validation gates.
 
-Do not use Mission Lite for small fixes, single-file edits, or routine documentation updates. Use `/start-task`, `/ship`, `/bug-fix`, or `/handoff` instead.
-
-## Usage
+## Commands
 
 ```text
-/mission create "migrate auth module"
-/mission status M-001
-/mission resume M-001
-/mission validate M-001 MS-001
+/mission create --from-proposal <path>
+/mission status <mission-id>
+/mission run <mission-id>
+/mission validate <mission-id> <milestone-id>
+/mission resume <mission-id>
 ```
+
+Mission state lives under `.agent/missions/<mission-id>/` and includes `mission-plan.md`, `command-log.md`, milestone files, and a validation contract. Use the provided resource templates when creating these files.
+
+## Operating Rules
+
+- Every milestone has explicit acceptance criteria, validation evidence, dependencies, and an owner.
+- Read-only research, validation, and documentation may run in parallel. Mutating work requires non-overlapping ownership, locks, Queue/Run/Session state, and a handoff plan.
+- A user choice is durable only as a resource-bound Decision. `--gate approve`, Dashboard input, prior approval, or silence is not authorization.
+- Destructive operations, credentials, and external side effects always require a Decision plus blocking Waitpoint. Mission never automatically resets, reverts, pushes, deploys, publishes, or accesses credentials.
 
 ## State Machine
 
 ```text
-SCOPE -> PLAN -> CONTRACT -> EXECUTE_FEATURE -> HANDOFF -> RESUME -> VALIDATE_MILESTONE -> FIX_OR_ADVANCE -> COMPLETE
+CREATE -> PLAN -> DISPATCH -> EXECUTE -> VALIDATE -> COMPLETE
+                     |          |           |
+                     +-> RESUME +-> HUMAN_DECISION
 ```
 
-## Core Rules
+On every resume, read the mission plan, active milestone, command log, Task/Run/Queue/Session state, locks, handoffs, Decisions, and Waitpoints. If a blocking Waitpoint exists, enter `HUMAN_DECISION` and stop the protected action.
 
-- Code changes are serial by default.
-- Parallel work is allowed for read-only research, validation, or documentation only.
-- Every milestone must have a validation contract before implementation begins.
-- Worker output is not proof. Validators must rely on the contract, diff, command output, runtime evidence, and necessary source files.
-- Failed validation creates a follow-up fix task or returns to planning; do not let a Worker self-repair indefinitely.
-- Record key commands with exit codes in `command-log.md`.
-- Handoff uses the T-C06 dual-artifact protocol: Markdown for humans, JSON for `AGENT_RESUME`, and Artifact Bus `kind: handoff` when available.
+## CREATE and PLAN
 
-## Files
+1. Read the approved proposal and verify scope.
+2. Generate a stable Mission ID and create the mission directory from templates.
+3. Decompose the proposal into ordered milestones with acceptance criteria and explicit dependencies.
+4. Define the validation contract before implementation, including commands, independent validator expectations, required artifacts, and failure behavior.
+5. Mark safe parallel opportunities and exclusive write scopes.
 
-Create mission state under:
+## DISPATCH and EXECUTE
 
-```text
-.agent/missions/M-xxx/
-├── mission-plan.md
-├── validation-contract.json
-├── command-log.md
-├── milestones/
-│   └── MS-001.md
-└── handoffs/
-    ├── YYYYMMDD-HHMMSS-{focus}.md
-    └── H-YYYYMMDD-HHMMSS-{focus}.json
-```
-
-Use these templates when creating files:
-
-```text
-.agent/resources/templates/mission/mission-plan.md
-.agent/resources/templates/mission/command-log.md
-.agent/resources/templates/mission/milestone.md
-```
-
-## CREATE
-
-1. Read project instructions and context:
-   - `AGENTS.md`
-   - `.agent/rules/core-principles.md`
-   - `.agent/rules/architecture-design.md`
-   - `.agent/rules/task-decomposition.md`
-   - `.agent/rules/code-standards.md`
-   - `.agent/plans/task-progress.md`
-   - `.agent/plans/context-manifest.json` when it exists
-   - If `--from-proposal <path>` was passed: read the specified proposal file and use its Phase list as the milestone input source
-2. Confirm the work belongs in Mission Lite:
-   - multiple features, multiple milestones, or multi-day scope
-   - non-trivial validation requirements
-   - cross-agent or cross-session continuation is likely
-3. Allocate the next mission ID (`M-001`, `M-002`, ...).
-4. Create `.agent/missions/M-xxx/` and child folders.
-5. Create `mission-plan.md` from `.agent/resources/templates/mission/mission-plan.md`, then fill:
-   - goal
-   - non-goals
-   - scope boundaries
-   - features (if from a proposal, map from the proposal's Phase list)
-   - milestones (if from a proposal, one milestone per Phase; use `.agent/resources/templates/task-breakdown.md` to reason about task size, dependencies, and parallel opportunities before finalizing)
-   - sequencing
-   - risks
-   - exit criteria
-   - if from a proposal, add to the header: `> **Source Proposal**: <proposal-file-path>`
-6. Use the `validation-contract` skill in CREATE mode to write `validation-contract.json`.
-7. Create `command-log.md` from `.agent/resources/templates/mission/command-log.md`.
-8. Create the first milestone file from `.agent/resources/templates/mission/milestone.md`.
-9. Present the mission plan and contract summary for confirmation before implementation.
-
-## STATUS
-
-1. Read `.agent/missions/M-xxx/mission-plan.md`.
-2. Read `validation-contract.json`.
-3. Read `command-log.md`.
-4. Read the latest milestone file under `milestones/`.
-5. Report:
-   - current state
-   - current milestone
-   - completed work
-   - failed or waived assertions
-   - commands run and latest exit codes
-   - next recommended action
-
-## RESUME
-
-1. Read project instructions and required rules.
-2. Read the mission state files.
-3. If a JSON handoff exists, run `node .agent/handoffs/scripts/handoff-protocol.js resume-prompt --payload-file <handoff.json>`.
-4. Check `git status --short` before changing files.
-5. Compare the mission state, handoff payload, Artifact Bus state, and current repository state.
-6. If stale, report the mismatch and propose a recovery step.
-7. Continue from the current state:
-   - if no contract exists, return to CONTRACT
-   - if a handoff is pending, go to RESUME and follow `next_action`
-   - if worker output exists but no validation exists, go to VALIDATE_MILESTONE
-   - if validation failed, go to FIX_OR_ADVANCE
-   - if all milestones passed, go to COMPLETE
-
-## HANDOFF
-
-1. Use `/handoff create` semantics to write Markdown and JSON handoff files.
-2. Validate the JSON payload:
-   ```bash
-   node .agent/handoffs/scripts/handoff-protocol.js validate --payload-file .agent/missions/M-xxx/handoffs/H-xxx.json
-   ```
-3. Publish the JSON payload to Artifact Bus when available:
-   ```bash
-   node .agent/handoffs/scripts/handoff-protocol.js publish --payload-file .agent/missions/M-xxx/handoffs/H-xxx.json --markdown-path .agent/missions/M-xxx/handoffs/xxx.md --agent-id coordinator
-   ```
-4. Record the handoff paths in `command-log.md` or the current milestone.
-5. Release Progress Locks held by the handing-off agent, or let TTL expire if the agent is unavailable.
+Create Task, Run, Queue, Session, lock, and handoff records through their owning APIs. Keep one coordinator owner for mission transitions. Checkpoint meaningful phase changes; never infer progress from chat alone.
 
 ## VALIDATE
 
-1. Read `validation-contract.json`.
-2. Run `validation-contract` in CHECK mode.
-3. Read the relevant diff and command log.
-4. Run required commands from blocking assertions when safe.
-5. Use runtime evidence templates from `docs/reliability/` for runtime assertions.
-6. Write or update `milestones/MS-xxx.md` from `.agent/resources/templates/mission/milestone.md` with:
-   - assertions checked
-   - evidence
-   - command exit codes
-   - pass/fail status
-   - follow-up fix tasks, if any
-7. Move to `FIX_OR_ADVANCE`.
+Run the milestone's declared commands and independent semantic review. Record exact command, exit code, evidence refs, validator, and conclusion. A passing command without semantic acceptance evidence is insufficient. Failed validation keeps the milestone blocked and records the repair path.
 
-## FIX_OR_ADVANCE
+## HUMAN_DECISION
 
-- If blocking assertions failed:
-  1. Create a follow-up fix task in `.agent/plans/task-progress.md` or the mission milestone file.
-  2. Return to `EXECUTE_FEATURE`.
-- If validation passed and more milestones remain:
-  1. Advance to the next milestone.
-  2. Ensure its validation contract exists.
-- If all milestones passed:
-  1. Move to `COMPLETE`.
+1. Define the exact protected resource and select one supported action: `architecture`, `merge`, `release`, `destructive`, `credential`, or `external_side_effect`.
+2. Architecture approval uses `type=architecture`, `action=architecture`, and the exact proposal/artifact revision digest. It never authorizes destructive or external effects.
+3. Compute a stable resource digest and include its first 8-12 characters in both IDs.
+4. Create an open Decision and blocking Waitpoint owned by `/mission`:
 
-## COMPLETE
+   ```bash
+   node .agent/skills/management-api/scripts/index.js decisions request \
+     --decision-id D-<mission-id>-<choice>-<resource-digest8> \
+     --gate mission \
+     --payload-json '{"type":"<type>","requested_by":"/mission","prompt":"<explicit choice>","options":["approve","reject","revise"],"gate":{"action":"<architecture|merge|release|destructive|credential|external_side_effect>","resource_ref":"<exact-resource-ref>"}}'
 
-1. Confirm all milestones passed or have explicit waivers.
-2. Archive or preserve mission state:
-   - keep `.agent/missions/M-xxx/` while active
-   - after completion, move stable summaries to `docs/exec-plans/completed/` when useful
-   - do not delete command logs or milestone evidence
-3. Run knowledge checks where applicable:
-   - `node .agent/skills/knowledge-lint/scripts/index.js`
-   - `node .agent/skills/doc-gardening/scripts/index.js`
-4. Update `.agent/plans/task-progress.md`.
-5. **Proposal archiving** (if `mission-plan.md` has a `Source Proposal` field):
-   1. Read the source proposal file.
-   2. Prompt the user to distill the architecture output into a clean architecture document and write it to `docs/architecture/<topic>.md`.
-   3. Back-fill the proposal file header:
-      ```markdown
-      > **Status**: done
-      > **Archived Doc**: docs/architecture/<topic>.md
-      ```
-   4. Output: "📚 Architecture design archived to docs/architecture/<topic>.md — proposal status → done."
-6. Summarize:
-   - mission outcome
-   - commits or changed files
-   - validation status
-   - remaining risks
-   - recommended next task
+   node .agent/skills/management-api/scripts/index.js waitpoints create \
+     --waitpoint-id WP-<mission-id>-<choice>-<resource-digest8> \
+     --gate mission \
+     --owner-workflow /mission \
+     --reason "<why human choice is required>" \
+     --action <same-action> \
+     --resource-ref "<same-resource-ref>" \
+     --decision-id D-<mission-id>-<choice>-<resource-digest8>
+   ```
 
-## Quality Bar
+5. Stop and direct the user to `/approve decision D-<mission-id>-<choice>-<resource-digest8>`.
+6. On resume, recompute the resource and reject stale, mismatched, rejected, or revision-requested Decisions.
+7. Only `/mission` may release its Waitpoint:
 
-- Mission state must be recoverable without prior conversation context.
-- Validation contracts must exist before milestone implementation.
-- Command logs must include exit codes or a clear reason a command was not run.
-- Handoffs must reference existing artifacts by path instead of copying bulky content.
-- The workflow must remain template-driven and platform-independent.
+   ```bash
+   node .agent/skills/management-api/scripts/index.js waitpoints release \
+     --waitpoint-id WP-<mission-id>-<choice>-<resource-digest8> \
+     --gate owner \
+     --owner-workflow /mission \
+     --decision-id D-<mission-id>-<choice>-<resource-digest8> \
+     --released-by /mission
+   ```
 
-## Runtime State Writes
+Release authorizes only the exact recorded resource and does not transfer Task gate ownership.
 
-- `CREATE` opens coordinator session `S-<mission-id>` and checkpoints Run `R-<mission-id>` with `phase=planning`.
-- `STATUS` and `RESUME` heartbeat the same owner session with the current milestone and activity.
-- Milestone execution may use `queues upsert/item --gate mission`; validation records `done` or `blocked` only after contract evidence exists.
-- `HANDOFF` pauses the source session through `--gate handoff`; `COMPLETE` closes it through `--gate mission` and completes the Run.
-- A read-only query or Dashboard render never performs these transitions.
+## COMPLETE and Future Routing
+
+Complete only when every milestone and validation gate passes, required artifacts exist, and the mission record contains final evidence. At a multi-source project integration boundary, report that the project-level Checkpoint integration route is pending approval. Do not name or invoke an unapproved or nonexistent workflow.
+
+Dashboard and read-only queries never perform Mission transitions, resolve Decisions, or release Waitpoints.

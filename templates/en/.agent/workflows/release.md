@@ -1,68 +1,80 @@
 ---
 name: release
-description: 按语义化版本规范（SemVer）发布新版本。自动分析变更类型、更新版本号、提交、打 tag 并发布到 npm。
+description: Prepare a SemVer release and protect tagging, pushing, and publishing with resource-bound Decisions and Waitpoints.
 ---
 
-# 发布工作流 (/release)
+# Release Workflow (/release)
 
-## 第一步：分析变更，推断版本号
+`/release` owns release candidate preparation, push, and publish coordination. The candidate must exist and pass validation before its exact resource is submitted for approval. Read-only analysis, `status`, `diff`, and local candidate checks do not require approval; push, publish, deploy, credential use, and destructive operations remain separately authorized.
 
-读取自上次 tag 以来的所有提交记录：
+## 1. Select the Candidate Version
 
-```bash
-git log $(git describe --tags --abbrev=0)..HEAD --pretty=format:"%s" --no-merges
+Inspect the package metadata, latest tag, commits since that tag, and repository release policy. Infer the SemVer increment and ask the user to confirm the candidate version. Version confirmation chooses a candidate value; it is not release authorization.
+
+## 2. Form the Candidate in the Workspace
+
+1. Verify the working tree and active branch satisfy repository policy.
+2. Update the required version files, lockfiles, plugin manifests, and changelog.
+3. Build the candidate package or normalized candidate file list with the existing project tooling.
+4. Do not commit, tag, push, publish, or deploy at this stage. The candidate must remain inspectable and reproducible.
+
+## 3. Validate and Freeze the Candidate
+
+Run the repository's tests, lint, type checks, build, package checks, and release-specific validation. Inspect `git status`, `git diff`, and the package contents. Calculate `candidate_digest` from the exact package bytes, or from a sorted normalized file list and contents when there is no archive.
+
+Freeze package, version, registry, base commit, candidate digest, and tag as one exact resource:
+
+```text
+npm:<package>@<version>#registry:<registry>#base:<sha>#candidate-digest:<sha256>#tag:v<version>
 ```
 
-按 Conventional Commits 规则推断版本号类型：
+Any candidate change requires validation and a new digest.
 
-| 条件 | 版本变更 | 示例 |
-| :--- | :--- | :--- |
-| 包含 `BREAKING CHANGE` 或 `!:` | **Major** x.0.0 | 破坏性 API 变更 |
-| 包含 `feat:` / `feat(*):` | **Minor** x.y.0 | 新增功能 |
-| 只有 `fix:` / `chore:` / `docs:` 等 | **Patch** x.y.z | 修复或维护 |
+## 4. Request Candidate Approval
 
-展示推断结果和本次变更摘要，**请用户确认版本号**后再继续。
-
----
-
-## 第二步：更新版本号
-
-确认版本号后，同步更新以下三处：
-
-1. `package.json` → `"version": "{新版本}"`
-2. `.claude-plugin/plugin.json` → `"version": "{新版本}"`
-3. `.claude-plugin/marketplace.json` → 两处 `"version": "{新版本}"`（metadata 和 plugin 条目）
-
----
-
-## 第三步：提交 + 打 Tag
+Use the digest prefix in both IDs:
 
 ```bash
-git add package.json .claude-plugin/plugin.json .claude-plugin/marketplace.json
-git commit -m "chore(release): v{新版本}"
-git tag v{新版本}
-git push && git push --tags
+node .agent/skills/management-api/scripts/index.js decisions request \
+  --decision-id D-release-<version>-<candidate-digest8> \
+  --gate release \
+  --payload-json '{"type":"release","requested_by":"/release","prompt":"Approve the exact release candidate?","options":["approve","reject","revise"],"gate":{"action":"release","resource_ref":"<resource-ref>"}}'
+
+node .agent/skills/management-api/scripts/index.js waitpoints create \
+  --waitpoint-id WP-release-<version>-<candidate-digest8> \
+  --gate release \
+  --owner-workflow /release \
+  --reason "Package, version, registry, base commit, candidate digest and tag require user approval" \
+  --action release \
+  --resource-ref "<resource-ref>" \
+  --decision-id D-release-<version>-<candidate-digest8>
 ```
 
----
+Stop and direct the user to `/approve decision D-release-<version>-<candidate-digest8>`. A Dashboard request or `--gate approve` string is not approval.
 
-## 第四步：发布到 npm
+## 5. Revalidate and Consume the Waitpoint
+
+After approval, rebuild and recompute the resource. Any package, version, registry, base commit, digest, or tag drift invalidates the old Decision. If unchanged, `/release` releases its own Waitpoint:
 
 ```bash
-npm publish --registry https://registry.npmjs.org/
+node .agent/skills/management-api/scripts/index.js waitpoints release \
+  --waitpoint-id WP-release-<version>-<candidate-digest8> \
+  --gate owner \
+  --owner-workflow /release \
+  --decision-id D-release-<version>-<candidate-digest8> \
+  --released-by /release \
+  --release-note "Approved Decision matches package, version, registry, base commit, candidate digest and tag"
 ```
 
-如果账号开启了 2FA，命令会提示输入 OTP，补充 `--otp=<验证码>` 参数：
+## 6. Commit and Tag
 
-```bash
-npm publish --registry https://registry.npmjs.org/ --otp=<6位验证码>
-```
+Use `/commit` for the release candidate. Confirm that the release commit rebuilds to the approved `candidate_digest`. Create a local tag only when repository policy allows it and the tag, commit, and digest all match. Never overwrite or move an existing tag.
 
-> 💡 **简便方式**：也可以直接运行 `npm run release` 脚本，它会完成版本号更新和发布，Git 提交和 tag 需手动或由 AI 配合完成。
+## 7. Authorize External Effects Separately
 
----
+- **Push** requires a separate `action=external_side_effect` Decision/Waitpoint bound to remote URL, branch, tag, release commit, and push mode.
+- **Publish** requires a separate `action=release` Decision/Waitpoint bound to package, version, registry, release commit, and candidate digest.
+- **Deploy** requires its own `action=external_side_effect` approval.
+- **Credentials** require a separate credential Decision/Waitpoint. The user supplies OTP at execution time; never store it in Decisions, logs, command history, or repository files.
 
-## 完成后输出
-
-- 发布成功：提示 `cortex-agent@{版本} ✅ 已发布到 npm`
-- 更新 `.agent/plans/task-progress.md` 中对应任务状态
+Do not run scripts that implicitly chain version updates, commit, tag, push, publish, or deploy. Every protected action is consumed only by its owning workflow for the exact approved resource.
