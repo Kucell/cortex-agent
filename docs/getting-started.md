@@ -101,6 +101,7 @@ npx cortex-agent init --global
 | `cortex-agent track` | 开启 Git 追踪：移除本地忽略，自动 `git add .agent` |
 | `cortex-agent untrack` | 关闭 Git 追踪：`git rm --cached` + 写入本地忽略，不删除文件 |
 | `cortex-agent doctor` | 健康检查：验证 `.agent`/`AGENTS.md`/`GEMINI.md` 识别与 Git 状态 |
+| `cortex-agent dev` | 前台启动 Agent 协作 Dashboard；端口占用时自动选择后续可用端口 |
 | `cortex-agent runs list` | 通过 Management API 列出最近的 Run，输出 JSON |
 | `cortex-agent runs show <run-id>` | 从 Management API read model 查看指定 Run，输出 JSON |
 | `cortex-agent queues list` | 通过 Management API 列出 Queue，输出 JSON |
@@ -108,6 +109,38 @@ npx cortex-agent init --global
 | `cortex-agent add <platform>` | 添加平台集成（如 `cline`、`roo`、`codex`）|
 | `cortex-agent remove <platform>` | 移除平台集成 |
 | `cortex-agent list` | 列出当前已安装的平台集成 |
+
+---
+
+## 开发服务与静态降级
+
+在已初始化的项目根目录启动 Dashboard：
+
+```bash
+cortex-agent dev
+```
+
+命令会输出实际访问地址，并在服务运行期间维护 owner-scoped Dashboard Session。默认参数如下：
+
+```bash
+cortex-agent dev --port 8787 --interval-ms 3000 --session-id local-dashboard
+```
+
+- `--port` 指定起始端口；被占用时自动尝试后续可用端口。
+- `--interval-ms` 指定 Dashboard 数据刷新间隔。
+- `--session-id` 指定可追踪的 Session 标识。
+- `Ctrl+C` 停止前台服务，并触发 Session 生命周期收尾。
+
+`dev` 只是便捷的本地运行入口，不是 Dashboard 或 Management API 的唯一入口。服务停止后仍可执行：
+
+```bash
+# 生成静态 Dashboard
+node .agent/skills/agent-dashboard/scripts/generate.js
+
+# 直接读取 Management API 数据
+cortex-agent runs list
+cortex-agent sessions list
+```
 
 ---
 

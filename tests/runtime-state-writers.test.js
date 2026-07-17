@@ -68,6 +68,57 @@ test("session heartbeat and owner transitions fail closed", (t) => {
   assert.equal(session.updated_by_gate, "owner");
 });
 
+test("closed sessions reject heartbeats and explicit reopen starts a clean lifecycle", (t) => {
+  const cwd = project();
+  t.after(() => fs.rmSync(cwd, { recursive: true, force: true }));
+  const sessionFile = path.join(cwd, ".agent", "sessions", "S-reopen.json");
+
+  assert.equal(run(cwd, [
+    "sessions", "open",
+    "--session-id", "S-reopen",
+    "--agent-id", "owner",
+    "--role", "worker",
+    "--started-at", "2026-07-17T01:00:00.000Z",
+  ]).status, 0);
+  assert.equal(run(cwd, [
+    "sessions", "open",
+    "--session-id", "S-reopen",
+    "--agent-id", "owner",
+    "--role", "worker",
+    "--started-at", "2026-07-17T01:30:00.000Z",
+  ]).status, 0);
+  assert.equal(JSON.parse(fs.readFileSync(sessionFile, "utf8")).started_at, "2026-07-17T01:00:00.000Z");
+  assert.equal(run(cwd, [
+    "sessions", "close",
+    "--session-id", "S-reopen",
+    "--agent-id", "owner",
+    "--gate", "owner",
+  ]).status, 0);
+
+  const closedContent = fs.readFileSync(sessionFile, "utf8");
+  const heartbeat = run(cwd, [
+    "sessions", "heartbeat",
+    "--session-id", "S-reopen",
+    "--agent-id", "owner",
+  ]);
+  assert.equal(heartbeat.status, 1);
+  assert.equal(JSON.parse(heartbeat.stdout).error, "session_closed");
+  assert.equal(fs.readFileSync(sessionFile, "utf8"), closedContent);
+
+  assert.equal(run(cwd, [
+    "sessions", "open",
+    "--session-id", "S-reopen",
+    "--agent-id", "owner",
+    "--role", "worker",
+    "--started-at", "2026-07-17T02:00:00.000Z",
+  ]).status, 0);
+  const reopened = JSON.parse(fs.readFileSync(sessionFile, "utf8"));
+  assert.equal(reopened.status, "running");
+  assert.equal(reopened.started_at, "2026-07-17T02:00:00.000Z");
+  assert.equal("closed_at" in reopened, false);
+  assert.equal("updated_by_gate" in reopened, false);
+});
+
 test("dashboard server owns and closes its runtime session", async (t) => {
   const cwd = project();
   t.after(() => fs.rmSync(cwd, { recursive: true, force: true }));
