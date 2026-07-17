@@ -19,18 +19,18 @@ description: 任务完成后的一键收尾：代码审查 → 提交 → 标记
 
 ## 任务流水线接入
 
-`/ship` 执行前读取 `.agent/tasks/<task-id>.json` 与 `.agent/tasks/README.md`。存在任务记录时，task pipeline gate 是阶段推进的权威依据；`task-progress.md` 继续用于路线图展示。旧任务没有记录时保留传统流程，但必须在报告中注明“未启用 task pipeline”，不得伪造已通过的 gate。
+`/ship` 执行前读取 `.agent/tasks/<task-id>.json` 与 `.agent/tasks/README.md`。存在任务记录时，task pipeline gate 是阶段推进的权威依据；`task-progress.md` 继续用于路线图展示。`/ship` 必须从 stage `implement` 开始，不得写入 `plan -> implement`；该 gate 由 `/start-task` 独占。旧任务没有记录时保留传统流程，但必须在报告中注明“未启用 task pipeline”，不得伪造已通过的 gate。
 
 状态机与 task stage 的映射如下：
 
 | `/ship` 状态 | Task stage / artifact 动作 |
 | :--- | :--- |
-| `PLAN -> EXECUTE` | 检查 `plan -> implement`：依赖均为 `done`，final `plan` 与条件性的 final `architecture` 工件存在；通过后进入 `implement`。 |
-| `EXECUTE -> LINT` | 追加 final `implementation` 工件，引用 diff、commit 或执行报告；通过 `implement -> validate`。 |
+| 入口 | 要求任务已由 `/start-task` 进入 `implement`；`/ship` 不重检或改写 `plan -> implement`。 |
+| `EXECUTE -> LINT` | 先写入真实存在的 Artifact Bus envelope 或 execution report 文件，在 payload 中记录 commit、diff 摘要和变更路径；任务的 final `implementation.ref` 只引用该文件。文件存在且引用加入 gate `evidence_refs` 后，通过 `implement -> validate`。 |
 | `LINT -> REVIEW` | lint、测试和安全检查通过后追加 final `validation` 工件；通过 `validate -> review`。失败时 gate 为 `blocked`，stage 保持 `validate`。 |
 | `REVIEW -> COMMIT` | 追加 final `review` 工件。存在 Must Fix 时保持 `review` 并阻断；`--no-review` 仅在用户显式选择时记录 `waived` gate 和原因。 |
-| `COMMIT -> DONE` | 检查 review 结论、提交证据，以及条件性的 `release-note` / `published-doc` 要求；通过 `review -> done` 后设置 `status: completed`。 |
-| `PUBLISH_DOCS` | 若执行文档发布，消费 final 工件并把 `/publish-docs` 返回的 final `published-doc` 引用回填任务；不单独改变 stage。 |
+| `COMMIT -> DONE` | 检查 review 结论、提交证据，以及条件性的 `release-note` / `published-doc` 要求。条件不适用时，在 gate `reason` 记录判断并引用 final `decision` 证据，不 waiver 整个 gate；通过 `review -> done` 后设置 `status: completed`。 |
+| `PUBLISH_DOCS` | 接收 `/publish-docs` 返回的 final `published-doc` ref 或失败证据。`/ship` 验证引用文件存在后，将 final 工件加入任务并回填 completion gate `evidence_refs`；失败时由 `/ship` 保持 gate `blocked`。 |
 
 每次变更同步任务文件、`.agent/tasks/index.json`、`updated_at` 和 gate `evidence_refs`。工件正文保持在 `.agent/artifacts/<task-id>/` 或其原始真理源中；任务文件只保存规范 kind 与引用。失败后追加修复工件并重检当前 gate，不倒退 stage、不覆盖旧工件，也不通过 Management API 直接修改任务。
 
@@ -57,10 +57,10 @@ description: 任务完成后的一键收尾：代码审查 → 提交 → 标记
 ### Phase 1: EXECUTE
 
 **Gate Check**: `phase-gate --from PLAN --to EXECUTE`
-- ✅ 实施计划已完成（或明确验收标准已提供）
-- ✅ 架构预审通过（`architecture-guard`）
+- ✅ 存在任务记录时，stage 已由 `/start-task` 推进到 `implement`
+- ✅ `plan -> implement` gate 已通过；`/ship` 不修改该 gate
 
-**执行**: 代理完成编码实现
+**执行**: 收集已完成实现的证据，并生成 Artifact Bus envelope 或 execution report 文件；commit、diff 摘要和变更路径只写入 payload。
 
 **Max Retry**: 2 次（若连续 2 次实现失败，阻断并请求人工介入）
 
@@ -240,6 +240,8 @@ DOC_GARDENING 完成后，判断本次交付是否影响开发者可读文档：
 - 用户明确要求发布 PRD、架构说明、模块说明或开发手册
 
 若命中，执行 `/publish-docs` 或 `/publish-docs --architecture`。若未命中，记录“无需发布开发者文档”并继续。
+
+`/publish-docs` 只返回 final `published-doc` ref 或失败证据。`/ship` 是唯一负责验证 ref 文件、回填任务 `artifacts[]` 与 completion gate `evidence_refs`、以及更新 gate 状态的工作流。若文档不适用，`/ship` 在 gate `reason` 记录判断并引用 final `decision` 证据，不 waiver 整个 `review -> done` gate。
 
 **执行策略**：
 

@@ -27,10 +27,10 @@ draft -> spec -> plan -> implement -> validate -> review -> done
 | :--- | :--- | :--- |
 | `draft -> spec` | `/plan` or `/arch-design` | Title, description, acceptance criteria, priority, dependencies, and source references are recorded. |
 | `spec -> plan` | `/plan` | A final `spec` artifact and a final `plan` artifact exist; architecture-impacting tasks also have a final, user-approved `architecture` artifact. |
-| `plan -> implement` | execution workflow | Dependencies are at `done`; required plan and architecture artifacts are final; writable scope and validation commands are known. |
-| `implement -> validate` | `/ship` | A final `implementation` artifact references the implementation diff, commits, or execution report. |
+| `plan -> implement` | `/start-task` | Dependencies are at `done`; required plan and architecture artifacts are final; writable scope and validation commands are known. |
+| `implement -> validate` | `/ship` | A final `implementation` artifact references an existing Artifact Bus envelope or execution-report file whose payload records the implementation diff, commits, and changed paths. |
 | `validate -> review` | `/ship` | A final `validation` artifact records commands and passing evidence. Failed validation blocks the transition. |
-| `review -> done` | `/ship` | A final `review` artifact has no blocking findings. `--no-review` requires an explicit user choice and a `waived` gate with the reason recorded. Conditional release-note and published-doc requirements are satisfied or explicitly marked not applicable. |
+| `review -> done` | `/ship` | A final `review` artifact has no blocking findings. `--no-review` requires an explicit user choice and a `waived` gate with the reason recorded. Conditional release-note and published-doc requirements are satisfied or `/ship` records the not-applicable decision in the gate `reason` and cites final `decision` evidence; the whole gate is not waived. |
 
 Stages never move backward. A failed check leaves the current stage unchanged and marks the target gate `blocked`; remediation appends new artifacts and rechecks the same gate. Correction of an accidental stage write requires explicit user approval and a recorded reason. `status = blocked` does not change `stage`.
 
@@ -56,14 +56,15 @@ Task files contain references, not artifact bodies. Artifact payloads remain app
 
 When the current Artifact Bus lacks the canonical kind, use the mapped envelope kind and put the canonical value in `payload.artifact_kind`. The task's `artifacts[].kind` always uses the canonical value above. This compatibility rule avoids changing existing Artifact Bus readers.
 
-An artifact satisfies a gate only when its task entry has `status: "final"`, its referenced file exists, and the gate lists that reference in `evidence_refs`. Superseded artifacts remain traceable but never satisfy a new gate.
+An artifact satisfies a gate only when its task entry has `status: "final"`, its referenced file exists, and the gate lists that reference in `evidence_refs`. Commit IDs, diff summaries, and changed paths belong inside an Artifact Bus envelope or execution-report payload; they are not valid task artifact `ref` values by themselves. Superseded artifacts remain traceable but never satisfy a new gate.
 
 ## Write Rules
 
 - `/plan` creates task files and advances them through `spec` to `plan` after the corresponding artifacts are final.
 - `/arch-design` appends an `architecture` artifact; user approval is required before it is final or used by a gate.
-- `/ship` owns implementation, validation, review, and completion gates.
-- `/publish-docs` consumes only final artifacts and appends a `published-doc` artifact; it does not independently mark a task done.
+- `/start-task` is the only workflow that may pass or block `plan -> implement`; it must do so before implementation edits begin.
+- `/ship` owns `implement -> validate`, `validate -> review`, and `review -> done`, including completion-gate evidence and conditional not-applicable decisions.
+- `/publish-docs` consumes only final artifacts and returns either a final `published-doc` envelope reference or failure evidence. It does not mutate the task record or completion gate; `/ship` validates and records the returned reference.
 - Preserve timestamps in UTC ISO 8601 form and update `updated_at` after every task mutation.
 - Do not copy full proposals, diffs, logs, prompts, credentials, or generated docs into task JSON.
 - Do not mutate task records through Management API until an explicit task write gate is added there.

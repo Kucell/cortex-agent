@@ -155,11 +155,11 @@ Also manually confirm:
 When the current task uses the task pipeline:
 
 1. Append an artifact under `.agent/artifacts/<task-id>/` with envelope `kind: note` and `payload.artifact_kind: published-doc`. Keep the payload to target doc paths, source artifact refs, and validation command summaries and results.
-2. Add the returned path to `.agent/tasks/<task-id>.json` as canonical `kind: published-doc` with `status: final`, then synchronize `.agent/tasks/index.json` and `updated_at`.
-3. When `published-doc` is a conditional `review -> done` requirement, add the reference to that gate's `evidence_refs`; otherwise record the artifact without changing the task stage.
-4. Do not create a final artifact when sanitization or factual validation fails. Keep the gate blocked, fix the issue, and append a new publishing artifact without overwriting history.
+2. After verifying that the envelope file exists, return only its final `published-doc` ref to the caller. Do not modify `.agent/tasks/<task-id>.json`, `.agent/tasks/index.json`, gate `evidence_refs`, gate status, or task stage.
+3. When sanitization or factual validation fails, do not create or return a final artifact. Return only failure evidence containing failed checks, command results, and recovery guidance; do not mutate the completion gate.
+4. `/ship` consumes the result: on success, `/ship` verifies the referenced file and records the task artifact and completion-gate evidence; on failure, `/ship` decides the gate status. Append a new publishing artifact after remediation without overwriting history.
 
-`/publish-docs` cannot independently mark a task `done` and cannot mutate task records through Management API.
+`/publish-docs` is an evidence producer, not the completion-gate owner. It cannot mutate task records, mark a task `done`, or write tasks or gates through Management API.
 
 ## Workflow Integration
 
@@ -167,5 +167,5 @@ When the current task uses the task pipeline:
 - `/update-refs`: refreshes the fact base after iteration or refactoring before docs are published
 - `/arch-design`: after an architecture proposal is approved, call `/publish-docs --architecture` for developer-facing architecture docs
 - `/ship`: after `/update-refs`, enter the optional `PUBLISH_DOCS` phase when user-facing docs are affected
-- `.agent/tasks/`: consume finalized task artifacts and record a final `published-doc` reference for `/ship` gates
+- `.agent/tasks/`: consume finalized task artifacts and return only a final `published-doc` ref or failure evidence to `/ship`
 - `/agent-update`: maintains this workflow or project-local docs mapping rules

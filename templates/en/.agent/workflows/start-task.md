@@ -4,6 +4,18 @@ description: 开始新开发任务的工作流
 
 # 任务启动工作流 (/start-task)
 
+## Task Pipeline Gate Ownership
+
+When `.agent/tasks/<task-id>.json` exists, `/start-task` is the only workflow allowed to write the `plan -> implement` gate. Before any implementation edit begins:
+
+1. Read the task file and `.agent/tasks/README.md`, and confirm that the current stage is `plan`.
+2. Confirm that every dependency is `done`, final `plan` and any conditional final `architecture` artifacts exist, and each referenced file exists.
+3. Confirm that writable scope, non-writable scope, and validation commands are recorded.
+4. When all conditions pass, `/start-task` adds the verified artifact refs to gate `evidence_refs`, marks the gate `passed`, sets stage to `implement`, and synchronizes the task file, `.agent/tasks/index.json`, `updated_at`, and stage history.
+5. When a condition fails, keep stage at `plan`; `/start-task` marks the gate `blocked` and records the missing evidence. Do not begin implementation edits.
+
+`/start-task` does not create a final `implementation` artifact and must not advance `implement -> validate`; `/ship` exclusively owns those actions. Preserve the legacy flow for tasks without a Task Pipeline record, but report that the Task Pipeline is not enabled.
+
 1. **环境准备与上下文同步**:
     - 查阅任务进度文档（如 `.agent/plans/task-progress.md`）了解当前项目的开发状态。
     - 确保工作空间是最新的，并运行必要的环境检查。

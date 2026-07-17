@@ -27,10 +27,10 @@ draft -> spec -> plan -> implement -> validate -> review -> done
 | :--- | :--- | :--- |
 | `draft -> spec` | `/plan` 或 `/arch-design` | 已记录标题、描述、验收标准、优先级、依赖和来源引用。 |
 | `spec -> plan` | `/plan` | 存在 final `spec` 与 final `plan` 工件；影响架构的任务还必须有用户批准的 final `architecture` 工件。 |
-| `plan -> implement` | 执行工作流 | 依赖任务均为 `done`；必需计划与架构工件均为 final；可写范围和验证命令已明确。 |
-| `implement -> validate` | `/ship` | final `implementation` 工件引用实现 diff、commit 或执行报告。 |
+| `plan -> implement` | `/start-task` | 依赖任务均为 `done`；必需计划与架构工件均为 final；可写范围和验证命令已明确。 |
+| `implement -> validate` | `/ship` | final `implementation` 工件引用真实存在的 Artifact Bus envelope 或 execution report 文件，其 payload 记录实现 diff、commit 和变更路径。 |
 | `validate -> review` | `/ship` | final `validation` 工件记录命令和通过证据；验证失败时阻断流转。 |
-| `review -> done` | `/ship` | final `review` 工件没有阻断项。`--no-review` 必须来自用户显式选择，并用 `waived` gate 记录原因。条件性的 release-note 和 published-doc 要求已满足或明确标为不适用。 |
+| `review -> done` | `/ship` | final `review` 工件没有阻断项。`--no-review` 必须来自用户显式选择，并用 `waived` gate 记录原因。条件性的 release-note 和 published-doc 要求已满足；若不适用，由 `/ship` 在 gate `reason` 记录判断并引用 final `decision` 证据，不 waiver 整个 gate。 |
 
 阶段不得倒退。检查失败时保持当前阶段不变，并将目标 gate 标为 `blocked`；修复时追加新工件，再检查同一 gate。纠正误写阶段必须获得用户明确批准并记录原因。`status = blocked` 不改变 `stage`。
 
@@ -56,14 +56,15 @@ draft -> spec -> plan -> implement -> validate -> review -> done
 
 当现有 Artifact Bus 不支持规范 kind 时，使用映射后的 envelope kind，并在 `payload.artifact_kind` 中写规范值。任务的 `artifacts[].kind` 始终使用上表规范值。该兼容规则无需修改既有 Artifact Bus reader。
 
-只有同时满足以下条件的工件才能通过 gate：任务条目为 `status: "final"`、引用文件存在、gate 的 `evidence_refs` 包含该引用。被 superseded 的工件保留追溯能力，但不能满足新 gate。
+只有同时满足以下条件的工件才能通过 gate：任务条目为 `status: "final"`、引用文件存在、gate 的 `evidence_refs` 包含该引用。Commit ID、diff 摘要和变更路径必须放在 Artifact Bus envelope 或 execution report 的 payload 中，不能直接作为任务工件 `ref`。被 superseded 的工件保留追溯能力，但不能满足新 gate。
 
 ## 写入规则
 
 - `/plan` 创建任务文件，并在对应工件 final 后依次推进到 `spec` 和 `plan`。
 - `/arch-design` 追加 `architecture` 工件；只有用户批准后才能标为 final 或用于 gate。
-- `/ship` 负责 implementation、validation、review 和完成 gates。
-- `/publish-docs` 只消费 final 工件并追加 `published-doc` 工件；它不能独立把任务标为 done。
+- `/start-task` 是唯一可以通过或阻断 `plan -> implement` 的工作流，且必须在开始实现编辑前执行。
+- `/ship` 负责 `implement -> validate`、`validate -> review` 和 `review -> done`，包括完成 gate 证据与条件性“不适用”判断。
+- `/publish-docs` 只消费 final 工件，并返回 final `published-doc` envelope 引用或失败证据。它不修改任务记录或完成 gate；返回引用由 `/ship` 验证并回填。
 - 时间戳使用 UTC ISO 8601 格式，每次任务变更后更新 `updated_at`。
 - 不得把完整提案、diff、日志、prompt、凭证或生成文档复制到任务 JSON。
 - Management API 增加明确的 task write gate 前，不得通过它修改任务记录。

@@ -155,11 +155,11 @@ git diff --check
 若当前任务启用了 task pipeline：
 
 1. 向 `.agent/artifacts/<task-id>/` 追加 envelope `kind: note`、`payload.artifact_kind: published-doc` 的工件，payload 只包含目标文档路径、来源 artifact refs、验证命令摘要和结果。
-2. 在 `.agent/tasks/<task-id>.json` 的 `artifacts[]` 中加入规范 `kind: published-doc`、`status: final` 和返回的 artifact 路径，并同步 `.agent/tasks/index.json` 与 `updated_at`。
-3. 若 `published-doc` 是 `review -> done` 的条件性要求，把引用加入该 gate 的 `evidence_refs`；否则只记录工件，不改变 task stage。
-4. 脱敏或事实校验失败时不得创建 final 工件；保持 gate blocked，修复后追加新的发布工件，不覆盖旧记录。
+2. 验证 envelope 文件存在后，只向调用方返回 final `published-doc` ref；不得修改 `.agent/tasks/<task-id>.json`、`.agent/tasks/index.json`、任何 gate `evidence_refs`、gate status 或 task stage。
+3. 脱敏或事实校验失败时不得创建或返回 final 工件；只返回失败证据，包括失败检查、命令结果和可恢复建议，不修改 completion gate。
+4. `/ship` 接收返回结果：成功时由 `/ship` 验证 ref 文件并回填任务工件与 completion gate；失败时由 `/ship` 决定 gate 状态。修复后追加新的发布工件，不覆盖旧记录。
 
-`/publish-docs` 不能独立把任务标为 `done`，也不能通过 Management API 修改任务记录。
+`/publish-docs` 是证据生产者，不是 completion gate owner。它不能修改任务记录、把任务标为 `done`，也不能通过 Management API 写入任务或 gate。
 
 ## 与其他工作流的协作
 
@@ -167,5 +167,5 @@ git diff --check
 - `/update-refs`：功能迭代或重构后刷新事实源，再决定是否发布到 `docs/`
 - `/arch-design`：架构提案确认完成后，可调用 `/publish-docs --architecture` 输出开发者可读的架构文档
 - `/ship`：交付闭环中完成 `/update-refs` 后，若用户可读文档受影响，进入可选 `PUBLISH_DOCS` 阶段
-- `.agent/tasks/`：消费已定稿任务工件，并回填 final `published-doc` 引用供 `/ship` gate 使用
+- `.agent/tasks/`：消费已定稿任务工件，只把 final `published-doc` ref 或失败证据返回给 `/ship`
 - `/agent-update`：维护本工作流或项目本地的 docs 目录映射规则

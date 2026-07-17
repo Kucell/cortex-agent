@@ -4,6 +4,18 @@ description: 开始新开发任务的工作流
 
 # 任务启动工作流 (/start-task)
 
+## Task Pipeline Gate 所有权
+
+当 `.agent/tasks/<task-id>.json` 存在时，`/start-task` 是唯一可以写入 `plan -> implement` gate 的工作流。开始任何实现编辑前必须：
+
+1. 读取任务文件与 `.agent/tasks/README.md`，确认当前 stage 为 `plan`。
+2. 确认所有依赖任务为 `done`，final `plan` 与条件性的 final `architecture` 工件均存在，且其引用文件真实存在。
+3. 确认可写范围、不可写范围和验证命令已经记录。
+4. 条件满足时由 `/start-task` 把已验证的工件引用加入 gate `evidence_refs`，将 gate 标为 `passed`、stage 设为 `implement`，并同步任务文件、`.agent/tasks/index.json`、`updated_at` 和 stage history。
+5. 条件不满足时保持 stage 为 `plan`，由 `/start-task` 将 gate 标为 `blocked` 并记录缺失证据；不得开始实现编辑。
+
+`/start-task` 不创建 final `implementation` 工件，也不得推进 `implement -> validate`；这些动作由 `/ship` 独占。旧任务没有 Task Pipeline 记录时保留传统流程，但必须在报告中注明未启用 Task Pipeline。
+
 1. **环境准备与上下文同步**:
     - 查阅任务进度文档（如 `.agent/plans/task-progress.md`）了解当前项目的开发状态。
     - 确保工作空间是最新的，并运行必要的环境检查。
