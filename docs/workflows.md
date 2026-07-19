@@ -83,6 +83,7 @@ PLAN → EXECUTE → LINT → REVIEW → COMMIT → DONE → CONTEXT_CLEANUP →
 | :--- | :--- | :--- |
 | `/briefing` | 每日晨播：当前阶段、活跃任务、知识库健康度、成熟度看板 | `/briefing` |
 | `/arch-design` | 引导完成新功能的架构设计，输出方案对比与 Mermaid 架构图 | `/arch-design "用户认证模块"` |
+| `/approve` | 持久化明确的命令或自然语言决策，并将已确认提案调度到 `/plan` 或 `/mission` | `批准 D-arch-auth-ab12cd34 并继续` |
 | `/plan` | 方案→任务清单：将确认方案拆解为带 ID/优先级/验收标准的任务条目，写入 `task-progress.md` | `/plan` |
 | `/start-task` | 开始执行任务：加载上下文预算、架构预审、委托 planner 制定详细计划 | `/start-task T-001` |
 | `/bug-fix` | Bug 分析、定位、修复完整流程 | `/bug-fix "登录按钮无响应"` |
@@ -106,7 +107,7 @@ PLAN → EXECUTE → LINT → REVIEW → COMMIT → DONE → CONTEXT_CLEANUP →
 
 | 工作流 | 描述 | 使用示例 |
 | :--- | :--- | :--- |
-| `/parallel` | 并行调度：分析依赖，将互不依赖的任务批量派发给专职 sub-agent | `/parallel T-001 T-002 T-003` |
+| `/parallel` | 并行调度：分析依赖与写入范围，自动选择 shared/locked/worktree 隔离；worktree 模式进入 `/worktree plan` | `/parallel T-001 T-002 --isolation auto` |
 | `/sync-plans` | 多任务并行时对齐冲突，更新关联任务状态 | `/sync-plans` |
 | `/sync-master` | 与默认分支同步：`fetch` + `rebase`（stash 保护），日常同步避免随意 `merge` | `/sync-master` |
 | `/agent-update` | 新增或修改 Agent 的规则、工作流或技能 | `/agent-update "新增规则..."` |

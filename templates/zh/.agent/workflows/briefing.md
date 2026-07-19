@@ -31,7 +31,7 @@ node .agent/skills/management-api/scripts/index.js query inbox
 
 展示：
 
-- `status=open` 的 Decisions：ID、prompt、action、resource_ref、requested_by，以及唯一下一步 `/approve decision <decision-id>`。
+- `status=open` 的 Decisions：ID、prompt、action、resource_ref、requested_by，以及下一步 `/approve decision <decision-id>`；用户也可在当前唯一 Decision 上明确回复“批准/拒绝/需要修改”，由主 Agent 路由到 `/approve` 持久化。
 - `status=pending|blocked` 的 Waitpoints：ID、owner_workflow、reason、Decision ID 和受保护资源。只有 owner workflow 可以释放。
 - `status=unread` 的 Inbox：ID、sender、subject 和关联 artifact；读取简报不得自动标记 read/acknowledged。
 

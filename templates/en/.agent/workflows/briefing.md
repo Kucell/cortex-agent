@@ -31,7 +31,7 @@ node .agent/skills/management-api/scripts/index.js query inbox
 
 Report:
 
-- Open Decisions: ID, prompt, action, exact `resource_ref`, requester, and `/approve decision <decision-id>` as the only next approval action.
+- Open Decisions: ID, prompt, action, exact `resource_ref`, requester, and `/approve decision <decision-id>` as the explicit command; for one unambiguous current Decision, the user may instead reply `approve`, `reject`, or `revise`, which the main agent routes through `/approve` for persistence.
 - Pending or blocked Waitpoints: ID, owner workflow, reason, Decision ID, protected resource, and release condition.
 - Unread Inbox messages: ID, sender, subject, type, related resources, and intended recipient.
 

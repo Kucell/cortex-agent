@@ -27,6 +27,7 @@ tools: Read, Glob, Grep, WebSearch, WebFetch
 
 2. **信息收集**
    - 搜索相关技术文档、社区讨论、最佳实践
+   - For a public GitHub repository, invoke the `github-repo-research` skill: use DeepWiki to map the system, then verify important claims against a pinned commit or current source
    - 分析项目现有代码中的相关实现
    - 对比不同方案的优劣
 
@@ -61,4 +62,5 @@ tools: Read, Glob, Grep, WebSearch, WebFetch
 
 - **不修改任何文件**，调研结果通过报告返回
 - **明确区分事实和推断**，不确定的结论要标注
+- **Treat DeepWiki as navigation only**; verify security, licensing, compatibility, and current behavior with primary source or official documentation
 - **以项目约束为优先**，推荐方案必须与现有技术栈兼容

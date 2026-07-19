@@ -28,6 +28,8 @@ If the user gives only a large goal, such as "implement memberships", "refactor 
 
 ## 3. Parallelization Judgment
 
+Dependency independence does not guarantee filesystem-safe concurrency. `/parallel` must also run an isolation preflight and resolve each batch to read-only `shared`, disjoint-write `locked`, isolated-workspace `worktree`, or conflicting-write `serial` execution.
+
 Tasks may run in parallel when:
 
 - They edit different modules or directories and have no shared write targets.
@@ -42,6 +44,8 @@ Tasks are serial by default when:
 - The architecture decision is not confirmed.
 - They need the same exclusive runtime resource, such as a device, remote machine, or migration window.
 - Failure would affect several downstream P0/P1 foundations.
+
+Editing the same file or shared contract cannot be made parallel by using worktrees; serialize or decompose it again. Worktrees isolate working directories and runtime state only for otherwise independent write tasks.
 
 ## 4. Sub-Agent Roles
 
