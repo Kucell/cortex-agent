@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cortex-agent.local/schemas/resource-lease.schema.json",
+  "title": "Cortex Agent Workspace Resource Lease",
+  "type": "object",
+  "required": ["lease_id", "workspace_id", "resource_type", "resource_key", "status", "owner", "allocation", "external_side_effect", "created_at", "updated_at"],
+  "properties": {
+    "lease_id": { "type": "string", "pattern": "^RL-[A-Za-z0-9][A-Za-z0-9._-]*$" },
+    "workspace_id": { "type": "string", "pattern": "^WS-" },
+    "resource_type": { "type": "string", "enum": ["port", "database_namespace", "cache_prefix", "temporary_path", "process", "socket", "custom"] },
+    "resource_key": { "type": "string", "minLength": 1 },
+    "status": { "type": "string", "enum": ["requested", "held", "releasing", "released", "conflicted", "stale", "failed"] },
+    "owner": {
+      "type": "object",
+      "required": ["agent_id"],
+      "properties": {
+        "agent_id": { "type": "string", "minLength": 1 },
+        "session_id": { "type": ["string", "null"] },
+        "run_id": { "type": ["string", "null"] }
+      },
+      "additionalProperties": false
+    },
+    "allocation": {
+      "type": "object",
+      "required": ["strategy", "value"],
+      "properties": {
+        "strategy": { "type": "string", "enum": ["deterministic_candidate", "registry_scan", "project_adapter", "manual"] },
+        "value": { "type": ["string", "integer"] },
+        "environment_key": { "type": ["string", "null"], "pattern": "^[A-Z][A-Z0-9_]*$" },
+        "adapter_ref": { "type": ["string", "null"] }
+      },
+      "additionalProperties": false
+    },
+    "external_side_effect": { "type": "boolean" },
+    "decision_id": { "type": ["string", "null"] },
+    "acquired_at": { "type": ["string", "null"], "format": "date-time" },
+    "expires_at": { "type": ["string", "null"], "format": "date-time" },
+    "released_at": { "type": ["string", "null"], "format": "date-time" },
+    "release_reason": { "type": ["string", "null"] },
+    "conflicts_with": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+    "evidence_refs": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+    "created_at": { "type": "string", "format": "date-time" },
+    "updated_at": { "type": "string", "format": "date-time" }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "external_side_effect": { "const": true } } },
+      "then": { "required": ["decision_id"], "properties": { "decision_id": { "type": "string", "minLength": 1 } } }
+    },
+    {
+      "if": { "properties": { "status": { "const": "held" } } },
+      "then": { "required": ["acquired_at"] }
+    },
+    {
+      "if": { "properties": { "status": { "const": "released" } } },
+      "then": { "required": ["released_at", "release_reason"] }
+    }
+  ],
+  "additionalProperties": false
+}
