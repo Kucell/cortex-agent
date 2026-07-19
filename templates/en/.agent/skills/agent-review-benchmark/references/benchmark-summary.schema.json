@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Cortex Agent Local Benchmark Summary",
+  "type": "object",
+  "required": ["type", "dataset_id", "dataset_version", "generated_at", "case_count", "candidates"],
+  "properties": {
+    "type": { "const": "agent_benchmark_summary" },
+    "dataset_id": { "type": "string", "minLength": 1 },
+    "dataset_version": { "type": "string", "minLength": 1 },
+    "generated_at": { "type": "string", "format": "date-time" },
+    "case_count": { "type": "integer", "minimum": 1 },
+    "candidates": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["candidate_id", "quality_basis_points", "passed_assertions", "total_assertions", "cost_microunits", "duration_ms", "case_results", "evidence_refs"],
+        "properties": {
+          "candidate_id": { "type": "string", "minLength": 1 },
+          "quality_basis_points": { "type": "integer", "minimum": 0, "maximum": 10000 },
+          "passed_assertions": { "type": "integer", "minimum": 0 },
+          "total_assertions": { "type": "integer", "minimum": 1 },
+          "cost_microunits": { "type": "integer", "minimum": 0 },
+          "duration_ms": { "type": "integer", "minimum": 0 },
+          "case_results": { "type": "array" },
+          "evidence_refs": { "type": "array", "items": { "type": "string" }, "uniqueItems": true }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}
