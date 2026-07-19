@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cortex-agent.local/schemas/log-cursor.schema.json",
+  "title": "Cortex Agent Log Cursor",
+  "type": "object",
+  "required": ["cursor_id", "target_id", "producer", "timestamp_source", "target_timestamp_utc", "log_filter_start_utc", "redacted", "availability"],
+  "properties": {
+    "cursor_id": { "type": "string", "pattern": "^LC-[A-Za-z0-9][A-Za-z0-9._-]*$" },
+    "target_id": { "type": "string", "minLength": 1 },
+    "producer": { "type": "string", "minLength": 1 },
+    "timestamp_source": { "type": "string", "not": { "const": "controller" } },
+    "target_timestamp_utc": { "type": "string", "format": "date-time" },
+    "log_filter_start_utc": { "type": "string", "format": "date-time" },
+    "controller_timestamp_utc": { "type": ["string", "null"], "format": "date-time" },
+    "clock_skew_ms": { "type": ["integer", "null"] },
+    "stream": { "type": ["string", "null"] },
+    "position": { "type": ["string", "integer", "null"] },
+    "redacted": { "const": true },
+    "availability": { "type": "string", "enum": ["available", "rotated", "expired", "unavailable"] },
+    "retention_until": { "type": ["string", "null"], "format": "date-time" },
+    "evidence_ref": { "type": ["string", "null"] }
+  },
+  "additionalProperties": false
+}
