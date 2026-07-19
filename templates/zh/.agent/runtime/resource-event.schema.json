@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cortex-agent.local/schemas/resource-event.schema.json",
+  "title": "Cortex Agent Resource Event",
+  "type": "object",
+  "required": ["event_id", "resource_type", "resource_id", "type", "at", "actor", "evidence_refs", "log_cursor_refs"],
+  "properties": {
+    "event_id": { "type": "string", "pattern": "^E-[A-Za-z0-9][A-Za-z0-9._-]*$" },
+    "resource_type": { "type": "string", "minLength": 1 },
+    "resource_id": { "type": "string", "minLength": 1 },
+    "type": { "type": "string", "minLength": 1 },
+    "at": { "type": "string", "format": "date-time" },
+    "actor": {
+      "type": "object",
+      "required": ["workflow", "agent_id"],
+      "properties": {
+        "workflow": { "type": "string", "minLength": 1 },
+        "agent_id": { "type": "string", "minLength": 1 },
+        "task_id": { "type": ["string", "null"] },
+        "mission_id": { "type": ["string", "null"] },
+        "run_id": { "type": ["string", "null"] },
+        "session_id": { "type": ["string", "null"] },
+        "workspace_id": { "type": ["string", "null"] }
+      },
+      "additionalProperties": false
+    },
+    "transition": {
+      "type": ["object", "null"],
+      "properties": {
+        "from": { "type": ["string", "null"] },
+        "to": { "type": "string", "minLength": 1 }
+      },
+      "required": ["from", "to"],
+      "additionalProperties": false
+    },
+    "message": { "type": ["string", "null"] },
+    "evidence_refs": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+    "log_cursor_refs": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+    "previous_event_id": { "type": ["string", "null"] }
+  },
+  "additionalProperties": false
+}
