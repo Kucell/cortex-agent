@@ -12,6 +12,7 @@ const SCHEMAS = [
   "resource-event.schema.json",
   "log-cursor.schema.json",
   "evidence-ref.schema.json",
+  "runtime-state-projection.schema.json",
 ];
 
 function read(root, file) {
