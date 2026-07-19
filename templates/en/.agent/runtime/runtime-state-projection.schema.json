@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cortex-agent.local/schemas/runtime-state-projection.schema.json",
+  "title": "Cortex Agent Runtime State Projection",
+  "type": "object",
+  "required": ["ok", "query", "generated_at", "resources", "summary", "recent_events", "blocking", "evidence_readiness"],
+  "properties": {
+    "ok": { "const": true },
+    "query": {
+      "type": "string",
+      "enum": ["runtime-state", "workspaces", "hook-runs", "resource-leases", "composite-workspaces", "resource-events", "guided-reviews", "benchmarks"]
+    },
+    "generated_at": { "type": "string", "format": "date-time" },
+    "resources": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["resource_type", "resource_id", "status", "relations", "updated_at", "evidence_refs"],
+        "properties": {
+          "resource_type": { "type": "string", "minLength": 1 },
+          "resource_id": { "type": "string", "minLength": 1 },
+          "status": { "type": ["string", "null"] },
+          "phase": { "type": ["string", "null"] },
+          "activity": { "type": ["string", "null"] },
+          "owner": { "type": ["object", "null"] },
+          "relations": {
+            "type": "object",
+            "properties": {
+              "task_id": { "type": ["string", "null"] },
+              "mission_id": { "type": ["string", "null"] },
+              "run_id": { "type": ["string", "null"] },
+              "session_id": { "type": ["string", "null"] },
+              "workspace_id": { "type": ["string", "null"] },
+              "composite_workspace_id": { "type": ["string", "null"] },
+              "repository_id": { "type": ["string", "null"] }
+            },
+            "additionalProperties": false
+          },
+          "updated_at": { "type": ["string", "null"], "format": "date-time" },
+          "latest_event": { "type": ["object", "null"] },
+          "evidence_refs": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+          "log_cursor_refs": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+          "next_action": { "type": ["string", "null"] },
+          "details": { "type": "object" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "summary": {
+      "type": "object",
+      "required": ["total", "active", "blocked", "failed", "stale", "completed"],
+      "properties": {
+        "total": { "type": "integer", "minimum": 0 },
+        "active": { "type": "integer", "minimum": 0 },
+        "blocked": { "type": "integer", "minimum": 0 },
+        "failed": { "type": "integer", "minimum": 0 },
+        "stale": { "type": "integer", "minimum": 0 },
+        "completed": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "recent_events": { "type": "array", "items": { "type": "object" } },
+    "blocking": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["resource_type", "resource_id", "status", "reason", "next_action"],
+        "additionalProperties": false
+      }
+    },
+    "evidence_readiness": {
+      "type": "object",
+      "required": ["ready", "missing", "unavailable"],
+      "properties": {
+        "ready": { "type": "integer", "minimum": 0 },
+        "missing": { "type": "integer", "minimum": 0 },
+        "unavailable": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

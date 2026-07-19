@@ -5,5 +5,8 @@
 - `resource-event.schema.json` 定义 append-only 的资源活动和状态转换。
 - `log-cursor.schema.json` 定义经过脱敏的 target-side 日志位置及其可用性。
 - `evidence-ref.schema.json` 定义对命令、验证、产物、运行时、日志或人工证据的紧凑引用。
+- `runtime-state-projection.schema.json` 定义 CLI、可选 MCP、Dashboard、Briefing、Review、Handoff 和审计视图共同消费的 focused/aggregate 读取模型。
 
 写入器仍由 workflow 管理。读取方保持 read-only，绝不修改资源状态、事件、证据、lease、Decision 或 Waitpoint。大体量原始日志必须保留在事件记录之外。
+
+Focused query 名称冻结为 `workspaces`、`hook-runs`、`resource-leases`、`composite-workspaces`、`resource-events`、`guided-reviews` 和 `benchmarks`；`runtime-state` 是聚合 projection。旧项目缺少对应目录时返回成功的空 projection。
