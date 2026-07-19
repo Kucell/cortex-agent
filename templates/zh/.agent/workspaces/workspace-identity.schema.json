@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cortex-agent.local/schemas/workspace-identity.schema.json",
+  "title": "Cortex Agent Workspace Identity",
+  "type": "object",
+  "required": ["workspace_id", "repository_id", "root", "worktree_path", "branch", "base_commit", "owner", "status", "created_at", "updated_at"],
+  "properties": {
+    "workspace_id": { "type": "string", "pattern": "^WS-[A-Za-z0-9][A-Za-z0-9._-]*$" },
+    "repository_id": { "type": "string", "minLength": 1 },
+    "task_id": { "type": ["string", "null"] },
+    "mission_id": { "type": ["string", "null"] },
+    "root": { "type": "string", "minLength": 1 },
+    "worktree_path": { "type": "string", "minLength": 1 },
+    "branch": { "type": "string", "minLength": 1 },
+    "base_branch": { "type": ["string", "null"] },
+    "base_commit": { "type": "string", "minLength": 7 },
+    "head_commit": { "type": ["string", "null"] },
+    "owner": {
+      "type": "object",
+      "required": ["agent_id"],
+      "properties": {
+        "agent_id": { "type": "string", "minLength": 1 },
+        "session_id": { "type": ["string", "null"] },
+        "run_id": { "type": ["string", "null"] }
+      },
+      "additionalProperties": false
+    },
+    "status": { "type": "string", "enum": ["planned", "preparing", "ready", "running", "tearing_down", "closed", "failed", "stale"] },
+    "hook_run_refs": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+    "resource_lease_refs": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+    "relations": {
+      "type": "object",
+      "properties": {
+        "queue_item_ids": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+        "lock_scopes": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+        "artifact_refs": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+        "composite_workspace_id": { "type": ["string", "null"] }
+      },
+      "additionalProperties": false
+    },
+    "failure": {
+      "type": ["object", "null"],
+      "properties": {
+        "phase": { "type": "string" },
+        "reason": { "type": "string" },
+        "recoverable": { "type": "boolean" },
+        "next_action": { "type": ["string", "null"] },
+        "evidence_refs": { "type": "array", "items": { "type": "string" } }
+      },
+      "required": ["phase", "reason", "recoverable", "evidence_refs"],
+      "additionalProperties": false
+    },
+    "created_at": { "type": "string", "format": "date-time" },
+    "updated_at": { "type": "string", "format": "date-time" },
+    "closed_at": { "type": ["string", "null"], "format": "date-time" }
+  },
+  "additionalProperties": false
+}
