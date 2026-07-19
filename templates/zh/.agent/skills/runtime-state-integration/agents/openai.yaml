@@ -1,0 +1,4 @@
+interface:
+  display_name: "运行态集成约束"
+  short_description: "判定并校验有状态功能的完整运行态集成契约"
+  default_prompt: "Use $runtime-state-integration to assess and check this feature runtime contract."
