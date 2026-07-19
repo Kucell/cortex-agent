@@ -32,6 +32,29 @@ Each worktree must have recoverable identity:
 
 Record these fields in Agent Registry or handoff JSON.
 
+### Directory layout
+
+Do not place task worktrees flat beside unrelated projects. The default layout is one sibling container per primary repository:
+
+```text
+<repo-parent>/
+  <repo>/
+  <repo>-worktrees/
+    <mission-or-task-id>[-slug]/
+```
+
+For example, `/Projects/AI-Apps/AI-Workbench` uses `/Projects/AI-Apps/AI-Workbench-worktrees/M007`.
+
+Rules:
+
+- The primary repository is never placed inside its own worktree container.
+- Child names do not repeat the repository name.
+- Use stable mission/task IDs; append a short lowercase slug only when it distinguishes concurrent attempts.
+- An explicit repository policy or `CORTEX_WORKTREE_ROOT` may override the container root. Resolve it to an absolute path before recording state.
+- A repository-internal `.worktrees/` directory is allowed only by explicit project policy and must be ignored by Git and excluded from watchers/indexers.
+- Never move a registered worktree with Finder, `mv`, or file-copy tools. Use `git worktree move` after a clean/active-process audit.
+- After a move, update WorkspaceIdentity, Run, Session, Queue, lock, handoff, and Dashboard projections that persist the old path, then verify `git worktree list --porcelain`.
+
 ## 3. Shared .agent
 
 Multiple worktrees must share one `.agent` state directory so task-progress, locks, handoffs, artifacts, and dashboard state do not split.

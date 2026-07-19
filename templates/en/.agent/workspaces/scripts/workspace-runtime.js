@@ -284,6 +284,155 @@ function sweepLeases(cwd, input) {
   return { marked_stale: changed, released: [] };
 }
 
+function unique(values, context) {
+  if (new Set(values).size !== values.length) fail("duplicate_values", context, 2);
+}
+
+function createComposite(cwd, input) {
+  requireFields(input, ["composite_workspace_id", "task_id", "branch_family", "agent_id", "members", "merge_order"]);
+  if (!Array.isArray(input.members) || input.members.length < 2) fail("members_required", "At least two repositories are required.", 2);
+  const repositoryIds = input.members.map((member) => member.repository_id);
+  requireFields(Object.fromEntries(repositoryIds.map((id) => [id, id])), repositoryIds, "members");
+  unique(repositoryIds, "repository_id");
+  unique(input.merge_order, "merge_order");
+  if ([...repositoryIds].sort().join("\n") !== [...input.merge_order].sort().join("\n")) fail("merge_order_mismatch", input.merge_order, 2);
+  const members = input.members.map((member) => {
+    requireFields(member, ["repository_id", "workspace_id", "branch", "base_commit"], "composite_member");
+    const workspace = readRequired(recordPath(cwd, "identities", member.workspace_id), "workspace_not_found");
+    if (workspace.repository_id !== member.repository_id || workspace.branch !== member.branch || workspace.base_commit !== member.base_commit) {
+      fail("member_identity_mismatch", member.repository_id, 2);
+    }
+    return {
+      repository_id: member.repository_id,
+      workspace_id: member.workspace_id,
+      branch: member.branch,
+      base_commit: member.base_commit,
+      head_commit: member.head_commit || null,
+      status: "planned",
+      validation_refs: []
+    };
+  }).sort((left, right) => left.repository_id.localeCompare(right.repository_id));
+  const file = recordPath(cwd, "composites", input.composite_workspace_id);
+  if (fs.existsSync(file)) return readJson(file);
+  const timestamp = now();
+  const record = {
+    composite_workspace_id: input.composite_workspace_id,
+    task_id: input.task_id,
+    mission_id: input.mission_id || null,
+    branch_family: input.branch_family,
+    status: "planned",
+    owner: { agent_id: input.agent_id, session_id: input.session_id || null, run_id: input.run_id || null },
+    members,
+    merge_order: [...input.merge_order],
+    atomic_merge: false,
+    recovery: { strategy: "ordered_checkpoints_with_compensation", failed_repository_id: null, next_repository_id: input.merge_order[0], checkpoint_refs: [], next_action: null },
+    session_ids: stringsOrEmpty(input.session_ids),
+    run_ids: stringsOrEmpty(input.run_ids),
+    validation_refs: [],
+    created_at: timestamp,
+    updated_at: timestamp,
+    closed_at: null
+  };
+  writeAtomic(file, record);
+  for (const member of members) {
+    const workspaceFile = recordPath(cwd, "identities", member.workspace_id);
+    const workspace = readJson(workspaceFile);
+    workspace.relations.composite_workspace_id = record.composite_workspace_id;
+    workspace.updated_at = timestamp;
+    writeAtomic(workspaceFile, workspace);
+  }
+  return record;
+}
+
+function stringsOrEmpty(values) {
+  return Array.from(new Set(Array.isArray(values) ? values : [])).sort();
+}
+
+const MEMBER_TRANSITIONS = {
+  planned: ["ready", "failed", "blocked"],
+  ready: ["running", "failed", "blocked"],
+  running: ["validated", "failed", "blocked"],
+  validated: ["merge_ready", "failed", "blocked"],
+  merge_ready: ["merged", "failed", "blocked"],
+  merged: ["closed"],
+  failed: ["ready", "blocked"],
+  blocked: ["ready", "failed"],
+  closed: []
+};
+
+function approvedRevisionDecision(cwd, record, member, input) {
+  requireFields(input, ["decision_id"], "merge_decision");
+  const decisionFile = path.join(cwd, ".agent", "decisions", `${input.decision_id}.json`);
+  const decision = readRequired(decisionFile, "decision_not_found");
+  const expected = `composite:${record.composite_workspace_id}:repo:${member.repository_id}:revision:${member.head_commit}`;
+  if (decision.status !== "approved" || decision.selected_option !== "approve" || decision.gate?.action !== "merge" || decision.gate?.resource_ref !== expected) {
+    fail("decision_gate_mismatch", { expected, actual: decision.gate?.resource_ref || null }, 2);
+  }
+  return path.relative(cwd, decisionFile);
+}
+
+function transitionCompositeMember(cwd, input) {
+  requireFields(input, ["composite_workspace_id", "repository_id", "agent_id", "status"]);
+  const file = recordPath(cwd, "composites", input.composite_workspace_id);
+  const record = readRequired(file, "composite_not_found");
+  if (record.owner.agent_id !== input.agent_id) fail("owner_mismatch", input.agent_id, 2);
+  const member = record.members.find((item) => item.repository_id === input.repository_id);
+  if (!member) fail("member_not_found", input.repository_id, 2);
+  if (!(MEMBER_TRANSITIONS[member.status] || []).includes(input.status)) fail("invalid_transition", `${member.status}->${input.status}`, 2);
+  if (input.head_commit) member.head_commit = input.head_commit;
+  if (["merge_ready", "merged"].includes(input.status)) {
+    if (!member.head_commit) fail("head_commit_required", member.repository_id, 2);
+    member.validation_refs = stringsOrEmpty([...member.validation_refs, approvedRevisionDecision(cwd, record, member, input)]);
+  }
+  if (input.validation_ref) member.validation_refs = stringsOrEmpty([...member.validation_refs, input.validation_ref]);
+  member.status = input.status;
+  record.updated_at = now();
+  if (["failed", "blocked"].includes(input.status)) {
+    record.status = "blocked";
+    record.recovery.failed_repository_id = member.repository_id;
+    record.recovery.next_repository_id = member.repository_id;
+    record.recovery.next_action = input.next_action || `recover ${member.repository_id}`;
+  }
+  if (input.status === "merged") {
+    record.recovery.checkpoint_refs = stringsOrEmpty([...record.recovery.checkpoint_refs, input.validation_ref, ...member.validation_refs].filter(Boolean));
+    const index = record.merge_order.indexOf(member.repository_id);
+    record.recovery.failed_repository_id = null;
+    record.recovery.next_repository_id = record.merge_order[index + 1] || null;
+    record.recovery.next_action = record.recovery.next_repository_id ? `merge ${record.recovery.next_repository_id}` : "validate composite";
+  }
+  writeAtomic(file, record);
+  return record;
+}
+
+const COMPOSITE_TRANSITIONS = {
+  planned: ["preparing", "closed"],
+  preparing: ["running", "blocked"],
+  running: ["validating_members", "blocked", "recovering"],
+  validating_members: ["merge_ready", "blocked", "recovering"],
+  merge_ready: ["merging", "blocked"],
+  merging: ["validating_composite", "blocked", "recovering"],
+  validating_composite: ["completed", "blocked"],
+  blocked: ["recovering", "closed"],
+  recovering: ["running", "validating_members", "merging", "blocked"],
+  completed: ["closed"],
+  closed: []
+};
+
+function transitionComposite(cwd, input) {
+  requireFields(input, ["composite_workspace_id", "agent_id", "status"]);
+  const file = recordPath(cwd, "composites", input.composite_workspace_id);
+  const record = readRequired(file, "composite_not_found");
+  if (record.owner.agent_id !== input.agent_id) fail("owner_mismatch", input.agent_id, 2);
+  if (!(COMPOSITE_TRANSITIONS[record.status] || []).includes(input.status)) fail("invalid_transition", `${record.status}->${input.status}`, 2);
+  if (input.status === "completed" && !record.members.every((member) => member.status === "merged" || member.status === "closed")) fail("members_not_merged", record.composite_workspace_id, 2);
+  record.status = input.status;
+  record.updated_at = now();
+  if (input.validation_ref) record.validation_refs = stringsOrEmpty([...record.validation_refs, input.validation_ref]);
+  if (input.status === "closed") record.closed_at = record.updated_at;
+  writeAtomic(file, record);
+  return record;
+}
+
 function main() {
   const { positional, options } = parseArgs(process.argv.slice(2));
   const [resource, action] = positional;
@@ -299,6 +448,10 @@ function main() {
   else if (resource === "lease" && action === "release") result = releaseLease(cwd, input);
   else if (resource === "lease" && action === "sweep") result = sweepLeases(cwd, input);
   else if (resource === "lease" && action === "list") result = list(cwd, "leases");
+  else if (resource === "composite" && action === "create") result = createComposite(cwd, input);
+  else if (resource === "composite" && action === "member") result = transitionCompositeMember(cwd, input);
+  else if (resource === "composite" && action === "transition") result = transitionComposite(cwd, input);
+  else if (resource === "composite" && action === "get") result = readRequired(recordPath(cwd, "composites", options.id), "composite_not_found");
   else fail("unknown_command", positional.join(" "), 2);
   process.stdout.write(`${JSON.stringify({ ok: true, result })}\n`);
 }

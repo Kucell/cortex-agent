@@ -27,6 +27,7 @@ tools: Read, Glob, Grep, WebSearch, WebFetch
 
 2. **信息收集**
    - 搜索相关技术文档、社区讨论、最佳实践
+   - 用户提供公开 GitHub 仓库时，调用 `github-repo-research` skill：先用 DeepWiki 建立模块地图，再回到固定 commit 或当前源码核验关键结论
    - 分析项目现有代码中的相关实现
    - 对比不同方案的优劣
 
@@ -61,4 +62,5 @@ tools: Read, Glob, Grep, WebSearch, WebFetch
 
 - **不修改任何文件**，调研结果通过报告返回
 - **明确区分事实和推断**，不确定的结论要标注
+- **DeepWiki 只做导航层**，安全、许可、兼容性和当前行为必须用一手源码或官方文档核验
 - **以项目约束为优先**，推荐方案必须与现有技术栈兼容

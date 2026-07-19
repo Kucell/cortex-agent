@@ -22,8 +22,19 @@ Use worktrees to isolate parallel implementation while sharing the project's can
 1. Read the task plan, dependencies, file scopes, locks, repository policy, and active worktrees.
 2. Parallelize only independent tasks with non-overlapping write scopes. Shared files require explicit sequencing or ownership.
 3. Record the branch, worktree path, task ID, agent/session owner, expected files, validation command, and handoff target.
-4. Create the worktree from the required base commit. Keep `.agent` as one shared source of truth through the repository-supported link strategy; never copy diverging coordination state into each worktree.
-5. Register Queue, Run, Session, lock, and handoff state through their owning APIs. A filesystem directory alone is not coordinator state.
+4. Resolve the path with `.agent/workspaces/scripts/worktree-layout.js resolve`. By default create `<repo-parent>/<repo>-worktrees/<task-id>[-slug]`; do not add another flat `<repo>-<task-id>` directory beside unrelated projects.
+5. Create the container and worktree from the required base commit. Keep `.agent` as one shared source of truth through the repository-supported link strategy; never copy diverging coordination state into each worktree.
+6. Register Queue, Run, Session, lock, and handoff state through their owning APIs. A filesystem directory alone is not coordinator state.
+
+Example resolution and creation:
+
+```bash
+node .agent/workspaces/scripts/worktree-layout.js resolve --repo "$(pwd)" --task-id T-001
+mkdir -p ../<repo>-worktrees
+git worktree add ../<repo>-worktrees/T-001 -b agent/T-001-<slug>
+```
+
+Before moving a legacy worktree, run the read-only `plan` command, check dirty state and active processes, then use `git worktree move`; never move it with Finder or `mv`.
 
 Checkpoint runtime progress with the Management API, including the exact phase and evidence:
 

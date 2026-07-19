@@ -11,6 +11,7 @@ When you have new architectural ideas or need to refactor existing modules, foll
 - **Read Core Principles**: **You must first read** the `.agent/rules/architecture-design.md` file, treating the core principles of the project architecture as the highest priority.
 - **Read Proposal Structure**: **You must also read** `.agent/rules/proposal-structure.md` before deciding where the proposal should be stored.
 - **Understand Context**: Deeply explore the requirements proposed by the user or the technical bottlenecks encountered by the existing system.
+- **Research referenced repositories**: When a candidate design references a public GitHub repository, invoke `github-repo-research`. Use DeepWiki to locate architecture and implementation evidence, then verify decisions against the repository source before comparing solutions.
 - **Read PRD Assets First**: If `.agent/prd/` or `.agent/prds/` contains a PRD in `review`, `approved`, or `designed` status, read its `state.json`, `prd.md`, `flows.md`, `screens.md`, and `acceptance-criteria.md` before writing architecture proposals.
 - **Current State Review**: Search for relevant implementation logic in the current codebase.
 - **Conflict Detection**: Analyze whether the new solution conflicts with the loaded architectural principles.
@@ -81,7 +82,7 @@ When you have new architectural ideas or need to refactor existing modules, foll
     --decision-id D-arch-<topic>-<revision-digest8>
   ```
 
-- **Wait for explicit choice**: Direct the user to `/approve decision D-arch-<topic>-<revision-digest8>`. Dashboard requests, prior conversation approval, and `--gate approve` are not approval evidence.
+- **Wait for explicit choice**: Direct the user to `/approve decision D-arch-<topic>-<revision-digest8>` or ask for an explicit natural-language approve/reject/revise choice that the main Agent routes through `/approve`. Dashboard requests, prior conversation approval, chat text without a persisted Decision, and `--gate approve` are not approval evidence.
 - **Consume only a matching approval**: Recompute the proposal/artifact revision. If it is unchanged and the Decision is explicitly approved, `/arch-design` releases its own Waitpoint:
 
   ```bash

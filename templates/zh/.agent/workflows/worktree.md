@@ -46,8 +46,8 @@ description: 使用 Git worktree 隔离多个 Agent 的并行开发，并通过 
 
 ```text
 Worktree 计划：
-  T-001 → ../project-T-001 → branch agent/T-001-auth → implementer
-  T-002 → ../project-T-002 → branch agent/T-002-ui → implementer
+  T-001 → ../project-worktrees/T-001 → branch agent/T-001-auth → implementer
+  T-002 → ../project-worktrees/T-002 → branch agent/T-002-ui → implementer
 
 串行任务：
   T-000 contract baseline，必须先完成
@@ -61,16 +61,20 @@ Worktree 计划：
 创建 worktree：
 
 ```bash
-git worktree add ../<repo>-<task-id> -b agent/<task-id>-<slug>
+node .agent/workspaces/scripts/worktree-layout.js resolve --repo "$(pwd)" --task-id <task-id>
+mkdir -p ../<repo>-worktrees
+git worktree add ../<repo>-worktrees/<task-id> -b agent/<task-id>-<slug>
 ```
+
+默认目录必须是 `<repo-parent>/<repo>-worktrees/<task-id>[-slug]`，不得继续在项目父目录平铺 `<repo>-<task-id>`。迁移旧 worktree 前先运行只读 `plan` 审计 dirty 状态和活动进程，然后使用 `git worktree move`，不得用 Finder 或 `mv`。
 
 然后在新 worktree 中：
 
 1. 将子 worktree 的 `.agent` 链接到主 worktree 的同一份 `.agent`：
 
 ```bash
-rm -rf ../<repo>-<task-id>/.agent
-ln -s "$(pwd)/.agent" ../<repo>-<task-id>/.agent
+rm -rf ../<repo>-worktrees/<task-id>/.agent
+ln -s "$(pwd)/.agent" ../<repo>-worktrees/<task-id>/.agent
 ```
 
 2. 在子 worktree 中确认 `.agent` 指向共享目录：

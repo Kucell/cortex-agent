@@ -21,6 +21,24 @@ This workflow has two mutually exclusive modes:
 
 Input beginning with `decision` selects Decision mode. All other input selects Proposal mode. Never infer approval from a Dashboard action, message, prior preference, silence, or a caller-provided `--gate approve` string.
 
+## Natural-Language Entry
+
+The user does not need to type a slash command. When the current interaction contains an explicit, unconditional choice, the main agent must route it into Decision mode and persist it instead of treating chat text itself as approval evidence.
+
+- Explicit approval: `approve`, `approved`, `yes, approve`, `批准`, `同意`, or `批准并继续`.
+- Explicit rejection: `reject`, `do not approve`, `拒绝`, or `不同意`.
+- Explicit revision request: `revise`, `needs changes`, `需要修改`, or `退回修改`.
+- Not a choice: `looks good`, `maybe`, `seems fine`, `let's see`, silence, reactions, or prior preferences.
+
+Routing constraints:
+
+1. If the user names a Decision ID, resolve that ID only.
+2. Without an ID, resolve only when the current prompt presented exactly one Decision or exactly one open Decision is attached to the current blocking Waitpoint.
+3. If multiple candidates exist, the choice is conditional, the resource drifted, or the meaning is ambiguous, show the IDs, actions, and resources and ask for an explicit choice. Never guess.
+4. Store the original choice or a faithful summary as the non-empty `rationale`; use `interactive-user` or a stable platform user identifier as `resolved-by`.
+5. After resolution, return control to the Decision's owning workflow. The owner recomputes the resource, validates the Decision, releases its own Waitpoint, and may automatically continue ordinary steps inside the approved scope.
+6. Pause again for every new architecture, merge, destructive, credential, or external-side-effect Decision. One approval never authorizes a later resource.
+
 ## Decision Mode
 
 1. Query and read the target Decision without mutating it:
@@ -31,7 +49,7 @@ Input beginning with `decision` selects Decision mode. All other input selects P
 
 2. Verify `.agent/decisions/D-<id>.json` exists and has `status=open`.
 3. Show the user its `prompt`, every option, `gate.action`, `gate.resource_ref`, requesting workflow, and related blocking Waitpoint.
-4. Require an explicit `approve`, `reject`, or `revise` choice in the current interaction.
+4. Require an explicit `approve`, `reject`, or `revise` choice through the slash command or a phrase accepted by Natural-Language Entry in the current interaction.
 5. Map the choice to `approved/approve`, `rejected/reject`, or `revision_requested/revise`, collect a user identity and non-empty rationale, then run:
 
    ```bash

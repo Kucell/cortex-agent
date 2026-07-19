@@ -32,6 +32,29 @@
 
 这些信息必须记录到 Agent Registry 或 handoff JSON 中。
 
+### 目录布局
+
+不得把任务 worktree 与其他无关项目平铺在同一目录。默认采用“每个主仓库一个同级容器”：
+
+```text
+<repo-parent>/
+  <repo>/
+  <repo>-worktrees/
+    <mission-or-task-id>[-slug]/
+```
+
+例如 `/Projects/AI-Apps/AI-Workbench` 对应 `/Projects/AI-Apps/AI-Workbench-worktrees/M007`。
+
+约束：
+
+- 主仓库本身不得放入 worktree 容器。
+- 子目录名不重复仓库名。
+- 优先使用稳定的 Mission/Task ID；仅在需要区分并发 attempt 时追加短小写 slug。
+- 仓库策略或 `CORTEX_WORKTREE_ROOT` 可以覆盖容器根目录；写入状态前必须解析为绝对路径。
+- 只有项目明确配置时才允许使用仓库内部 `.worktrees/`，并且必须加入 Git ignore，同时排除 IDE watcher 和索引器。
+- 不得使用 Finder、`mv` 或复制工具移动已登记 worktree；完成 clean/活动进程审计后使用 `git worktree move`。
+- 移动后必须更新持久化旧路径的 WorkspaceIdentity、Run、Session、Queue、lock、handoff 和 Dashboard 投影，并验证 `git worktree list --porcelain`。
+
 ## 3. 共享 .agent
 
 多个 worktree 必须共享同一份 `.agent` 状态目录，避免 task-progress、locks、handoffs、artifacts、dashboard 分裂。

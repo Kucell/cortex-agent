@@ -11,6 +11,8 @@ Use this workflow for architecture design before substantial implementation.
 
 Read the complete requirement and relevant repository context. Confirm goals, constraints, non-goals, affected modules, compatibility requirements, and validation expectations. Use existing project conventions and references before introducing new abstractions.
 
+When evaluating a public GitHub project, invoke `github-repo-research`: use DeepWiki as the initial architecture map, then verify every decision-relevant claim against a pinned commit or the current source.
+
 ## 2. Design the Solution
 
 Describe the current state, target architecture, module boundaries, data and control flows, failure modes, migration strategy, observability, security, and test approach. Record meaningful alternatives and tradeoffs.
@@ -47,7 +49,7 @@ node .agent/skills/management-api/scripts/index.js waitpoints create \
   --decision-id D-arch-<topic>-<revision-digest8>
 ```
 
-Direct the user to `/approve decision D-arch-<topic>-<revision-digest8>`. Dashboard requests, prior conversation approval, and `--gate approve` are not approval evidence.
+Direct the user to `/approve decision D-arch-<topic>-<revision-digest8>` or ask for an explicit natural-language approve/reject/revise choice that the main agent routes through `/approve`. Dashboard requests, prior conversation approval, chat text without a persisted Decision, and `--gate approve` are not approval evidence.
 
 On resume, recompute the revision. Only when the resource is unchanged and the Decision is explicitly approved may `/arch-design` release its Waitpoint:
 
