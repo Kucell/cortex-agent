@@ -1,0 +1,9 @@
+{
+  "session_id": "S-replay-failed",
+  "status": "blocked",
+  "active_run_id": "R-replay-failed",
+  "workspace_ids": [
+    "W-replay-failed"
+  ],
+  "updated_at": "2026-07-19T09:00:04.000Z"
+}

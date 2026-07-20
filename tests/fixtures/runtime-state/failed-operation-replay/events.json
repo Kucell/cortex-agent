@@ -1,0 +1,54 @@
+[
+  {
+    "event_id": "E-replay-started",
+    "resource_type": "workspace",
+    "resource_id": "W-replay-failed",
+    "type": "workspace.run.started",
+    "at": "2026-07-19T09:00:01.000Z",
+    "actor": {
+      "workflow": "fixture-replay",
+      "agent_id": "fixture-agent",
+      "task_id": "T-replay-failed",
+      "mission_id": "M-replay",
+      "run_id": "R-replay-failed",
+      "session_id": "S-replay-failed",
+      "workspace_id": "W-replay-failed"
+    },
+    "transition": {
+      "from": "ready",
+      "to": "running"
+    },
+    "message": "Fictional operation started.",
+    "evidence_refs": [],
+    "log_cursor_refs": [],
+    "previous_event_id": null
+  },
+  {
+    "event_id": "E-replay-failed",
+    "resource_type": "workspace",
+    "resource_id": "W-replay-failed",
+    "type": "workspace.run.failed",
+    "at": "2026-07-19T09:00:04.000Z",
+    "actor": {
+      "workflow": "fixture-replay",
+      "agent_id": "fixture-agent",
+      "task_id": "T-replay-failed",
+      "mission_id": "M-replay",
+      "run_id": "R-replay-failed",
+      "session_id": "S-replay-failed",
+      "workspace_id": "W-replay-failed"
+    },
+    "transition": {
+      "from": "running",
+      "to": "failed"
+    },
+    "message": "Fictional command exited with status 17.",
+    "evidence_refs": [
+      "EV-replay-failed"
+    ],
+    "log_cursor_refs": [
+      "LC-replay-failed"
+    ],
+    "previous_event_id": "E-replay-started"
+  }
+]

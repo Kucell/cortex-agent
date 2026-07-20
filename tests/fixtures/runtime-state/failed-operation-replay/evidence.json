@@ -1,0 +1,15 @@
+[
+  {
+    "evidence_id": "EV-replay-failed",
+    "kind": "log_cursor",
+    "ref": "runtime-state://logs/LC-replay-failed",
+    "producer": "fixture-replay",
+    "resource_id": "W-replay-failed",
+    "run_id": "R-replay-failed",
+    "session_id": "S-replay-failed",
+    "created_at": "2026-07-19T09:00:04.000Z",
+    "redacted": true,
+    "availability": "available",
+    "summary": "Fictional redacted failure log reference."
+  }
+]

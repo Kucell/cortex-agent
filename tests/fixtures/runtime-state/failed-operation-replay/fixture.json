@@ -1,0 +1,5 @@
+{
+  "fixture_version": 1,
+  "name": "failed-operation-replay",
+  "description": "Fictional cross-resource replay chain for a failed workspace operation."
+}

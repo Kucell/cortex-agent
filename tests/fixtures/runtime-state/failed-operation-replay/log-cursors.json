@@ -1,0 +1,18 @@
+[
+  {
+    "cursor_id": "LC-replay-failed",
+    "target_id": "fixture-runner-01",
+    "producer": "fixture-replay",
+    "timestamp_source": "target-runtime",
+    "target_timestamp_utc": "2026-07-19T09:00:03.900Z",
+    "log_filter_start_utc": "2026-07-19T09:00:00.900Z",
+    "controller_timestamp_utc": "2026-07-19T09:00:04.000Z",
+    "clock_skew_ms": 100,
+    "stream": "stderr",
+    "position": "fixture-offset-0042",
+    "redacted": true,
+    "availability": "available",
+    "retention_until": "2026-08-18T09:00:04.000Z",
+    "evidence_ref": "EV-replay-failed"
+  }
+]

@@ -1,0 +1,19 @@
+{
+  "fixture_version": 1,
+  "management_api": {
+    "enabled": true,
+    "mode": "read-only"
+  },
+  "cli": {
+    "enabled": true,
+    "mode": "read-only"
+  },
+  "dashboard": {
+    "enabled": true,
+    "mode": "read-only"
+  },
+  "mcp": {
+    "enabled": false,
+    "reason": "optional-adapter-disabled"
+  }
+}

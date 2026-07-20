@@ -1,0 +1,10 @@
+{
+  "run_id": "R-replay-failed",
+  "session_id": "S-replay-failed",
+  "task_id": "T-replay-failed",
+  "workspace_id": "W-replay-failed",
+  "status": "failed",
+  "started_at": "2026-07-19T09:00:01.000Z",
+  "finished_at": "2026-07-19T09:00:04.000Z",
+  "terminal_event_id": "E-replay-failed"
+}
