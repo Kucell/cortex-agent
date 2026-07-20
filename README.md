@@ -10,6 +10,7 @@
 - **推理三明治**：`/ship` 按 规划(premium) → 执行(standard) → 验证(standard) 分配模型算力，兼顾质量与成本。
 - **结构化交接**：`/handoff` 为跨 Agent、跨会话和 sub-agent 接力生成轻量交接文档，避免依赖对话记忆。
 - **长周期任务编排**：`/mission` 通过 milestone、验证契约和命令日志支撑多阶段任务稳定推进。
+- **协作运行时 (Communication Runtime)**：`management-api` 提供 inbox / decisions / waitpoints 三个通信对象，所有写入受 workflow gate（`mission` / `user` / `owner` / `requester` / `recipient` / `workflow`）约束；Dashboard、CLI 与可选的 MCP 只读适配器共享同一查询投影。详见 [协作运行时设计](docs/architecture/agent-collaboration-runtime.md)。
 - **熵治理闭环**：`entropy-scanner` 周期扫描知识库漂移，PostCommit Hook 自动修复，保持 `.agent/` 长期健康。
 - **工具无关**：同一套 `.agent/` 配置通过符号链接和指令文件适配 11 个主流 AI 平台。
 
@@ -127,6 +128,43 @@ cortex-agent dev --port 8787 --interval-ms 3000 --session-id local-dashboard
 /prototype T-001 --mode doc --fidelity low
 ```
 
+### 协作运行时命令
+
+`management-api` 是协作运行时与外部消费者（CLI / Dashboard / MCP）共享的查询与受控写入入口。常用命令：
+
+```bash
+# 只读查询（Dashboard、CLI、MCP 全部走这些）
+node .agent/skills/management-api/scripts/index.js query dashboard-state
+node .agent/skills/management-api/scripts/index.js query decisions
+node .agent/skills/management-api/scripts/index.js query waitpoints
+node .agent/skills/management-api/scripts/index.js query inbox
+
+# 受控写入：所有 mutation 都受 workflow gate 校验
+# gate=user（仅人类）/ mission / owner / requester / recipient / workflow / agent
+node .agent/skills/management-api/scripts/index.js decisions request \
+  --decision-id D-merge --gate mission --action merge \
+  --resource-ref branch:integration --requested-by coordinator \
+  --prompt "Approve merge?" --options '["approve","reject","revise"]'
+node .agent/skills/management-api/scripts/index.js decisions resolve \
+  --decision-id D-merge --gate user --status approved \
+  --selected-option approve --resolved-by maintainer --rationale "Validation passed."
+node .agent/skills/management-api/scripts/index.js waitpoints create \
+  --waitpoint-id WP-merge --gate mission --owner-workflow /checkpoint-merge \
+  --action merge --resource-ref branch:integration --decision-id D-merge
+node .agent/skills/management-api/scripts/index.js waitpoints release \
+  --waitpoint-id WP-merge --gate owner --owner-workflow /checkpoint-merge \
+  --decision-id D-merge --released-by coordinator
+node .agent/skills/management-api/scripts/index.js inbox send \
+  --message-id IM-001 --gate workflow --sender-id coordinator \
+  --recipient-ids reviewer --subject "Review ready"
+node .agent/skills/management-api/scripts/index.js inbox transition \
+  --message-id IM-001 --gate recipient --actor-id reviewer --status acknowledged
+```
+
+任何直接覆盖 `.agent/inbox/` / `decisions/` / `waitpoints/` / `sessions/` 的尝试都会被 workflow gate 拦截；想要跨平台或编程访问 Dashboard 状态时，优先使用 `management-api` 而不是解析文件。
+
+可选的 **MCP 只读适配器**（`runtime-state-mcp`）通过 stdio 把同一份 `dashboard-state` 投影暴露给 Claude Code / Cursor 等 MCP 客户端，不直接读 `.agent/`。未安装时 Dashboard 与 CLI 路径不受影响。
+
 ### 上手流程一览
 
 <p align="center">
@@ -141,21 +179,27 @@ cortex-agent dev --port 8787 --interval-ms 3000 --session-id local-dashboard
 
 ```text
 .agent/
-├── rules/          # 核心规则：架构约束、代码规范、语言规则
-├── workflows/      # 工作流：/start-task /ship /handoff /mission /configure 等斜杠命令
-├── skills/         # 专项技能：architecture-guard / context-budget / validation-contract / self-check
-├── sub-agents/     # 子代理：planner / implementer / researcher / coordinator 等
-├── hooks/          # 钩子：PostToolUse Lint 检查 + PostCommit 熵清理
-├── config/         # 配置：reasoning-config.yml（模型 & API 配置）
-├── plans/          # 进度管理：task-progress.md 路线图
-├── handoffs/       # 任务交接：跨 Agent / 跨会话的轻量上下文包
-├── missions/       # 长周期任务状态：/mission 按需创建
-├── registry/       # Agent Registry：coordinator 多 agent 协调
-├── artifacts/      # Artifact Bus：coordinator 结构化产物存储
-├── locks/          # Progress Lock：任务级 / 文件级互斥
-├── debug/          # AI 调试产物：截图 / 日志 / 临时文件
-├── resources/      # 模板资源：架构提案、领域验证 skill 等
-└── references/     # 知识库：/scan-project 生成的模块参考文档
+├── inbox/           # 通信对象：recipient-owned message lifecycle（unread/read/acknowledged/archived）
+├── decisions/       # 通信对象：open / approved / rejected / superseded 决策记录，含 workflow gate
+├── waitpoints/      # 通信对象：blocking / released / expired 等待点，与 approved decision 配对
+├── runs/            # 协作运行状态：阶段、活动、事件流、心跳
+├── queues/          # 协作队列：依赖排序、并发限制、owning workflow
+├── sessions/        # 会话生命周期：open/heartbeat/pause/close，closed 后不可再写
+├── rules/           # 核心规则：架构约束、代码规范、语言规则
+├── workflows/       # 工作流：/start-task /ship /handoff /mission /configure 等斜杠命令
+├── skills/          # 专项技能：architecture-guard / context-budget / validation-contract / self-check / management-api / agent-dashboard
+├── sub-agents/      # 子代理：planner / implementer / researcher / coordinator 等
+├── hooks/           # 钩子：PostToolUse Lint 检查 + PostCommit 熵清理
+├── config/          # 配置：reasoning-config.yml（模型 & API 配置）
+├── plans/           # 进度管理：task-progress.md 路线图
+├── handoffs/        # 任务交接：跨 Agent / 跨会话的轻量上下文包
+├── missions/        # 长周期任务状态：/mission 按需创建
+├── registry/        # Agent Registry：coordinator 多 agent 协调
+├── artifacts/       # Artifact Bus：coordinator 结构化产物存储
+├── locks/           # Progress Lock：任务级 / 文件级互斥
+├── debug/           # AI 调试产物：截图 / 日志 / 临时文件
+├── resources/       # 模板资源：架构提案、领域验证 skill 等
+└── references/      # 知识库：/scan-project 生成的模块参考文档
 
 > **自举仓库**：cortex-agent 自身的 `.agent/` 目录作为独立仓库管理：[Kucell/cortex-agent-agent](https://github.com/Kucell/cortex-agent-agent)
 > 本仓库通过 `cortex-agent untrack`（默认）保持 `.agent/` 不被主仓库追踪，IDE 仍可通过符号链接识别 slash 命令菜单。
@@ -232,6 +276,7 @@ node .agent/plugins/graphify/scripts/extract-subgraph.js \
 | [docs/architecture/animation-library-evaluation.md](docs/architecture/animation-library-evaluation.md) | README / Docs 演示增强的动画库评估，覆盖 Mermaid、Anime.js、Remotion、Rive 等选型 |
 | [docs/architecture/graphify-integration-proposal.md](docs/architecture/graphify-integration-proposal.md) | Graphify 知识图谱集成提案（Artifact Bus 扩展 + Handoff 协议联动） |
 | [docs/architecture/prototype-workflow-design.md](docs/architecture/prototype-workflow-design.md) | /prototype 双路径设计（Document + Pixso UI），需求→原型→验收契约完整链路 |
+| [docs/architecture/agent-collaboration-runtime.md](docs/architecture/agent-collaboration-runtime.md) | 协作运行时（Phase 0-6）：Management API + Dashboard + inbox/decisions/waitpoints 通信对象 + 可选 MCP 适配器 |
 
 ## 开源协议
 
