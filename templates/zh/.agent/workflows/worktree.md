@@ -299,7 +299,7 @@ git merge --no-ff <worktree-branch>
 `/worktree merge` 必须在合并策略与精确资源所有权的 Checkpoint 待批准时通过 decisions / waitpoints gate：
 
 - 支持的 integration strategy：`fast-forward`、`squash`、`local-merge`、`pr-handoff`，每次合并必须记录 `#strategy:<integration-strategy>#digest:<resource-digest>` 作为资源指纹。
-- 合并前 `decisions request --gate mission --action merge --resource-ref merge:<task-id>@<resource-digest>` 创建 open Decision，并立即 `waitpoints create --owner-workflow /worktree --reason "Merge approval required" --action merge --resource-ref merge:<task-id>@<resource-digest>`。
+- 合并前 `decisions request --gate mission --type approval --gate-action merge --resource-ref merge:<task-id>@<resource-digest>` 创建 open Decision，并立即 `waitpoints create --owner-workflow /worktree --reason "Merge approval required" --action merge --resource-ref merge:<task-id>@<resource-digest>`。
 - `waitpoints release --gate owner` 只能消费 matching approved Decision。
 - 单任务（single-task）合并：必须显式 lock + handoff，避免多任务并发合并导致资源所有权漂移；其余策略仅作为 fallback。
 - Checkpoint 状态挂在 Decision 的 `relations.task_ids` 上，pending approval 时标记 `Checkpoint`，用户批准后才进入合并步骤。
