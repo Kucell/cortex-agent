@@ -1,0 +1,5 @@
+interface:
+  display_name: "Runtime State MCP"
+  short_description: "通过 MCP 暴露只读运行态投影"
+  default_prompt: "使用 $runtime-state-mcp 通过只读 Management API projection 检查 Cortex Agent 运行态。"
+
