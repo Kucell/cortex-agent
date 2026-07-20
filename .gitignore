@@ -5,3 +5,6 @@ dist/
 graphify-out/
 .agent/metrics/agent-dashboard.html
 metrics/agent-dashboard.html
+.npmrc
+.env
+.env.local
