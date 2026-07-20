@@ -1,0 +1,57 @@
+{
+  "ok": true,
+  "query": "runtime-state",
+  "generated_at": "2026-07-19T08:00:00.000Z",
+  "resources": [
+    {
+      "resource_type": "workspace",
+      "resource_id": "W-fixture-complete",
+      "status": "completed",
+      "phase": "teardown",
+      "activity": null,
+      "owner": {
+        "agent_id": "fixture-agent"
+      },
+      "relations": {
+        "task_id": "T-fixture-complete",
+        "mission_id": "M-fixture-complete",
+        "run_id": "R-fixture-complete",
+        "session_id": "S-fixture-complete",
+        "workspace_id": "W-fixture-complete",
+        "composite_workspace_id": null,
+        "repository_id": "repo-fixture"
+      },
+      "updated_at": "2026-07-19T07:59:00.000Z",
+      "latest_event": {
+        "event_id": "E-fixture-complete"
+      },
+      "evidence_refs": [
+        "EV-fixture-complete"
+      ],
+      "log_cursor_refs": [],
+      "next_action": null,
+      "details": {}
+    }
+  ],
+  "summary": {
+    "total": 1,
+    "active": 0,
+    "blocked": 0,
+    "failed": 0,
+    "stale": 0,
+    "completed": 1
+  },
+  "recent_events": [
+    {
+      "event_id": "E-fixture-complete",
+      "resource_id": "W-fixture-complete",
+      "type": "workspace.completed"
+    }
+  ],
+  "blocking": [],
+  "evidence_readiness": {
+    "ready": 1,
+    "missing": 0,
+    "unavailable": 0
+  }
+}
