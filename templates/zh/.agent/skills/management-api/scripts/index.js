@@ -1567,3 +1567,9 @@ function main() {
 }
 
 main();
+// Explicit exit so callers using `spawnSync(... stdio: ['ignore', 'pipe', 'pipe'])`
+// always observe EOF on stdout within the configured timeout. Without this, a Node
+// process can linger briefly while V8 drains microtasks even after main() returns,
+// which under burst spawn rates (e.g. `tests/*.test.js` running the dashboard
+// server lifecycle suite) accumulates orphan management-api processes.
+process.exit(process.exitCode || 0);
