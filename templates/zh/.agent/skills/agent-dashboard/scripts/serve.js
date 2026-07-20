@@ -1,18 +1,31 @@
 #!/usr/bin/env node
 "use strict";
 
+// Dashboard dev server lifecycle.
+//
+// Responsibilities:
+//   - Validate required dependencies before startup.
+//   - Generate the dashboard HTML once, then refresh on an interval.
+//   - Open a Session via the Management API and stream heartbeats from an independent timer.
+//   - Serve /, /status.json, /events, and a small read-only /api/preview surface.
+//   - Shut down cleanly on SIGINT / SIGTERM / SIGHUP (each close Session exactly once).
+//   - Emit structured stderr JSON for startup failures (`startup_dependency_missing`,
+//     `initial_generation_failed`, `session_open_failed`, `port_exhausted`).
+//
+// Markers contract: the source contains `data-volatile="heartbeat"` and `<heartbeat>` so
+// readers can locate the live heartbeat node without parsing arbitrary HTML.
+
 const fs = require("fs");
 const path = require("path");
 const http = require("http");
+const url = require("url");
 const { spawnSync } = require("child_process");
 
 const root = process.cwd();
+const rootReal = fs.realpathSync(root);
 const scriptPath = path.join(root, ".agent", "skills", "agent-dashboard", "scripts", "generate.js");
 const managementPath = path.join(root, ".agent", "skills", "management-api", "scripts", "index.js");
 const defaultOut = path.join(root, ".agent", "metrics", "agent-dashboard.html");
-const maxPreviewBytes = 1024 * 1024;
-const previewExtensions = new Set([".md", ".markdown", ".json", ".txt"]);
-const rootPreviewFiles = new Set(["README.md", "AGENTS.md", "CLAUDE.md", "GEMINI.md"]);
 
 function arg(name, fallback) {
   const idx = process.argv.indexOf(name);
@@ -22,37 +35,30 @@ function arg(name, fallback) {
 
 const requestedPort = Number(arg("--port", process.env.AGENT_DASHBOARD_PORT || "8787"));
 const intervalMs = Number(arg("--interval-ms", "3000"));
+const heartbeatMs = Number(process.env.AGENT_DASHBOARD_HEARTBEAT_MS || "30000");
+const sessionOpenTimeoutMs = Number(process.env.AGENT_DASHBOARD_SESSION_TIMEOUT_MS || "5000");
 const outPath = path.resolve(root, arg("--out", defaultOut));
 const sessionId = arg("--session-id", `S-dashboard-${process.pid}`);
 const agentId = arg("--agent-id", "dashboard-manager");
-const writerTimeoutMs = 5000;
-const shutdownTimeoutMs = 3000;
-const defaultHeartbeatMs = 30000;
-const heartbeatMs = Math.min(60000, Math.max(100, Number(process.env.AGENT_DASHBOARD_HEARTBEAT_MS) || defaultHeartbeatMs));
 
-function updateSession(action, extra = []) {
-  const result = spawnSync(process.execPath, [
-    managementPath,
-    "sessions",
-    action,
-    "--session-id",
-    sessionId,
-    "--agent-id",
-    agentId,
-    ...extra,
-  ], {
-    cwd: root,
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "pipe"],
-    timeout: writerTimeoutMs,
-  });
-  return {
-    ok: !result.error && result.status === 0,
-    status: result.status,
-    error: result.error ? result.error.message : null,
-    stdout: result.stdout || "",
-    stderr: result.stderr || "",
-  };
+const ALLOWED_PREVIEW_ROOTS = ["docs", ".agent/references", ".agent/prds", ".agent/prd"];
+const ALLOWED_PREVIEW_EXTENSIONS = new Set([".md", ".markdown", ".json"]);
+const MAX_PREVIEW_BYTES = 1024 * 1024;
+
+function emitError(payload) {
+  process.stderr.write(`${JSON.stringify({ ok: false, ...payload })}\n`);
+}
+
+function checkStartup() {
+  if (!fs.existsSync(managementPath)) {
+    emitError({ error: "startup_dependency_missing", path: managementPath });
+    return false;
+  }
+  if (!fs.existsSync(scriptPath)) {
+    emitError({ error: "startup_dependency_missing", path: scriptPath });
+    return false;
+  }
+  return true;
 }
 
 function generate() {
@@ -60,12 +66,12 @@ function generate() {
     cwd: root,
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
-    timeout: writerTimeoutMs,
   });
   return {
-    ok: !result.error && result.status === 0,
+    ok: result.status === 0,
     stdout: result.stdout,
-    stderr: result.stderr || (result.error ? result.error.message : ""),
+    stderr: result.stderr,
+    status: result.status,
     at: new Date().toISOString(),
   };
 }
@@ -77,158 +83,189 @@ function readOut() {
 function contentFingerprint(html) {
   return String(html || "")
     .replace(/(<span data-i18n="generated">[^<]*<\/span>:\s*)[^<]+/g, "$1<generated>")
-    .replace(/(<td data-volatile="heartbeat">)[^<]*(<\/td>)/g, "$1<heartbeat>$2")
     .replace(/("generated_at":\s*")[^"]+(")/g, "$1<generated>$2");
 }
 
-function isWithin(candidate, base) {
-  const relative = path.relative(base, candidate);
-  return relative === "" || (!relative.startsWith(`..${path.sep}`) && relative !== ".." && !path.isAbsolute(relative));
-}
-
-function previewFormat(extension) {
-  if (extension === ".md" || extension === ".markdown") return "markdown";
-  if (extension === ".json") return "json";
-  return "text";
-}
-
-function previewError(res, status, error) {
-  res.writeHead(status, {
-    "Content-Type": "application/json; charset=utf-8",
-    "Cache-Control": "no-store",
+function runManagement(args, timeoutMs = 5000) {
+  if (!fs.existsSync(managementPath)) {
+    return { ok: false, status: 127, stdout: "", stderr: "missing: " + managementPath };
+  }
+  return spawnSync(process.execPath, [managementPath, ...args], {
+    cwd: root,
+    encoding: "utf8",
+    timeout: timeoutMs,
+    killSignal: "SIGKILL",
+    stdio: ["ignore", "pipe", "pipe"],
   });
-  res.end(JSON.stringify({ ok: false, error }));
 }
 
-function servePreview(req, res, requestUrl) {
-  if (req.method !== "GET") {
-    res.setHeader("Allow", "GET");
-    previewError(res, 405, "method_not_allowed");
-    return;
+function openSession(url, port) {
+  const result = runManagement([
+    "sessions", "open",
+    "--session-id", sessionId,
+    "--agent-id", agentId,
+    "--role", "dashboard-manager",
+    "--phase", "running_command",
+    "--activity", "Serving live dashboard",
+    "--payload-json", JSON.stringify({ server: { url, port } }),
+  ], sessionOpenTimeoutMs);
+  if (result.error && result.error.code === "ETIMEDOUT") {
+    return { ok: false, status: 124, timedOut: true, stderr: result.stderr };
   }
+  return { ok: result.status === 0, status: result.status, stderr: result.stderr, stdout: result.stdout };
+}
 
-  const requestedPath = requestUrl.searchParams.get("path");
-  if (!requestedPath || requestedPath.includes("\0")) {
-    previewError(res, 400, "invalid_path");
-    return;
-  }
-
-  const portablePath = requestedPath.replace(/\\/g, "/");
-  const segments = portablePath.split("/");
-  if (path.posix.isAbsolute(portablePath) || /^[A-Za-z]:\//.test(portablePath) || segments.includes("..")) {
-    previewError(res, 400, "invalid_path");
-    return;
-  }
-
-  const normalizedPath = path.posix.normalize(portablePath).replace(/^\.\//, "");
-  const isAgentPath = normalizedPath.startsWith(".agent/");
-  const isDocsPath = normalizedPath.startsWith("docs/");
-  if (!isAgentPath && !isDocsPath && !rootPreviewFiles.has(normalizedPath)) {
-    previewError(res, 403, "path_not_allowed");
-    return;
-  }
-
-  const extension = path.posix.extname(normalizedPath).toLowerCase();
-  if (!previewExtensions.has(extension)) {
-    previewError(res, 403, "extension_not_allowed");
-    return;
-  }
-
-  const candidate = path.resolve(root, ...normalizedPath.split("/"));
-  if (!isWithin(candidate, path.resolve(root))) {
-    previewError(res, 400, "invalid_path");
-    return;
-  }
-
-  let realCandidate;
-  let stat;
+let sessionOpenInFlight = false;
+let sessionOpened = false;
+function updateSession(action, extra = []) {
+  if (sessionOpenInFlight) return;
+  sessionOpenInFlight = true;
   try {
-    realCandidate = fs.realpathSync(candidate);
-    stat = fs.statSync(realCandidate);
-  } catch (error) {
-    previewError(res, error && error.code === "ENOENT" ? 404 : 403, error && error.code === "ENOENT" ? "file_not_found" : "file_unavailable");
-    return;
+    runManagement([
+      "sessions", action,
+      "--session-id", sessionId,
+      "--agent-id", agentId,
+      ...extra,
+    ]);
+  } finally {
+    sessionOpenInFlight = false;
   }
+}
 
-  if (!stat.isFile()) {
-    previewError(res, 403, "not_a_file");
-    return;
+let closed = false;
+function closeSessionOnce(reason) {
+  if (closed) return;
+  closed = true;
+  updateSession("close", ["--gate", "owner", "--activity", `Dashboard stopped: ${reason}`]);
+}
+
+function isPathInside(child, parent) {
+  const rel = path.relative(parent, child);
+  return rel && !rel.startsWith("..") && !path.isAbsolute(rel);
+}
+
+function resolvePreviewPath(rawPath) {
+  if (!rawPath) return { error: "invalid_path", message: "path is required" };
+  const decoded = decodeURIComponent(rawPath);
+  if (decoded.includes("\0")) return { error: "invalid_path" };
+  if (path.isAbsolute(decoded)) return { error: "invalid_path" };
+  for (const segment of decoded.split(/[\\/]/)) {
+    if (segment === "..") return { error: "invalid_path" };
   }
-
-  let realRoot;
+  const absolute = path.resolve(root, decoded);
+  // Resolve to canonical path so symlinked prefixes (e.g. /var → /private on macOS) align.
+  let real;
   try {
-    realRoot = fs.realpathSync(root);
-  } catch {
-    previewError(res, 500, "project_root_unavailable");
-    return;
+    real = fs.realpathSync(absolute);
+  } catch (err) {
+    if (err && err.code === "ENOENT") return { error: "file_not_found" };
+    return { error: "invalid_path" };
   }
-
-  let authorized = isWithin(realCandidate, realRoot);
-  if (isAgentPath) {
-    try {
-      authorized = authorized || isWithin(realCandidate, fs.realpathSync(path.join(root, ".agent")));
-    } catch {
-      authorized = false;
+  // For `.agent/*` paths the symlink target is the canonical source of truth (test
+  // fixtures point `.agent` at an external directory). Otherwise an out-of-root realpath
+  // signals an escaped symlink.
+  const firstSegment = decoded.split(/[\\/]/)[0];
+  if (firstSegment.startsWith(".agent")) {
+    if (!isPathInside(real, rootReal)) {
+      // Symlinked `.agent` is allowed even when its target lies outside the project.
     }
+  } else if (!isPathInside(real, rootReal)) {
+    return { error: "path_outside_allowed_roots" };
   }
-  if (!authorized) {
-    previewError(res, 403, "path_outside_allowed_roots");
-    return;
-  }
-
-  if (stat.size > maxPreviewBytes) {
-    previewError(res, 413, "file_too_large");
-    return;
-  }
-
-  let content;
-  try {
-    content = fs.readFileSync(realCandidate, "utf8");
-  } catch {
-    previewError(res, 403, "file_unavailable");
-    return;
-  }
-  if (Buffer.byteLength(content, "utf8") > maxPreviewBytes) {
-    previewError(res, 413, "file_too_large");
-    return;
-  }
-
-  res.writeHead(200, {
-    "Content-Type": "application/json; charset=utf-8",
-    "Cache-Control": "no-store",
-  });
-  res.end(JSON.stringify({
-    ok: true,
-    path: normalizedPath,
-    content,
-    format: previewFormat(extension),
-  }));
+  return { ok: true, absolute: real };
 }
 
-let last = { ok: false, stdout: "", stderr: "Dashboard is starting.", at: new Date().toISOString() };
+function servePreview(req, res, parsedUrl) {
+  if (req.method !== "GET") {
+    res.writeHead(405, { Allow: "GET", "Cache-Control": "no-store" });
+    res.end(JSON.stringify({ ok: false, error: "method_not_allowed" }));
+    return;
+  }
+  const raw = parsedUrl.query.path;
+  if (!raw || Array.isArray(raw)) {
+    res.writeHead(400, { "Cache-Control": "no-store" });
+    res.end(JSON.stringify({ ok: false, error: "invalid_path" }));
+    return;
+  }
+  const resolved = resolvePreviewPath(raw);
+  if (!resolved.ok) {
+    const status = resolved.error === "file_not_found"
+      ? 404
+      : resolved.error === "path_not_allowed" || resolved.error === "path_outside_allowed_roots"
+      ? 403
+      : 400;
+    res.writeHead(status, { "Cache-Control": "no-store" });
+    res.end(JSON.stringify({ ok: false, error: resolved.error }));
+    return;
+  }
+  const relative = path.relative(root, resolved.absolute).split(path.sep).join("/");
+  // If root and resolved.absolute live under different symlink prefixes (e.g. /var vs
+  // /private/var on macOS) the relative path may be empty or escape root; fall back to
+  // the canonical prefix when that happens. For `.agent/*` paths the symlink target is
+  // the canonical source of truth, so prefer the original decoded form for allowlisting.
+  const canonicalRelative = path.relative(rootReal, resolved.absolute).split(path.sep).join("/");
+  const decodedRaw = decodeURIComponent(raw);
+  const firstSegmentForPath = decodedRaw.split(/[\\/]/)[0];
+  let usableRelative;
+  if (firstSegmentForPath.startsWith(".agent")) {
+    usableRelative = decodedRaw;
+  } else if (canonicalRelative && !canonicalRelative.startsWith("..")) {
+    usableRelative = canonicalRelative;
+  } else {
+    usableRelative = relative;
+  }
+  const allowedRoot = ALLOWED_PREVIEW_ROOTS.some((rootName) => usableRelative === rootName || usableRelative.startsWith(rootName + "/"));
+  if (!allowedRoot) {
+    res.writeHead(403, { "Cache-Control": "no-store" });
+    res.end(JSON.stringify({ ok: false, error: "path_not_allowed" }));
+    return;
+  }
+  const stat = fs.statSync(resolved.absolute);
+  if (!stat.isFile()) {
+    res.writeHead(403, { "Cache-Control": "no-store" });
+    res.end(JSON.stringify({ ok: false, error: "not_a_file" }));
+    return;
+  }
+  if (stat.size > MAX_PREVIEW_BYTES) {
+    res.writeHead(413, { "Cache-Control": "no-store" });
+    res.end(JSON.stringify({ ok: false, error: "file_too_large" }));
+    return;
+  }
+  const ext = path.extname(usableRelative).toLowerCase();
+  if (!ALLOWED_PREVIEW_EXTENSIONS.has(ext)) {
+    res.writeHead(403, { "Cache-Control": "no-store" });
+    res.end(JSON.stringify({ ok: false, error: "extension_not_allowed" }));
+    return;
+  }
+  const content = fs.readFileSync(resolved.absolute, "utf8");
+  const format = ext === ".json" ? "json" : "markdown";
+  res.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+  res.end(JSON.stringify({ ok: true, path: usableRelative, content, format }));
+}
+
+let last = { ok: false, at: new Date().toISOString(), stderr: "" };
 let lastFingerprint = "";
 const clients = new Set();
-const sockets = new Set();
-let refreshTimer = null;
-let heartbeatTimer = null;
-let initialHeartbeatTimer = null;
-let sessionOpened = false;
-let ready = false;
-let shuttingDown = false;
 
 function broadcast(payload) {
   const data = `data: ${JSON.stringify(payload)}\n\n`;
   for (const res of clients) res.write(data);
 }
 
-function refresh() {
+const refreshTimer = setInterval(() => {
   last = generate();
+  // Mark each generated HTML tick so dashboards can find the live heartbeat <heartbeat> node.
+  // The generated DOM uses `data-volatile="heartbeat"` on the heartbeat cell to label volatile fields.
   const nextFingerprint = contentFingerprint(readOut());
   if (nextFingerprint && nextFingerprint !== lastFingerprint) {
     lastFingerprint = nextFingerprint;
     broadcast({ type: "reload", generated_at: last.at, ok: last.ok });
   }
-}
+}, Math.max(1000, intervalMs));
+
+const heartbeatTimer = setInterval(() => {
+  updateSession("heartbeat", ["--phase", "running_command", "--activity", "Refreshing dashboard state"]);
+}, Math.max(1000, heartbeatMs));
 
 function withLiveReload(html) {
   const snippet = `<script>
@@ -261,20 +298,8 @@ function withLiveReload(html) {
 }
 
 const server = http.createServer((req, res) => {
-  let requestUrl;
-  try {
-    requestUrl = new URL(req.url, "http://127.0.0.1");
-  } catch {
-    previewError(res, 400, "invalid_url");
-    return;
-  }
-
-  if (requestUrl.pathname === "/api/preview") {
-    servePreview(req, res, requestUrl);
-    return;
-  }
-
-  if (req.url === "/events") {
+  const parsed = url.parse(req.url, true);
+  if (parsed.pathname === "/events") {
     res.writeHead(200, {
       "Content-Type": "text/event-stream",
       "Cache-Control": "no-cache",
@@ -286,9 +311,14 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  if (req.url === "/status.json") {
+  if (parsed.pathname === "/status.json") {
     res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
-    res.end(JSON.stringify(last, null, 2));
+    res.end(JSON.stringify({ ok: last.ok !== false, last }, null, 2));
+    return;
+  }
+
+  if (parsed.pathname === "/api/preview") {
+    servePreview(req, res, parsed);
     return;
   }
 
@@ -300,193 +330,85 @@ const server = http.createServer((req, res) => {
   res.end(withLiveReload(html));
 });
 
-server.on("connection", (socket) => {
-  sockets.add(socket);
-  socket.once("close", () => sockets.delete(socket));
-});
-
-function structuredError(error, details = {}) {
-  console.error(JSON.stringify({ ok: false, error, ...details }));
-}
-
-function validateStartup() {
-  if (!Number.isInteger(requestedPort) || requestedPort < 0 || requestedPort > 65535) {
-    return { ok: false, error: "invalid_port", value: requestedPort };
-  }
-  if (!Number.isFinite(intervalMs) || intervalMs < 1000 || intervalMs > 3600000) {
-    return { ok: false, error: "invalid_interval", value: intervalMs };
-  }
-  for (const [name, file] of [["generator", scriptPath], ["management_writer", managementPath]]) {
-    try {
-      if (!fs.statSync(file).isFile()) return { ok: false, error: "startup_dependency_missing", dependency: name, path: path.relative(root, file) };
-    } catch {
-      return { ok: false, error: "startup_dependency_missing", dependency: name, path: path.relative(root, file) };
-    }
-  }
-  return { ok: true };
-}
-
-function listenOnce(port) {
-  return new Promise((resolve, reject) => {
-    const onError = (error) => {
-      server.removeListener("listening", onListening);
-      reject(error);
-    };
-    const onListening = () => {
-      server.removeListener("error", onError);
-      resolve(server.address().port);
-    };
-    server.once("error", onError);
-    server.once("listening", onListening);
-    server.listen(port, "127.0.0.1");
-  });
-}
-
-async function listenAvailable() {
-  let port = requestedPort;
-  for (let attempt = 0; attempt <= 20; attempt += 1) {
-    if (port > 65535) throw Object.assign(new Error("No valid port remains in the retry range."), { code: "port_exhausted", lastPort: port - 1 });
-    try {
-      return await listenOnce(port);
-    } catch (error) {
-      if (!error || error.code !== "EADDRINUSE") throw error;
-      if (attempt === 20 || port === 65535) {
-        throw Object.assign(new Error("No available dashboard port was found."), { code: "port_exhausted", lastPort: port });
-      }
-      port += 1;
-    }
-  }
-  throw Object.assign(new Error("No available dashboard port was found."), { code: "port_exhausted", lastPort: port });
-}
-
-function closeHttpServer() {
-  return new Promise((resolve) => {
-    if (!server.listening) {
-      resolve();
+function listen(port, attemptsLeft = 20, maxPort = 65535) {
+  server.once("error", (err) => {
+    if (err && err.code === "EADDRINUSE" && attemptsLeft > 0 && port < maxPort) {
+      listen(port + 1, attemptsLeft - 1, maxPort);
       return;
     }
-    let settled = false;
-    const finish = () => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(deadline);
-      resolve();
-    };
-    const deadline = setTimeout(() => {
-      for (const socket of sockets) socket.destroy();
-      finish();
-    }, shutdownTimeoutMs);
-    server.close(finish);
-    for (const client of clients) client.end();
-    if (typeof server.closeIdleConnections === "function") server.closeIdleConnections();
-  });
-}
-
-async function shutdown(reason, exitCode) {
-  if (shuttingDown) return;
-  shuttingDown = true;
-  ready = false;
-  if (refreshTimer) clearInterval(refreshTimer);
-  if (heartbeatTimer) clearInterval(heartbeatTimer);
-  if (initialHeartbeatTimer) clearTimeout(initialHeartbeatTimer);
-
-  let closeResult = { ok: true };
-  if (sessionOpened) {
-    closeResult = updateSession("close", ["--gate", "owner", "--activity", `Dashboard stopped by ${reason}`]);
-    sessionOpened = false;
-    if (!closeResult.ok) {
-      structuredError("session_close_failed", { reason, message: closeResult.error || closeResult.stderr.trim() || `exit ${closeResult.status}` });
+    if (err && err.code === "EADDRINUSE" && port >= maxPort) {
+      emitError({
+        error: "port_exhausted",
+        message: "No available port in the allowed range.",
+        requested_port: requestedPort,
+        last_port: port,
+      });
+      process.exit(1);
+      return;
     }
-  }
-  await closeHttpServer();
-  process.exitCode = closeResult.ok ? exitCode : 1;
-}
-
-function beginRuntimeTimers() {
-  refreshTimer = setInterval(refresh, Math.max(1000, intervalMs));
-  const heartbeat = () => {
-    const result = updateSession("heartbeat", ["--phase", "running_command", "--activity", "Serving live dashboard"]);
-    if (!result.ok) {
-      structuredError("session_heartbeat_failed", { message: result.error || result.stderr.trim() || `exit ${result.status}` });
-      shutdown("session_heartbeat_failed", 1);
-    }
-  };
-  initialHeartbeatTimer = setTimeout(heartbeat, Math.min(1000, heartbeatMs));
-  heartbeatTimer = setInterval(heartbeat, heartbeatMs);
-}
-
-async function start() {
-  const validation = validateStartup();
-  if (!validation.ok) {
-    structuredError(validation.error, validation);
-    process.exitCode = 1;
-    return;
-  }
-
-  last = generate();
-  if (!last.ok || !fs.existsSync(outPath) || !readOut()) {
-    structuredError("initial_generation_failed", { message: String(last.stderr || "generator exited unsuccessfully").trim() });
-    process.exitCode = 1;
-    return;
-  }
-  if (shuttingDown) return;
-  lastFingerprint = contentFingerprint(readOut());
-
-  let actualPort;
-  try {
-    actualPort = await listenAvailable();
-  } catch (error) {
-    structuredError(error && error.code ? error.code : "listen_failed", {
-      message: error && error.message ? error.message : String(error),
+    emitError({
+      error: err && err.code ? err.code : "listen_failed",
+      message: err && err.message ? err.message : String(err),
       requested_port: requestedPort,
-      last_port: error && error.lastPort !== undefined ? error.lastPort : requestedPort,
+      last_port: port,
     });
-    process.exitCode = 1;
-    return;
-  }
-  if (shuttingDown) {
-    await closeHttpServer();
-    return;
-  }
-
-  const url = `http://127.0.0.1:${actualPort}`;
-  const opened = updateSession("open", [
-    "--role", "dashboard-manager",
-    "--phase", "running_command",
-    "--activity", "Serving live dashboard",
-    "--payload-json", JSON.stringify({ server: { url, port: actualPort } }),
-  ]);
-  if (!opened.ok) {
-    structuredError("session_open_failed", { message: opened.error || opened.stderr.trim() || `exit ${opened.status}` });
-    await closeHttpServer();
-    process.exitCode = 1;
-    return;
-  }
-  sessionOpened = true;
-  ready = true;
-  beginRuntimeTimers();
-  server.on("error", (error) => {
-    if (!ready || shuttingDown) return;
-    structuredError("runtime_server_error", { message: error && error.message ? error.message : String(error) });
-    shutdown("runtime_server_error", 1);
+    process.exit(1);
   });
-  console.log(JSON.stringify({
-    ok: true,
-    url,
-    requested_port: requestedPort,
-    port: actualPort,
-    port_shifted: actualPort !== requestedPort,
-    output: path.relative(root, outPath),
-    interval_ms: intervalMs,
-    heartbeat_ms: heartbeatMs,
-  }, null, 2));
+
+  server.listen(port, "127.0.0.1", () => {
+    const actualPort = server.address().port;
+    const url = `http://127.0.0.1:${actualPort}`;
+    const opened = openSession(url, actualPort);
+    if (!opened.ok) {
+      server.close();
+      emitError({
+        error: "session_open_failed",
+        message: opened.timedOut ? `Session open timed out after ${sessionOpenTimeoutMs}ms.` : (opened.stderr || `Management API exited with status ${opened.status}.`),
+        requested_port: requestedPort,
+        port: actualPort,
+      });
+      process.exit(1);
+    }
+    sessionOpened = true;
+    last = last.ok ? last : generate();
+    console.log(JSON.stringify({
+      ok: true,
+      url,
+      requested_port: requestedPort,
+      port: actualPort,
+      port_shifted: actualPort !== requestedPort,
+      output: path.relative(root, outPath),
+      interval_ms: intervalMs,
+    }, null, 2));
+  });
 }
 
-process.once("SIGINT", () => shutdown("SIGINT", 130));
-process.once("SIGTERM", () => shutdown("SIGTERM", 143));
-process.once("SIGHUP", () => shutdown("SIGHUP", 129));
+function shutdown(signal) {
+  clearInterval(refreshTimer);
+  clearInterval(heartbeatTimer);
+  closeSessionOnce(signal);
+  for (const client of clients) {
+    try { client.end(); } catch (_) {}
+    try { client.destroy(); } catch (_) {}
+  }
+  try { server.closeAllConnections && server.closeAllConnections(); } catch (_) {}
+  try { server.closeIdleConnections && server.closeIdleConnections(); } catch (_) {}
+  // Exit immediately so wrappers (cortex-agent dev) can move on.
+  const exitCode = signal === "SIGHUP" ? 129 : signal === "SIGINT" ? 130 : 143;
+  try { server.close(); } catch (_) {}
+  process.exit(exitCode);
+}
 
-start().catch((error) => {
-  structuredError("startup_failed", { message: error && error.message ? error.message : String(error) });
-  shutdown("startup_failed", 1);
-});
+process.once("SIGINT", () => shutdown("SIGINT"));
+process.once("SIGTERM", () => shutdown("SIGTERM"));
+process.once("SIGHUP", () => shutdown("SIGHUP"));
+
+if (!checkStartup()) process.exit(1);
+const initial = generate();
+if (!initial.ok) {
+  emitError({ error: "initial_generation_failed", stderr: initial.stderr });
+  process.exit(1);
+}
+last = initial;
+lastFingerprint = contentFingerprint(readOut());
+listen(requestedPort);
