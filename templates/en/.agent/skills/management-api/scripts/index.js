@@ -86,16 +86,6 @@ function nowIso() {
   return new Date().toISOString();
 }
 
-function optionalDateTime(value, field) {
-  if (value === null || value === undefined || value === "") return null;
-  const normalized = String(value);
-  const rfc3339 = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;
-  if (!rfc3339.test(normalized) || !Number.isFinite(Date.parse(normalized))) {
-    fail("invalid_date_time", `${field} must be an RFC 3339 date-time`);
-  }
-  return normalized;
-}
-
 function safeId(value, prefix) {
   const base = String(value || "").trim();
   if (base) return base.replace(/[^A-Za-z0-9_.:-]+/g, "-");
@@ -112,23 +102,6 @@ function queueFile(queueId) {
 
 function sessionFile(sessionId) {
   return path.join(agentRoot, "sessions", `${safeId(sessionId, "S")}.json`);
-}
-
-function prefixedId(value, prefix) {
-  const normalized = safeId(value, prefix);
-  return normalized.startsWith(`${prefix}-`) ? normalized : `${prefix}-${normalized}`;
-}
-
-function inboxFile(messageId) {
-  return path.join(agentRoot, "inbox", `${prefixedId(messageId, "IM")}.json`);
-}
-
-function decisionFile(decisionId) {
-  return path.join(agentRoot, "decisions", `${prefixedId(decisionId, "D")}.json`);
-}
-
-function waitpointFile(waitpointId) {
-  return path.join(agentRoot, "waitpoints", `${prefixedId(waitpointId, "WP")}.json`);
 }
 
 function requireGate(allowed) {
@@ -151,36 +124,6 @@ function compactEvent(event) {
     if (payload[key] === undefined || payload[key] === null || payload[key] === "") delete payload[key];
   }
   return payload;
-}
-
-function stringList(value) {
-  if (Array.isArray(value)) return [...new Set(value.map(String).map((item) => item.trim()).filter(Boolean))];
-  return [...new Set(String(value || "").split(",").map((item) => item.trim()).filter(Boolean))];
-}
-
-function emptyRelations(payload = {}) {
-  const relations = payload && typeof payload === "object" ? payload : {};
-  return {
-    task_ids: stringList(relations.task_ids),
-    mission_ids: stringList(relations.mission_ids),
-    run_ids: stringList(relations.run_ids),
-    queue_ids: stringList(relations.queue_ids),
-    session_ids: stringList(relations.session_ids),
-    artifact_refs: stringList(relations.artifact_refs),
-    worktree_paths: stringList(relations.worktree_paths),
-  };
-}
-
-function updateIndex(dirName, collection, idKey, data, file) {
-  const indexFile = path.join(agentRoot, dirName, "index.json");
-  const existing = readJson(indexFile) || { [collection]: [] };
-  const items = Array.isArray(existing[collection]) ? existing[collection] : [];
-  const entry = { ...data, path: rel(file) };
-  const index = items.findIndex((item) => item[idKey] === entry[idKey]);
-  const nextItems = [...items];
-  if (index === -1) nextItems.push(entry);
-  else nextItems[index] = { ...nextItems[index], ...entry };
-  writeJson(indexFile, { ...existing, [collection]: nextItems });
 }
 
 function listFiles(dir, filter) {
@@ -466,35 +409,7 @@ function parseSessions() {
     .sort((a, b) => String(b.last_heartbeat_at || b.started_at || "").localeCompare(String(a.last_heartbeat_at || a.started_at || "")));
 }
 
-function parseInbox() {
-  return listJsonObjects(path.join(agentRoot, "inbox"))
-    .map(({ file, data }) => ({ ...data, path: rel(file) }))
-    .sort((a, b) => String(b.updated_at || b.created_at || "").localeCompare(String(a.updated_at || a.created_at || "")));
-}
-
-function parseDecisions() {
-  return listJsonObjects(path.join(agentRoot, "decisions"))
-    .map(({ file, data }) => ({ ...data, path: rel(file) }))
-    .sort((a, b) => String(b.updated_at || b.created_at || "").localeCompare(String(a.updated_at || a.created_at || "")));
-}
-
-function parseWaitpoints() {
-  const now = Date.now();
-  return listJsonObjects(path.join(agentRoot, "waitpoints"))
-    .map(({ file, data }) => {
-      const expiresAt = Date.parse(data.expires_at);
-      const expired = ["pending", "blocked"].includes(data.status) && Number.isFinite(expiresAt) && expiresAt <= now;
-      return {
-        ...data,
-        path: rel(file),
-        effective_status: expired ? "expired" : data.status,
-        expired,
-      };
-    })
-    .sort((a, b) => String(b.updated_at || b.created_at || "").localeCompare(String(a.updated_at || a.created_at || "")));
-}
-
-function deriveState({ worktrees, locks, handoffs, tasks, agents, runs, sessions, decisions, waitpoints }) {
+function deriveState({ worktrees, locks, handoffs, tasks, agents, runs, sessions, approvals }) {
   const nonMainWorktrees = worktrees.filter((w) => !w.isMain);
   const dirty = worktrees.some((w) => w.dirty);
   const heldLocks = locks.filter((l) => !l.expired);
@@ -503,18 +418,9 @@ function deriveState({ worktrees, locks, handoffs, tasks, agents, runs, sessions
   const activeAgents = agents.filter((a) => ["running", "active", "paused"].includes(a.status));
   const runningRuns = (runs || []).filter((r) => r.status === "running");
   const staleSessions = (sessions || []).filter((s) => s.status === "stale");
-  const openDecisions = (decisions || []).filter((decision) => decision.status === "open");
-  const blockingWaitpoints = (waitpoints || []).filter((waitpoint) => ["pending", "blocked"].includes(waitpoint.effective_status || waitpoint.status));
-
-  if (blockingWaitpoints.length || openDecisions.length) {
-    return {
-      state: "waiting_approval",
-      next: "处理待决 Decision，并由 owning workflow 验证证据后释放 Waitpoint。",
-      nextEn: "Resolve the pending Decision, then let the owning workflow validate evidence and release the Waitpoint.",
-      why: `发现 ${openDecisions.length} 个待决 Decision 和 ${blockingWaitpoints.length} 个阻塞 Waitpoint。`,
-      whyEn: `${openDecisions.length} open Decision(s) and ${blockingWaitpoints.length} blocking Waitpoint(s) detected.`,
-    };
-  }
+  const openDecisions = approvals?.open_decisions || [];
+  const openWaitpoints = approvals?.open_waitpoints || [];
+  const pendingInbox = approvals?.pending_inbox || [];
 
   if (runningRuns.length) {
     const run = runningRuns[0];
@@ -525,6 +431,21 @@ function deriveState({ worktrees, locks, handoffs, tasks, agents, runs, sessions
       nextEn: action,
       why: `Run ${run.run_id || run.path} 正在执行${run.phase ? `：${run.phase}` : ""}。`,
       whyEn: `Run ${run.run_id || run.path} is running${run.phase ? `: ${run.phase}` : ""}.`,
+    };
+  }
+
+  if (openDecisions.length || openWaitpoints.length || pendingInbox.length) {
+    const summary = [
+      openDecisions.length ? `${openDecisions.length} decision` : null,
+      openWaitpoints.length ? `${openWaitpoints.length} waitpoint` : null,
+      pendingInbox.length ? `${pendingInbox.length} inbox` : null,
+    ].filter(Boolean).join(", ");
+    return {
+      state: "waiting_approval",
+      next: "审批未完成：先批准开放决策 / 收件人确认 inbox，再继续后续动作。",
+      nextEn: "Approval pending: resolve open decisions and pending inbox before continuing.",
+      why: `等待审批：${summary}。`,
+      whyEn: `Awaiting approval: ${summary}.`,
     };
   }
 
@@ -604,11 +525,24 @@ function queryDashboardState() {
   const runs = parseRuns();
   const queues = parseQueues();
   const sessions = parseSessions();
-  const inbox = parseInbox();
-  const decisions = parseDecisions();
-  const waitpoints = parseWaitpoints();
+  const decisions = listJsonObjects(path.join(agentRoot, "decisions"))
+    .map(({ file, data }) => ({ ...data, path: rel(file) }));
+  const waitpoints = listJsonObjects(path.join(agentRoot, "waitpoints"))
+    .map(({ file, data }) => ({ ...data, path: rel(file) }));
+  const inbox = listJsonObjects(path.join(agentRoot, "inbox"))
+    .map(({ file, data }) => ({ ...data, path: rel(file) }));
+  const approvals = {
+    open_decisions: decisions.filter((d) => d.status === "open"),
+    open_waitpoints: waitpoints.filter((w) => ["pending", "blocked"].includes(w.status)),
+    pending_inbox: inbox.filter((m) => ["unread", "read"].includes(m.status)),
+    counts: {
+      open_decisions: decisions.filter((d) => d.status === "open").length,
+      open_waitpoints: waitpoints.filter((w) => ["pending", "blocked"].includes(w.status)).length,
+      pending_inbox: inbox.filter((m) => ["unread", "read"].includes(m.status)).length,
+    },
+  };
   const gitStatus = sh("git status --short --branch");
-  const derived = deriveState({ worktrees, locks, handoffs, tasks, agents, runs, sessions, decisions, waitpoints });
+  const derived = deriveState({ worktrees, locks, handoffs, tasks, agents, runs, sessions, approvals });
 
   return {
     ok: true,
@@ -624,14 +558,15 @@ function queryDashboardState() {
     runs,
     queues,
     sessions,
-    inbox,
-    decisions,
-    waitpoints,
     locks,
     handoffs,
     artifacts,
     prds,
     prd_summary: prdSummary,
+    approvals,
+    inbox: approvals.pending_inbox,
+    decisions: approvals.open_decisions,
+    waitpoints: approvals.open_waitpoints,
     git_status: gitStatus,
     derived,
     summary: {
@@ -641,12 +576,12 @@ function queryDashboardState() {
       running_runs: runs.filter((r) => r.status === "running").length,
       active_queues: queues.filter((q) => q.status === "active").length,
       stale_sessions: sessions.filter((s) => s.status === "stale").length,
-      unread_messages: inbox.filter((message) => message.status === "unread").length,
-      open_decisions: decisions.filter((decision) => decision.status === "open").length,
-      blocking_waitpoints: waitpoints.filter((waitpoint) => ["pending", "blocked"].includes(waitpoint.effective_status || waitpoint.status)).length,
       active_phases: runs.filter((r) => r.status === "running" && r.phase).map((r) => r.phase),
       prds: prds.length,
       prd_completeness: prdSummary.completeness,
+      open_decisions: approvals.counts.open_decisions,
+      open_waitpoints: approvals.counts.open_waitpoints,
+      pending_inbox: approvals.counts.pending_inbox,
     },
   };
 }
@@ -702,56 +637,6 @@ function querySessions() {
   };
 }
 
-function queryInbox() {
-  const inbox = parseInbox();
-  return {
-    ok: true,
-    query: "inbox",
-    generated_at: nowIso(),
-    inbox,
-    summary: {
-      total: inbox.length,
-      unread: inbox.filter((message) => message.status === "unread").length,
-      acknowledged: inbox.filter((message) => message.status === "acknowledged").length,
-      archived: inbox.filter((message) => message.status === "archived").length,
-    },
-  };
-}
-
-function queryDecisions() {
-  const decisions = parseDecisions();
-  return {
-    ok: true,
-    query: "decisions",
-    generated_at: nowIso(),
-    decisions,
-    summary: {
-      total: decisions.length,
-      open: decisions.filter((decision) => decision.status === "open").length,
-      approved: decisions.filter((decision) => decision.status === "approved").length,
-      rejected: decisions.filter((decision) => decision.status === "rejected").length,
-      revision_requested: decisions.filter((decision) => decision.status === "revision_requested").length,
-    },
-  };
-}
-
-function queryWaitpoints() {
-  const waitpoints = parseWaitpoints();
-  return {
-    ok: true,
-    query: "waitpoints",
-    generated_at: nowIso(),
-    waitpoints,
-    summary: {
-      total: waitpoints.length,
-      pending: waitpoints.filter((waitpoint) => waitpoint.effective_status === "pending").length,
-      blocked: waitpoints.filter((waitpoint) => waitpoint.effective_status === "blocked").length,
-      released: waitpoints.filter((waitpoint) => waitpoint.effective_status === "released").length,
-      expired: waitpoints.filter((waitpoint) => waitpoint.effective_status === "expired").length,
-    },
-  };
-}
-
 function printJson(payload) {
   process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);
 }
@@ -759,6 +644,529 @@ function printJson(payload) {
 function fail(error, message, code = 2) {
   printJson({ ok: false, error, message });
   process.exit(code);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Communication runtime: inbox / decisions / waitpoints
+// ─────────────────────────────────────────────────────────────────────────────
+
+const DECISION_TYPES = new Set(["approval", "architecture", "merge", "release", "risk"]);
+const DECISION_STATUSES = new Set([
+  "open", "approved", "rejected", "revision_requested", "canceled", "superseded",
+]);
+const GATE_ACTIONS = new Set([
+  "architecture", "merge", "release", "destructive", "credential", "external_side_effect",
+]);
+const INBOX_TYPES = new Set(["information", "request", "handoff", "decision_request", "alert"]);
+const INBOX_STATUSES = new Set(["unread", "read", "acknowledged", "archived"]);
+const WAITPOINT_STATUSES = new Set(["pending", "blocked", "released", "canceled", "expired"]);
+const ALLOWED_WORKFLOW_GATES = new Set(["user", "mission", "agent"]);
+
+function emptyRelations() {
+  return { task_ids: [], mission_ids: [], run_ids: [], queue_ids: [], session_ids: [], artifact_refs: [], worktree_paths: [] };
+}
+
+function decisionFile(decisionId) {
+  return path.join(agentRoot, "decisions", `${safeId(decisionId, "D")}.json`);
+}
+
+function inboxFile(messageId) {
+  return path.join(agentRoot, "inbox", `${safeId(messageId, "IM")}.json`);
+}
+
+function waitpointFile(waitpointId) {
+  return path.join(agentRoot, "waitpoints", `${safeId(waitpointId, "WP")}.json`);
+}
+
+function readIndex(dir) {
+  const file = path.join(agentRoot, dir, "index.json");
+  const data = readJson(file);
+  if (!data) return { items: [], indexFile: file };
+  return { items: Object.values(data).find(Array.isArray) || [], indexFile: file };
+}
+
+function readIndexItems(dir, key) {
+  const data = readJson(path.join(agentRoot, dir, "index.json"));
+  return Array.isArray(data && data[key]) ? data[key] : [];
+}
+
+function writeIndex(dir, key, items) {
+  const file = path.join(agentRoot, dir, "index.json");
+  writeJson(file, { [key]: items });
+}
+
+function summarize(items) {
+  return { total: items.length };
+}
+
+function validateDecisionGate(gate) {
+  if (!gate || typeof gate !== "object") return "Decision gate is required.";
+  if (!GATE_ACTIONS.has(gate.action)) return `Decision gate.action must be one of: ${[...GATE_ACTIONS].join(", ")}.`;
+  if (typeof gate.resource_ref !== "string" || !gate.resource_ref.trim()) return "Decision gate.resource_ref is required.";
+  return null;
+}
+
+function isExpired(waitpoint, nowMs) {
+  if (!waitpoint.expires_at) return false;
+  const ts = Date.parse(waitpoint.expires_at);
+  return Number.isFinite(ts) && ts <= nowMs;
+}
+
+function queryInbox() {
+  const items = listJsonObjects(path.join(agentRoot, "inbox"))
+    .map(({ file, data }) => ({ ...data, path: rel(file) }))
+    .sort((a, b) => String(b.updated_at || b.created_at || "").localeCompare(String(a.updated_at || a.created_at || "")));
+  return {
+    ok: true,
+    query: "inbox",
+    generated_at: new Date().toISOString(),
+    inbox: items,
+    summary: summarize(items),
+  };
+}
+
+function queryDecisions() {
+  const items = listJsonObjects(path.join(agentRoot, "decisions"))
+    .map(({ file, data }) => ({ ...data, path: rel(file) }))
+    .sort((a, b) => String(b.updated_at || b.created_at || "").localeCompare(String(a.updated_at || a.created_at || "")));
+  return {
+    ok: true,
+    query: "decisions",
+    generated_at: new Date().toISOString(),
+    decisions: items,
+    summary: summarize(items),
+  };
+}
+
+function queryWaitpoints() {
+  const nowMs = Date.now();
+  const items = listJsonObjects(path.join(agentRoot, "waitpoints"))
+    .map(({ file, data }) => {
+      const expired = isExpired(data, nowMs) && !["released", "canceled"].includes(data.status);
+      return {
+        ...data,
+        path: rel(file),
+        status: expired ? "expired" : data.status,
+        expired,
+      };
+    })
+    .sort((a, b) => String(b.updated_at || b.created_at || "").localeCompare(String(a.updated_at || a.created_at || "")));
+  return {
+    ok: true,
+    query: "waitpoints",
+    generated_at: new Date().toISOString(),
+    waitpoints: items,
+    summary: summarize(items),
+  };
+}
+
+function requestDecision() {
+  const gate = requireGate(["mission", "agent"]);
+  const payload = parsePayload();
+  const decisionId = safeId(option("--decision-id", payload.decision_id), "D");
+  const type = String(option("--type", payload.type || "")).trim();
+  if (!DECISION_TYPES.has(type)) fail("invalid_decision_type", `--type must be one of: ${[...DECISION_TYPES].join(", ")}.`);
+  const decisionGate = payload.gate || { action: option("--gate-action"), resource_ref: option("--resource-ref") };
+  const gateError = validateDecisionGate(decisionGate);
+  if (gateError) fail("invalid_decision_gate", gateError);
+  const requestedBy = String(option("--requested-by", payload.requested_by || "")).trim();
+  if (!requestedBy) fail("invalid_decision_requested_by", "--requested-by is required.");
+  const prompt = String(option("--prompt", payload.prompt || "")).trim();
+  if (!prompt) fail("invalid_decision_prompt", "--prompt is required.");
+  const optionsRaw = option("--options", null);
+  let options = Array.isArray(payload.options) ? payload.options : null;
+  if (!options && optionsRaw) {
+    try { options = JSON.parse(optionsRaw); } catch { fail("invalid_decision_options", "--options must be JSON."); }
+  }
+  if (!Array.isArray(options) || options.length < 2) fail("invalid_decision_options", "Decision requires at least 2 options.");
+  const file = decisionFile(decisionId);
+  const existing = readJson(file) || {};
+  if (existing.decision_id && existing.status === "open") {
+    fail("decision_already_open", `Decision ${decisionId} is still open; resolve or supersede it first.`);
+  }
+  const timestamp = nowIso();
+  const relations = existing.relations && typeof existing.relations === "object" ? existing.relations : emptyRelations();
+  const next = {
+    schema_version: 1,
+    decision_id: decisionId,
+    type,
+    status: "open",
+    requested_by: requestedBy,
+    prompt,
+    options,
+    selected_option: null,
+    resolved_by: null,
+    resolved_at: null,
+    rationale: "",
+    gate: { action: decisionGate.action, resource_ref: decisionGate.resource_ref },
+    relations,
+    created_at: existing.created_at || timestamp,
+    updated_at: timestamp,
+    workflow_gate: gate,
+  };
+  writeJson(file, next);
+  upsertIndexEntry("decisions", "decisions", {
+    decision_id: decisionId,
+    path: rel(file),
+    type,
+    status: "open",
+    gate_action: decisionGate.action,
+    resource_ref: decisionGate.resource_ref,
+    updated_at: timestamp,
+  }, (entry, current) => entry.decision_id === current.decision_id);
+  printJson({ ok: true, action: "decisions request", path: rel(file), decision: next });
+}
+
+function resolveDecision() {
+  const gate = requireGate(["user"]);
+  const payload = parsePayload();
+  const decisionId = safeId(option("--decision-id", payload.decision_id), "D");
+  const status = String(option("--status", payload.status || "")).trim();
+  if (!["approved", "rejected", "revision_requested", "canceled"].includes(status)) {
+    fail("invalid_decision_status", "--status must be approved, rejected, revision_requested, or canceled.");
+  }
+  const selectedOption = String(option("--selected-option", payload.selected_option || "")).trim();
+  if (!selectedOption) fail("invalid_decision_selected_option", "--selected-option is required.");
+  const resolvedBy = String(option("--resolved-by", payload.resolved_by || "")).trim();
+  if (!resolvedBy) fail("invalid_decision_resolved_by", "--resolved-by is required.");
+  const rationale = String(option("--rationale", payload.rationale || ""));
+  const file = decisionFile(decisionId);
+  const existing = readJson(file);
+  if (!existing) fail("decision_not_found", `Decision ${decisionId} does not exist.`);
+  if (!Array.isArray(existing.options) || !existing.options.includes(selectedOption)) {
+    fail("invalid_selected_option", `selected_option must be one of: ${(existing.options || []).join(", ")}.`);
+  }
+  if (existing.status !== "open") fail("decision_not_open", `Decision ${decisionId} is already ${existing.status}.`, 1);
+  const timestamp = nowIso();
+  const next = {
+    ...existing,
+    status,
+    selected_option: selectedOption,
+    resolved_by: resolvedBy,
+    resolved_at: timestamp,
+    rationale,
+    updated_at: timestamp,
+    workflow_gate: gate,
+  };
+  writeJson(file, next);
+  upsertIndexEntry("decisions", "decisions", {
+    decision_id: decisionId,
+    path: rel(file),
+    type: next.type,
+    status,
+    gate_action: next.gate.action,
+    resource_ref: next.gate.resource_ref,
+    updated_at: timestamp,
+  }, (entry, current) => entry.decision_id === current.decision_id);
+  // Release any matching waitpoints
+  releaseMatchingWaitpoints(decisionId, resolvedBy, rationale, timestamp);
+  printJson({ ok: true, action: "decisions resolve", path: rel(file), decision: next });
+}
+
+function supersedeDecision() {
+  const gate = requireGate(["user", "requester"]);
+  const payload = parsePayload();
+  const decisionId = safeId(option("--decision-id", payload.decision_id), "D");
+  const replacementId = safeId(option("--superseded-by-decision-id", payload.superseded_by_decision_id), "D");
+  const resolvedBy = String(option("--superseded-by", payload.superseded_by || payload.resolved_by || "")).trim();
+  const rationale = String(option("--rationale", payload.rationale || ""));
+  const file = decisionFile(decisionId);
+  const existing = readJson(file);
+  if (!existing) fail("decision_not_found", `Decision ${decisionId} does not exist.`);
+  if (existing.status !== "open") fail("decision_not_open", `Decision ${decisionId} is ${existing.status}.`);
+  const replacementFile = decisionFile(replacementId);
+  const replacement = readJson(replacementFile);
+  if (!replacement) fail("replacement_not_found", `Replacement decision ${replacementId} does not exist.`);
+  if (replacement.requested_by !== existing.requested_by) {
+    fail("replacement_owner_mismatch", "Replacement decision must be requested by the same agent.");
+  }
+  if (replacement.status !== "open") fail("replacement_not_open", "Replacement decision must be open.");
+  if (replacement.gate.action !== existing.gate.action) {
+    fail("replacement_incompatible", "Replacement decision must match action.");
+  }
+  const timestamp = nowIso();
+  const next = {
+    ...existing,
+    status: "superseded",
+    selected_option: null,
+    resolved_by: resolvedBy || "supersede",
+    resolved_at: timestamp,
+    rationale,
+    superseded_by_decision_id: replacementId,
+    updated_at: timestamp,
+    workflow_gate: gate,
+  };
+  writeJson(file, next);
+  upsertIndexEntry("decisions", "decisions", {
+    decision_id: decisionId,
+    path: rel(file),
+    type: next.type,
+    status: "superseded",
+    gate_action: next.gate.action,
+    resource_ref: next.gate.resource_ref,
+    updated_at: timestamp,
+  }, (entry, current) => entry.decision_id === current.decision_id);
+  printJson({ ok: true, action: "decisions supersede", path: rel(file), decision: next, replacement: { decision_id: replacementId } });
+}
+
+function createInbox() {
+  const gate = requireGate(["workflow", "mission", "agent", "user"]);
+  const payload = parsePayload();
+  const messageId = safeId(option("--message-id", payload.message_id), "IM");
+  const type = String(option("--type", payload.type || "information")).trim();
+  if (!INBOX_TYPES.has(type)) fail("invalid_inbox_type", `--type must be one of: ${[...INBOX_TYPES].join(", ")}.`);
+  const senderId = String(option("--sender-id", payload.sender_id || "")).trim();
+  if (!senderId) fail("invalid_inbox_sender", "--sender-id is required.");
+  let recipients = Array.isArray(payload.recipient_ids) ? payload.recipient_ids : null;
+  if (!recipients) {
+    const raw = option("--recipient-ids", null);
+    if (raw) {
+      try {
+        recipients = JSON.parse(raw);
+      } catch {
+        recipients = String(raw).split(",").map((s) => s.trim()).filter(Boolean);
+      }
+    }
+  }
+  if (!Array.isArray(recipients) || recipients.length === 0) fail("invalid_inbox_recipients", "recipient_ids must be a non-empty array.");
+  const subject = String(option("--subject", payload.subject || "")).trim();
+  if (!subject) fail("invalid_inbox_subject", "--subject is required.");
+  const body = String(option("--body", payload.body || ""));
+  if (body.length > 4000) fail("invalid_inbox_body", "body must be at most 4000 chars.");
+  const file = inboxFile(messageId);
+  const existing = readJson(file) || {};
+  const timestamp = nowIso();
+  const relations = existing.relations && typeof existing.relations === "object" ? existing.relations : emptyRelations();
+  const next = {
+    schema_version: 1,
+    message_id: messageId,
+    type,
+    status: "unread",
+    sender_id: senderId,
+    recipient_ids: recipients,
+    subject,
+    body,
+    artifact_refs: Array.isArray(payload.artifact_refs) ? payload.artifact_refs : [],
+    relations,
+    created_at: existing.created_at || timestamp,
+    updated_at: timestamp,
+    workflow_gate: gate,
+  };
+  writeJson(file, next);
+  upsertIndexEntry("inbox", "messages", {
+    message_id: messageId,
+    path: rel(file),
+    type,
+    status: "unread",
+    sender_id: senderId,
+    updated_at: timestamp,
+  }, (entry, current) => entry.message_id === current.message_id);
+  printJson({ ok: true, action: "inbox send", path: rel(file), message: next });
+}
+
+function acknowledgeInbox() {
+  const gate = requireGate(["recipient", "mission", "agent", "user"]);
+  const payload = parsePayload();
+  const messageId = safeId(option("--message-id", payload.message_id), "IM");
+  const actorId = String(option("--actor-id", payload.actor_id || "")).trim();
+  if (!actorId) fail("invalid_inbox_recipient", "--actor-id is required for transition.");
+  const file = inboxFile(messageId);
+  const existing = readJson(file);
+  if (!existing) fail("inbox_not_found", `Inbox message ${messageId} does not exist.`);
+  if (!Array.isArray(existing.recipient_ids) || !existing.recipient_ids.includes(actorId)) {
+    fail("inbox_recipient_mismatch", `Recipient ${actorId} is not in recipient_ids.`, 1);
+  }
+  const status = String(option("--status", payload.status || "acknowledged")).trim();
+  if (!INBOX_STATUSES.has(status)) fail("invalid_inbox_status", `--status must be one of: ${[...INBOX_STATUSES].join(", ")}.`);
+  const timestamp = nowIso();
+  const next = { ...existing, status, updated_at: timestamp, workflow_gate: gate };
+  if (status === "read" && !existing.read_at) next.read_at = timestamp;
+  if (status === "acknowledged" && !existing.acknowledged_at) next.acknowledged_at = timestamp;
+  if (status === "archived" && !existing.archived_at) next.archived_at = timestamp;
+  writeJson(file, next);
+  upsertIndexEntry("inbox", "messages", {
+    message_id: messageId,
+    path: rel(file),
+    type: existing.type,
+    status,
+    sender_id: existing.sender_id,
+    updated_at: timestamp,
+  }, (entry, current) => entry.message_id === current.message_id);
+  printJson({ ok: true, action: "inbox transition", path: rel(file), message: next });
+}
+
+function createWaitpoint() {
+  const gate = requireGate(["mission", "agent"]);
+  const payload = parsePayload();
+  const waitpointId = safeId(option("--waitpoint-id", payload.waitpoint_id), "WP");
+  const ownerWorkflow = String(option("--owner-workflow", payload.owner_workflow || "")).trim();
+  if (!ownerWorkflow) fail("invalid_waitpoint_owner", "--owner-workflow is required.");
+  const reason = String(option("--reason", payload.reason || "")).trim();
+  if (!reason) fail("invalid_waitpoint_reason", "--reason is required.");
+  const action = String(option("--action", payload.gate?.action || "")).trim();
+  if (!GATE_ACTIONS.has(action)) fail("invalid_waitpoint_action", `--action must be one of: ${[...GATE_ACTIONS].join(", ")}.`);
+  const resourceRef = String(option("--resource-ref", payload.gate?.resource_ref || "")).trim();
+  if (!resourceRef) fail("invalid_waitpoint_resource_ref", "--resource-ref is required.");
+  const decisionId = option("--decision-id", payload.decision_id);
+  const expiresAt = option("--expires-at", payload.expires_at);
+  if (expiresAt !== undefined && expiresAt !== null && expiresAt !== "" && Number.isNaN(Date.parse(expiresAt))) {
+    fail("invalid_date_time", "--expires-at must be a valid date-time string.");
+  }
+  const file = waitpointFile(waitpointId);
+  const existing = readJson(file) || {};
+  const timestamp = nowIso();
+  const relations = existing.relations && typeof existing.relations === "object" ? existing.relations : emptyRelations();
+  const next = {
+    schema_version: 1,
+    waitpoint_id: waitpointId,
+    status: decisionId ? "blocked" : "pending",
+    owner_workflow: ownerWorkflow,
+    reason,
+    gate: { action, resource_ref: resourceRef },
+    decision_id: decisionId ? safeId(decisionId, "D") : null,
+    evidence_refs: Array.isArray(payload.evidence_refs) ? payload.evidence_refs : [],
+    release_note: null,
+    released_by: null,
+    released_at: null,
+    expires_at: expiresAt || null,
+    relations,
+    created_at: existing.created_at || timestamp,
+    updated_at: timestamp,
+    workflow_gate: gate,
+  };
+  writeJson(file, next);
+  upsertIndexEntry("waitpoints", "waitpoints", {
+    waitpoint_id: waitpointId,
+    path: rel(file),
+    status: next.status,
+    owner_workflow: ownerWorkflow,
+    decision_id: next.decision_id,
+    updated_at: timestamp,
+  }, (entry, current) => entry.waitpoint_id === current.waitpoint_id);
+  printJson({ ok: true, action: "waitpoints create", path: rel(file), waitpoint: next });
+}
+
+function cancelWaitpoint() {
+  const gate = requireGate(["owner", "user", "mission"]);
+  const payload = parsePayload();
+  const waitpointId = safeId(option("--waitpoint-id", payload.waitpoint_id), "WP");
+  const ownerWorkflow = String(option("--owner-workflow", payload.owner_workflow || "")).trim();
+  const reason = String(option("--reason", payload.reason || "")).trim();
+  const file = waitpointFile(waitpointId);
+  const existing = readJson(file);
+  if (!existing) fail("waitpoint_not_found", `Waitpoint ${waitpointId} does not exist.`);
+  if (existing.owner_workflow !== ownerWorkflow) {
+    fail("waitpoint_owner_mismatch", "--owner-workflow does not match the waitpoint.");
+  }
+  const timestamp = nowIso();
+  const next = {
+    ...existing,
+    status: "canceled",
+    release_note: reason || null,
+    updated_at: timestamp,
+    workflow_gate: gate,
+  };
+  writeJson(file, next);
+  upsertIndexEntry("waitpoints", "waitpoints", {
+    waitpoint_id: waitpointId,
+    path: rel(file),
+    status: "canceled",
+    owner_workflow: existing.owner_workflow,
+    decision_id: existing.decision_id,
+    updated_at: timestamp,
+  }, (entry, current) => entry.waitpoint_id === current.waitpoint_id);
+  printJson({ ok: true, action: "waitpoints cancel", path: rel(file), waitpoint: next });
+}
+
+function releaseWaitpoint() {
+  const gate = requireGate(["owner", "user", "mission"]);
+  const payload = parsePayload();
+  const waitpointId = safeId(option("--waitpoint-id", payload.waitpoint_id), "WP");
+  const decisionId = safeId(option("--decision-id", payload.decision_id), "D");
+  const releasedBy = String(option("--released-by", payload.released_by || "")).trim();
+  if (!releasedBy) fail("invalid_waitpoint_released_by", "--released-by is required.");
+  const file = waitpointFile(waitpointId);
+  const existing = readJson(file);
+  if (!existing) fail("waitpoint_not_found", `Waitpoint ${waitpointId} does not exist.`);
+  const ownerWorkflow = option("--owner-workflow");
+  if (ownerWorkflow && existing.owner_workflow !== ownerWorkflow) {
+    fail("waitpoint_owner_mismatch", "--owner-workflow does not match the waitpoint.");
+  }
+  if (existing.status === "expired" || (existing.expires_at && Date.parse(existing.expires_at) <= Date.now())) {
+    const next = { ...existing, status: "blocked", updated_at: nowIso() };
+    writeJson(file, next);
+    fail("waitpoint_expired", `Waitpoint ${waitpointId} has expired.`, 1);
+  }
+  const decisionFile_ = decisionFile(decisionId);
+  const decision = readJson(decisionFile_);
+  if (!decision) fail("decision_not_found", `Decision ${decisionId} does not exist.`, 1);
+  if (decision.status !== "approved") fail("decision_not_approved", `Decision ${decisionId} must be approved to release a waitpoint.`, 1);
+  if (decision.gate.action !== existing.gate.action || decision.gate.resource_ref !== existing.gate.resource_ref) {
+    fail("decision_gate_mismatch", "Decision gate (action/resource_ref) does not match the waitpoint.", 1);
+  }
+  const decisionPath = rel(decisionFile_);
+  const evidenceRefs = Array.isArray(payload.evidence_refs) && payload.evidence_refs.length > 0
+    ? payload.evidence_refs
+    : [decisionPath];
+  const timestamp = nowIso();
+  const releaseNote = String(option("--release-note", payload.release_note || `Released via decision ${decisionId}.`));
+  const next = {
+    ...existing,
+    status: "released",
+    decision_id: decisionId,
+    evidence_refs: evidenceRefs,
+    released_by: releasedBy,
+    released_at: timestamp,
+    release_note: releaseNote,
+    updated_at: timestamp,
+    workflow_gate: gate,
+  };
+  writeJson(file, next);
+  upsertIndexEntry("waitpoints", "waitpoints", {
+    waitpoint_id: waitpointId,
+    path: rel(file),
+    status: "released",
+    owner_workflow: existing.owner_workflow,
+    decision_id: decisionId,
+    updated_at: timestamp,
+  }, (entry, current) => entry.waitpoint_id === current.waitpoint_id);
+  printJson({ ok: true, action: "waitpoints release", path: rel(file), waitpoint: next });
+}
+
+function releaseMatchingWaitpoints(decisionId, resolvedBy, rationale, timestamp) {
+  const dir = path.join(agentRoot, "waitpoints");
+  for (const { file, data } of listJsonObjects(dir)) {
+    if (data.decision_id !== decisionId) continue;
+    if (!["pending", "blocked"].includes(data.status)) continue;
+    const next = {
+      ...data,
+      status: "released",
+      released_by: resolvedBy,
+      released_at: timestamp,
+      release_note: rationale || `Auto-released by decision ${decisionId}.`,
+      evidence_refs: Array.isArray(data.evidence_refs) && data.evidence_refs.length > 0 ? data.evidence_refs : [`decision:${decisionId}`],
+      updated_at: timestamp,
+    };
+    writeJson(file, next);
+    upsertIndexEntry("waitpoints", "waitpoints", {
+      waitpoint_id: data.waitpoint_id,
+      path: rel(file),
+      status: "released",
+      owner_workflow: data.owner_workflow,
+      decision_id: decisionId,
+      updated_at: timestamp,
+    }, (entry, current) => entry.waitpoint_id === current.waitpoint_id);
+  }
+}
+
+function upsertIndexEntry(dir, key, entry, match) {
+  const indexFile = path.join(agentRoot, dir, "index.json");
+  const data = readJson(indexFile) || {};
+  const items = Array.isArray(data[key]) ? data[key] : [];
+  const filtered = items.filter((current) => !match(entry, current));
+  filtered.push(entry);
+  filtered.sort((a, b) => String(b.updated_at || "").localeCompare(String(a.updated_at || "")));
+  writeJson(indexFile, { [key]: filtered });
 }
 
 function upsertRun() {
@@ -966,26 +1374,31 @@ function openSession() {
   const existing = readJson(file);
   if (existing && existing.agent_id !== agentId) fail("session_owner_mismatch", sessionId, 1);
   const timestamp = nowIso();
+  // When reopening a closed session, strip terminal-state fields so the session is treated
+  // as a fresh lifecycle. When updating a live session, preserve all existing fields and
+  // only override what the caller explicitly passes.
+  const carry = existing && existing.status === "closed"
+    ? { session_id: existing.session_id, agent_id: existing.agent_id, role: existing.role }
+    : (existing || {});
   const next = {
-    ...(existing || {}),
+    ...carry,
     ...payload,
     session_id: sessionId,
     agent_id: agentId,
     role,
     status: "running",
-    phase: option("--phase", payload.phase ?? existing?.phase ?? null),
-    activity: option("--activity", payload.activity ?? existing?.activity ?? null),
-    current_run_id: option("--run-id", payload.current_run_id ?? existing?.current_run_id ?? null),
-    current_task_id: option("--task-id", payload.current_task_id ?? existing?.current_task_id ?? null),
-    worktree_path: option("--worktree-path", payload.worktree_path ?? existing?.worktree_path ?? null),
-    started_at: existing?.status === "closed"
-      ? option("--started-at", payload.started_at ?? timestamp)
-      : existing?.started_at || option("--started-at", payload.started_at ?? timestamp),
+    phase: option("--phase", payload.phase ?? carry.phase ?? null),
+    activity: option("--activity", payload.activity ?? carry.activity ?? null),
+    current_run_id: option("--run-id", payload.current_run_id ?? carry.current_run_id ?? null),
+    current_task_id: option("--task-id", payload.current_task_id ?? carry.current_task_id ?? null),
+    worktree_path: option("--worktree-path", payload.worktree_path ?? carry.worktree_path ?? null),
+    // Reopening starts a fresh lifecycle; updating a live session preserves started_at.
+    started_at: existing && existing.status === "closed"
+      ? (option("--started-at", payload.started_at) || timestamp)
+      : (existing?.started_at || option("--started-at", payload.started_at) || timestamp),
     last_heartbeat_at: timestamp,
     updated_at: timestamp,
   };
-  delete next.closed_at;
-  delete next.updated_by_gate;
   writeJson(file, next);
   printJson({ ok: true, action: "sessions open", path: rel(file), session: next });
 }
@@ -998,7 +1411,7 @@ function heartbeatSession() {
   const existing = readJson(file);
   if (!existing) fail("session_not_found", sessionId, 1);
   if (!agentId || existing.agent_id !== agentId) fail("session_owner_mismatch", sessionId, 1);
-  if (existing.status === "closed") fail("session_closed", sessionId, 1);
+  if (existing.status === "closed") fail("session_closed", `Session ${sessionId} is closed; reopen it before heartbeats.`, 1);
   const timestamp = nowIso();
   const next = {
     ...existing,
@@ -1036,353 +1449,6 @@ function transitionSession(status) {
   if (status === "closed") next.closed_at = timestamp;
   writeJson(file, next);
   printJson({ ok: true, action: `sessions ${status === "closed" ? "close" : "pause"}`, path: rel(file), session: next });
-}
-
-function sendInboxMessage() {
-  requireGate(["workflow", "handoff", "user"]);
-  const payload = parsePayload();
-  const messageId = prefixedId(option("--message-id", payload.message_id), "IM");
-  const file = inboxFile(messageId);
-  if (readJson(file)) fail("inbox_message_exists", messageId, 1);
-  const senderId = option("--sender-id", payload.sender_id);
-  const recipientIds = stringList(option("--recipient-ids", payload.recipient_ids));
-  const subject = option("--subject", payload.subject);
-  const type = option("--type", payload.type || "information");
-  if (!senderId || !recipientIds.length || !subject) fail("inbox_fields_required", "--sender-id, --recipient-ids, and --subject are required");
-  if (!["information", "request", "handoff", "decision_request", "alert"].includes(type)) fail("invalid_inbox_type", type);
-  const timestamp = nowIso();
-  const message = {
-    schema_version: 1,
-    message_id: messageId,
-    type,
-    status: "unread",
-    sender_id: senderId,
-    recipient_ids: recipientIds,
-    subject,
-    body: option("--body", payload.body || ""),
-    artifact_refs: stringList(payload.artifact_refs),
-    relations: emptyRelations(payload.relations),
-    created_at: timestamp,
-    updated_at: timestamp,
-    read_at: null,
-    acknowledged_at: null,
-    archived_at: null,
-  };
-  writeJson(file, message);
-  updateIndex("inbox", "messages", "message_id", {
-    message_id: messageId,
-    type,
-    status: message.status,
-    subject,
-    updated_at: timestamp,
-  }, file);
-  printJson({ ok: true, action: "inbox send", path: rel(file), message });
-}
-
-function transitionInboxMessage() {
-  const gate = requireGate(["recipient", "handoff", "workflow", "user"]);
-  const payload = parsePayload();
-  const messageId = prefixedId(option("--message-id", payload.message_id), "IM");
-  const status = option("--status", payload.status);
-  const file = inboxFile(messageId);
-  const existing = readJson(file);
-  if (!existing) fail("inbox_message_not_found", messageId, 1);
-  const allowed = {
-    unread: ["read", "acknowledged", "archived"],
-    read: ["acknowledged", "archived"],
-    acknowledged: ["archived"],
-    archived: [],
-  };
-  if (!(allowed[existing.status] || []).includes(status)) fail("invalid_inbox_transition", `${existing.status} -> ${status}`);
-  const actorId = option("--actor-id", payload.actor_id);
-  if (gate === "recipient" && (!actorId || !existing.recipient_ids.includes(actorId))) fail("inbox_recipient_mismatch", messageId, 1);
-  if (gate === "workflow" && (!actorId || existing.sender_id !== actorId || status !== "archived")) fail("inbox_workflow_mismatch", messageId, 1);
-  const timestamp = nowIso();
-  const next = {
-    ...existing,
-    status,
-    updated_at: timestamp,
-  };
-  if (status === "read") next.read_at = timestamp;
-  if (status === "acknowledged") {
-    next.read_at = next.read_at || timestamp;
-    next.acknowledged_at = timestamp;
-  }
-  if (status === "archived") next.archived_at = timestamp;
-  writeJson(file, next);
-  updateIndex("inbox", "messages", "message_id", {
-    message_id: messageId,
-    type: next.type,
-    status,
-    subject: next.subject,
-    updated_at: timestamp,
-  }, file);
-  printJson({ ok: true, action: "inbox transition", path: rel(file), message: next });
-}
-
-function requestDecision() {
-  requireGate(["approve", "mission", "worktree", "release", "risk", "checkpoint-merge", "arch-design", "user"]);
-  const payload = parsePayload();
-  const decisionId = prefixedId(option("--decision-id", payload.decision_id), "D");
-  const file = decisionFile(decisionId);
-  if (readJson(file)) fail("decision_exists", decisionId, 1);
-  const requestedBy = option("--requested-by", payload.requested_by);
-  const prompt = option("--prompt", payload.prompt);
-  const type = option("--type", payload.type || "approval");
-  const action = option("--action", payload.gate?.action);
-  const resourceRef = option("--resource-ref", payload.gate?.resource_ref);
-  const options = stringList(payload.options?.length ? payload.options : option("--options", "approve,reject,revise"));
-  if (!requestedBy || !prompt || !action || !resourceRef) fail("decision_fields_required", "requested_by, prompt, gate action, and resource_ref are required");
-  if (!["approval", "architecture", "merge", "release", "risk"].includes(type)) fail("invalid_decision_type", type);
-  if (!["architecture", "merge", "release", "destructive", "credential", "external_side_effect"].includes(action)) fail("invalid_gate_action", action);
-  if (!["approve", "reject", "revise"].every((value) => options.includes(value))) fail("decision_options_required", "options must include approve, reject, and revise");
-  const timestamp = nowIso();
-  const decision = {
-    schema_version: 1,
-    decision_id: decisionId,
-    type,
-    status: "open",
-    requested_by: requestedBy,
-    prompt,
-    options,
-    selected_option: null,
-    resolved_by: null,
-    resolved_at: null,
-    rationale: "",
-    gate: { action, resource_ref: resourceRef },
-    relations: emptyRelations(payload.relations),
-    superseded_by_decision_id: null,
-    created_at: timestamp,
-    updated_at: timestamp,
-  };
-  writeJson(file, decision);
-  updateIndex("decisions", "decisions", "decision_id", {
-    decision_id: decisionId,
-    type,
-    status: decision.status,
-    gate_action: action,
-    resource_ref: resourceRef,
-    updated_at: timestamp,
-  }, file);
-  printJson({ ok: true, action: "decisions request", path: rel(file), decision });
-}
-
-function resolveDecision() {
-  const payload = parsePayload();
-  const status = option("--status", payload.status);
-  const allowedStatuses = ["approved", "rejected", "revision_requested", "canceled"];
-  if (!allowedStatuses.includes(status)) fail("invalid_decision_status", status || "missing");
-  const gate = requireGate(status === "canceled" ? ["user", "requester"] : ["user"]);
-  const decisionId = prefixedId(option("--decision-id", payload.decision_id), "D");
-  const file = decisionFile(decisionId);
-  const existing = readJson(file);
-  if (!existing) fail("decision_not_found", decisionId, 1);
-  if (existing.status !== "open") fail("decision_already_resolved", decisionId, 1);
-  const resolvedBy = option("--resolved-by", payload.resolved_by);
-  const rationale = option("--rationale", payload.rationale);
-  if (!resolvedBy || !rationale) fail("decision_resolution_required", "--resolved-by and --rationale are required");
-  if (gate === "requester" && resolvedBy !== existing.requested_by) fail("decision_requester_mismatch", decisionId, 1);
-  const expectedOptions = { approved: "approve", rejected: "reject", revision_requested: "revise" };
-  const selectedOption = status === "canceled" ? null : option("--selected-option", payload.selected_option || expectedOptions[status]);
-  if (selectedOption && (!existing.options.includes(selectedOption) || selectedOption !== expectedOptions[status])) {
-    fail("decision_option_mismatch", selectedOption, 1);
-  }
-  const timestamp = nowIso();
-  const next = {
-    ...existing,
-    status,
-    selected_option: selectedOption,
-    resolved_by: resolvedBy,
-    resolved_at: timestamp,
-    rationale,
-    updated_at: timestamp,
-  };
-  writeJson(file, next);
-  updateIndex("decisions", "decisions", "decision_id", {
-    decision_id: decisionId,
-    type: next.type,
-    status,
-    gate_action: next.gate.action,
-    resource_ref: next.gate.resource_ref,
-    updated_at: timestamp,
-  }, file);
-  printJson({ ok: true, action: "decisions resolve", path: rel(file), decision: next });
-}
-
-function supersedeDecision() {
-  requireGate(["requester"]);
-  const payload = parsePayload();
-  const decisionId = prefixedId(option("--decision-id", payload.decision_id), "D");
-  const replacementId = prefixedId(option("--superseded-by-decision-id", payload.superseded_by_decision_id), "D");
-  if (decisionId === replacementId) fail("decision_self_supersede", decisionId, 1);
-  const file = decisionFile(decisionId);
-  const replacementFile = decisionFile(replacementId);
-  const existing = readJson(file);
-  const replacement = readJson(replacementFile);
-  if (!existing) fail("decision_not_found", decisionId, 1);
-  if (!replacement) fail("replacement_decision_not_found", replacementId, 1);
-  if (existing.status !== "open") fail("decision_already_resolved", decisionId, 1);
-  if (replacement.status !== "open") fail("replacement_decision_not_open", replacementId, 1);
-  const supersededBy = option("--superseded-by", payload.superseded_by);
-  const rationale = option("--rationale", payload.rationale);
-  if (!supersededBy || !rationale) fail("decision_supersede_required", "--superseded-by and --rationale are required");
-  if (supersededBy !== existing.requested_by || replacement.requested_by !== existing.requested_by) {
-    fail("decision_requester_mismatch", decisionId, 1);
-  }
-  if (replacement.type !== existing.type || replacement.gate?.action !== existing.gate?.action) {
-    fail("replacement_decision_contract_mismatch", replacementId, 1);
-  }
-  const timestamp = nowIso();
-  const next = {
-    ...existing,
-    status: "superseded",
-    selected_option: null,
-    resolved_by: supersededBy,
-    resolved_at: timestamp,
-    rationale,
-    superseded_by_decision_id: replacementId,
-    updated_at: timestamp,
-  };
-  writeJson(file, next);
-  updateIndex("decisions", "decisions", "decision_id", {
-    decision_id: decisionId,
-    type: next.type,
-    status: next.status,
-    gate_action: next.gate.action,
-    resource_ref: next.gate.resource_ref,
-    updated_at: timestamp,
-  }, file);
-  printJson({ ok: true, action: "decisions supersede", path: rel(file), decision: next, replacement_ref: rel(replacementFile) });
-}
-
-function createWaitpoint() {
-  requireGate(["approve", "mission", "worktree", "release", "risk", "checkpoint-merge", "arch-design"]);
-  const payload = parsePayload();
-  const waitpointId = prefixedId(option("--waitpoint-id", payload.waitpoint_id), "WP");
-  const file = waitpointFile(waitpointId);
-  if (readJson(file)) fail("waitpoint_exists", waitpointId, 1);
-  const ownerWorkflow = option("--owner-workflow", payload.owner_workflow);
-  const reason = option("--reason", payload.reason);
-  const action = option("--action", payload.gate?.action);
-  const resourceRef = option("--resource-ref", payload.gate?.resource_ref);
-  if (!ownerWorkflow?.startsWith("/") || !reason || !action || !resourceRef) fail("waitpoint_fields_required", "owner_workflow, reason, gate action, and resource_ref are required");
-  if (!["architecture", "merge", "release", "destructive", "credential", "external_side_effect"].includes(action)) fail("invalid_gate_action", action);
-  const timestamp = nowIso();
-  const waitpoint = {
-    schema_version: 1,
-    waitpoint_id: waitpointId,
-    status: "blocked",
-    owner_workflow: ownerWorkflow,
-    reason,
-    decision_id: option("--decision-id", payload.decision_id) ? prefixedId(option("--decision-id", payload.decision_id), "D") : null,
-    evidence_refs: stringList(payload.evidence_refs),
-    gate: { action, resource_ref: resourceRef },
-    release_note: null,
-    released_by: null,
-    released_at: null,
-    expires_at: optionalDateTime(option("--expires-at", payload.expires_at || null), "expires_at"),
-    relations: emptyRelations(payload.relations),
-    created_at: timestamp,
-    updated_at: timestamp,
-  };
-  writeJson(file, waitpoint);
-  updateIndex("waitpoints", "waitpoints", "waitpoint_id", {
-    waitpoint_id: waitpointId,
-    status: waitpoint.status,
-    owner_workflow: ownerWorkflow,
-    decision_id: waitpoint.decision_id,
-    gate_action: action,
-    resource_ref: resourceRef,
-    updated_at: timestamp,
-  }, file);
-  printJson({ ok: true, action: "waitpoints create", path: rel(file), waitpoint });
-}
-
-function releaseWaitpoint() {
-  requireGate(["owner"]);
-  const payload = parsePayload();
-  const waitpointId = prefixedId(option("--waitpoint-id", payload.waitpoint_id), "WP");
-  const file = waitpointFile(waitpointId);
-  const existing = readJson(file);
-  if (!existing) fail("waitpoint_not_found", waitpointId, 1);
-  if (!["pending", "blocked"].includes(existing.status)) fail("waitpoint_not_releasable", existing.status, 1);
-  if (existing.expires_at) {
-    const expiresAt = Date.parse(existing.expires_at);
-    if (!Number.isFinite(expiresAt)) fail("waitpoint_invalid_expiry", waitpointId, 1);
-    if (expiresAt <= Date.now()) fail("waitpoint_expired", waitpointId, 1);
-  }
-  const ownerWorkflow = option("--owner-workflow", payload.owner_workflow);
-  if (!ownerWorkflow || ownerWorkflow !== existing.owner_workflow) fail("waitpoint_owner_mismatch", waitpointId, 1);
-  const decisionId = prefixedId(option("--decision-id", payload.decision_id || existing.decision_id), "D");
-  const decisionPath = decisionFile(decisionId);
-  const decision = readJson(decisionPath);
-  if (!decision) fail("decision_not_found", decisionId, 1);
-  if (decision.status !== "approved" || decision.selected_option !== "approve" || !decision.resolved_by || !decision.resolved_at) {
-    fail("decision_not_approved", decisionId, 1);
-  }
-  if (decision.gate?.action !== existing.gate?.action || decision.gate?.resource_ref !== existing.gate?.resource_ref) {
-    fail("decision_gate_mismatch", decisionId, 1);
-  }
-  if (existing.decision_id && existing.decision_id !== decisionId) fail("waitpoint_decision_mismatch", decisionId, 1);
-  const releasedBy = option("--released-by", payload.released_by);
-  if (!releasedBy) fail("released_by_required", "--released-by is required");
-  const timestamp = nowIso();
-  const decisionRef = rel(decisionPath);
-  const next = {
-    ...existing,
-    status: "released",
-    decision_id: decisionId,
-    evidence_refs: [...new Set([...(existing.evidence_refs || []), ...stringList(payload.evidence_refs), decisionRef])],
-    release_note: option("--release-note", payload.release_note || "Approved Decision matched the protected action and resource."),
-    released_by: releasedBy,
-    released_at: timestamp,
-    updated_at: timestamp,
-  };
-  writeJson(file, next);
-  updateIndex("waitpoints", "waitpoints", "waitpoint_id", {
-    waitpoint_id: waitpointId,
-    status: next.status,
-    owner_workflow: next.owner_workflow,
-    decision_id: decisionId,
-    gate_action: next.gate.action,
-    resource_ref: next.gate.resource_ref,
-    updated_at: timestamp,
-  }, file);
-  printJson({ ok: true, action: "waitpoints release", path: rel(file), waitpoint: next, decision_ref: decisionRef });
-}
-
-function transitionWaitpoint(status) {
-  const gate = requireGate(status === "expired" ? ["owner", "mission"] : ["owner", "mission", "user"]);
-  const payload = parsePayload();
-  const waitpointId = prefixedId(option("--waitpoint-id", payload.waitpoint_id), "WP");
-  const file = waitpointFile(waitpointId);
-  const existing = readJson(file);
-  if (!existing) fail("waitpoint_not_found", waitpointId, 1);
-  if (!["pending", "blocked"].includes(existing.status)) fail("waitpoint_not_transitionable", existing.status, 1);
-  const ownerWorkflow = option("--owner-workflow", payload.owner_workflow);
-  if (gate === "owner" && (!ownerWorkflow || ownerWorkflow !== existing.owner_workflow)) fail("waitpoint_owner_mismatch", waitpointId, 1);
-  if (status === "expired") {
-    const expiresAt = Date.parse(existing.expires_at);
-    if (!Number.isFinite(expiresAt) || expiresAt > Date.now()) fail("waitpoint_not_expired", waitpointId, 1);
-  }
-  const timestamp = nowIso();
-  const next = {
-    ...existing,
-    status,
-    reason: option("--reason", payload.reason || existing.reason),
-    updated_at: timestamp,
-  };
-  writeJson(file, next);
-  updateIndex("waitpoints", "waitpoints", "waitpoint_id", {
-    waitpoint_id: waitpointId,
-    status,
-    owner_workflow: next.owner_workflow,
-    decision_id: next.decision_id,
-    gate_action: next.gate.action,
-    resource_ref: next.gate.resource_ref,
-    updated_at: timestamp,
-  }, file);
-  printJson({ ok: true, action: `waitpoints ${status}`, path: rel(file), waitpoint: next });
 }
 
 function main() {
@@ -1451,14 +1517,6 @@ function main() {
     transitionSession("closed");
     return;
   }
-  if (command === "inbox" && query === "send") {
-    sendInboxMessage();
-    return;
-  }
-  if (command === "inbox" && query === "transition") {
-    transitionInboxMessage();
-    return;
-  }
   if (command === "decisions" && query === "request") {
     requestDecision();
     return;
@@ -1471,27 +1529,39 @@ function main() {
     supersedeDecision();
     return;
   }
+  if (command === "inbox" && query === "send") {
+    createInbox();
+    return;
+  }
+  if (command === "inbox" && query === "create") {
+    createInbox();
+    return;
+  }
+  if (command === "inbox" && query === "transition") {
+    acknowledgeInbox();
+    return;
+  }
+  if (command === "inbox" && query === "acknowledge") {
+    acknowledgeInbox();
+    return;
+  }
   if (command === "waitpoints" && query === "create") {
     createWaitpoint();
+    return;
+  }
+  if (command === "waitpoints" && query === "cancel") {
+    cancelWaitpoint();
     return;
   }
   if (command === "waitpoints" && query === "release") {
     releaseWaitpoint();
     return;
   }
-  if (command === "waitpoints" && query === "cancel") {
-    transitionWaitpoint("canceled");
-    return;
-  }
-  if (command === "waitpoints" && query === "expire") {
-    transitionWaitpoint("expired");
-    return;
-  }
 
   printJson({
     ok: false,
     error: "unsupported_command",
-    usage: "node .agent/skills/management-api/scripts/index.js query dashboard-state|runs|queues|sessions|inbox|decisions|waitpoints | runs upsert|event|checkpoint | queues upsert|item | sessions open|heartbeat|pause|close | inbox send|transition | decisions request|resolve|supersede | waitpoints create|release|cancel|expire",
+    usage: "node .agent/skills/management-api/scripts/index.js query dashboard-state|runs|queues|sessions|inbox|decisions|waitpoints | runs upsert|event|checkpoint | queues upsert|item | sessions open|heartbeat|pause|close | decisions request|resolve|supersede | inbox send|transition | waitpoints create|release|cancel",
   });
   process.exitCode = 2;
 }

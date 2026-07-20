@@ -34,8 +34,6 @@ SCOPE -> PLAN -> CONTRACT -> EXECUTE_FEATURE -> HANDOFF -> RESUME -> VALIDATE_MI
 - Record key commands with exit codes in `command-log.md`.
 - Handoff uses the T-C06 dual-artifact protocol: Markdown for humans, JSON for `AGENT_RESUME`, and Artifact Bus `kind: handoff` when available.
 - **Commits must follow the `/commit` workflow**: every commit made during a mission (per milestone or at completion) must go through Steps 1–5 of the commit workflow defined in `.agent/workflows/commit.md` — load context, analyze staged changes, generate a Conventional Commits message, get user confirmation, then execute.
-- A user choice is durable only when recorded as a resource-bound Decision. `--gate approve`, Dashboard input, prior approval, or silence is not authorization.
-- Destructive operations, credential use, and external side effects always require a Decision plus a blocking Waitpoint. Mission never automatically resets, reverts, pushes, deploys, publishes, or accesses credentials.
 
 ## Files
 
@@ -116,7 +114,6 @@ Use these templates when creating files:
 7. Continue from the current state:
    - if no contract exists, return to CONTRACT
    - if a handoff is pending, go to RESUME and follow `next_action`
-   - if a blocking Waitpoint exists, go to HUMAN_DECISION and do not continue the protected action
    - if worker output exists but no validation exists, go to VALIDATE_MILESTONE
    - if validation failed, go to FIX_OR_ADVANCE
    - if all milestones passed, go to COMPLETE
@@ -134,50 +131,6 @@ Use these templates when creating files:
    ```
 4. Record the handoff paths in `command-log.md` or the current milestone.
 5. Release Progress Locks held by the handing-off agent, or let TTL expire if the agent is unavailable.
-
-## HUMAN_DECISION
-
-When architecture, risk, destructive behavior, credentials, merge/release, or an external side effect requires a human choice:
-
-1. Define the exact protected resource before asking. Use one supported action: `architecture`, `merge`, `release`, `destructive`, `credential`, or `external_side_effect`.
-2. Architecture approval uses `type=architecture`, `action=architecture`, and binds `resource_ref` to the exact proposal/artifact revision digest. It never grants destructive or external-side-effect permission; those consequences require separate Decisions.
-3. Compute a stable `resource-digest` from the complete resource reference. Include its first 8-12 characters in both the Decision and Waitpoint IDs so changed resources cannot collide with terminal records.
-4. Create an open Decision and a blocking Waitpoint owned by `/mission`:
-
-   ```bash
-   node .agent/skills/management-api/scripts/index.js decisions request \
-     --decision-id D-<mission-id>-<choice>-<resource-digest8> \
-     --gate mission \
-     --type <architecture|risk|approval|merge|release> \
-     --requested-by mission-coordinator \
-     --prompt "<specific user choice>" \
-     --action <architecture|merge|release|destructive|credential|external_side_effect> \
-     --resource-ref "<exact-resource-ref>"
-
-   node .agent/skills/management-api/scripts/index.js waitpoints create \
-     --waitpoint-id WP-<mission-id>-<choice>-<resource-digest8> \
-     --gate mission \
-     --owner-workflow /mission \
-     --reason "<why execution must stop>" \
-     --action <same-action> \
-     --resource-ref "<same-resource-ref>" \
-     --decision-id D-<mission-id>-<choice>-<resource-digest8>
-   ```
-
-5. Stop the protected action and direct the user to `/approve decision D-<mission-id>-<choice>-<resource-digest8>`.
-6. On resume, recompute the resource and digest, read the Decision, and reject stale, mismatched, rejected, or revision-requested choices.
-7. Only `/mission` may release its Waitpoint:
-
-   ```bash
-   node .agent/skills/management-api/scripts/index.js waitpoints release \
-     --waitpoint-id WP-<mission-id>-<choice>-<resource-digest8> \
-     --gate owner \
-     --owner-workflow /mission \
-     --decision-id D-<mission-id>-<choice>-<resource-digest8> \
-     --released-by mission-coordinator
-   ```
-
-Release authorizes only the exact recorded resource. It does not transfer Task gate ownership. If a milestone reaches a multi-source project integration boundary, report that the project-level Checkpoint integration route is pending approval; do not invoke an unapproved or nonexistent workflow.
 
 ## VALIDATE
 
@@ -240,3 +193,27 @@ Release authorizes only the exact recorded resource. It does not transfer Task g
 - Milestone execution may use `queues upsert/item --gate mission`; validation records `done` or `blocked` only after contract evidence exists.
 - `HANDOFF` pauses the source session through `--gate handoff`; `COMPLETE` closes it through `--gate mission` and completes the Run.
 - A read-only query or Dashboard render never performs these transitions.
+
+---
+
+## Mission Worktree 协同补充
+
+当 mission 的多个 milestone 可并行推进时，读取 `.agent/rules/worktree-collaboration.md`，并在 mission plan 中记录：
+
+- milestone 对应的 worktree path / branch / owner agent
+- 每个 worktree 的 base commit 和目标合并分支
+- handoff、Artifact Bus、locks 的状态引用
+- 每个 worktree 的及时提交点
+- 合并后的主线验证命令和证据要求
+
+mission 不能只因为子 worktree 验证通过就完成；必须在合并目标 worktree 重新验证后才能推进到 COMPLETE。
+
+## Communication Runtime Integration
+
+`/mission` 通过 HUMAN_DECISION 暴露人类决策但不接管 Task gate ownership：
+
+- 当子任务需要人类裁决时，`decisions request --gate mission` 创建 HUMAN_DECISION，绑定 `resource-digest` 与 `relations.mission_ids`。
+- 立即 `waitpoints create --owner-workflow /mission --reason "Mission decision required" --action <merge|release|risk> --resource-ref <resource>` 阻塞后续推进。
+- 用户通过 `decisions resolve --gate user` 批准后，`/mission` 调用 `waitpoints release --gate owner` 解锁下游 run。
+- `/mission` 不转移 Task gate ownership —— Task Pipeline 仍由 `/start-task`、`/ship` 等 owning workflow 持有；mission 只暴露与消费决策。
+- Checkpoint 状态挂在 Decision / Waitpoint 的 relations 上，pending approval 时标记 `Checkpoint`，其余 run 仍可推进到不依赖该决策的位置。

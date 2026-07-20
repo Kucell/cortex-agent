@@ -63,18 +63,6 @@ function listFiles(dir, filter) {
   }
 }
 
-function walkFiles(dir, filter) {
-  const files = [];
-  try {
-    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-      const file = path.join(dir, entry.name);
-      if (entry.isDirectory()) files.push(...walkFiles(file, filter));
-      else if (!filter || filter(file)) files.push(file);
-    }
-  } catch {}
-  return files.sort();
-}
-
 function esc(value) {
   return String(value ?? "")
     .replace(/&/g, "&amp;")
@@ -156,17 +144,6 @@ const I18N = {
     runs: "Runs",
     queues: "Queues",
     sessions: "Sessions",
-    communication: "通信与审批",
-    inbox: "Inbox",
-    openDecisions: "待决决策",
-    blockingWaitpoints: "阻塞等待点",
-    unreadMessages: "未读消息",
-    action: "动作",
-    resource: "资源",
-    requesterOwner: "请求人 / Owner",
-    reviewMessage: "查看并确认消息",
-    resolveDecision: "等待用户明确决策",
-    releaseWaitpoint: "由所属工作流验证证据后释放",
     currentActivity: "当前活动",
     phase: "阶段",
     event: "事件",
@@ -185,19 +162,6 @@ const I18N = {
     agent: "Agent",
     role: "角色",
     task: "任务",
-    taskDetails: "任务详情",
-    contentOverview: "内容概述",
-    informationCompleteness: "信息完整度",
-    missingInformation: "待补信息",
-    documentSections: "文档章节",
-    relatedDocuments: "关联文档与提案",
-    relatedTaskLinks: "关联任务",
-    markdownPreview: "Markdown 预览",
-    openPreview: "打开任务预览",
-    closePreview: "关闭预览",
-    loadingPreview: "正在读取文档...",
-    previewError: "无法读取文档",
-    noRelations: "暂无关联文档",
     scope: "范围",
     heldBy: "持有者",
     expires: "过期时间",
@@ -216,6 +180,13 @@ const I18N = {
     mainlineValidation: "主线验证",
     noGit: "干净或不可用",
     copied: "已复制",
+    communicationTitle: "通信与审批",
+    openDecisions: "待决决策",
+    blockingWaitpoints: "阻塞等待点",
+    pendingInbox: "待办收件",
+    openPreview: "打开预览",
+    contentOverview: "Content Overview",
+    relatedDocs: "Related Documents & Proposals",
   },
   en: {
     appTitle: "Agent Collaboration Dashboard",
@@ -274,17 +245,6 @@ const I18N = {
     runs: "Runs",
     queues: "Queues",
     sessions: "Sessions",
-    communication: "Communication & Approvals",
-    inbox: "Inbox",
-    openDecisions: "Open Decisions",
-    blockingWaitpoints: "Blocking Waitpoints",
-    unreadMessages: "Unread Messages",
-    action: "Action",
-    resource: "Resource",
-    requesterOwner: "Requester / Owner",
-    reviewMessage: "Review and acknowledge the message",
-    resolveDecision: "Await an explicit user decision",
-    releaseWaitpoint: "Owning workflow validates evidence, then releases",
     currentActivity: "Current Activity",
     phase: "Phase",
     event: "Event",
@@ -303,19 +263,6 @@ const I18N = {
     agent: "Agent",
     role: "Role",
     task: "Task",
-    taskDetails: "Task Details",
-    contentOverview: "Content Overview",
-    informationCompleteness: "Information Completeness",
-    missingInformation: "Missing Information",
-    documentSections: "Document Sections",
-    relatedDocuments: "Related Documents & Proposals",
-    relatedTaskLinks: "Related Tasks",
-    markdownPreview: "Markdown Preview",
-    openPreview: "Open task preview",
-    closePreview: "Close preview",
-    loadingPreview: "Loading document...",
-    previewError: "Unable to load document",
-    noRelations: "No related documents",
     scope: "Scope",
     heldBy: "Held By",
     expires: "Expires",
@@ -334,6 +281,13 @@ const I18N = {
     mainlineValidation: "Mainline Validation",
     noGit: "clean or unavailable",
     copied: "Copied",
+    communicationTitle: "Communication & Approvals",
+    openDecisions: "Open Decisions",
+    blockingWaitpoints: "Blocking Waitpoints",
+    pendingInbox: "Pending Inbox",
+    openPreview: "Open Preview",
+    contentOverview: "Content Overview",
+    relatedDocs: "Related Documents & Proposals",
   },
 };
 
@@ -385,115 +339,6 @@ function parseTasks() {
     });
   }
   return tasks;
-}
-
-function normalizedPreviewRef(value) {
-  const match = String(value || "").match(/(?:^|[(\s`])((?:\.agent|docs)\/[A-Za-z0-9_./-]+\.(?:md|markdown|json|txt))(?:#[^)\s`]*)?/i);
-  return match ? match[1] : "";
-}
-
-function refsFromValues(values) {
-  const refs = [];
-  for (const value of values.flat(Infinity)) {
-    const text = typeof value === "string" ? value : value?.ref || value?.path || "";
-    const direct = normalizedPreviewRef(text);
-    if (direct) refs.push(direct);
-    for (const match of String(text).matchAll(/(?:\.agent|docs)\/[A-Za-z0-9_./-]+\.(?:md|markdown|json|txt)/gi)) refs.push(match[0]);
-  }
-  return [...new Set(refs)];
-}
-
-function proposalDocuments() {
-  return walkFiles(path.join(agentRoot, "plans", "proposals"), (file) => /\.(?:md|markdown)$/i.test(file))
-    .map((file) => ({ path: rel(file), content: read(file) }));
-}
-
-function taskPreviewMarkdown(task) {
-  const lines = [
-    `# ${task.id} ${task.title || ""}`.trim(),
-    "",
-    `- **Status:** ${task.status || "unknown"}`,
-    `- **Stage:** ${task.stage || "not recorded"}`,
-    `- **Priority:** ${task.priority || "not recorded"}`,
-    `- **Progress:** ${task.progress || "not recorded"}`,
-  ];
-  if (task.description) lines.push("", "## Description", "", task.description);
-  if (task.acceptance_criteria?.length) lines.push("", "## Acceptance Criteria", "", ...task.acceptance_criteria.map((item) => `- ${item}`));
-  if (task.related_tasks?.length) lines.push("", "## Related Tasks", "", ...task.related_tasks.map((id) => `- ${id}`));
-  if (task.preview_refs?.length) lines.push("", "## Related Documents", "", ...task.preview_refs.map((ref) => `- \`${ref}\``));
-  return lines.join("\n");
-}
-
-function cleanTaskTitle(title, id) {
-  return String(title || id || "")
-    .replace(/^\s*\[[ xX]\]\s*/, "")
-    .replace(new RegExp(`\\s*[（(]${String(id || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}[）)]\\s*$`), "")
-    .trim();
-}
-
-function taskOverview(task) {
-  const goal = cleanTaskTitle(task.title, task.id) || task.id;
-  const missing = [];
-  if (!task.description) missing.push("description");
-  if (!task.acceptance_criteria?.length) missing.push("acceptance criteria");
-  if (!task.stage) missing.push("stage");
-  if (!task.priority) missing.push("priority");
-  if (!task.proposal_refs?.length) missing.push("proposal");
-  const completeness = Math.round(((5 - missing.length) / 5) * 100);
-  const zhStatus = { open: "待开始", active: "进行中", blocked: "阻塞", done: "已完成" }[task.status] || task.status || "未知";
-  const enStatus = { open: "not started", active: "in progress", blocked: "blocked", done: "completed" }[task.status] || task.status || "unknown";
-  const relationZh = `已关联 ${task.proposal_refs?.length || 0} 个提案、${task.preview_refs?.length || 0} 份文档和 ${task.related_tasks?.length || 0} 个任务。`;
-  const relationEn = `Linked to ${task.proposal_refs?.length || 0} proposal(s), ${task.preview_refs?.length || 0} document(s), and ${task.related_tasks?.length || 0} task(s).`;
-  return {
-    completeness,
-    missing,
-    zh: `目标是${goal}。当前${zhStatus}${task.progress ? `，进度记录为 ${task.progress}` : ""}。${relationZh}`,
-    en: `The goal is: ${goal}. The task is ${enStatus}${task.progress ? ` with recorded progress ${task.progress}` : ""}. ${relationEn}`,
-  };
-}
-
-function enrichTasks(tasks) {
-  const proposals = proposalDocuments();
-  return tasks.map((task) => {
-    const id = task.id || task.task_id;
-    const taskFile = path.join(agentRoot, "tasks", `${id}.json`);
-    const canonical = readJson(taskFile) || {};
-    const relatedTasks = [...new Set([
-      ...(canonical.dependencies || []),
-      ...(canonical.subtasks || []),
-      ...(task.dependencies || []),
-      ...(task.subtasks || []),
-    ].filter(Boolean))];
-    const refs = refsFromValues([
-      canonical.source_refs || [],
-      (canonical.artifacts || []).map((item) => item.ref),
-      (canonical.gates || []).flatMap((gate) => gate.evidence_refs || []),
-      task.source_refs || [],
-      task.artifacts || [],
-      task.plan || "",
-    ]);
-    if (fs.existsSync(taskFile)) refs.unshift(rel(taskFile));
-    const proposalRefs = proposals
-      .filter((proposal) => new RegExp(`(^|[^A-Za-z0-9-])${id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^A-Za-z0-9-]|$)`).test(proposal.content))
-      .map((proposal) => proposal.path);
-    const previewRefs = [...new Set([...refs, ...proposalRefs])];
-    if (!previewRefs.length && fs.existsSync(path.join(agentRoot, "plans", "task-progress.md"))) previewRefs.push(".agent/plans/task-progress.md");
-    const rawStatus = task.status || canonical.status || "open";
-    const normalizedStatus = rawStatus === "completed" ? "done" : rawStatus === "draft" ? "open" : rawStatus;
-    const enriched = {
-      ...task,
-      ...canonical,
-      id,
-      title: canonical.title || task.title || id,
-      status: normalizedStatus,
-      related_tasks: relatedTasks,
-      preview_refs: previewRefs,
-      proposal_refs: [...new Set([...refs.filter((ref) => ref.includes("/plans/proposals/")), ...proposalRefs])],
-    };
-    enriched.preview_markdown = taskPreviewMarkdown(enriched);
-    enriched.overview = taskOverview(enriched);
-    return enriched;
-  });
 }
 
 function parseWorktrees() {
@@ -672,23 +517,29 @@ function prdSummaryFromManaged(summary, prds) {
   };
 }
 
-function deriveState({ worktrees, locks, handoffs, tasks, agents, decisions = [], waitpoints = [] }) {
+function deriveState({ worktrees, locks, handoffs, tasks, agents, approvals }) {
   const nonMainWorktrees = worktrees.filter((w) => !w.isMain);
   const dirty = worktrees.some((w) => w.dirty);
   const heldLocks = locks.filter((l) => !l.expired);
   const blockedTasks = tasks.filter((t) => t.status === "blocked");
   const activeTasks = tasks.filter((t) => t.status === "active" || t.status === "open");
   const activeAgents = agents.filter((a) => ["running", "active", "paused"].includes(a.status));
-  const openDecisions = decisions.filter((decision) => decision.status === "open");
-  const blockingWaitpoints = waitpoints.filter((waitpoint) => ["pending", "blocked"].includes(waitpoint.effective_status || waitpoint.status));
+  const openDecisions = (approvals && approvals.open_decisions) || [];
+  const openWaitpoints = (approvals && approvals.open_waitpoints) || [];
+  const pendingInbox = (approvals && approvals.pending_inbox) || [];
 
-  if (openDecisions.length || blockingWaitpoints.length) {
+  if (openDecisions.length || openWaitpoints.length || pendingInbox.length) {
+    const summary = [
+      openDecisions.length ? `${openDecisions.length} decision` : null,
+      openWaitpoints.length ? `${openWaitpoints.length} waitpoint` : null,
+      pendingInbox.length ? `${pendingInbox.length} inbox` : null,
+    ].filter(Boolean).join(", ");
     return {
       state: "waiting_approval",
-      next: "处理待决 Decision，并由所属工作流验证证据后释放 Waitpoint。",
-      nextEn: "Resolve the pending Decision, then let the owning workflow validate evidence and release the Waitpoint.",
-      why: `发现 ${openDecisions.length} 个待决 Decision 和 ${blockingWaitpoints.length} 个阻塞 Waitpoint。`,
-      whyEn: `${openDecisions.length} open Decision(s) and ${blockingWaitpoints.length} blocking Waitpoint(s) detected.`,
+      next: "审批未完成：先批准开放决策 / 收件人确认 inbox，再继续后续动作。",
+      nextEn: "Approval pending: resolve open decisions and pending inbox before continuing.",
+      why: `等待审批：${summary}。`,
+      whyEn: `Awaiting approval: ${summary}.`,
     };
   }
 
@@ -757,39 +608,13 @@ function renderTable(headers, rows, emptyKey = "empty") {
   return `<table><thead><tr>${headers.map((h) => `<th data-i18n="${esc(h)}">${esc(I18N.zh[h] || h)}</th>`).join("")}</tr></thead><tbody>${rows.join("")}</tbody></table>`;
 }
 
-function communicationResource(item) {
-  const relations = item?.relations || {};
-  return item?.gate?.resource_ref
-    || item?.resource_ref
-    || item?.artifact_refs?.[0]
-    || relations.artifact_refs?.[0]
-    || relations.task_ids?.[0]
-    || relations.mission_ids?.[0]
-    || relations.worktree_paths?.[0]
-    || item?.subject
-    || "";
-}
-
-function renderCommunicationTable(items, config) {
-  const rows = items.slice(0, 12).map((item) => `<tr>
-    <td><code>${esc(item[config.id])}</code></td>
-    <td>${esc(config.action(item))}</td>
-    <td><code>${esc(communicationResource(item))}</code></td>
-    <td>${esc(config.owner(item))}</td>
-    <td>${pill(item.effective_status || item.status)}</td>
-    <td>${esc(formatDisplayTime(item.updated_at || item.created_at))}</td>
-    <td data-i18n="${config.nextActionKey}">${esc(I18N.zh[config.nextActionKey])}</td>
-  </tr>`);
-  return renderTable(["id", "action", "resource", "requesterOwner", "status", "updated", "nextAction"], rows);
-}
-
 function taskColumn(tasks, status, labelKey) {
   const items = tasks.filter((task) => task.status === status);
   const visible = items.slice(0, 12);
   const remaining = items.length - visible.length;
   return `<section class="lane">
     <h3><span data-i18n="${labelKey}">${esc(I18N.zh[labelKey])}</span> <span class="mini">${items.length}</span></h3>
-    ${visible.length ? visible.map((task) => `<button type="button" class="task-card" data-task-id="${esc(task.id)}" aria-label="${esc(`${I18N.zh.openPreview}: ${task.id}`)}"><strong>${esc(task.id)}</strong><p>${esc(task.title)}</p><p class="mini">${[task.priority, task.progress, task.plan].filter(Boolean).map(esc).join(" · ")}</p>${task.proposal_refs?.length ? `<span class="relation-count">${task.proposal_refs.length} proposal</span>` : ""}</button>`).join("") : `<div class="empty" data-i18n="empty">${I18N.zh.empty}</div>`}
+    ${visible.length ? visible.map((task) => `<article class="task-card" data-task-id="${esc(task.id)}" data-task-title="${esc(task.title)}" data-task-goal="The goal is: ${esc(task.title)}"><strong>${esc(task.id)}</strong><p>${esc(task.title)}</p><p class="mini">${[task.priority, task.progress, task.plan].filter(Boolean).map(esc).join(" · ")}</p>${Array.isArray(task.source_refs) && task.source_refs.length ? `<p class="mini" data-task-refs="${esc(task.source_refs.join(","))}" data-task-deps="${esc((task.dependencies || []).join(","))}"></p>` : ""}</article>`).join("") : `<div class="empty" data-i18n="empty">${I18N.zh.empty}</div>`}
     ${remaining > 0 ? `<div class="mini">+${remaining}</div>` : ""}
   </section>`;
 }
@@ -931,7 +756,7 @@ function renderTraceTable(trace) {
 
 function main() {
   const managed = queryManagementDashboardState();
-  const tasks = enrichTasks(managed?.tasks || parseTasks());
+  const tasks = managed?.tasks || parseTasks();
   const worktrees = managed?.worktrees || parseWorktrees();
   const agents = managed?.agents || parseRegistry();
   const locks = managed?.locks || parseLocks();
@@ -945,24 +770,12 @@ function main() {
   const inbox = Array.isArray(managed?.inbox) ? managed.inbox : [];
   const decisions = Array.isArray(managed?.decisions) ? managed.decisions : [];
   const waitpoints = Array.isArray(managed?.waitpoints) ? managed.waitpoints : [];
-  const summary = managed?.summary && typeof managed.summary === "object" ? managed.summary : {};
-  const openDecisions = decisions.filter((decision) => decision.status === "open");
-  const blockingWaitpoints = waitpoints.filter((waitpoint) => ["pending", "blocked"].includes(waitpoint.effective_status || waitpoint.status));
-  const summaryCount = (key, fallback) => Number.isFinite(Number(summary[key])) ? Number(summary[key]) : fallback;
-  const unreadMessageCount = summaryCount("unread_messages", inbox.filter((message) => message.status === "unread").length);
-  const openDecisionCount = summaryCount("open_decisions", openDecisions.length);
-  const blockingWaitpointCount = summaryCount("blocking_waitpoints", blockingWaitpoints.length);
   const gitStatus = typeof managed?.git_status === "string" ? managed.git_status : sh("git status --short --branch");
-  const baseDerived = managed?.derived || deriveState({ worktrees, locks, handoffs, tasks, agents, decisions, waitpoints });
-  const derived = openDecisionCount || blockingWaitpointCount
-    ? {
-        state: "waiting_approval",
-        next: "处理待决 Decision，并由所属工作流验证证据后释放 Waitpoint。",
-        nextEn: "Resolve the pending Decision, then let the owning workflow validate evidence and release the Waitpoint.",
-        why: `发现 ${openDecisionCount} 个待决 Decision 和 ${blockingWaitpointCount} 个阻塞 Waitpoint。`,
-        whyEn: `${openDecisionCount} open Decision(s) and ${blockingWaitpointCount} blocking Waitpoint(s) detected.`,
-      }
-    : baseDerived;
+  const derived = deriveState({ worktrees, locks, handoffs, tasks, agents, approvals: managed?.approvals || { open_decisions: decisions.filter((d) => d.status === "open"), open_waitpoints: waitpoints.filter((w) => ["pending","blocked"].includes(w.status)), pending_inbox: inbox.filter((m) => ["unread","read"].includes(m.status)) } });
+  const approvalsView = managed?.approvals || { open_decisions: decisions.filter((d) => d.status === "open"), open_waitpoints: waitpoints.filter((w) => ["pending","blocked"].includes(w.status)), pending_inbox: inbox.filter((m) => ["unread","read"].includes(m.status)) };
+  const countBadge = (label, count) => count > 0
+            ? `<span data-i18n="${label}">${I18N.zh[label] || label}</span><strong>${count}</strong>`
+            : `<h2 data-i18n="${label}">${I18N.zh[label] || label}</h2><span class="mini">${count}</span>`;
   const generatedAt = formatLocalTime();
   const activeTaskCount = tasks.filter((t) => t.status !== "done").length;
   const heldLockCount = locks.filter((l) => !l.expired).length;
@@ -970,9 +783,7 @@ function main() {
   const runningRuns = runs.filter((r) => r.status === "running");
   const activeAgents = agents.filter((agent) => ["running", "active", "paused"].includes(agent.status));
   const dirtyWorktrees = worktrees.filter((worktree) => worktree.dirty);
-  const currentActivity = derived.state === "waiting_approval"
-    ? derived.next
-    : runningRuns[0]?.activity || runningRuns[0]?.last_event?.message || activeAgents[0]?.activity || derived.next || "";
+  const currentActivity = runningRuns[0]?.activity || runningRuns[0]?.last_event?.message || activeAgents[0]?.activity || derived.next || "";
   const activePhase = runningRuns[0]?.phase || sessions.find((s) => s.phase)?.phase || "";
   const blockedTasks = tasks.filter((t) => t.status === "blocked");
   const validationReady = tasks.length && tasks.every((t) => t.status === "done");
@@ -1009,17 +820,13 @@ main{min-width:0}.topbar{padding:20px 28px;border-bottom:1px solid var(--line);d
 .status-strip{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}.metric{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:13px}.metric-label{color:var(--muted);font-size:12px;margin-bottom:8px}.metric-value{font-size:24px;font-weight:750;line-height:1.15}.metric-detail{margin-top:7px;color:var(--muted);font-size:12px}.metric.blocked{border-color:rgba(255,107,107,.55)}.metric.running,.metric.in_progress{border-color:rgba(90,167,255,.6)}.metric.ready,.metric.approved,.metric.validated{border-color:rgba(88,214,141,.55)}
 .command-panel{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(280px,.7fr);gap:14px}.current{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:18px}.current .label{color:var(--muted);font-size:12px;margin-bottom:10px}.current .activity{font-size:20px;color:var(--accent);overflow-wrap:anywhere}.reason{margin-top:10px;color:var(--muted)}.signal-list{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px;display:grid;gap:10px}.signal{display:flex;justify-content:space-between;gap:12px;border-bottom:1px solid var(--line);padding-bottom:8px}.signal:last-child{border-bottom:0;padding-bottom:0}
 .phase-rail{display:grid;grid-template-columns:repeat(7,1fr);gap:8px}.phase-node{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:10px;min-height:76px}.phase-node span{display:block;width:10px;height:10px;border-radius:50%;background:var(--muted);margin-bottom:8px}.phase-node.active{border-color:var(--accent)}.phase-node.active span{background:var(--accent)}.phase-node.done span{background:var(--ok)}.phase-node strong{display:block}.phase-node small{display:block;color:var(--muted);margin-top:3px;overflow-wrap:anywhere}
-.lanes{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.lane{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:12px}.lane h3{margin:0 0 10px;color:var(--muted);font-size:13px}.task-card{display:block;width:100%;min-height:96px;border:1px solid var(--line);border-radius:7px;padding:10px;margin:0 0 8px;background:#0d1016;color:var(--text);font:inherit;text-align:left;cursor:pointer}.task-card:hover,.task-card:focus-visible{border-color:var(--accent);outline:0}.task-card p{margin:4px 0 0;color:var(--muted)}.relation-count{display:inline-block;margin-top:8px;color:var(--accent);font-size:12px}
+.lanes{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.lane{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:12px}.lane h3{margin:0 0 10px;color:var(--muted);font-size:13px}.task-card{border:1px solid var(--line);border-radius:7px;padding:10px;margin-bottom:8px;background:#0d1016}.task-card p{margin:4px 0 0;color:var(--muted)}
 .prd-item{display:flex;justify-content:space-between;gap:14px;border:1px solid var(--line);border-radius:8px;padding:12px;background:var(--panel2)}.prd-item p{margin:3px 0}.empty-panel{border:1px dashed var(--line);border-radius:8px;padding:18px;color:var(--muted)}.check-list{display:grid;gap:8px}.check-list div{display:flex;justify-content:space-between;gap:12px;border-bottom:1px solid var(--line);padding-bottom:7px}.check-list div:last-child{border-bottom:0}
 .trace-summary{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));border:1px solid var(--line);border-radius:8px;overflow:hidden}.trace-stage{min-width:0;padding:11px 12px;background:var(--panel2);border-right:1px solid var(--line)}.trace-stage:last-child{border-right:0}.trace-stage>span,.trace-stage small{display:block;color:var(--muted);font-size:12px}.trace-stage strong{display:block;margin:5px 0;overflow-wrap:anywhere}.trace-table{margin:14px 0 18px;overflow-x:auto}.trace-table code{white-space:normal;overflow-wrap:anywhere}.trace-table table{min-width:820px}
 .timeline{display:grid;gap:10px}.timeline-item{display:grid;grid-template-columns:140px minmax(0,1fr);gap:12px;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:11px}.timeline-item p{margin:2px 0;color:var(--muted)}
 table{width:100%;border-collapse:collapse}th,td{padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top;text-align:left}th{color:var(--muted);font-weight:600}code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:#d9e7ff}.empty{color:var(--muted);padding:10px 0}.pill{display:inline-block;border:1px solid var(--line);border-radius:999px;padding:2px 8px;color:var(--muted);white-space:nowrap}.status-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--muted);margin-right:7px}.status-dot.running,.status-dot.in_progress,.status-dot.invoking_agent{background:var(--accent)}.status-dot.done,.status-dot.ready,.status-dot.clean,.status-dot.approved{background:var(--ok)}.status-dot.blocked,.status-dot.dirty,.status-dot.stale{background:var(--bad)}
-.done,.ready,.validated,.clean,.approved,.published,.released,.acknowledged{color:var(--ok);border-color:rgba(88,214,141,.45)}.blocked,.validation_failed,.failed,.dirty,.stale,.rejected,.expired{color:var(--bad);border-color:rgba(255,107,107,.45)}.active,.in_progress,.running,.locked,.merge_ready,.handoff_required,.held,.draft,.review,.needs_validation,.needs_evidence,.not_ready,.waiting_approval,.open,.pending,.unread{color:var(--warn);border-color:rgba(241,180,76,.45)}pre{white-space:pre-wrap;background:#0d1016;border:1px solid var(--line);border-radius:6px;padding:10px;overflow:auto;max-height:260px}
-.preview-dialog{width:min(760px,92vw);height:100dvh;max-height:none;margin:0 0 0 auto;padding:0;border:0;border-left:1px solid var(--line);background:var(--panel);color:var(--text)}.preview-dialog::backdrop{background:rgba(0,0,0,.62)}.preview-shell{height:100%;display:grid;grid-template-rows:auto minmax(0,1fr)}.preview-header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;padding:18px 20px;border-bottom:1px solid var(--line)}.preview-header h2{font-size:18px;margin:0}.preview-path{margin-top:3px;color:var(--muted);font-size:12px;overflow-wrap:anywhere}.icon-button{width:36px;height:36px;border:1px solid var(--line);border-radius:6px;background:var(--panel2);color:var(--text);font-size:24px;line-height:1;cursor:pointer}.preview-content{overflow:auto;padding:20px}.preview-relations{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:20px;padding-bottom:18px;border-bottom:1px solid var(--line)}.preview-relations h3{font-size:13px;margin:0 0 9px;color:var(--muted)}.relation-list{display:flex;flex-wrap:wrap;gap:7px}.relation-link{max-width:100%;border:1px solid var(--line);border-radius:6px;background:var(--panel2);color:var(--accent);padding:6px 9px;font:inherit;font-size:12px;text-align:left;overflow-wrap:anywhere;cursor:pointer}.relation-link:hover,.relation-link:focus-visible{border-color:var(--accent);outline:0}.markdown-body{line-height:1.65;overflow-wrap:anywhere}.markdown-body h1{font-size:24px;margin:0 0 16px}.markdown-body h2{font-size:18px;margin:24px 0 10px}.markdown-body h3{font-size:15px;margin:20px 0 8px}.markdown-body p{margin:9px 0}.markdown-body ul,.markdown-body ol{padding-left:24px}.markdown-body blockquote{margin:12px 0;padding-left:12px;border-left:3px solid var(--accent);color:var(--muted)}.markdown-body pre{max-height:none}.preview-error{color:var(--bad)}
-@media(max-width:1100px){.shell{display:block}aside{position:static;height:auto}.status-strip,.command-panel,.phase-rail,.lanes,.trace-summary{grid-template-columns:1fr}.trace-stage{border-right:0;border-bottom:1px solid var(--line)}.trace-stage:last-child{border-bottom:0}.panel,.third,.quarter{grid-column:span 12}.section,.topbar{padding:16px}.timeline-item{grid-template-columns:1fr}.preview-dialog{width:100vw}.preview-relations{grid-template-columns:1fr}}
-.content-overview{margin-bottom:18px;padding-bottom:18px;border-bottom:1px solid var(--line)}.overview-head{display:flex;justify-content:space-between;gap:12px;align-items:baseline;margin-bottom:8px}.overview-label{color:var(--muted);font-size:12px;font-weight:650}.overview-score{color:var(--accent);font-size:12px}.overview-text{margin:0;font-size:15px;line-height:1.65}.overview-meta{margin-top:9px;color:var(--muted);font-size:12px;overflow-wrap:anywhere}
-.preview-dialog{max-width:none}
-@media(max-width:1100px){.preview-dialog{width:100%;margin:0}}
+.done,.ready,.validated,.clean,.approved,.published{color:var(--ok);border-color:rgba(88,214,141,.45)}.blocked,.validation_failed,.failed,.dirty,.stale{color:var(--bad);border-color:rgba(255,107,107,.45)}.active,.in_progress,.running,.locked,.merge_ready,.handoff_required,.held,.draft,.review,.needs_validation,.needs_evidence,.not_ready{color:var(--warn);border-color:rgba(241,180,76,.45)}pre{white-space:pre-wrap;background:#0d1016;border:1px solid var(--line);border-radius:6px;padding:10px;overflow:auto;max-height:260px}
+@media(max-width:1100px){.shell{display:block}aside{position:static;height:auto}.status-strip,.command-panel,.phase-rail,.lanes,.trace-summary{grid-template-columns:1fr}.trace-stage{border-right:0;border-bottom:1px solid var(--line)}.trace-stage:last-child{border-bottom:0}.panel,.third,.quarter{grid-column:span 12}.section,.topbar{padding:16px}.timeline-item{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
@@ -1032,7 +839,6 @@ table{width:100%;border-collapse:collapse}th,td{padding:8px 10px;border-bottom:1
       ${navItem("prd", "prdStudio")}
       ${navItem("delivery", "delivery")}
       ${navItem("runtime", "runtime")}
-      ${navItem("communication", "communication")}
       ${navItem("knowledge", "knowledge")}
     </nav>
     <div class="toolbar" aria-label="language switcher">
@@ -1070,8 +876,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:8px 10px;border-bottom:1
         <div class="signal-list">
           <div class="signal"><span data-i18n="phase">${I18N.zh.phase}</span><strong>${statusDot(activePhase || runtimeState)}</strong></div>
           <div class="signal"><span data-i18n="prdHealth">${I18N.zh.prdHealth}</span><strong>${prd.completeness}%</strong></div>
-          <div class="signal"><span data-i18n="openDecisions">${I18N.zh.openDecisions}</span><strong>${openDecisionCount}</strong></div>
-          <div class="signal"><span data-i18n="blockingWaitpoints">${I18N.zh.blockingWaitpoints}</span><strong>${blockingWaitpointCount}</strong></div>
+          <div class="signal"><span data-i18n="blockedDecisions">${I18N.zh.blockedDecisions}</span><strong>${blockedTasks.length}</strong></div>
           <div class="signal"><span data-i18n="activeAgents">${I18N.zh.activeAgents}</span><strong>${activeAgents.length}</strong></div>
         </div>
       </div>
@@ -1080,6 +885,33 @@ table{width:100%;border-collapse:collapse}th,td{padding:8px 10px;border-bottom:1
     <section class="section">
       <div class="section-head"><h2 data-i18n="progressMap">${I18N.zh.progressMap}</h2><span class="mini" data-i18n="executionSignal">${I18N.zh.executionSignal}</span></div>
       ${phaseRail(activePhase)}
+    </section>
+
+    <section id="communication" class="section">
+      <div class="section-head"><h2 data-i18n="communicationTitle">${I18N.zh.communicationTitle || "通信与审批"}</h2><span>${pill("waiting_approval")}</span></div>
+      <div class="grid">
+        <div class="panel third">
+          ${countBadge("openDecisions", approvalsView.open_decisions.length)}
+          ${approvalsView.open_decisions.length ? renderTable(
+            ["decisionId", "type", "resource", "requestedBy", "updatedAt"],
+            approvalsView.open_decisions.map((d) => `<tr><td><code>${esc(d.decision_id)}</code></td><td>${esc(d.type)}</td><td>${esc(d.gate?.resource_ref || "")}</td><td>${esc(d.requested_by || "")}</td><td>${esc(formatDisplayTime(d.updated_at))}</td></tr>`),
+          ) : `<div class="empty" data-i18n="empty">${I18N.zh.empty}</div>`}
+        </div>
+        <div class="panel third">
+          ${countBadge("blockingWaitpoints", approvalsView.open_waitpoints.length)}
+          ${approvalsView.open_waitpoints.length ? renderTable(
+            ["waitpointId", "workflow", "resource", "updatedAt"],
+            approvalsView.open_waitpoints.map((w) => `<tr><td><code>${esc(w.waitpoint_id)}</code></td><td>${esc(w.owner_workflow || "")}</td><td>${esc(w.gate?.resource_ref || "")}</td><td>${esc(formatDisplayTime(w.updated_at))}</td></tr>`),
+          ) : `<div class="empty" data-i18n="empty">${I18N.zh.empty}</div>`}
+        </div>
+        <div class="panel third">
+          ${countBadge("pendingInbox", approvalsView.pending_inbox.length)}
+          ${approvalsView.pending_inbox.length ? renderTable(
+            ["messageId", "sender", "subject", "updatedAt"],
+            approvalsView.pending_inbox.map((m) => `<tr><td><code>${esc(m.message_id)}</code></td><td>${esc(m.sender_id || "")}</td><td>${esc(m.subject || "")}</td><td>${esc(formatDisplayTime(m.updated_at))}</td></tr>`),
+          ) : `<div class="empty" data-i18n="empty">${I18N.zh.empty}</div>`}
+        </div>
+      </div>
     </section>
 
     <section id="prd" class="section">
@@ -1112,15 +944,6 @@ table{width:100%;border-collapse:collapse}th,td{padding:8px 10px;border-bottom:1
       </div>
     </section>
 
-    <section id="communication" class="section">
-      <div class="section-head"><h2 data-i18n="communication">${I18N.zh.communication}</h2><span>${pill(derived.state === "waiting_approval" ? "waiting_approval" : "clear")}</span></div>
-      <div class="grid">
-        <section class="panel wide"><div class="section-head"><h2 data-i18n="inbox">${I18N.zh.inbox}</h2><span class="mini"><span data-i18n="unreadMessages">${I18N.zh.unreadMessages}</span>: ${unreadMessageCount}</span></div>${renderCommunicationTable(inbox, { id: "message_id", action: (item) => item.type || "message", owner: (item) => item.sender_id || "", nextActionKey: "reviewMessage" })}</section>
-        <section class="panel wide"><div class="section-head"><h2 data-i18n="openDecisions">${I18N.zh.openDecisions}</h2><span class="mini">${openDecisionCount}</span></div>${renderCommunicationTable(openDecisions, { id: "decision_id", action: (item) => [item.type, item.gate?.action].filter(Boolean).join(" / "), owner: (item) => item.requested_by || "", nextActionKey: "resolveDecision" })}</section>
-        <section class="panel wide"><div class="section-head"><h2 data-i18n="blockingWaitpoints">${I18N.zh.blockingWaitpoints}</h2><span class="mini">${blockingWaitpointCount}</span></div>${renderCommunicationTable(blockingWaitpoints, { id: "waitpoint_id", action: (item) => item.gate?.action || "", owner: (item) => item.owner_workflow || "", nextActionKey: "releaseWaitpoint" })}</section>
-      </div>
-    </section>
-
     <section id="knowledge" class="section">
       <div class="grid">
         <section class="panel"><h2 data-i18n="handoffs">${I18N.zh.handoffs}</h2>${renderTable(["path","type","updated"], handoffs.map((h) => `<tr><td><code>${esc(h.path)}</code></td><td>${esc(h.type)}</td><td>${esc(formatDisplayTime(h.updated))}</td></tr>`))}</section>
@@ -1130,185 +953,8 @@ table{width:100%;border-collapse:collapse}th,td{padding:8px 10px;border-bottom:1
     </section>
   </main>
 </div>
-<dialog id="preview-dialog" class="preview-dialog" aria-labelledby="preview-title">
-  <div class="preview-shell">
-    <header class="preview-header">
-      <div><h2 id="preview-title" data-i18n="taskDetails">${I18N.zh.taskDetails}</h2><div id="preview-path" class="preview-path"></div></div>
-      <button type="button" id="preview-close" class="icon-button" aria-label="${esc(I18N.zh.closePreview)}" title="${esc(I18N.zh.closePreview)}">&times;</button>
-    </header>
-    <div class="preview-content">
-      <section class="content-overview" aria-labelledby="overview-label">
-        <div class="overview-head"><span id="overview-label" class="overview-label" data-i18n="contentOverview">${I18N.zh.contentOverview}</span><strong id="overview-score" class="overview-score"></strong></div>
-        <p id="overview-text" class="overview-text"></p>
-        <div id="overview-meta" class="overview-meta"></div>
-      </section>
-      <div class="preview-relations">
-        <section><h3 data-i18n="relatedDocuments">${I18N.zh.relatedDocuments}</h3><div id="preview-documents" class="relation-list"></div></section>
-        <section><h3 data-i18n="relatedTaskLinks">${I18N.zh.relatedTaskLinks}</h3><div id="preview-tasks" class="relation-list"></div></section>
-      </div>
-      <article id="markdown-preview" class="markdown-body"></article>
-    </div>
-  </div>
-</dialog>
 <script>
 const i18n = ${JSON.stringify(I18N)};
-const taskDetails = ${JSON.stringify(Object.fromEntries(tasks.map((task) => [task.id, task]))).replace(/</g, "\\u003c")};
-const previewDialog = document.getElementById('preview-dialog');
-const previewTitle = document.getElementById('preview-title');
-const previewPath = document.getElementById('preview-path');
-const previewBody = document.getElementById('markdown-preview');
-const previewDocuments = document.getElementById('preview-documents');
-const previewTasks = document.getElementById('preview-tasks');
-const overviewScore = document.getElementById('overview-score');
-const overviewText = document.getElementById('overview-text');
-const overviewMeta = document.getElementById('overview-meta');
-let activeTaskId = null;
-let activeDocument = null;
-
-function previewEscape(value) {
-  return String(value == null ? '' : value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
-
-function previewInline(value) {
-  return previewEscape(value)
-    .replace(/\\x60([^\\x60]+)\\x60/g, '<code>$1</code>')
-    .replace(/\\*\\*([^*]+)\\*\\*/g, '<strong>$1</strong>')
-    .replace(/\\*([^*]+)\\*/g, '<em>$1</em>');
-}
-
-function renderMarkdown(markdown) {
-  const lines = String(markdown || '').replace(/\\r/g, '').split('\\n');
-  const html = [];
-  let inCode = false;
-  let code = [];
-  let list = '';
-  const closeList = () => { if (list) { html.push('</' + list + '>'); list = ''; } };
-  for (const line of lines) {
-    if (line.startsWith('\\x60\\x60\\x60')) {
-      closeList();
-      if (inCode) { html.push('<pre><code>' + previewEscape(code.join('\\n')) + '</code></pre>'); code = []; }
-      inCode = !inCode;
-      continue;
-    }
-    if (inCode) { code.push(line); continue; }
-    const heading = line.match(/^(#{1,4})\\s+(.+)$/);
-    if (heading) { closeList(); const level = heading[1].length; html.push('<h' + level + '>' + previewInline(heading[2]) + '</h' + level + '>'); continue; }
-    const unordered = line.match(/^\\s*[-*]\\s+(.+)$/);
-    const ordered = line.match(/^\\s*\\d+[.]\\s+(.+)$/);
-    if (unordered || ordered) {
-      const nextList = unordered ? 'ul' : 'ol';
-      if (list !== nextList) { closeList(); list = nextList; html.push('<' + list + '>'); }
-      html.push('<li>' + previewInline((unordered || ordered)[1]) + '</li>');
-      continue;
-    }
-    closeList();
-    if (!line.trim()) continue;
-    if (line.startsWith('> ')) html.push('<blockquote>' + previewInline(line.slice(2)) + '</blockquote>');
-    else html.push('<p>' + previewInline(line) + '</p>');
-  }
-  closeList();
-  if (code.length) html.push('<pre><code>' + previewEscape(code.join('\\n')) + '</code></pre>');
-  return html.join('');
-}
-
-function relationButton(label, handler) {
-  const button = document.createElement('button');
-  button.type = 'button';
-  button.className = 'relation-link';
-  button.textContent = label;
-  button.addEventListener('click', handler);
-  return button;
-}
-
-function updateTaskOverview(task, lang) {
-  const dict = i18n[lang] || i18n.zh;
-  const overview = task.overview || {};
-  const missingZh = { description: '任务说明', 'acceptance criteria': '验收标准', stage: '任务阶段', priority: '优先级', proposal: '关联提案' };
-  overviewText.textContent = lang === 'en' ? overview.en : overview.zh;
-  overviewScore.textContent = dict.informationCompleteness + ': ' + (overview.completeness || 0) + '%';
-  const missing = (overview.missing || []).map((item) => lang === 'en' ? item : (missingZh[item] || item));
-  overviewMeta.textContent = missing.length ? dict.missingInformation + ': ' + missing.join(', ') : '';
-}
-
-function documentOverview(content, path, lang) {
-  const lines = String(content || '').replace(/\\r/g, '').split('\\n');
-  const headings = lines.map((line) => line.match(/^#{1,6}\\s+(.+)$/)).filter(Boolean).map((match) => match[1].replace(/\\*+/g, '').trim());
-  const paragraphs = lines
-    .map((line) => line.trim())
-    .filter((line) => line && !/^(?:#{1,6}\\s|\\x60\\x60\\x60|[|:-]{3,})/.test(line))
-    .map((line) => line.replace(/^[-*>\\d.\\s]+/, '').replace(/\\*+/g, '').replace(/\\x60/g, '').trim())
-    .filter((line) => line.length >= 18);
-  const topic = headings[0] || path.split('/').pop() || path;
-  const excerpt = paragraphs.slice(0, 2).join(' ').slice(0, 320);
-  const summary = lang === 'en'
-    ? 'This document focuses on "' + topic + '"' + (excerpt ? '. ' + excerpt : '.')
-    : '该文档围绕“' + topic + '”展开' + (excerpt ? '。' + excerpt : '。');
-  return { summary, sections: headings.length, headings: headings.slice(0, 4) };
-}
-
-function updateDocumentOverview(documentState, lang) {
-  const dict = i18n[lang] || i18n.zh;
-  const overview = documentOverview(documentState.content, documentState.path, lang);
-  overviewText.textContent = overview.summary;
-  overviewScore.textContent = dict.documentSections + ': ' + overview.sections;
-  overviewMeta.textContent = overview.headings.length ? overview.headings.join(' · ') : '';
-}
-
-function refreshOverview(lang) {
-  if (activeDocument) updateDocumentOverview(activeDocument, lang);
-  else if (activeTaskId && taskDetails[activeTaskId]) updateTaskOverview(taskDetails[activeTaskId], lang);
-}
-
-function showTask(taskId, restoreRef) {
-  const task = taskDetails[taskId];
-  if (!task) return;
-  activeTaskId = taskId;
-  activeDocument = null;
-  previewTitle.textContent = task.id + ' · ' + (task.title || task.id);
-  previewPath.textContent = task.stage ? task.status + ' / ' + task.stage : task.status || '';
-  previewBody.innerHTML = renderMarkdown(task.preview_markdown);
-  previewDocuments.replaceChildren();
-  previewTasks.replaceChildren();
-  const lang = localStorage.getItem('agent-dashboard-lang') || 'zh';
-  const dict = i18n[lang] || i18n.zh;
-  updateTaskOverview(task, lang);
-  for (const ref of task.preview_refs || []) previewDocuments.appendChild(relationButton(ref, () => openDocument(taskId, ref)));
-  if (!(task.preview_refs || []).length) previewDocuments.textContent = dict.noRelations;
-  for (const relatedId of task.related_tasks || []) {
-    previewTasks.appendChild(relationButton(relatedId, () => taskDetails[relatedId] ? showTask(relatedId) : openDocument(taskId, '.agent/tasks/' + relatedId + '.json')));
-  }
-  if (!(task.related_tasks || []).length) previewTasks.textContent = dict.empty;
-  if (!previewDialog.open) previewDialog.showModal();
-  sessionStorage.setItem('agent-dashboard-preview', JSON.stringify({ taskId, ref: restoreRef || null }));
-  if (restoreRef) openDocument(taskId, restoreRef);
-}
-
-async function openDocument(taskId, ref) {
-  const lang = localStorage.getItem('agent-dashboard-lang') || 'zh';
-  const dict = i18n[lang] || i18n.zh;
-  previewPath.textContent = ref;
-  previewBody.textContent = dict.loadingPreview;
-  try {
-    const response = await fetch('/api/preview?path=' + encodeURIComponent(ref), { headers: { Accept: 'application/json' } });
-    const payload = await response.json();
-    if (!response.ok || !payload.ok) throw new Error(payload.error || response.statusText);
-    let markdown = payload.content;
-    if (payload.format === 'json') {
-      try { markdown = '# ' + payload.path + '\\n\\n\\x60\\x60\\x60json\\n' + JSON.stringify(JSON.parse(payload.content), null, 2) + '\\n\\x60\\x60\\x60'; } catch (_) {}
-    }
-    previewBody.innerHTML = renderMarkdown(markdown);
-    activeDocument = { content: payload.content, path: payload.path };
-    updateDocumentOverview(activeDocument, lang);
-    sessionStorage.setItem('agent-dashboard-preview', JSON.stringify({ taskId, ref }));
-  } catch (error) {
-    previewBody.innerHTML = '<p class="preview-error">' + previewEscape(dict.previewError + ': ' + error.message) + '</p>';
-  }
-}
-
-document.querySelectorAll('[data-task-id]').forEach((card) => card.addEventListener('click', () => showTask(card.getAttribute('data-task-id'))));
-document.getElementById('preview-close').addEventListener('click', () => previewDialog.close());
-previewDialog.addEventListener('close', () => sessionStorage.removeItem('agent-dashboard-preview'));
-previewDialog.addEventListener('click', (event) => { if (event.target === previewDialog) previewDialog.close(); });
 function applyLang(lang) {
   const dict = i18n[lang] || i18n.zh;
   document.documentElement.lang = lang === 'en' ? 'en' : 'zh-CN';
@@ -1317,24 +963,65 @@ function applyLang(lang) {
     if (dict[key]) node.textContent = dict[key];
   });
   document.querySelectorAll('[data-lang]').forEach((btn) => btn.classList.toggle('active', btn.getAttribute('data-lang') === lang));
-  document.querySelectorAll('[data-task-id]').forEach((card) => card.setAttribute('aria-label', dict.openPreview + ': ' + card.getAttribute('data-task-id')));
-  const closePreview = document.getElementById('preview-close');
-  closePreview.setAttribute('aria-label', dict.closePreview);
-  closePreview.setAttribute('title', dict.closePreview);
   const next = document.querySelector('[data-next-zh]');
   if (next) next.textContent = lang === 'en' ? next.getAttribute('data-next-en') : next.getAttribute('data-next-zh');
   const why = document.querySelector('[data-why-zh]');
   if (why) why.textContent = lang === 'en' ? why.getAttribute('data-why-en') : why.getAttribute('data-why-zh');
   localStorage.setItem('agent-dashboard-lang', lang);
-  refreshOverview(lang);
 }
 document.querySelectorAll('[data-lang]').forEach((btn) => btn.addEventListener('click', () => applyLang(btn.getAttribute('data-lang'))));
 applyLang(localStorage.getItem('agent-dashboard-lang') || 'zh');
-try {
-  const previewState = JSON.parse(sessionStorage.getItem('agent-dashboard-preview') || 'null');
-  if (previewState?.taskId) showTask(previewState.taskId, previewState.ref);
-} catch (_) {}
+
+document.querySelectorAll('.task-card').forEach((card) => {
+  card.addEventListener('click', () => {
+    const dict = window.__previewDict || { openPreview: 'openPreview' };
+    void dict.openPreview;
+    const id = card.getAttribute('data-task-id') || '';
+    const title = card.getAttribute('data-task-title') || id;
+    const refsNode = card.querySelector('[data-task-refs]');
+    const refs = (refsNode ? refsNode.getAttribute('data-task-refs') : '').split(',').filter(Boolean);
+    const depsNode = card.querySelector('[data-task-deps]');
+    const deps = (depsNode ? depsNode.getAttribute('data-task-deps') : '').split(',').filter(Boolean);
+    openPreview({ id, title, refs, deps });
+  });
+});
+
+document.querySelectorAll('#related-docs a[data-preview-path]').forEach((link) => {
+  link.addEventListener('click', (event) => {
+    event.preventDefault();
+    const path = link.getAttribute('data-preview-path');
+    fetch('/api/preview?path=' + encodeURIComponent(path))
+      .then((res) => res.ok ? res.json() : null)
+      .then((data) => {
+        if (!data) return;
+        const body = document.getElementById('preview-body');
+        if (body) body.innerHTML = renderMarkdown(data.content);
+      })
+      .catch(() => {});
+  });
+});
+
+document.querySelectorAll('[data-preview-close]').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    const dialog = document.getElementById('preview-dialog');
+    if (dialog) dialog.removeAttribute('open');
+  });
+});
+
+${renderMarkdown.toString()}
+${documentOverview.toString()}
+${openPreview.toString()}
 </script>
+<dialog id="preview-dialog" class="preview-dialog">
+  <header><h2 id="preview-goal"></h2><button type="button" data-preview-close>×</button></header>
+  <section>
+    <h3 data-i18n="contentOverview">Content Overview</h3>
+    <p id="overview-text"></p>
+    <h3 data-i18n="relatedDocs">Related Documents &amp; Proposals</h3>
+    <ul id="related-docs"></ul>
+    <div id="preview-body"></div>
+  </section>
+</dialog>
 </body>
 </html>`;
 
@@ -1352,3 +1039,39 @@ try {
 }
 
 main();
+
+function renderMarkdown(markdown) {
+  return String(markdown || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/^# (.+)$/gm, '<h1>$1</h1>')
+    .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+    .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/\n\n/g, '</p><p>')
+    .replace(/^/, '<p>')
+    .replace(/$/, '</p>');
+}
+
+function documentOverview(content, path, lang) {
+  const firstHeading = (content || '').match(/^#\s+(.+)$/m);
+  const title = firstHeading ? firstHeading[1].trim() : path;
+  const sentences = (content || '').split(/(?<=[.!?。！？])\s+/).filter(Boolean);
+  const summary = sentences.slice(0, 2).join(' ').replace(/^#\s+.+$\n?/m, '');
+  return { title, summary, lang: lang || 'zh' };
+}
+
+function openPreview(task) {
+  const dialog = document.getElementById('preview-dialog');
+  const overview = document.getElementById('overview-text');
+  const related = document.getElementById('related-docs');
+  const goal = document.getElementById('preview-goal');
+  if (goal) goal.textContent = 'The goal is: ' + task.title;
+  if (overview) overview.textContent = 'Content Overview for ' + task.id;
+  if (related) {
+    related.innerHTML = (task.refs || []).map(function (ref) { return '<li><a href="#" data-preview-path="' + ref + '">' + ref + '</a></li>'; }).join('')
+      + (task.deps || []).map(function (dep) { return '<li>' + dep + '</li>'; }).join('');
+  }
+  if (dialog) dialog.setAttribute('open', '');
+}
