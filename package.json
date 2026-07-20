@@ -1,6 +1,6 @@
 {
   "name": "cortex-agent",
-  "version": "1.4.1",
+  "version": "1.5.0",
   "description": "AI Agent Governance Framework for Cursor, Claude Code, Windsurf, Gemini CLI, and Antigravity",
   "bin": {
     "cortex-agent": "bin/cli.js"
