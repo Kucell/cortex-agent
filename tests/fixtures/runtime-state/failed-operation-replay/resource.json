@@ -1,0 +1,22 @@
+{
+  "resource_type": "workspace",
+  "resource_id": "W-replay-failed",
+  "status": "failed",
+  "updated_at": "2026-07-19T09:00:04.000Z",
+  "relations": {
+    "task_id": "T-replay-failed",
+    "mission_id": "M-replay",
+    "run_id": "R-replay-failed",
+    "session_id": "S-replay-failed",
+    "workspace_id": "W-replay-failed",
+    "composite_workspace_id": null,
+    "repository_id": "repo-replay-fixture"
+  },
+  "evidence_refs": [
+    "EV-replay-failed"
+  ],
+  "log_cursor_refs": [
+    "LC-replay-failed"
+  ],
+  "latest_event_id": "E-replay-failed"
+}
