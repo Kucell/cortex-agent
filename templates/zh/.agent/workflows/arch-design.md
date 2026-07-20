@@ -60,48 +60,13 @@ When you have new architectural ideas or need to refactor existing modules, foll
 ## 4. Review and Decision
 
 - **Present Conclusions**: Show the comparison analysis results to the user and provide the AI's recommendation.
-- **Create durable approval records**: Before finalizing an architecture baseline, bind the exact proposal or Artifact Bus revision as `architecture:<path-or-artifact-ref>#<revision-digest>`. Use the first 8-12 digest characters in both IDs so a revised proposal creates new records instead of colliding with a terminal Decision:
-
-  ```bash
-  node .agent/skills/management-api/scripts/index.js decisions request \
-    --decision-id D-arch-<topic>-<revision-digest8> \
-    --gate arch-design \
-    --type architecture \
-    --requested-by architecture-coordinator \
-    --prompt "Approve this exact architecture revision?" \
-    --action architecture \
-    --resource-ref "<architecture-resource-ref>"
-
-  node .agent/skills/management-api/scripts/index.js waitpoints create \
-    --waitpoint-id WP-arch-<topic>-<revision-digest8> \
-    --gate arch-design \
-    --owner-workflow /arch-design \
-    --reason "Architecture baseline cannot change without an explicit user choice" \
-    --action architecture \
-    --resource-ref "<architecture-resource-ref>" \
-    --decision-id D-arch-<topic>-<revision-digest8>
-  ```
-
-- **Wait for explicit choice**: Direct the user to `/approve decision D-arch-<topic>-<revision-digest8>` or ask for an explicit natural-language approve/reject/revise choice that the main Agent routes through `/approve`. Dashboard requests, prior conversation approval, chat text without a persisted Decision, and `--gate approve` are not approval evidence.
-- **Consume only a matching approval**: Recompute the proposal/artifact revision. If it is unchanged and the Decision is explicitly approved, `/arch-design` releases its own Waitpoint:
-
-  ```bash
-  node .agent/skills/management-api/scripts/index.js waitpoints release \
-    --waitpoint-id WP-arch-<topic>-<revision-digest8> \
-    --gate owner \
-    --owner-workflow /arch-design \
-    --decision-id D-arch-<topic>-<revision-digest8> \
-    --released-by architecture-coordinator
-  ```
-
-- **Handle risk and effects separately**: Architecture approval uses `type=architecture` and `action=architecture`; it is not destructive approval. Replacing files, removing compatibility, credentials, and external side effects require separate Decisions with their own actions and resource digests. Rejected or revision-requested Decisions keep the Waitpoint blocked and return the proposal to refinement.
+- **Wait for Confirmation**: Fine-tune or confirm the solution based on user feedback.
 
 ## 5. Task Pipeline And Architecture Artifact
 
 - **Resolve task context**: If the design belongs to an existing task, read `.agent/tasks/<task-id>.json`. Otherwise create a `draft` task record only after the scope and acceptance criteria are known, and synchronize `.agent/tasks/index.json`.
 - **Append the artifact**: Store the proposal in its normal proposal path, then append an Artifact Bus entry using envelope `kind: plan` and `payload.artifact_kind: architecture`. Add the resulting path to the task as canonical `kind: architecture`, initially with `status: draft`.
 - **Approval gate**: User confirmation is required before changing the task artifact to `status: final`. Record the approval evidence in the artifact summary or refs; do not change proposal status as an implicit side effect.
-- **Approval evidence**: The final artifact must reference the resolved Decision and released Waitpoint. A chat acknowledgement alone is not sufficient.
 - **Advance deliberately**: `/arch-design` may pass `draft -> spec` when the task contract is complete. It must not pass `spec -> plan`; `/plan` owns that gate and must verify the final architecture artifact when `architecture_required = true`.
 - **Handle revision**: A rejected or replaced design remains referenced as `superseded`. Do not delete or overwrite prior artifacts, regress the task stage, or advance a blocked gate.
 
@@ -111,9 +76,47 @@ When you have new architectural ideas or need to refactor existing modules, foll
 - **Publish Developer Docs**: If the approved proposal changes developer-facing architecture, run `/publish-docs --architecture` after the proposal is finalized so `docs/` receives a sanitized, standalone version.
 - **Task Decomposition**: Convert the design solution into a specific task list and update the implementation plans under `.agent/plans/`.
 - **PRD Traceability**: When the proposal implements or changes a PRD, record the PRD id and related tasks in the proposal frontmatter or first section.
+- **确定提案路径**：在写文件前，先从提案主题推导出所属分类（topic），按以下规则保存：
+  ```
+  .agent/plans/proposals/<topic>/<简短名称>-proposal.md
+  ```
+  - `topic` 取提案的核心模块或业务域，使用 kebab-case（如 `auth`、`device-template`、`state-management`）
+  - 若同主题下已有子文件夹，直接复用；若无，创建新文件夹
+  - **禁止将提案直接放在 `.agent/plans/proposals/` 根目录下**
+- **项目级提案目录**：创建提案前读取 `.agent/rules/proposal-structure.md`，并判断提案属于单点提案还是项目级提案组。
 
-## 7. Safety Boundary
+  单点提案继续使用：
+  ```text
+  .agent/plans/proposals/<topic>/<简短名称>-proposal.md
+  ```
 
-- Do not automatically reset, revert, push, deploy, publish, access credentials, or perform external side effects.
-- Every destructive, credential, or external-side-effect action requires its own resource-bound Decision/Waitpoint and must be consumed by the workflow that owns that action.
-- Project-level Checkpoint integration remains a future route pending approval. Do not reference or invoke a workflow that is not installed and approved.
+  大项目、关联项目、跨多个 workflow/skill/CLI 能力、跨多个实战项目验证，或需要多个子提案时，必须使用项目文件夹：
+  ```text
+  .agent/plans/proposals/projects/<project-slug>/
+    index.md
+    proposals/P-001-<简短名称>-proposal.md
+    decisions/
+    references.md
+    relations.md
+  ```
+  - 使用 `.agent/resources/templates/proposal-project-index.md` 创建或更新 `index.md`
+  - 在 `relations.md` 记录关联项目、上下游依赖、同步范围和验证状态
+  - 禁止将提案直接放在 `.agent/plans/proposals/` 根目录
+  - 禁止提交 `.DS_Store`、临时文件或导出缓存
+
+## Communication Runtime Integration
+
+`/arch-design` 必须使用 decisions / waitpoints gate 工作流：
+
+- 资源绑定：每个 architecture 提案使用 `decisions request --gate mission --action architecture --resource-ref architecture:<proposal-id>` 创建 open Decision。
+- 提案关联：Decision 记录绑定 `revision-digest`（提案 hash）与 `relations.mission_ids / task_ids`，确保后续 supersede / resolve 可追溯。
+- Waitpoint gate：创建 `waitpoints create --owner-workflow /arch-design --reason "Architecture approval required" --action architecture --resource-ref architecture:<proposal-id>`，由用户批准后释放。
+- 用户批准使用 `decisions resolve --gate user`，`waitpoints release` 由 owning workflow 调用以消费 approved Decision。
+- Checkpoint 状态可挂在 Decision 与 Waitpoint 的 relations 上，pending approval 状态标记为 `Checkpoint`，用户批准后才进入下一步。
+
+## Owner Gate 引用
+
+- `decisions request` / `waitpoints create` 必须使用 `--gate owner` 作为 owner 端 gate。
+- Decision 与 Waitpoint 必须显式标注 `type=architecture` 或 `type=architecture`。
+
+- Decision gate 显式使用 `action=architecture`（或 `\`action=architecture\``）标识 gate 类型，与 Decision schema 枚举对齐。

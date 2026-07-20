@@ -1,97 +1,132 @@
 ---
 name: approve
-description: Approve and schedule architecture proposals, or resolve a resource-bound Decision after an explicit user choice.
+description: 批准架构提案，按规模自动调度到 /plan（小任务）或 /mission（大任务），并建立双向链接。
 ---
 
-# Proposal Approval, Scheduling, and Decision Resolution (/approve)
+# 提案批准与调度工作流 (/approve)
 
-This workflow has two mutually exclusive modes:
+将已确认的架构设计提案从 `draft` 推进到执行阶段。
+本命令是 `/arch-design` 与 `/plan` / `/mission` 之间的唯一衔接点。
 
-- **Proposal mode** advances a reviewed architecture proposal from `draft` into `/plan` or `/mission` execution.
-- **Decision mode** records an explicit user choice for one resource-bound Decision. It never performs the protected action or releases a Waitpoint.
+## 使用方式
 
-## Usage
-
-```text
-/approve <proposal-path>
-/approve .agent/plans/proposals/example-proposal.md
+```
+/approve <提案文件路径>
+/approve .agent/plans/proposals/xxx-proposal.md
 /approve .agent/plans/proposals/projects/<project-slug>/index.md
-/approve decision D-<id> --choice approve|reject|revise
 ```
 
-Input beginning with `decision` selects Decision mode. All other input selects Proposal mode. Never infer approval from a Dashboard action, message, prior preference, silence, or a caller-provided `--gate approve` string.
+## 自然语言 Decision 桥接（自然语言入口 / Natural-Language Entry）
 
-## Natural-Language Entry
+当存在资源绑定的 open Decision 时，用户可以不用输入斜杠命令，直接明确回复 `批准`、`拒绝` 或 `需要修改`。主 Agent 必须把选择持久化为 Decision 记录；聊天文本本身不是审批证据。
 
-The user does not need to type a slash command. When the current interaction contains an explicit, unconditional choice, the main agent must route it into Decision mode and persist it instead of treating chat text itself as approval evidence.
+1. 用户点名 Decision ID 时只处理该 ID；未点名时仅允许当前提示或 blocking Waitpoint 唯一对应一个 open Decision。
+2. 多个候选、条件式选择、资源漂移或 `看起来不错`、`可以考虑` 等含糊表达必须再次询问。
+3. 使用 Management API 的 `query decisions` 确认 `decision.gate.action` 与 `decision.gate.resource_ref`，然后 `decisions resolve --gate user`，将选择映射到 `approved/approve`、`rejected/reject` 或 `revision_requested/revise`；写入非空 `rationale` 和 `resolved-by interactive-user`。`/approve` 不得调用 `waitpoints release` —— 释放由 owning workflow 在解析后接管。
+4. 解析后交还 owning workflow：它重新计算 resource、验证 Decision 并自行释放 Waitpoint，然后自动继续已批准范围内的普通步骤。
+5. 新的 architecture、merge、destructive、credential 或 external-side-effect Decision 必须再次暂停询问；一次批准不得扩展到后续资源。
+6. 沉默（silence）不构成审批：用户不回复或仅回复表情 / 标点必须再次询问，不得假设批准。
 
-- Explicit approval: `approve`, `approved`, `yes, approve`, `批准`, `同意`, or `批准并继续`.
-- Explicit rejection: `reject`, `do not approve`, `拒绝`, or `不同意`.
-- Explicit revision request: `revise`, `needs changes`, `需要修改`, or `退回修改`.
-- Not a choice: `looks good`, `maybe`, `seems fine`, `let's see`, silence, reactions, or prior preferences.
+## 前置条件
 
-Routing constraints:
+- 输入是 `.agent/plans/proposals/` 下的单点提案、项目级 `index.md` 或项目级子提案。
+- 待批准范围的状态为 `draft`（已是 `approved` 或更高状态时给出提示并停止）。
+- 待批准范围有明确的 `落地计划`、`Phase` 或 milestone（用于规模判断）。
 
-1. If the user names a Decision ID, resolve that ID only.
-2. Without an ID, resolve only when the current prompt presented exactly one Decision or exactly one open Decision is attached to the current blocking Waitpoint.
-3. If multiple candidates exist, the choice is conditional, the resource drifted, or the meaning is ambiguous, show the IDs, actions, and resources and ask for an explicit choice. Never guess.
-4. Store the original choice or a faithful summary as the non-empty `rationale`; use `interactive-user` or a stable platform user identifier as `resolved-by`.
-5. After resolution, return control to the Decision's owning workflow. The owner recomputes the resource, validates the Decision, releases its own Waitpoint, and may automatically continue ordinary steps inside the approved scope.
-6. Pause again for every new architecture, merge, destructive, credential, or external-side-effect Decision. One approval never authorizes a later resource.
+---
 
-## Decision Mode
+## 执行步骤
 
-1. Query and read the target Decision without mutating it:
+### 第一步：读取并校验提案
 
-   ```bash
-   node .agent/skills/management-api/scripts/index.js query decisions
-   ```
+1. 读取指定的提案文件。若输入是项目级 `index.md`，先读取入口，再读取待批准 milestone 关联的子提案；若输入是子提案，同时读取同项目的 `index.md`。
+2. 判断批准范围：单点提案、整个项目、某个 milestone 或某个子提案。项目级输入未明确范围时，必须先请用户选择，禁止默认批准整个项目。
+3. 确认待批准范围的 `> **状态**:` 字段或索引状态存在且值为 `draft`。
+   - 若状态已是 `approved` 或更高：提示"提案已批准，无需重复操作"并停止。
+   - 若状态字段缺失：提示用户在提案头部补充标准状态字段，停止。
+4. 提取所选范围的信息：
+   - 核心目标（一句话）
+   - Phase 数量（扫描 `### Phase` 标题计数）
+   - 项目级范围对应的 milestone 与子提案
+   - 是否有跨会话/跨天的工作量描述
 
-2. Verify `.agent/decisions/D-<id>.json` exists and has `status=open`.
-3. Show the user its `prompt`, every option, `gate.action`, `gate.resource_ref`, requesting workflow, and related blocking Waitpoint.
-4. Require an explicit `approve`, `reject`, or `revise` choice through the slash command or a phrase accepted by Natural-Language Entry in the current interaction.
-5. Map the choice to `approved/approve`, `rejected/reject`, or `revision_requested/revise`, collect a user identity and non-empty rationale, then run:
+### 第二步：规模判断
 
-   ```bash
-   node .agent/skills/management-api/scripts/index.js decisions resolve \
-     --decision-id D-<id> \
-     --gate user \
-     --status <approved|rejected|revision_requested> \
-     --selected-option <approve|reject|revise> \
-     --resolved-by <user-id> \
-     --rationale "<user rationale>"
-   ```
+根据所选批准范围按以下规则输出规模建议（供用户确认，不强制执行）：
 
-6. Read the Decision again and report the result. `/approve` must not call `waitpoints release` or perform merge, release, destructive, credential, or external-side-effect operations. The owning workflow must validate the exact action and resource before consuming the approval.
+| 条件 | 建议路径 |
+| :--- | :--- |
+| Phase 数 ≤ 2 且未提及跨会话 | `/plan`（小任务） |
+| Phase 数 ≥ 3 或提及多天/跨会话/需里程碑验证 | `/mission`（大任务） |
 
-## Proposal Mode
+输出建议，格式：
 
-### Preconditions
+```
+📋 提案：xxx-proposal.md
+🎯 核心目标：[一句话目标]
+📊 规模判断：[N] 个 Phase → 建议走 [/plan | /mission]
 
-- The input is a proposal, project `index.md`, or project subproposal under `.agent/plans/proposals/`.
-- The selected scope is `draft` and contains implementation phases or milestones.
-- Architecture proposals carrying a Decision/Waitpoint must already have an explicitly approved `action=architecture` Decision and a Waitpoint released by `/arch-design`. Scheduling confirmation is not a substitute.
+理由：[Phase 数/跨会话描述/验证需求]
 
-### Procedure
-
-1. Read the complete proposal scope. For project proposals, read the index and the selected milestone's subproposals. Never approve an entire project by default.
-2. Extract the objective, phase count, milestone mapping, and cross-session indicators.
-3. Recommend `/plan` for at most two phases without cross-session work; recommend `/mission` for three or more phases, multi-day work, or milestone validation. Let the user override the recommendation.
-4. After confirmation, update only the selected scope from `draft` to `approved`.
-5. Dispatch exactly one path:
-   - `/plan --from-proposal <path>` and record the Task IDs, or
-   - `/mission create --from-proposal <path>` and record the Mission ID.
-6. Change the dispatched scope to `in-progress`, maintain links in the project index, and report the next command.
-
-Standard lifecycle:
-
-```text
-draft -> approved -> in-progress -> done | superseded
+确认调度方式？(plan / mission / 取消)
 ```
 
-## Safety Boundary
+等待用户确认，支持用户覆盖建议（如选择 `plan` 即使建议 `mission`）。
 
-- A Decision Gate is valid only for its exact `gate.action` and `gate.resource_ref`; an ID or `--gate approve` string is not authorization.
-- `architecture`, `destructive`, `credential`, and `external_side_effect` operations require Decisions and Waitpoints created by the owning workflow.
-- Architecture approval never grants destructive or external-side-effect permission.
-- Never automatically run `reset`, `revert`, `push`, `deploy`, or another external side effect.
+### 第三步：更新提案状态
+
+用户确认后，只更新所选批准范围：
+
+- 单点提案或子提案：将文件头部状态从 `draft` 改为 `approved`；若为子提案，同步更新 `index.md` 中对应行的状态。
+- 整个项目：更新 `index.md` 的项目状态，不自动批准仍需独立评审的子提案。
+- 某个 milestone：更新 `index.md` 中该 milestone 的状态，并仅更新本次明确包含的子提案。
+
+提案文件状态格式：
+
+```markdown
+> **状态**: approved
+```
+
+### 第四步：调度执行
+
+**路径 A：/plan（小任务）**
+
+执行 `/plan --from-proposal <提案文件路径>`：
+- 项目级范围传入 `index.md`，由 `/plan` 从入口读取所选 milestone 与相关子提案
+- 单点提案或子提案读取其 Phase 列表作为任务拆解输入
+- 将 Task ID 回填到提案 `执行载体` 字段
+- 将提案状态从 `approved` 改为 `in-progress`
+
+**路径 B：/mission（大任务）**
+
+执行 `/mission create --from-proposal <提案文件路径>`：
+- 项目级范围传入 `index.md`，按所选 milestone 和相关子提案建立执行里程碑
+- 单点提案或子提案按 Phase 映射 milestone
+- 将 Mission ID 回填到提案 `执行载体` 字段
+- 将提案状态从 `approved` 改为 `in-progress`
+
+### 第五步：输出确认
+
+```
+✅ 提案已批准：xxx-proposal.md
+📌 执行载体：[T-006~T-008 | M-002]
+🔗 双向链接已建立
+
+建议下一步：
+  小任务 → /start-task T-006
+  大任务 → /mission status M-002
+```
+
+---
+
+## 提案头部标准字段参考
+
+```markdown
+> **状态**: draft → approved → in-progress → done | superseded
+> **执行载体**: 待批准（/approve 后自动回填）
+> **沉淀文档**: —（done 后自动回填）
+> **创建日期**: YYYY-MM-DD
+```
+
+提案完成执行后，请通过 `/done T-xxx` 或 `mission COMPLETE` 触发沉淀流程，
+将精炼后的架构描述写入 `docs/architecture/`，提案状态变为 `done`。

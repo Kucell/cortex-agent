@@ -27,13 +27,10 @@ No Management API command may directly mutate task-progress, locks, worktrees, o
 
 - A caller-provided gate string is routing metadata, not approval evidence.
 - Decisions are created `open`. Only `decisions resolve --gate user` may record approve, reject, or revise, and it must include `resolved_by` and a non-empty rationale.
-- Decision resolution is terminal. A changed choice requires a new Decision instead of overwriting history.
-- Superseding requires requester ownership, a compatible open replacement, and rationale; it cannot approve either Decision.
-- Every Decision and Waitpoint binds an exact `gate.action` and `gate.resource_ref`. Architecture baseline approval uses `architecture`; risky execution uses `merge`, `release`, `destructive`, `credential`, or `external_side_effect`.
-- `waitpoints release` fails unless the linked Decision is approved, selected `approve`, has resolver evidence, exactly matches both gate fields, and the Waitpoint has not expired.
-- Invalid caller-provided date-time values are rejected before writing any state.
-- Waitpoint release records the Decision path in `evidence_refs`; it does not mutate Task gate ownership.
-- Dashboard rendering and read-only query commands never resolve or release these objects.
+- `decisions supersede --gate requester` requires an open replacement Decision from the same `requested_by`, matching the action but allowing a revised `resource_ref`.
+- `waitpoints release --gate owner` must consume a Decision whose `gate.action` and `gate.resource_ref` match the waitpoint's gate. A Decision with status `approved` and matching evidence_refs unlocks the waitpoint.
+- `waitpoints create` records the owning workflow and the blocking reason. Cancel/expire transitions remain terminal and audit-visible.
+- All inbox transitions go through `inbox send/transition --gate ...`, with `recipient` ownership enforced before status changes.
 
 ## Queue Write Gates
 
