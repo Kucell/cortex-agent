@@ -108,7 +108,7 @@ When you have new architectural ideas or need to refactor existing modules, foll
 
 `/arch-design` 必须使用 decisions / waitpoints gate 工作流：
 
-- 资源绑定：每个 architecture 提案使用 `decisions request --gate mission --action architecture --resource-ref architecture:<proposal-id>` 创建 open Decision。
+- 资源绑定：每个 architecture 提案使用 `decisions request --gate mission --type approval --gate-action architecture --resource-ref architecture:<proposal-id>` 创建 open Decision。
 - 提案关联：Decision 记录绑定 `revision-digest`（提案 hash）与 `relations.mission_ids / task_ids`，确保后续 supersede / resolve 可追溯。
 - Waitpoint gate：创建 `waitpoints create --owner-workflow /arch-design --reason "Architecture approval required" --action architecture --resource-ref architecture:<proposal-id>`，由用户批准后释放。
 - 用户批准使用 `decisions resolve --gate user`，`waitpoints release` 由 owning workflow 调用以消费 approved Decision。

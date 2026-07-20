@@ -72,7 +72,7 @@ npm publish --registry https://registry.npmjs.org/ --otp=<6位验证码>
 `/release` 在执行前必须经过 approval gate：
 
 - 候选必须先在工作区真实形成并完成验证：candidate_digest（commit / tag hash）来自 `git rev-parse`，不得伪造。
-- 触发 `decisions request --gate mission --action release --resource-ref release:cortex-agent@<candidate_digest>` 创建 open Decision，并附带 candidate-digest。
+- 触发 `decisions request --gate mission --type approval --gate-action release --resource-ref release:cortex-agent@<candidate_digest>` 创建 open Decision，并附带 candidate-digest。
 - 立即 `waitpoints create --owner-workflow /release --reason "Release approval required" --action release --resource-ref release:cortex-agent@<candidate_digest>` 阻塞后续动作。
 - `external_side_effect`（npm publish / git tag push）必须等待用户批准；`decisions resolve --gate user` 批准后由 `/release` 自行调用 `waitpoints release --gate owner`。
 - 任何破坏性或外部副作用动作前都必须校验 candidate 必须先在工作区真实形成并完成验证。
