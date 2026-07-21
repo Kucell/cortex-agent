@@ -4,6 +4,7 @@
 const fs = require("fs");
 const path = require("path");
 const { execSync } = require("child_process");
+const { normalizeTokenUsage } = require("./normalize-token-usage.js");
 
 const root = process.cwd();
 const agentRoot = path.join(root, ".agent");
@@ -1253,6 +1254,129 @@ function appendRunEvent() {
   printJson({ ok: true, action: "runs event", path: rel(file), event, run: next });
 }
 
+// ─── runs tokens (token-usage contract sink — see proposals/token-usage) ─────
+// Agent hosts (Claude Code / Cursor / Codex / ...) push token counts INTO the
+// framework via this single entry point. The framework does NOT crawl host
+// private stores (transcript JSONL / Cursor DB / ...). Dependency inversion:
+// framework defines contract; host pushes via a one-line shell command.
+//
+// All numeric fields are routed through `normalize-token-usage.js` before
+// they touch the run json — the sink is the only place where messy host
+// payloads get coerced into canonical integers. See
+// `.agent/rules/normalize-input-value.md` for the protocol-sink policy.
+
+const TOKEN_USAGE_SOURCES = new Set([
+  "claude-code", "cursor", "codex", "openai", "anthropic", "unknown",
+]);
+
+function runsTokens() {
+  const gate = requireGate(["agent", "user", "mission"]);
+  const payload = parsePayload();
+  const source = String(option("--source", payload.source || "")).trim().toLowerCase();
+  if (!source) fail("invalid_source", "--source is required (e.g. claude-code, cursor, codex).");
+  if (!TOKEN_USAGE_SOURCES.has(source)) {
+    // Allow unknown / future hosts but warn — never reject on unknown source
+    // (host names evolve; framework stays forward-compatible).
+  }
+  const tokenUsage = normalizeTokenUsage({
+    input_tokens: option("--input", payload.input_tokens),
+    output_tokens: option("--output", payload.output_tokens),
+    cache_creation_input_tokens: option("--cache-create", payload.cache_creation_input_tokens),
+    cache_read_input_tokens: option("--cache-read", payload.cache_read_input_tokens),
+  });
+  const runIdRaw = String(option("--run-id", payload.run_id || "")).trim();
+  const sessionIdRaw = String(option("--session-id", payload.session_id || "")).trim();
+  const taskIdRaw = String(option("--task-id", payload.task_id || "")).trim();
+  const modelRaw = String(option("--model", payload.model || "")).trim();
+  const costUsdRaw = option("--cost-usd", payload.cost_usd);
+  const timestamp = nowIso();
+
+  // Without --run-id we still record an event-shaped report, but it has no
+  // persistent anchor. Future Phase 2 will route these to
+  // `.agent/token-events/<date>.jsonl`; for now reject explicitly so we don't
+  // silently leak write paths.
+  if (!runIdRaw) {
+    fail("run_id_required", "--run-id is required in Phase 1 (no global token log yet).");
+  }
+  const runId = safeId(runIdRaw, "R");
+  const file = runFile(runId);
+  const existing = readJson(file) || {
+    run_id: runId,
+    kind: "implement",
+    status: "running",
+    started_at: timestamp,
+    events: [],
+  };
+
+  const bySource = (existing.token_usage && existing.token_usage.by_source) || {};
+  const prev = bySource[source] || {
+    input_tokens: 0,
+    output_tokens: 0,
+    cache_creation_input_tokens: 0,
+    cache_read_input_tokens: 0,
+    samples: 0,
+  };
+  const next = {
+    input_tokens: prev.input_tokens + tokenUsage.input_tokens,
+    output_tokens: prev.output_tokens + tokenUsage.output_tokens,
+    cache_creation_input_tokens: prev.cache_creation_input_tokens + tokenUsage.cache_creation_input_tokens,
+    cache_read_input_tokens: prev.cache_read_input_tokens + tokenUsage.cache_read_input_tokens,
+    samples: prev.samples + tokenUsage.samples,
+    last_reported_at: timestamp,
+    last_run_id: runId,
+  };
+  if (modelRaw) next.model = modelRaw;
+  if (costUsdRaw !== undefined && costUsdRaw !== "") {
+    const costNum = Number(costUsdRaw);
+    if (Number.isFinite(costNum) && costNum >= 0) next.cost_usd = costNum;
+  }
+  bySource[source] = next;
+
+  const totals = Object.values(bySource).reduce((acc, s) => ({
+    input_tokens: acc.input_tokens + s.input_tokens,
+    output_tokens: acc.output_tokens + s.output_tokens,
+    cache_creation_input_tokens: acc.cache_creation_input_tokens + s.cache_creation_input_tokens,
+    cache_read_input_tokens: acc.cache_read_input_tokens + s.cache_read_input_tokens,
+  }), { input_tokens: 0, output_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 });
+
+  const relations = existing.relations && typeof existing.relations === "object"
+    ? existing.relations
+    : { task_ids: [], mission_ids: [], run_ids: [], queue_ids: [], session_ids: [], artifact_refs: [], worktree_paths: [] };
+  if (sessionIdRaw && Array.isArray(relations.session_ids) && !relations.session_ids.includes(sessionIdRaw)) {
+    relations.session_ids = [...relations.session_ids, sessionIdRaw];
+  }
+  if (taskIdRaw && Array.isArray(relations.task_ids) && !relations.task_ids.includes(taskIdRaw)) {
+    relations.task_ids = [...relations.task_ids, taskIdRaw];
+  }
+
+  const event = compactEvent({
+    type: "token_usage_reported",
+    source,
+    message: `+i${tokenUsage.input_tokens}/o${tokenUsage.output_tokens}/c${tokenUsage.cache_creation_input_tokens}/r${tokenUsage.cache_read_input_tokens}`,
+    at: timestamp,
+  });
+  const events = Array.isArray(existing.events) ? existing.events : [];
+  const nextRun = {
+    ...existing,
+    token_usage: { by_source: bySource, totals, updated_at: timestamp },
+    relations,
+    events: [...events, event].slice(-200),
+    last_event: event,
+    updated_at: timestamp,
+  };
+  writeJson(file, nextRun);
+  printJson({
+    ok: true,
+    action: "runs tokens",
+    source,
+    run_id: runId,
+    path: rel(file),
+    token_usage: tokenUsage,
+    totals_run: totals,
+    by_source: bySource,
+  });
+}
+
 function checkpointRun() {
   const payload = parsePayload();
   const runId = safeId(option("--run-id", payload.run_id), "R");
@@ -1493,6 +1617,10 @@ function main() {
     checkpointRun();
     return;
   }
+  if (command === "runs" && query === "tokens") {
+    runsTokens();
+    return;
+  }
   if (command === "queues" && query === "upsert") {
     upsertQueue();
     return;
@@ -1561,7 +1689,7 @@ function main() {
   printJson({
     ok: false,
     error: "unsupported_command",
-    usage: "node .agent/skills/management-api/scripts/index.js query dashboard-state|runs|queues|sessions|inbox|decisions|waitpoints | runs upsert|event|checkpoint | queues upsert|item | sessions open|heartbeat|pause|close | decisions request|resolve|supersede | inbox send|transition | waitpoints create|release|cancel",
+    usage: "node .agent/skills/management-api/scripts/index.js query dashboard-state|runs|queues|sessions|inbox|decisions|waitpoints | runs upsert|event|checkpoint|tokens | queues upsert|item | sessions open|heartbeat|pause|close | decisions request|resolve|supersede | inbox send|transition | waitpoints create|release|cancel",
   });
   process.exitCode = 2;
 }
