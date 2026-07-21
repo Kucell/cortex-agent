@@ -62,6 +62,12 @@ for (let i = 0; i < args.length; i++) {
   if (arg === "--fix") {
     options.fix = true;
   }
+  if (arg === "--dry-run") {
+    // For upgrade: report what would change; for subcommands that also honor
+    // it (none today besides upgrade), the flag is read from ctx.options.dryRun.
+    // Adding it here is a no-op cost when absent; honest reporting when present.
+    options.dryRun = true;
+  }
 }
 
 function detectLangFromProject(dir) {
