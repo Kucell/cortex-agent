@@ -53,6 +53,24 @@ Before final commit, determine if this update triggers an experience record:
 
 If triggered, create `.agent/experiences/EXP-NNN.md` using the template at `.agent/experiences/TEMPLATE.md`, then add entry to `experiences/index.json`.
 
+## 4.5 🆕 Memory Feedback Capture (lightweight session observations)
+
+Experiences record **commit-anchored lessons** (with trigger + relapse prevention). If this `agent-update` observes **lightweight, reusable session behavior feedback** (e.g., "this kind of question is asked repeatedly", "a certain command's output always leads the agent down the wrong branch"), you may write to `.agent/memory/feedback/` — **not** experiences.
+
+Decision criteria:
+- **Single-session observation**, **no commit anchor**, **no relapse prevention** → goes to `memory/feedback/`
+- **Cross-commit lesson**, **has trigger and relapse prevention** → goes to `experiences/`
+- **User preference** ("user likes X") → goes to `memory/user/`
+- **Project-level fact** ("this project uses Y") → goes to `memory/project/`
+
+Write steps:
+1. Draft YAML frontmatter (`name` / `description` / `type: feedback` / `created` / `tags`, optional `expires` defaulting to `created + 90 days`)
+2. Validate against `memory.schema.json` (Phase 2 will provide a `/memory-validate` skill; for now use a simple `node -e` check)
+3. Write to `.agent/memory/feedback/<name>.md`
+4. Append an index line under `## feedback (n/30)` in `MEMORY.md`
+
+Per project ≤30 feedback entries; on overflow **auto-archive** the earliest 5 entries to `feedback/_archive/<date>-<name>.md`.
+
 ## 5. Verification and Summary
 
 - **Verify Links**: If it's a global update, confirm that the symlinks in the local project are effective.
