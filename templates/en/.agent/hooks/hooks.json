@@ -15,32 +15,6 @@
         "description": "Layer 1（确定性）：文件编辑后自动执行质量检查（Lint / 密钥扫描），失败时阻断"
       }
     ],
-    "PostCommit": [
-      {
-        "matcher": "*",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node -e \"const fs=require('fs'),path=require('path');const idx='.agent/context-index.json';const arch='.agent/archive';if(!fs.existsSync(idx))process.exit(0);const data=JSON.parse(fs.readFileSync(idx,'utf8'));const refs='.agent/references';if(!fs.existsSync(refs)){process.exit(0);}const onDisk=fs.readdirSync(refs,{recursive:true}).filter(f=>f.endsWith('.md')).map(f=>path.basename(f,'.md'));let fixed=0;data.modules=data.modules.filter(m=>{if(!onDisk.includes(m.module)){fixed++;return false;}return true;});if(fixed>0){data._meta.last_updated=new Date().toISOString().split('T')[0];fs.writeFileSync(idx,JSON.stringify(data,null,2));console.log('[Cortex] L0 熵修复：移除 '+fixed+' 个已删除模块的索引条目');}\"",
-            "async": true,
-            "timeout": 5
-          }
-        ],
-        "description": "L0 熵治理：提交后自动清理 context-index.json 中已删除模块的条目（< 1 秒，不阻塞）"
-      },
-      {
-        "matcher": "*",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node .agent/plugins/graphify/scripts/post-commit-update.cjs",
-            "async": true,
-            "timeout": 120
-          }
-        ],
-        "description": "Graphify: after commit, incrementally update graphify-out/graph.json; skip silently when not installed or not initialized"
-      }
-    ],
     "SessionStart": [
       {
         "matcher": "*",
@@ -51,6 +25,18 @@
           }
         ],
         "description": "会话启动时提示加载任务进度文件"
+      },
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node -e \"const fs=require('fs');const p='.agent/memory/MEMORY.md';if(fs.existsSync(p)){const c=fs.readFileSync(p,'utf8');const lines=c.split('\\n').slice(0,200);const cap=Buffer.byteLength(c,'utf8')>25*1024;if(cap)lines.push('... [truncated, 25KB cap reached]');console.log('[Cortex] Memory index loaded:\\n'+lines.join('\\n'));}\"",
+            "async": true,
+            "timeout": 5
+          }
+        ],
+        "description": "On session start, load .agent/memory/MEMORY.md index (≤200 lines / 25KB cap, topic files read on demand)"
       }
     ]
   }

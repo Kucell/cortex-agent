@@ -81,6 +81,31 @@ git diff --name-only {上次 commit hash} HEAD
 
 更新 `.agent/references/README.md` 中的「最后更新」时间和 commit hash。如有新增模块，在索引表格中追加。
 
+### 第七步：在 `.agent/memory/reference/` 留指针（不重复内容）
+
+对**新增或重大更新**的 references 文件，在 `.agent/memory/reference/` 写一个轻量指针 topic：
+
+```yaml
+---
+name: <module>-pointer
+description: <module> 架构文档入口 — 关键词：<keyword1>, <keyword2>
+type: reference
+created: YYYY-MM-DD
+tags: [<module>, <keyword1>, <keyword2>]
+related:
+  - .agent/references/<module>.md
+---
+
+详见 `.agent/references/<module>.md`。
+```
+
+并在 `MEMORY.md` 的 `## reference (n/50)` 段追加一行 `- [<module> 入口](reference/<module>-pointer.md) — <keyword1>, <keyword2>`。
+
+**约束**：
+- 每项目 ≤50 条 reference；超限**不归档**（让 reference 失去意义）
+- **不**复制 references 内容到 memory（指针不重复内容）
+- **不**对纯样式/逻辑微改的 references 留 pointer（仅新增/重大更新触发）
+
 ---
 
 ## 使用时机建议
