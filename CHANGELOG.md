@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-07-21
+
+### Added
+
+- **`.agent/memory/` 轻量笔记机制**：在 `.agent/` 下建立 `user / feedback / project / reference` 四类笔记（4 type frontmatter 严格 schema，per-type 硬上限 user 10/feedback 30/project 20/reference 50，200 行 / 25KB MEMORY.md 启动 cap 对齐 Claude Code Auto Memory 官方）；填坑 collab-runtime proposal (M-002) 提议的 approved-but-not-built `.agent/knowledge/` 目录。
+- **`SessionStart` hook 自动加载 MEMORY.md 索引**：在 `templates/{zh,en}/.agent/hooks/hooks.json` 新增 `[Cortex] Memory index loaded` 输出；topic 文件按需 Read（不自动加载）；`core-principles.md` 新增"读 MEMORY.md"硬步骤。
+- **`memory-protocol.md` 行为规则**：4 type 写入/读取/过期/归档协议，body 模板（feedback/project 类必含 `**Why:**` + `**How to apply:**`），write protocol（先写文件再加 MEMORY.md 索引、save 必须在 reply 完成前、写前查 staleness/duplicate），9 节规范（包含显式回应 P-006 反 MEMORY 立场的 Non-Goals）。
+- **`agent-update` Step 4.5 memory feedback capture**：与 Step 4 experience capture 并列，区分"轻量 session 观察"（memory/feedback）和"commit-anchored 教训"（experiences）。
+- **`update-refs` Step 7 reference pointer**：references 新增/重大更新时在 `memory/reference/` 留指针（不复制内容）。
+- **L1 模板双语同步**（`templates/zh/.agent/` + `templates/en/.agent/`）+ L3 主仓库工作实例同步升级 + 治理审批（proposal `cortex-agent-memory-proposal.md` supersedes collab-runtime knowledge/）。
+
+### Changed
+
+- **`hooks.json` 删除不工作的 `PostCommit` 段**：Claude Code 从未支持 `PostCommit` 事件，原配置静默忽略。L0 熵清理和 Graphify 增量改由手动 `/post-commit-maintenance` 承担（`~/.claude/rules/git-workflow.md`）。
+- **`hooks.json` `SessionStart` 新增 MEMORY.md loader 节点**：在已有 task-progress 提示旁加 memory index 输出。
+- **`memory.schema.json` 字段扩展**：slug regex 从 `^[a-z0-9-]+$` 改为 `^[a-z0-9_-]+$`（对齐 Claude Code 实施级），新增可选 `metadata` 字段（Claude Code 兼容），新增 `path_segments ≤20` / `path_bytes ≤1024` / `per_file_size ≤100KB` 软约束。
+
+### Removed
+
+- **`.agent/hooks/hooks.json` 的 `PostCommit` 段**：3 个 hooks.json 全部清空（zh 模板 / en 模板 / L3 主仓库）；不工作配置在每次 SessionStart 弹警告 `Unknown hook event "PostCommit" was ignored`。
+
 ## [1.5.0] - 2026-07-20
 
 ### Added
