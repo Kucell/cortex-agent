@@ -81,6 +81,31 @@ git diff --name-only {上次 commit hash} HEAD
 
 更新 `.agent/references/README.md` 中的「最后更新」时间和 commit hash。如有新增模块，在索引表格中追加。
 
+### 第七步：Leave a pointer in `.agent/memory/reference/` (no content duplication)
+
+For **newly added or substantially updated** references files, write a lightweight pointer topic in `.agent/memory/reference/`:
+
+```yaml
+---
+name: <module>-pointer
+description: <module> architecture doc entry — keywords: <keyword1>, <keyword2>
+type: reference
+created: YYYY-MM-DD
+tags: [<module>, <keyword1>, <keyword2>]
+related:
+  - .agent/references/<module>.md
+---
+
+See `.agent/references/<module>.md` for the full document.
+```
+
+Then append a line under `## reference (n/50)` in `MEMORY.md`: `- [<module> entry](reference/<module>-pointer.md) — <keyword1>, <keyword2>`.
+
+**Constraints**:
+- ≤50 reference entries per project; overflow **does not archive** (would defeat the purpose)
+- **Do not** copy references content into memory (pointer only — no duplication)
+- **Do not** leave a pointer for pure style/logic tweaks (only new/major updates trigger)
+
 ---
 
 ## 使用时机建议
