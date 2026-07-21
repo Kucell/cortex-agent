@@ -86,6 +86,131 @@ function formatDisplayTime(value) {
   return Number.isNaN(date.getTime()) ? String(value) : formatLocalTime(date);
 }
 
+// Pure aggregator (no I/O). Reads runs[i].token_usage (written by
+// `management-api runs tokens`) and produces the dashboard-shaped summary.
+// Returns null when no run has reported tokens yet — caller falls back to
+// the empty-state panel hint pointing users to .agent/claude-code/README.md.
+function parseTokenUsage(runs) {
+  if (!Array.isArray(runs) || !runs.length) return null;
+  const sourceMap = new Map();   // source → { runs:Set, input, output, cache_create, cache_read, samples, last_reported_at }
+  let reportedRuns = 0;
+  for (const run of runs) {
+    const tu = run && run.token_usage;
+    if (!tu || typeof tu !== "object") continue;
+    const bySource = tu.by_source || {};
+    const hasAny = Object.keys(bySource).length > 0;
+    if (!hasAny) continue;
+    reportedRuns += 1;
+    for (const [source, stat] of Object.entries(bySource)) {
+      const prev = sourceMap.get(source) || {
+        source,
+        runs: new Set(),
+        input_tokens: 0,
+        output_tokens: 0,
+        cache_creation_input_tokens: 0,
+        cache_read_input_tokens: 0,
+        samples: 0,
+        last_reported_at: "",
+      };
+      prev.runs.add(run.run_id || run.path || "unknown");
+      prev.input_tokens += Number(stat.input_tokens) || 0;
+      prev.output_tokens += Number(stat.output_tokens) || 0;
+      prev.cache_creation_input_tokens += Number(stat.cache_creation_input_tokens) || 0;
+      prev.cache_read_input_tokens += Number(stat.cache_read_input_tokens) || 0;
+      prev.samples += Number(stat.samples) || 0;
+      if (stat.last_reported_at && stat.last_reported_at > prev.last_reported_at) {
+        prev.last_reported_at = stat.last_reported_at;
+      }
+      sourceMap.set(source, prev);
+    }
+  }
+  if (!reportedRuns) return null;
+  const bySource = [...sourceMap.values()]
+    .map((entry) => ({ ...entry, run_count: entry.runs.size, runs: undefined }))
+    .sort((a, b) => b.input_tokens - a.input_tokens);
+  const totals = bySource.reduce((acc, s) => ({
+    input_tokens: acc.input_tokens + s.input_tokens,
+    output_tokens: acc.output_tokens + s.output_tokens,
+    cache_creation_input_tokens: acc.cache_creation_input_tokens + s.cache_creation_input_tokens,
+    cache_read_input_tokens: acc.cache_read_input_tokens + s.cache_read_input_tokens,
+  }), { input_tokens: 0, output_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 });
+  const cacheHits = totals.cache_creation_input_tokens + totals.cache_read_input_tokens;
+  const cacheHitRate = cacheHits > 0 ? (totals.cache_read_input_tokens / cacheHits) : 0;
+  // Top runs (highest sum of input + cache_read = "effective input")
+  const topRuns = runs
+    .filter((r) => r && r.token_usage && r.token_usage.totals)
+    .map((r) => {
+      const t = r.token_usage.totals;
+      return {
+        run_id: r.run_id || r.path || "unknown",
+        source: Object.keys(r.token_usage.by_source || {})[0] || "unknown",
+        input_tokens: t.input_tokens || 0,
+        output_tokens: t.output_tokens || 0,
+        cache_read_input_tokens: t.cache_read_input_tokens || 0,
+        effective: (t.input_tokens || 0) + (t.cache_read_input_tokens || 0),
+      };
+    })
+    .sort((a, b) => b.effective - a.effective)
+    .slice(0, 8);
+  return { reportedRuns, totalRuns: runs.length, bySource, totals, cacheHitRate, topRuns };
+}
+
+function formatTokenCount(value) {
+  const n = Number(value) || 0;
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(2)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
+  return String(n);
+}
+
+function renderTokenUsageSection(tokenUsage) {
+  if (!tokenUsage) {
+    return `<section class="panel wide"><h2 data-i18n="tokenUsage">${I18N.zh.tokenUsage}</h2><div class="empty" data-i18n="tokenUsageEmpty">${esc(I18N.zh.tokenUsageEmpty)}</div></section>`;
+  }
+  const { reportedRuns, totalRuns, bySource, totals, cacheHitRate, topRuns } = tokenUsage;
+  const hitPct = (cacheHitRate * 100).toFixed(1);
+  const summaryMetrics = `
+    ${metric("reportedRuns", `${reportedRuns}/${totalRuns}`, "run(s) with token reports", reportedRuns ? "active" : "")}
+    ${metric("totalInput", formatTokenCount(totals.input_tokens), "tokens", "active")}
+    ${metric("totalOutput", formatTokenCount(totals.output_tokens), "tokens", "")}
+    ${metric("cacheHit", `${hitPct}%`, `create ${formatTokenCount(totals.cache_creation_input_tokens)} / read ${formatTokenCount(totals.cache_read_input_tokens)}`, cacheHitRate > 0 ? "ready" : "")}
+  `;
+  const sourceTable = bySource.length
+    ? renderTable(
+        ["hostSource", "runs", "samples", "totalInput", "totalOutput", "cacheCreate", "cacheRead", "lastReportedAt"],
+        bySource.map((s) => `<tr>
+          <td>${esc(s.source)}</td>
+          <td>${esc(String(s.run_count))}</td>
+          <td>${esc(String(s.samples))}</td>
+          <td>${formatTokenCount(s.input_tokens)}</td>
+          <td>${formatTokenCount(s.output_tokens)}</td>
+          <td>${formatTokenCount(s.cache_creation_input_tokens)}</td>
+          <td>${formatTokenCount(s.cache_read_input_tokens)}</td>
+          <td data-volatile="last-reported">${esc(formatDisplayTime(s.last_reported_at))}</td>
+        </tr>`),
+      )
+    : `<div class="empty" data-i18n="noHostData">${esc(I18N.zh.noHostData)}</div>`;
+  const topRunsTable = topRuns.length
+    ? renderTable(
+        ["runs", "hostSource", "totalInput", "totalOutput", "cacheRead"],
+        topRuns.map((r) => `<tr>
+          <td><code>${esc(r.run_id)}</code></td>
+          <td>${esc(r.source)}</td>
+          <td>${formatTokenCount(r.input_tokens)}</td>
+          <td>${formatTokenCount(r.output_tokens)}</td>
+          <td>${formatTokenCount(r.cache_read_input_tokens)}</td>
+        </tr>`),
+      )
+    : `<div class="empty" data-i18n="empty">${esc(I18N.zh.empty)}</div>`;
+  return `<section class="panel wide">
+    <h2 data-i18n="tokenUsage">${I18N.zh.tokenUsage}</h2>
+    <div class="status-strip" style="grid-template-columns:repeat(4,1fr);gap:10px">${summaryMetrics}</div>
+    <h3 style="margin:18px 0 8px;font-size:13px;color:var(--muted)" data-i18n="hostSource">${esc(I18N.zh.hostSource)} · breakdown</h3>
+    ${sourceTable}
+    <h3 style="margin:18px 0 8px;font-size:13px;color:var(--muted)" data-i18n="runs">${esc(I18N.zh.runs)} · top by effective input</h3>
+    ${topRunsTable}
+  </section>`;
+}
+
 const I18N = {
   zh: {
     appTitle: "Agent 协作看板",
@@ -185,6 +310,18 @@ const I18N = {
     blockingWaitpoints: "阻塞等待点",
     pendingInbox: "待办收件",
     openPreview: "打开预览",
+    tokenUsage: "Token 用量",
+    tokenUsageEmpty: "暂无 token 上报 — host 未集成 hook(参见 .agent/claude-code/README.md)",
+    reportedRuns: "已上报 Run",
+    totalInput: "总输入 Token",
+    totalOutput: "总输出 Token",
+    cacheHit: "缓存命中率",
+    hostSource: "Host",
+    cacheCreate: "缓存写入",
+    cacheRead: "缓存命中",
+    samples: "上报次数",
+    lastReportedAt: "最近上报",
+    noHostData: "暂无数据",
     contentOverview: "Content Overview",
     relatedDocs: "Related Documents & Proposals",
   },
@@ -286,6 +423,18 @@ const I18N = {
     blockingWaitpoints: "Blocking Waitpoints",
     pendingInbox: "Pending Inbox",
     openPreview: "Open Preview",
+    tokenUsage: "Token Usage",
+    tokenUsageEmpty: "No token reports yet — host hook not integrated (see .agent/claude-code/README.md).",
+    reportedRuns: "Reported Runs",
+    totalInput: "Total Input Tokens",
+    totalOutput: "Total Output Tokens",
+    cacheHit: "Cache Hit Rate",
+    hostSource: "Host",
+    cacheCreate: "Cache Create",
+    cacheRead: "Cache Read",
+    samples: "Samples",
+    lastReportedAt: "Last Reported",
+    noHostData: "No data",
     contentOverview: "Content Overview",
     relatedDocs: "Related Documents & Proposals",
   },
@@ -770,6 +919,7 @@ function main() {
   const inbox = Array.isArray(managed?.inbox) ? managed.inbox : [];
   const decisions = Array.isArray(managed?.decisions) ? managed.decisions : [];
   const waitpoints = Array.isArray(managed?.waitpoints) ? managed.waitpoints : [];
+  const tokenUsage = parseTokenUsage(runs);
   const gitStatus = typeof managed?.git_status === "string" ? managed.git_status : sh("git status --short --branch");
   const derived = deriveState({ worktrees, locks, handoffs, tasks, agents, approvals: managed?.approvals || { open_decisions: decisions.filter((d) => d.status === "open"), open_waitpoints: waitpoints.filter((w) => ["pending","blocked"].includes(w.status)), pending_inbox: inbox.filter((m) => ["unread","read"].includes(m.status)) } });
   const approvalsView = managed?.approvals || { open_decisions: decisions.filter((d) => d.status === "open"), open_waitpoints: waitpoints.filter((w) => ["pending","blocked"].includes(w.status)), pending_inbox: inbox.filter((m) => ["unread","read"].includes(m.status)) };
@@ -937,6 +1087,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:8px 10px;border-bottom:1
         <section class="panel wide"><h2 data-i18n="eventTimeline">${I18N.zh.eventTimeline}</h2>${recentEvents.length ? `<div class="timeline">${recentEvents.map(({ run, event }) => `<div class="timeline-item"><div><code>${esc(run.run_id || run.path)}</code><div class="mini">${esc(formatDisplayTime(event.at))}</div></div><div>${event.phase ? pill(event.phase) : ""} ${event.status ? pill(event.status) : ""}<p>${esc(event.message || event.activity || event.type || "")}</p></div></div>`).join("")}</div>` : `<div class="empty" data-i18n="empty">${I18N.zh.empty}</div>`}</section>
         <section class="panel"><h2 data-i18n="sessions">${I18N.zh.sessions}</h2>${renderTable(["agent","role","status","phase","heartbeat"], sessions.map((s) => `<tr><td>${esc(s.agent_id || s.session_id)}</td><td>${esc(s.role || "")}</td><td>${pill(s.status)}</td><td>${s.phase ? pill(s.phase) : esc(s.activity || "")}</td><td data-volatile="heartbeat">${esc(formatDisplayTime(s.last_heartbeat_at || s.started_at))}</td></tr>`))}</section>
         <section class="panel"><h2 data-i18n="runs">${I18N.zh.runs}</h2>${renderTable(["id","kind","status","phase","message"], runs.slice(0, 8).map((r) => `<tr><td><code>${esc(r.run_id || r.path)}</code></td><td>${esc(r.kind || "")}</td><td>${pill(r.status)}</td><td>${r.phase ? pill(r.phase) : ""}</td><td>${esc(r.activity || r.last_event?.message || "")}</td></tr>`))}</section>
+        ${renderTokenUsageSection(tokenUsage)}
         <section class="panel wide"><h2 data-i18n="queues">${I18N.zh.queues}</h2>${renderTable(["id","status","items","currentActivity"], queues.map((q) => `<tr><td><code>${esc(q.queue_id || q.path)}</code></td><td>${pill(q.status)}</td><td>${Array.isArray(q.items) ? q.items.length : 0}</td><td>${esc((q.items || []).find((item) => item.state === "running")?.activity || "")}</td></tr>`))}</section>
         <section class="panel wide"><h2 data-i18n="worktrees">${I18N.zh.worktrees}</h2>${renderTable(["path","branch","status","head"], worktrees.map((w) => `<tr><td><code>${esc(w.path)}</code>${w.isMain ? ' <span class="mini">main</span>' : ""}</td><td>${esc(w.branch)}</td><td>${pill(w.dirty ? "dirty" : "clean")}</td><td><code>${esc(w.head.slice(0,12))}</code></td></tr>`))}</section>
         <section class="panel"><h2 data-i18n="activeAgents">${I18N.zh.activeAgents}</h2>${renderTable(["agent","role","task","status"], agents.map((a) => `<tr><td>${esc(a.agent_id || a.id)}</td><td>${esc(a.role)}</td><td><code>${esc(a.task_id || "")}</code></td><td>${pill(a.status)}</td></tr>`))}</section>
