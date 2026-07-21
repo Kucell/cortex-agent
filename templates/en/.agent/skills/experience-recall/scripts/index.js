@@ -1,15 +1,20 @@
 const fs = require('fs');
 const path = require('path');
 
-const root = process.cwd();
-const experiencesDir = path.join(root, '.agent', 'experiences');
-const indexPath = path.join(experiencesDir, 'index.json');
-const metricsDir = path.join(root, '.agent', 'metrics');
-const outputPath = path.join(metricsDir, 'experience-recall-result.json');
-
 const MIN_RELEVANCE = 0.3;
 const MAX_RESULTS = 5;
 const WEIGHTS = { tags: 0.5, keywords: 0.3, files: 0.2 };
+
+// Path helpers (parameterized on root so the aggregator can call this in any dir).
+function paths(root) {
+  const experiencesDir = path.join(root, '.agent', 'experiences');
+  return {
+    experiencesDir,
+    indexPath: path.join(experiencesDir, 'index.json'),
+    metricsDir: path.join(root, '.agent', 'metrics'),
+    outputPath: path.join(root, '.agent', 'metrics', 'experience-recall-result.json'),
+  };
+}
 
 function parseArgs() {
   const args = process.argv.slice(2);
@@ -67,15 +72,13 @@ function matchedOn(input, exp) {
   return on;
 }
 
-function main() {
-  const input = parseArgs();
-
+// Pure function: score experiences for the given input. Returns { scored, warnings, total }.
+// No I/O side effects except reading the index; callable by the unified aggregator.
+function recallExperiences(root, input) {
+  const { indexPath } = paths(root);
   if (!fs.existsSync(indexPath)) {
-    console.log('No experience index found at', indexPath);
-    console.log('Run: mkdir -p .agent/experiences && create index.json');
-    process.exit(0);
+    return { scored: [], warnings: [], total: 0, missing: true };
   }
-
   const index = JSON.parse(fs.readFileSync(indexPath, 'utf8'));
   const experiences = index.experiences || [];
 
@@ -91,7 +94,22 @@ function main() {
 
   const warnings = scored
     .filter(exp => exp.severity === 'high')
-    .map(exp => `⚠️  此任务涉及 ${exp.tags.slice(0, 3).join('/')}, 请检查 ${exp.id}: ${exp.title.slice(0, 40)}`);
+    .map(exp => `⚠️  此任务涉及 ${(exp.tags || []).slice(0, 3).join('/')}, 请检查 ${exp.id}: ${exp.title.slice(0, 40)}`);
+
+  return { scored, warnings, total: experiences.length };
+}
+
+function main() {
+  const input = parseArgs();
+  const { indexPath, metricsDir, outputPath } = paths(process.cwd());
+
+  if (!fs.existsSync(indexPath)) {
+    console.log('No experience index found at', indexPath);
+    console.log('Run: mkdir -p .agent/experiences && create index.json');
+    process.exit(0);
+  }
+
+  const { scored, warnings, total } = recallExperiences(process.cwd(), input);
 
   const result = {
     query: input,
@@ -100,7 +118,7 @@ function main() {
       path: expPath,
     })),
     warnings,
-    total_experiences_scanned: experiences.length,
+    total_experiences_scanned: total,
     generated_at: new Date().toISOString(),
   };
 
@@ -110,7 +128,7 @@ function main() {
   if (scored.length === 0) {
     console.log('✅ 未找到相关历史经验，可安全推进。');
   } else {
-    console.log(`\n🔍 找到 ${scored.length} 条相关经验（共扫描 ${experiences.length} 条）：\n`);
+    console.log(`\n🔍 找到 ${scored.length} 条相关经验（共扫描 ${total} 条）：\n`);
     for (const exp of scored) {
       console.log(`  [${exp.id}] ${exp.title}`);
       console.log(`  相关度: ${(exp.relevance * 100).toFixed(0)}%  命中维度: ${exp.matched_on.join(', ')}`);
@@ -126,4 +144,8 @@ function main() {
   console.log(`📄 完整结果已写入: ${outputPath}`);
 }
 
-main();
+if (require.main === module) {
+  main();
+}
+
+module.exports = { recallExperiences, computeRelevance, paths };

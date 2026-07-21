@@ -19,6 +19,23 @@ links, and generalizes `experience-recall` (experiences-only) to every store.
 
 ## Commands
 
+### 0. Unified recall (recommended entry — aggregates the sources below)
+
+```bash
+node .agent/skills/knowledge-retrieval/scripts/recall.js --query "postcommit hook" [--intent auto|lexical|lesson] [--tags a,b] [--files x] [--limit 8]
+```
+
+Single entry point that routes by intent, calls `knowledge-recall` +
+`experience-recall` in-process, augments ranking with the wikilink backlink
+signal, then fuses + dedupes + reranks into one result set (each hit tagged with
+its `source_recallers`). Does **not** replace the sources below — they remain
+independently usable. `graphify query` is intentionally NOT a result stream here
+(instruction/LLM-based, not programmatic); its structural role is served by the
+backlink centrality signal. Output → `metrics/recall-result.json`.
+
+Intent routing: `--tags`/`--files` or lesson-ish keywords (踩坑/曾经/lesson/regress) → `lesson`;
+plain concept query → `lexical`; `auto` decides.
+
 ### 1. Cross-store recall (BM25 + keyword + link-centrality + tag)
 
 ```bash
