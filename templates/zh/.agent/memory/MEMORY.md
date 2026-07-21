@@ -1,6 +1,7 @@
 # Memory 索引
 
 > 启动时 SessionStart hook 自动加载本文件（≤200 行 / 25KB cap）。
+> **每行 ≤200 字符**（Claude Code 实施级约束；超长应拆行或缩短 description）。
 > topic 文件不自动加载，agent 按需用标准 file tools 读取。
 
 ## user (0/10)
