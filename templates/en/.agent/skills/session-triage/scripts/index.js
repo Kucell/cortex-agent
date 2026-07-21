@@ -51,15 +51,22 @@ function listIds(dir, pattern) {
   return fs
     .readdirSync(dir)
     .filter((name) => pattern.test(name))
+    // Strict trailing-digit match: only `M-001` style.  Stops listing-by-side
+    // effects from dirty directory names like `M-1,2,3` regex slack.
     .map((name) => {
-      const m = name.match(/(\d+)/);
+      const m = name.match(/(\d+)$/);
       return m ? Number(m[1]) : 0;
     })
-    .filter((n) => n > 0);
+    .filter((n) => Number.isFinite(n) && n > 0);
 }
 
 function nextMissionId() {
-  return listIds(path.join(AGENT_ROOT, "missions"), /^M-/) + 1;
+  const ids = listIds(path.join(AGENT_ROOT, "missions"), /^M-/);
+  if (!ids.length) return 1;
+  // ((ids array) + 1) is the previous-line bug, where array.toString()
+  // stringifies [1,2,3] → "1,2,3" → "1,2,3" + 1 → "1,2,31". Wrap in
+  // Math.max(... ids) to ensure numeric + 1.
+  return Math.max(...ids) + 1;
 }
 
 function slugifyRunId(text) {
