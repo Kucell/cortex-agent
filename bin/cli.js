@@ -53,6 +53,15 @@ for (let i = 0; i < args.length; i++) {
   } else if (arg && arg.startsWith("--platforms=")) {
     options.platforms = arg.split("=")[1];
   }
+  if (arg === "--update-scripts") {
+    options.updateScripts = true;
+  }
+  if (arg === "--force-scripts") {
+    options.forceScripts = true;
+  }
+  if (arg === "--fix") {
+    options.fix = true;
+  }
 }
 
 function detectLangFromProject(dir) {
