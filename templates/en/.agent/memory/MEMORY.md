@@ -1,6 +1,7 @@
 # Memory Index
 
 > SessionStart hook auto-loads this file at startup (≤200 lines / 25KB cap).
+> **Each line ≤200 chars** (Claude Code implementation-level hard cap: "Under ~200 chars per entry"; long lines should be split or description shortened).
 > Topic files are NOT auto-loaded; the Agent reads them on demand via standard file tools.
 
 ## user (0/10)

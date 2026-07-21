@@ -34,12 +34,34 @@
 
 可选字段：`expires`（feedback 类必填，其他选填）、`source`、`related`。
 
+### 3.1 body 模板（feedback / project 类必含段落）
+
+对齐 Claude Code Auto Memory 内部 body 模板（v2.1.216 binary 实施级证据）：
+
+- **`feedback` 类** body 推荐结构：观察描述 → `**Why:**`（为什么会发生）→ `**How to apply:**`（下次该怎么做）
+- **`project` 类** body 推荐结构：事实陈述 → `**Why:**`（为什么这是事实）→ `**How to apply:**`（应用时该注意什么）
+- **`user` / `reference` 类** body 自由（user 描述偏好；reference 是指针 + 简短说明）
+
+`Why` 和 `How to apply` 不是强制的 frontmatter 字段——是 **body 内的 markdown 段落**（用 `**Why:**` 加粗起始）。这三个段落缺一不可时 agent 应在写入前**主动补全**；不补全会让 memory 的"指导价值"打折。
+
 ## 4. MEMORY.md 索引约定
 
 - 启动时 SessionStart hook 自动加载 `MEMORY.md`（**只**索引，不加载 topic）
 - 200 行 / 25KB 双 cap（对齐 Claude Code 官方 Auto Memory）
+- **每行 ≤200 字符**（Claude Code 实施级硬约束："Under ~200 chars per entry"；超长应拆行或缩短 description）
 - 索引按 4 类分组，每行格式：`- [标题](<type>/<file>.md) — 触发/关键词`
 - 每组首行显示 `(<当前数>/<上限>)`，agent 看到接近上限应主动归档旧条
+- **索引本身不写 frontmatter**（仅纯 markdown 列表）
+
+## 4.5 写协议（Write Protocol，对齐 Claude Code 实施级）
+
+按 Claude Code Auto Memory 内部 write protocol：
+
+1. **先写文件再加索引**：topic 文件先 Write 到 `user/`、`feedback/` 等子目录，**再**在 `MEMORY.md` 追加索引行。倒过来做会让 MEMORY.md 指向不存在的文件。
+2. **写前查 staleness / duplicate**：Write 前用 `ls` + 关键词搜现有 topic，避免重复写相同 fact；如发现已有相近条目，**更新**而非**新建**。
+3. **save 必须在 reply 完成前**：user 偏好 / 反馈 / 项目事实的写入必须在 assistant reply **生成前**完成（"write before finishing reply, not after"），不能在 reply 结尾追加或事后补。
+4. **不复制 references/ 内容到 memory/reference**：指针只放 1-2 句入口，正文留在 `references/`。
+5. **路径约束**（安全）：文件名禁止 `.`/`..`、绝对路径、`\`、控制字符；NFC 规范化；总长 ≤1024 字节、≤20 段。
 
 ## 5. 写入触发
 

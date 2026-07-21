@@ -32,14 +32,38 @@ Each topic file **must** include YAML frontmatter; field definitions in `memory.
 - `created` (ISO 8601 date)
 - `tags` (1-10 slug keywords, for future memory-recall)
 
-Optional: `expires` (required for feedback, optional for others), `source`, `related`.
+Optional: `expires` (required for feedback, optional for others), `source`, `metadata`, `related`.
+
+### 3.1 Body Template (required sections for feedback / project)
+
+Aligned with Claude Code Auto Memory internal body template (v2.1.216 binary implementation evidence):
+
+- **`feedback` type** recommended body structure: observation → `**Why:**` (why it happened) → `**How to apply:**` (what to do next time)
+- **`project` type** recommended body structure: fact statement → `**Why:**` (why this is a fact) → `**How to apply:**` (what to watch for when applying)
+- **`user` / `reference` types**: body is free-form (user describes preference; reference is a pointer + brief note)
+
+`Why` and `How to apply` are **not** required frontmatter fields — they are **body markdown sections** (bolded `**Why:**` opening). When these three sections are missing, the agent should **proactively complete them** before write; without them, memory loses its "guidance value".
+
+**feedback type includes confirmation, not just corrections**: per Claude Code binary (285546–285552), "Record from failure AND success: if you only save corrections, you will avoid past mistakes but drift away from approaches the user has already validated, and may grow overly cautious." If a user has explicitly validated a non-obvious choice, that is also feedback worth saving.
 
 ## 4. MEMORY.md Index Convention
 
 - SessionStart hook auto-loads `MEMORY.md` (**index only**, not topic files)
 - 200 lines / 25KB dual cap (aligned with Claude Code official Auto Memory)
+- **Each line ≤200 chars** (Claude Code implementation-level hard cap: "Under ~200 chars per entry"; long lines should be split or description shortened)
 - Index groups by 4 types; each line format: `- [Title](<type>/<file>.md) — trigger/keyword`
 - Each group's first line shows `(<current>/<cap>)`; when approaching the cap, the agent should auto-archive old entries
+- **The index itself has no frontmatter** (plain markdown list only)
+
+## 4.5 Write Protocol (aligned with Claude Code implementation-level)
+
+Per Claude Code Auto Memory internal write protocol:
+
+1. **Write file first, then add index entry**: Write the topic file to `user/`/`feedback/`/etc. **first**, then append the index line to `MEMORY.md`. Doing it backwards will leave `MEMORY.md` pointing at non-existent files.
+2. **Check staleness / duplicate before write**: before writing, use `ls` + keyword search across existing topics to avoid duplicating facts; if a similar entry exists, **update** rather than **create new**.
+3. **Save must complete before reply finishes**: writes for user preference / feedback / project fact must complete **before** the assistant reply is generated ("write before finishing reply, not after"), not as a tail append or post-hoc patch.
+4. **Do not copy `references/` content into `memory/reference/`**: pointers only hold 1-2 sentence entry; the body stays in `references/`.
+5. **Path constraints** (security): file names forbid `.`/`..`, absolute paths, `\`, control characters; NFC-normalized; total length ≤1024 bytes, ≤20 segments.
 
 ## 5. Write Triggers
 
@@ -71,6 +95,7 @@ memory is **lightweight notes for Agent recall**, not "long-term archival".
 |---|---|---|
 | Per topic file size cap | **102400 bytes** (100 KB) | Claude Code binary internal constant |
 | MEMORY.md startup load | 200 lines / 25 KB dual cap | Claude Code Auto Memory public docs |
+| MEMORY.md entry line length | ≤200 chars (warning above) | Claude Code binary "Under ~200 chars per entry" |
 | `name` slug charset | `^[a-z0-9_-]+$` (underscores allowed) | Claude Code binary internal constant |
 | Path segments | ≤20 segments | Claude Code binary internal constant |
 | Path bytes | ≤1024 bytes | Claude Code binary internal constant |
@@ -94,5 +119,7 @@ This design is informed by Claude Code v2.1.216 binary internal prompt strings (
 - `metadata` field is optional (cortex-agent's top-level `type` remains canonical)
 - slug regex includes underscores (aligned with Claude Code)
 - Per-file 100 KB cap (prevents memory files from becoming a performance bottleneck)
+- `[[name]]` wiki-link syntax in body is a loose cross-memory reference (missing target is not an error)
+- feedback records **success and failure**, not just corrections
 
 **Note**: Claude Code behavior may evolve across versions; this design is aligned only based on v2.1.216 implementation-level evidence — not a public API contract commitment.
