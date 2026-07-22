@@ -19,7 +19,7 @@ cortex-agent init --lang zh
 如果项目已经存在 `.agent/`，使用纯加法升级：
 
 ```bash
-cortex-agent upgrade --lang zh
+cortex-agent update --lang zh
 ```
 
 给 LLM / AI 助手的初始化指令：
@@ -27,7 +27,7 @@ cortex-agent upgrade --lang zh
 ```text
 先执行 `command -v cortex-agent`。
 如果命令存在，不要使用 npx，直接执行 `cortex-agent init --lang zh`。
-如果当前项目已有 `.agent/`，执行 `cortex-agent upgrade --lang zh`。
+如果当前项目已有 `.agent/`，执行 `cortex-agent update --lang zh`。
 完成后运行 `/configure` 和 `/scan-project`。
 保留当前项目自己的 Git user.name / user.email。
 ```
@@ -53,7 +53,7 @@ fi
 
 cd "$TARGET_PROJECT"
 if [ -d ".agent" ]; then
-  cortex-agent upgrade --lang zh
+  cortex-agent update --lang zh
 else
   cortex-agent init --lang zh
 fi
@@ -65,7 +65,7 @@ fi
 这是 cortex-agent GitHub 链接：<repo-url>。
 这是目标项目路径：<project-path>。
 如果本机没有 `cortex-agent` 命令，请 clone 该 GitHub 仓库到 `$HOME/.local/share/cortex-agent` 并执行 `npm link`。
-然后进入目标项目；已有 `.agent/` 就执行 `cortex-agent upgrade --lang zh`，否则执行 `cortex-agent init --lang zh`。
+然后进入目标项目；已有 `.agent/` 就执行 `cortex-agent update --lang zh`，否则执行 `cortex-agent init --lang zh`。
 初始化后运行 `/configure` 与 `/scan-project`。
 不要修改目标项目自己的 Git user.name / user.email。
 ```
@@ -98,6 +98,7 @@ npx cortex-agent init --global
 | `cortex-agent init --global` | 初始化到 `~/.agent`（全局共享配置） |
 | `cortex-agent init --track` | 初始化时同时纳入 Git 追踪（默认本地忽略）|
 | `cortex-agent upgrade` | 纯加法升级：补充 `.agent/` 新增文件；若缺失则创建根目录 `AGENTS.md` / `GEMINI.md`；刷新符号链接，**绝不覆盖已有内容** |
+| `cortex-agent update` | 安全完整更新：先执行加法升级，再同步未被本地修改的框架管理脚本；本地修改会保留并返回部分完成状态 |
 | `cortex-agent track` | 开启 Git 追踪：移除本地忽略，自动 `git add .agent` |
 | `cortex-agent untrack` | 关闭 Git 追踪：`git rm --cached` + 写入本地忽略，不删除文件 |
 | `cortex-agent doctor` | 健康检查：验证 `.agent`/`AGENTS.md`/`GEMINI.md` 识别与 Git 状态 |

@@ -1,6 +1,6 @@
 ---
 name: runtime-continuity
-description: session-manager 5-mode protocol implemented as a CLI: assess / archive / restore / status / warm. Reads .agent/sub-agents/session-manager.md as source of truth. Archive path is ~/.agent/contexts/<project>/, same as session-manager.
+description: session-manager 7-mode protocol implemented as a CLI: assess / archive / restore / status / warm / host-switch / list-contexts. Reads .agent/sub-agents/session-manager.md as source of truth. Archive path is ~/.agent/contexts/<project>/, same as session-manager.
 ---
 
 # runtime-continuity (L1 — session-manager CLI shell)
@@ -43,7 +43,13 @@ node .agent/skills/runtime-continuity/scripts/index.js status \
   --project <project>
 
 # 4. warm — output the "5-hour timer starting" prompt for the host
+#    Pure advisory: no side effects, no gate needed.
 node .agent/skills/runtime-continuity/scripts/index.js warm
+
+#    --auto + --project: also writes a session_started run event on top.
+#    Designed for SessionStart hook auto-init (see .agent/hooks/hooks.json).
+node .agent/skills/runtime-continuity/scripts/index.js warm \
+  --auto --project <project>
 
 # 5. host-switch (Phase 2 — cross-host migration) ★
 #    When user wants to move work from claude-code → codex (or any host).

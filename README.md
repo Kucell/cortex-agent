@@ -28,8 +28,8 @@ cortex-agent --version
 # 2. 在要接入的项目根目录执行
 cortex-agent init --lang zh
 
-# 3. 已有 .agent 的项目使用纯加法升级
-cortex-agent upgrade --lang zh
+# 3. 已有 .agent 的项目使用安全完整更新
+cortex-agent update --lang zh
 ```
 
 给 AI 助手的最小指令：
@@ -37,7 +37,7 @@ cortex-agent upgrade --lang zh
 ```text
 在当前项目根目录检查 `command -v cortex-agent`。
 如果命令存在，直接运行 `cortex-agent init --lang zh`。
-如果已存在 `.agent/`，改为运行 `cortex-agent upgrade --lang zh`。
+如果已存在 `.agent/`，改为运行 `cortex-agent update --lang zh`。
 初始化后运行 `/configure` 和 `/scan-project` 补齐项目上下文。
 不要修改实战项目自己的 Git user.name / user.email。
 ```
@@ -68,7 +68,7 @@ fi
 # 2. 初始化或升级目标项目
 cd "$TARGET_PROJECT"
 if [ -d ".agent" ]; then
-  cortex-agent upgrade --lang zh
+  cortex-agent update --lang zh
 else
   cortex-agent init --lang zh
 fi
@@ -80,7 +80,7 @@ fi
 这是 cortex-agent GitHub 链接：<repo-url>。
 目标项目路径是：<project-path>。
 如果本机没有 `cortex-agent` 命令，请 clone 该 GitHub 仓库到 `$HOME/.local/share/cortex-agent` 并执行 `npm link`。
-然后进入目标项目；已有 `.agent/` 就执行 `cortex-agent upgrade --lang zh`，否则执行 `cortex-agent init --lang zh`。
+然后进入目标项目；已有 `.agent/` 就执行 `cortex-agent update --lang zh`，否则执行 `cortex-agent init --lang zh`。
 完成后运行 `/configure` 与 `/scan-project`，并保留目标项目自己的 Git 配置。
 ```
 
@@ -93,7 +93,10 @@ npx cortex-agent init
 # 英文模板
 npx cortex-agent init --lang=en
 
-# 升级已有安装（纯加法，不覆盖已有文件）
+# 安全完整更新（同步未被本地修改的框架脚本）
+npx cortex-agent update
+
+# 仅补充新增文件（纯加法，不覆盖已有文件）
 npx cortex-agent upgrade
 ```
 

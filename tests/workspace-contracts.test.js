@@ -17,16 +17,14 @@ function read(root, relative) {
   return fs.readFileSync(path.join(root, relative), "utf8");
 }
 
-test("workspace contract schemas parse and keep local/en/zh templates identical", () => {
+test("workspace contract schemas parse and keep local/shared templates identical", () => {
   const local = path.join(ROOT, ".agent");
-  const english = path.join(ROOT, "templates", "en", ".agent");
-  const chinese = path.join(ROOT, "templates", "zh", ".agent");
+  const shared = path.join(ROOT, "templates", "_shared", ".agent");
 
   for (const relative of RELATIVE_FILES) {
     const source = read(local, relative);
     assert.doesNotThrow(() => JSON.parse(source), relative);
-    assert.equal(read(english, relative), source, `English template drift: ${relative}`);
-    assert.equal(read(chinese, relative), source, `Chinese template drift: ${relative}`);
+    assert.equal(read(shared, relative), source, `Shared template drift: ${relative}`);
   }
 });
 

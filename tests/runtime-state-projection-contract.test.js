@@ -36,6 +36,5 @@ test("projected resources preserve stable correlation, event, evidence, and next
 test("projection schema remains byte-identical across local and distribution templates", () => {
   const relative = path.join("runtime", "runtime-state-projection.schema.json");
   const local = fs.readFileSync(path.join(ROOT, ".agent", relative), "utf8");
-  assert.equal(fs.readFileSync(path.join(ROOT, "templates", "en", ".agent", relative), "utf8"), local);
-  assert.equal(fs.readFileSync(path.join(ROOT, "templates", "zh", ".agent", relative), "utf8"), local);
+  assert.equal(fs.readFileSync(path.join(ROOT, "templates", "_shared", ".agent", relative), "utf8"), local);
 });

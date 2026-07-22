@@ -199,10 +199,6 @@ assert.deepStrictEqual(indexSchema.properties.tasks.items.properties.stage.enum,
 assert.deepStrictEqual(index, { tasks: [] });
 
 for (const locale of ["zh", "en"]) {
-  assert.deepStrictEqual(readJson(`templates/${locale}/.agent/tasks/task.schema.json`), taskSchema);
-  assert.deepStrictEqual(readJson(`templates/${locale}/.agent/tasks/index.schema.json`), indexSchema);
-  assert.deepStrictEqual(readJson(`templates/${locale}/.agent/tasks/index.json`), index);
-
   assertIncludes(`templates/${locale}/.agent/tasks/README.md`, [
     "draft -> spec -> plan -> implement -> validate -> review -> done",
     "payload.artifact_kind",
@@ -210,6 +206,10 @@ for (const locale of ["zh", "en"]) {
     "Management API",
   ]);
 }
+
+assert.deepStrictEqual(readJson("templates/_shared/.agent/tasks/task.schema.json"), taskSchema);
+assert.deepStrictEqual(readJson("templates/_shared/.agent/tasks/index.schema.json"), indexSchema);
+assert.deepStrictEqual(readJson("templates/_shared/.agent/tasks/index.json"), index);
 
 const workflowMarkers = {
   "plan.md": [".agent/tasks/<task-id>.json", "draft -> spec", "spec -> plan", "payload.artifact_kind"],

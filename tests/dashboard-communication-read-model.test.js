@@ -139,7 +139,7 @@ test("task cards open a read-only Markdown preview with related proposals and ta
 
   const { html } = generate(cwd);
 
-  assert.match(html, /class="task-card" data-task-id="T-preview"/);
+  assert.match(html, /class="task-card"[^>]*role="button"[^>]*data-task-id="T-preview"/);
   assert.match(html, /id="preview-dialog"/);
   assert.match(html, /id="overview-text"/);
   assert.match(html, /Content Overview/);
@@ -149,10 +149,29 @@ test("task cards open a read-only Markdown preview with related proposals and ta
   assert.match(html, /fetch\('\/api\/preview\?path='/);
   assert.match(html, /function renderMarkdown\(markdown\)/);
   assert.match(html, /function documentOverview\(content, path, lang\)/);
+  assert.match(html, /function loadPreview\(path\)/);
+  assert.match(html, /task\.refs && task\.refs\[0\]/);
+  assert.match(html, /event\.key !== 'Enter'/);
   assert.match(html, /The goal is: Preview task/);
   assert.match(html, /dict\.openPreview/);
   const browserScript = (html.match(/<script>([\s\S]*?)<\/script>/) || [])[1];
   assert.ok(browserScript, "missing dashboard browser script");
   assert.doesNotThrow(() => new vm.Script(browserScript));
   assert.doesNotMatch(html, /<button[^>]+(?:approve|release|resolve)/i);
+});
+
+test("task table Markdown links become preview references when API tasks omit them", (t) => {
+  const fixture = { ...baseFixture(), tasks: [{ id: "T-linked", title: "Linked task", status: "active" }] };
+  const cwd = project(fixture);
+  t.after(() => fs.rmSync(cwd, { recursive: true, force: true }));
+  const plansDir = path.join(cwd, ".agent", "plans");
+  fs.mkdirSync(path.join(plansDir, "proposals", "linked"), { recursive: true });
+  fs.writeFileSync(path.join(plansDir, "task-progress.md"), [
+    "| ID | Priority | Task | Progress | Plan |",
+    "| --- | --- | --- | --- | --- |",
+    "| T-linked | P1 | Linked task | 20% | [Proposal](proposals/linked/proposal.md) |",
+  ].join("\n"), "utf8");
+
+  const { html } = generate(cwd);
+  assert.ok(html.includes(".agent/plans/proposals/linked/proposal.md"));
 });

@@ -68,6 +68,8 @@ test("dashboard preview API reads only authorized project documents", async (t) 
   write(path.join(projectRoot, "docs", "large.txt"), "x".repeat(1024 * 1024 + 1));
   fs.mkdirSync(path.join(projectRoot, "docs", "folder.md"));
   write(path.join(agentRoot, "references", "state.json"), "{\"status\":\"ready\"}\n");
+  write(path.join(agentRoot, "plans", "task-progress.md"), "# Task progress\n");
+  write(path.join(agentRoot, "missions", "M-001", "mission-plan.md"), "# Mission M-001\n");
   write(path.join(agentRoot, "outside.md"), "outside allowed docs root\n");
   write(path.join(agentRoot, "metrics", "agent-dashboard.html"), "<html><body>Dashboard</body></html>");
   write(path.join(agentRoot, "skills", "agent-dashboard", "scripts", "generate.js"), [
@@ -108,6 +110,14 @@ test("dashboard preview API reads only authorized project documents", async (t) 
     content: "{\"status\":\"ready\"}\n",
     format: "json",
   });
+
+  const taskPlan = await request(port, "/api/preview?path=.agent%2Fplans%2Ftask-progress.md");
+  assert.equal(taskPlan.status, 200);
+  assert.equal(JSON.parse(taskPlan.body).content, "# Task progress\n");
+
+  const mission = await request(port, "/api/preview?path=.agent%2Fmissions%2FM-001%2Fmission-plan.md");
+  assert.equal(mission.status, 200);
+  assert.equal(JSON.parse(mission.body).content, "# Mission M-001\n");
 
   const traversal = await request(port, "/api/preview?path=docs%2F..%2Fsrc%2Fprivate.md");
   assert.equal(traversal.status, 400);

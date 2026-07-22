@@ -10,7 +10,8 @@ const test = require("node:test");
 const ROOT = path.resolve(__dirname, "..");
 const EN = path.join(ROOT, "templates/en/.agent/skills/runtime-state-mcp");
 const ZH = path.join(ROOT, "templates/zh/.agent/skills/runtime-state-mcp");
-const SERVER = path.join(EN, "scripts/server.js");
+const SHARED = path.join(ROOT, "templates/_shared/.agent/skills/runtime-state-mcp");
+const SERVER = path.join(SHARED, "scripts/server.js");
 const QUERIES = ["runtime-state", "workspaces", "hook-runs", "resource-leases", "composite-workspaces", "resource-events", "guided-reviews", "benchmarks"];
 
 function frame(value) {
@@ -72,10 +73,8 @@ test("unavailable Management API produces a structured diagnostic error", async 
   assert.match(result.stderr, /Management API query workspaces failed/);
 });
 
-test("locale machine files are byte-identical and contain no direct state parser", () => {
-  const en = fs.readFileSync(path.join(EN, "scripts/server.js"), "utf8");
-  const zh = fs.readFileSync(path.join(ZH, "scripts/server.js"), "utf8");
-  assert.equal(zh, en);
-  assert.doesNotMatch(en, /readFileSync|\.agent\/(?:runs|workspaces|sessions)/);
-  assert.doesNotMatch(en, /tools\/list|tools\/call.*result/);
+test("shared machine file contains no direct state parser", () => {
+  const server = fs.readFileSync(SERVER, "utf8");
+  assert.doesNotMatch(server, /readFileSync|\.agent\/(?:runs|workspaces|sessions)/);
+  assert.doesNotMatch(server, /tools\/list|tools\/call.*result/);
 });
