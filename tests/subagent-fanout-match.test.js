@@ -7,7 +7,7 @@ const assert = require("node:assert/strict");
 const test = require("node:test");
 
 const { matchFanoutTrigger, listKeywords, normalize } = require(
-  "/Users/xueyq/myworks/cortex-agent/templates/en/.agent/skills/subagent-trace/scripts/match-trigger.js",
+  "/Users/xueyq/myworks/cortex-agent/templates/_shared/.agent/skills/subagent-trace/scripts/match-trigger.js",
 );
 
 // ─── zh first ────────────────────────────────────────────────────────────
