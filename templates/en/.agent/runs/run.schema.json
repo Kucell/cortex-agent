@@ -45,7 +45,7 @@
         "properties": {
           "type": {
             "type": "string",
-            "description": "Stable event type. Recognized values include: state_changed, task_decomposed, worktree_created, lock_acquired, agent_invoked, file_read, file_edited, command_started, command_finished, validation_started, validation_passed, validation_failed, handoff_created, merge_started, merge_completed, publish_started, publish_completed, blocked, failed, canceled, completed, human_observation, tool_failure, investigation_step, handoff_auto_generated, transcript_linked, vcs_pr_opened, vcs_pr_merged, vcs_pr_closed."
+            "description": "Stable event type. Recognized values include: state_changed, task_decomposed, worktree_created, lock_acquired, agent_invoked, file_read, file_edited, command_started, command_finished, validation_started, validation_passed, validation_failed, handoff_created, merge_started, merge_completed, publish_started, publish_completed, blocked, failed, canceled, completed, human_observation, tool_failure, investigation_step, handoff_auto_generated, transcript_linked, vcs_pr_opened, vcs_pr_merged, vcs_pr_closed, subagent_spawned, subagent_progress, subagent_completed, subagent_cancelled."
           },
           "phase": { "type": ["string", "null"] },
           "status": { "type": ["string", "null"] },
