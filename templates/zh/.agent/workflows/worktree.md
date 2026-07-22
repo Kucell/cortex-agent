@@ -235,24 +235,74 @@ node .agent/skills/management-api/scripts/index.js runs checkpoint \
 - `/ship` 已完成或有明确豁免。
 - worktree 内验证命令已记录。
 - 没有未处理 handoff。
-- 与 base branch rebase 或 merge 后无冲突。
+- 已通过只读 diff/status 和必要的项目验证评估冲突风险；如果需要 fetch/rebase，必须在冻结合并候选前完成。
 
-推荐命令：
+### 资源绑定审批
+
+`/worktree` 是单任务分支合并的 owning workflow。先读取仓库规则、分支保护与任务计划，确定已批准的 integration strategy：`fast-forward`、`squash`、`local-merge` 或 `pr-handoff`。不得自行默认为某一种策略。
+
+策略尚未冻结时，先提出一个明确策略并创建独立 Decision/Waitpoint；其 `resource_ref` 必须包含 proposed strategy、source/target branch 与当前 short SHA，ID 使用 `D-worktree-<task-id>-strategy-<source-short-sha>-<target-short-sha>-<resource-digest8>` 和对应 `WP-` ID。该请求使用 `type=merge`、`action=merge`，Waitpoint owner 为 `/worktree`。用户批准并由 `/worktree` 消费后，才把该策略作为本次候选的冻结输入。
+
+完成必要的同步和冲突处理并固定最终 source/target commit 后，计算完整资源摘要，生成精确资源引用：
+
+```text
+git:<repository>#integrate:<source-branch>@<source-head>-><target-branch>@<target-head>#strategy:<integration-strategy>#digest:<resource-digest>
+```
+
+用同一个 `resource_ref` 创建 Decision 和 blocking Waitpoint：
 
 ```bash
-git fetch
-git rebase <base-branch>
+node .agent/skills/management-api/scripts/index.js decisions request \
+  --decision-id D-worktree-<task-id>-<source-short-sha>-<target-short-sha>-<resource-digest8> \
+  --gate worktree \
+  --type merge \
+  --requested-by worktree-coordinator \
+  --prompt "Approve this exact worktree merge?" \
+  --action merge \
+  --resource-ref "<resource-ref>"
+
+node .agent/skills/management-api/scripts/index.js waitpoints create \
+  --waitpoint-id WP-worktree-<task-id>-<source-short-sha>-<target-short-sha>-<resource-digest8> \
+  --gate worktree \
+  --owner-workflow /worktree \
+  --reason "Exact commits and integration strategy require user approval" \
+  --action merge \
+  --resource-ref "<resource-ref>" \
+  --decision-id D-worktree-<task-id>-<source-short-sha>-<target-short-sha>-<resource-digest8>
+```
+
+创建后停止，向用户显示包含本次资源摘要的 `/approve decision <decision-id>`。Dashboard 只能展示该请求，不能批准。用户解析后，由 `/worktree merge` 重新读取 Decision，确认状态为 `approved`、选项为 `approve`、用户解析证据完整，且 action/resource 与当前 source/target commit 和 integration strategy 完全一致，再消费 Waitpoint：
+
+```bash
+node .agent/skills/management-api/scripts/index.js waitpoints release \
+  --waitpoint-id WP-worktree-<task-id>-<source-short-sha>-<target-short-sha>-<resource-digest8> \
+  --gate owner \
+  --owner-workflow /worktree \
+  --decision-id D-worktree-<task-id>-<source-short-sha>-<target-short-sha>-<resource-digest8> \
+  --released-by worktree-coordinator \
+  --release-note "Approved Decision matches commits, strategy and resource digest"
+```
+
+若任一 commit 或 strategy 已变化，旧 Decision 不得复用；使用新的 short SHA/resource digest 创建新 Decision/Waitpoint。阶段级、多来源集成只报告“项目级 Checkpoint 集成路由尚未批准”，不得调用尚不存在的工作流。
+
+准备合并候选时可以运行只读检查：
+
+```bash
 git diff --check
 ```
 
-合并步骤：
+`git status`、`git diff`、`git diff --check` 和本地日志读取是普通只读检查，不需要 Decision。`git fetch` 会访问远端但不重写工作区，应在执行前明确展示远端和目的，并创建 `external_side_effect` Decision/Waitpoint；rebase 会重写 source commits，必须单独走 `destructive` Decision/Waitpoint。二者都必须在 merge Decision 创建前完成。Waitpoint 释放后不得再 rebase 或改变 source/target HEAD。
 
-```bash
-git switch <base-branch>
-git merge --no-ff <worktree-branch>
-```
+执行时只采用资源中已批准的仓库策略：
 
-合并前后分别追加 `merge_started` / `merge_completed` Run event；如果冲突或失败，追加 `failed` 或 `blocked`。
+| Strategy | 执行边界 |
+| :--- | :--- |
+| `fast-forward` | 使用仓库批准的 fast-forward 命令，并验证 target 正好推进到 approved source。 |
+| `squash` | 使用仓库批准的 squash 流程；生成提交时转入 `/commit`，不得隐式提交。 |
+| `local-merge` | 使用仓库配置的本地 merge 参数，不硬编码 `--no-ff` 或其他策略。 |
+| `pr-handoff` | 不在本地合并；创建 PR/handoff 所需证据，push 和创建 PR 分别遵循外部副作用审批。 |
+
+不得自动 reset、revert、push 或强推。合并前后分别追加 `merge_started` / `merge_completed` Run event；如果冲突或失败，追加 `failed` 或 `blocked`。
 
 ## VALIDATE
 
@@ -286,6 +336,7 @@ git merge --no-ff <worktree-branch>
 - `/mission`：每个 milestone 可映射到一个或多个 worktree。
 - `/handoff`：跨 worktree 转移上下文的唯一正式入口。
 - `/ship`：每个 worktree 的任务收口入口。
+- 项目级 Checkpoint、多来源排序集成：相关提案仍待批准；当前只报告待路由状态，不引用或执行不存在的工作流。
 
 ## Queue / Session 运行态写入
 

@@ -196,7 +196,7 @@ test("returns structured port_exhausted at the upper port boundary", async (t) =
 test("canonical and bilingual template servers are byte-identical", () => {
   const canonical = fs.readFileSync(SERVER);
   for (const locale of ["en", "zh"]) {
-    const template = fs.readFileSync(path.join(ROOT, "templates", locale, ".agent", "skills", "agent-dashboard", "scripts", "serve.js"));
+    const template = fs.readFileSync(path.join(ROOT, "templates", "_shared", ".agent", "skills", "agent-dashboard", "scripts", "serve.js"));
     assert.deepEqual(template, canonical);
   }
 });

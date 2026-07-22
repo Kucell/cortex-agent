@@ -10,7 +10,8 @@ const test = require("node:test");
 const ROOT = path.resolve(__dirname, "..");
 const EN = path.join(ROOT, "templates/en/.agent/skills/runtime-state-integration");
 const ZH = path.join(ROOT, "templates/zh/.agent/skills/runtime-state-integration");
-const SCRIPT = path.join(EN, "scripts/index.js");
+const SHARED = path.join(ROOT, "templates/_shared/.agent/skills/runtime-state-integration");
+const SCRIPT = path.join(SHARED, "scripts/index.js");
 
 function invoke(mode, input) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "runtime-state-integration-"));
@@ -38,7 +39,7 @@ function completeContract() {
 }
 
 test("template machine files remain identical and rules cover the seven-part invariant", () => {
-  assert.equal(fs.readFileSync(path.join(EN, "scripts/index.js"), "utf8"), fs.readFileSync(path.join(ZH, "scripts/index.js"), "utf8"));
+  assert.ok(fs.existsSync(SCRIPT));
   for (const locale of ["en", "zh"]) {
     const rule = fs.readFileSync(path.join(ROOT, `templates/${locale}/.agent/rules/runtime-state-integration.md`), "utf8");
     for (const term of ["Resource", "State machine", "Event journal", "Evidence", "Write gate", "Query projection", "Consumer surface"]) {

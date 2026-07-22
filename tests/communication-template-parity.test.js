@@ -12,6 +12,7 @@ const TEMPLATE_ROOTS = [
   path.join(ROOT, "templates", "en", ".agent"),
   path.join(ROOT, "templates", "zh", ".agent"),
 ];
+const SHARED_ROOT = path.join(ROOT, "templates", "_shared", ".agent");
 
 const COMMUNICATION_FILES = {
   inbox: ["README.md", "inbox-message.schema.json", "index.json", "index.schema.json"],
@@ -21,12 +22,9 @@ const COMMUNICATION_FILES = {
 
 const MACHINE_FILES = [
   "inbox/inbox-message.schema.json",
-  "inbox/index.json",
   "inbox/index.schema.json",
   "decisions/decision.schema.json",
-  "decisions/index.json",
   "decisions/index.schema.json",
-  "waitpoints/index.json",
   "waitpoints/index.schema.json",
   "waitpoints/waitpoint.schema.json",
   "skills/management-api/scripts/index.js",
@@ -52,21 +50,22 @@ function hash(root, relativePath) {
 test("communication template directories are complete", () => {
   for (const templateRoot of TEMPLATE_ROOTS) {
     for (const [directory, expectedFiles] of Object.entries(COMMUNICATION_FILES)) {
-      const actualFiles = fs.readdirSync(path.join(templateRoot, directory)).sort();
+      const actualFiles = [...new Set([
+        ...fs.readdirSync(path.join(templateRoot, directory)),
+        ...fs.readdirSync(path.join(SHARED_ROOT, directory)),
+      ])].sort();
       assert.deepEqual(actualFiles, [...expectedFiles].sort(), `${templateRoot}/${directory} is incomplete`);
     }
   }
 });
 
 test("machine-readable communication files match canonical hashes", () => {
-  for (const templateRoot of TEMPLATE_ROOTS) {
-    for (const relativePath of MACHINE_FILES) {
-      assert.equal(
-        hash(templateRoot, relativePath),
-        hash(CANONICAL, relativePath),
-        `${relativePath} drifted in ${templateRoot}`,
-      );
-    }
+  for (const relativePath of MACHINE_FILES) {
+    assert.equal(
+      hash(SHARED_ROOT, relativePath),
+      hash(CANONICAL, relativePath),
+      `${relativePath} drifted in shared template`,
+    );
   }
 });
 

@@ -8,6 +8,7 @@ const test = require("node:test");
 const ROOT = path.resolve(__dirname, "..");
 const EN = path.join(ROOT, "templates", "en", ".agent", "runtime");
 const ZH = path.join(ROOT, "templates", "zh", ".agent", "runtime");
+const SHARED = path.join(ROOT, "templates", "_shared", ".agent", "runtime");
 const SCHEMAS = [
   "resource-event.schema.json",
   "log-cursor.schema.json",
@@ -24,17 +25,17 @@ function schema(root, file) {
 }
 
 test("runtime schemas parse and remain identical across distribution templates", () => {
-  assert.deepEqual(fs.readdirSync(EN).sort(), ["README.md", ...SCHEMAS].sort());
-  assert.deepEqual(fs.readdirSync(ZH).sort(), ["README.md", ...SCHEMAS].sort());
+  assert.deepEqual(fs.readdirSync(EN).sort(), ["README.md"]);
+  assert.deepEqual(fs.readdirSync(ZH).sort(), ["README.md"]);
+  assert.deepEqual(fs.readdirSync(SHARED).sort(), SCHEMAS.sort());
 
   for (const file of SCHEMAS) {
-    assert.doesNotThrow(() => schema(EN, file), file);
-    assert.equal(read(ZH, file), read(EN, file), `Chinese machine contract drift: ${file}`);
+    assert.doesNotThrow(() => schema(SHARED, file), file);
   }
 });
 
 test("resource events are append-only correlation records, not embedded logs", () => {
-  const event = schema(EN, "resource-event.schema.json");
+  const event = schema(SHARED, "resource-event.schema.json");
   for (const field of [
     "event_id", "resource_type", "resource_id", "type", "at", "actor",
     "evidence_refs", "log_cursor_refs",
@@ -51,7 +52,7 @@ test("resource events are append-only correlation records, not embedded logs", (
 });
 
 test("log cursors require target-side time and reject controller-only timestamps", () => {
-  const cursor = schema(EN, "log-cursor.schema.json");
+  const cursor = schema(SHARED, "log-cursor.schema.json");
   for (const field of [
     "timestamp_source", "target_timestamp_utc", "log_filter_start_utc",
   ]) {
@@ -63,8 +64,8 @@ test("log cursors require target-side time and reject controller-only timestamps
 });
 
 test("log and evidence references fail closed on redaction and availability", () => {
-  const cursor = schema(EN, "log-cursor.schema.json");
-  const evidence = schema(EN, "evidence-ref.schema.json");
+  const cursor = schema(SHARED, "log-cursor.schema.json");
+  const evidence = schema(SHARED, "evidence-ref.schema.json");
 
   for (const contract of [cursor, evidence]) {
     assert.ok(contract.required.includes("redacted"));
