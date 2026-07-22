@@ -62,6 +62,13 @@ The following are **strictly forbidden** in any part of a commit message (type, 
 
 > Commit messages represent the developer's own work. AI is a tool, not a contributor, and must not appear in commit history in any form.
 
+## Related
+
+- See also `submission-workflow.md` — covers the double-repo commit
+  order (inner first, then outer), pre-commit gate stack, push
+  hygiene, and failure-recovery playbook that complements this
+  file's message-format rules.
+
 ## Examples
 
 ```
