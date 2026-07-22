@@ -95,6 +95,10 @@ const ctx = { cwd, args, command, options, lang, templateDir };
     case "remove":      await removePlatforms(ctx); break;
     case "list":        listPlatforms(ctx); break;
     case "upgrade":     await upgrade(ctx); break;
+    case "update":
+      ctx.options.updateScripts = true;
+      await upgrade(ctx);
+      break;
     case "track":       trackAgent(ctx); break;
     case "untrack":     untrackAgent(ctx); break;
     case "link-global": linkGlobal(ctx); break;
@@ -103,6 +107,15 @@ const ctx = { cwd, args, command, options, lang, templateDir };
     case "queues":      queues(ctx); break;
     case "sessions":    sessions(ctx); break;
     case "dev":         await dev(ctx); break;
-    default:            printHelp(); break;
+    case undefined:
+    case "--help":
+    case "-h":
+      printHelp();
+      break;
+    default:
+      console.error(`Unknown command: ${command}`);
+      printHelp();
+      process.exitCode = 2;
+      break;
   }
 })();

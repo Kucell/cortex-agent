@@ -12,7 +12,7 @@ const { spawnSync } = require("node:child_process");
 const test = require("node:test");
 
 const ROOT = path.resolve(__dirname, "..");
-const SKILL = path.join(ROOT, "templates", "en", ".agent", "skills", "runtime-continuity", "scripts", "index.js");
+const SKILL = path.join(ROOT, "templates", "_shared", ".agent", "skills", "runtime-continuity", "scripts", "index.js");
 
 function fixture() {
   const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-rt-"));
@@ -73,6 +73,33 @@ test("warm: emits the 5-hour-start prompt and zero side effects", () => {
   assert.equal(body.duration_hours, 5);
   assert.ok(body.prompt_for_host_paste.includes("5 小时计时窗口"));
   // No event appended.
+  assert.equal(readRunEvents(cwd).length, 0);
+});
+
+test("warm --auto: writes session_started event when --project is given", () => {
+  const cwd = fixture();
+  const r = run(cwd, ["warm", "--auto", "--project", "rt-warm-auto"]);
+  assert.equal(r.status, 0);
+  const body = JSON.parse(r.stdout);
+  assert.equal(body.duration_hours, 5);
+  assert.equal(body.auto_init, true, "expected auto_init:true when project is given");
+  // session_started event appended
+  const evs = readRunEvents(cwd);
+  assert.ok(evs.length >= 1, "expected at least 1 run event");
+  const last = evs[evs.length - 1];
+  assert.equal(last.type, "session_started");
+  assert.equal(last.via, "warm_auto_init");
+  assert.equal(last.project, "rt-warm-auto");
+});
+
+test("warm --auto without --project: no side effects (graceful no-op)", () => {
+  const cwd = fixture();
+  const r = run(cwd, ["warm", "--auto"]);
+  assert.equal(r.status, 0);
+  const body = JSON.parse(r.stdout);
+  assert.equal(body.duration_hours, 5);
+  assert.equal(body.auto_init, undefined, "auto_init absent when --project missing");
+  // No event appended (graceful no-op)
   assert.equal(readRunEvents(cwd).length, 0);
 });
 

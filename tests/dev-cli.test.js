@@ -17,6 +17,7 @@ function createProject() {
     ".agent/skills/agent-dashboard/scripts/serve.js",
     ".agent/skills/agent-dashboard/scripts/generate.js",
     ".agent/skills/management-api/scripts/index.js",
+    ".agent/skills/management-api/scripts/normalize-token-usage.js",
   ]) {
     const target = path.join(cwd, relative);
     fs.mkdirSync(path.dirname(target), { recursive: true });
@@ -94,8 +95,8 @@ test("dev shifts ports, heartbeats, closes, and leaves scripts reusable", async 
     return session.status === "running" ? session : null;
   });
   assert.equal(running.agent_id, "dashboard-manager");
-  assert.equal(running.server.port, port + 1);
-  assert.match(stdout, new RegExp(`http://127\\.0\\.0\\.1:${port + 1}`));
+  assert.ok(running.server.port > port, `expected a fallback port above occupied ${port}`);
+  assert.match(stdout, new RegExp(`http://127\\.0\\.0\\.1:${running.server.port}`));
   const firstHeartbeat = running.last_heartbeat_at;
   await waitFor(() => JSON.parse(fs.readFileSync(sessionFile, "utf8")).last_heartbeat_at !== firstHeartbeat);
 

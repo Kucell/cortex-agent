@@ -8,7 +8,7 @@ const { spawn, spawnSync } = require("node:child_process");
 const test = require("node:test");
 
 const ROOT = path.resolve(__dirname, "..");
-const MANAGEMENT = path.join(ROOT, "templates", "en", ".agent", "skills", "management-api", "scripts", "index.js");
+const MANAGEMENT = path.join(ROOT, "templates", "_shared", ".agent", "skills", "management-api", "scripts", "index.js");
 
 function project() {
   const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-runtime-writer-"));
@@ -129,8 +129,12 @@ test("dashboard server owns and closes its runtime session", async (t) => {
   fs.mkdirSync(managementScripts, { recursive: true });
   fs.mkdirSync(path.join(agent, "metrics"), { recursive: true });
   fs.copyFileSync(MANAGEMENT, path.join(managementScripts, "index.js"));
-  fs.copyFileSync(path.join(ROOT, "templates", "en", ".agent", "skills", "agent-dashboard", "scripts", "generate.js"), path.join(dashboardScripts, "generate.js"));
-  fs.copyFileSync(path.join(ROOT, "templates", "en", ".agent", "skills", "agent-dashboard", "scripts", "serve.js"), path.join(dashboardScripts, "serve.js"));
+  fs.copyFileSync(
+    path.join(ROOT, "templates", "_shared", ".agent", "skills", "management-api", "scripts", "normalize-token-usage.js"),
+    path.join(managementScripts, "normalize-token-usage.js"),
+  );
+  fs.copyFileSync(path.join(ROOT, "templates", "_shared", ".agent", "skills", "agent-dashboard", "scripts", "generate.js"), path.join(dashboardScripts, "generate.js"));
+  fs.copyFileSync(path.join(ROOT, "templates", "_shared", ".agent", "skills", "agent-dashboard", "scripts", "serve.js"), path.join(dashboardScripts, "serve.js"));
 
   const child = spawn(process.execPath, [path.join(dashboardScripts, "serve.js"), "--port", "0", "--interval-ms", "1000", "--session-id", "S-dashboard-test"], {
     cwd,

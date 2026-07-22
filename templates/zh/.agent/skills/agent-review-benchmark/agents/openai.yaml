@@ -1,4 +1,0 @@
-interface:
-  display_name: "Agent Review Benchmark"
-  short_description: "Generate evidence-linked reviews and local benchmarks"
-  default_prompt: "Use local evidence to generate a Guided Review or deterministic benchmark artifact."
