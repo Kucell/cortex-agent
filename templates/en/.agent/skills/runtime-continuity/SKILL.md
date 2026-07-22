@@ -44,6 +44,23 @@ node .agent/skills/runtime-continuity/scripts/index.js status \
 
 # 4. warm — output the "5-hour timer starting" prompt for the host
 node .agent/skills/runtime-continuity/scripts/index.js warm
+
+# 5. host-switch (Phase 2 — cross-host migration) ★
+#    When user wants to move work from claude-code → codex (or any host).
+#    Triggers archive() + writes session last_host + emits hand-off package
+#    for the new host.  Strongly recommended to call BEFORE ending the
+#    outgoing host's session.
+node .agent/skills/runtime-continuity/scripts/index.js host-switch \
+  --project <project> \
+  --from-host claude-code --to-host codex \
+  --reason "user wants codex now" \
+  --gate user
+
+# 6. list-contexts (Phase 2 / 3 prep) — cross-project aggregation
+#    Lists every project under ~/.agent/contexts/ with archive counts and
+#    most-recent timestamps.  No --gate required (read-only).
+node .agent/skills/runtime-continuity/scripts/index.js list-contexts \
+  [--since 2026-07-01] [--format json|table]
 ```
 
 ## Guarantees

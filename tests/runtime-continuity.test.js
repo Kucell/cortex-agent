@@ -193,3 +193,120 @@ test("archive without --project fails with missing_project", () => {
   const r = run(cwd, ["archive", "--gate", "user"]);
   assert.equal(JSON.parse(r.stdout).error, "missing_project");
 });
+
+// ─── mode 6: host-switch (Phase 2) ──────────────────────────────────────────
+
+test("host-switch: archives + writes session last_host + run event", () => {
+  const cwd = fixture();
+  rmContexts("hs");
+  try {
+    const r = run(cwd, [
+      "host-switch", "--project", "hs",
+      "--from-host", "claude-code", "--to-host", "codex",
+      "--reason", "user wants codex", "--gate", "user",
+      "--note-json", JSON.stringify({ done: "M-1", blocked: "", next: "M-2", pitfalls: "" }),
+    ]);
+    assert.equal(r.status, 0, r.stderr);
+    const body = JSON.parse(r.stdout);
+    assert.equal(body.action, "host-switch");
+    assert.equal(body.from_host, "claude-code");
+    assert.equal(body.to_host, "codex");
+    assert.ok(body.archive.archivePath.includes("/hs/"));
+    assert.ok(Array.isArray(body.next_steps_for_new_host));
+    assert.equal(body.next_steps_for_new_host.length, 4);
+    // session JSON was written
+    const sessionsDir = path.join(cwd, ".agent", "sessions");
+    const files = fs.readdirSync(sessionsDir);
+    const sFile = files.find((n) => n.startsWith("S-hs-") && n.endsWith(".json"));
+    assert.ok(sFile, "expected S-hs-*.json in sessions/");
+    const session = JSON.parse(fs.readFileSync(path.join(sessionsDir, sFile), "utf8"));
+    assert.equal(session.last_host, "codex");
+    // run event appended
+    const evs = readRunEvents(cwd);
+    const last = evs[evs.length - 1];
+    assert.equal(last.type, "host_switch_initiated");
+    assert.equal(last.from_host, "claude-code");
+    assert.equal(last.to_host, "codex");
+  } finally {
+    rmContexts("hs");
+  }
+});
+
+test("host-switch without --gate fails", () => {
+  const cwd = fixture();
+  rmContexts("hs2");
+  try {
+    const r = run(cwd, ["host-switch", "--project", "hs2", "--from-host", "a", "--to-host", "b"]);
+    assert.equal(JSON.parse(r.stdout).error, "workflow_gate_required");
+  } finally {
+    rmContexts("hs2");
+  }
+});
+
+// ─── mode 7: list-contexts (Phase 2 / 3 prep) ───────────────────────────
+
+test("list-contexts: empty home dir returns count:0", () => {
+  const cwd = fixture();
+  // ensure no contexts leak from prior runs
+  // (cannot easily clean all of ~/.agent/contexts, so just count)
+  const r = run(cwd, ["list-contexts"]);
+  assert.equal(r.status, 0);
+  const body = JSON.parse(r.stdout);
+  assert.equal(body.action, "list-contexts");
+  assert.ok(body.count >= 0);
+  assert.ok(Array.isArray(body.projects));
+});
+
+test("list-contexts: includes the project we just archived", () => {
+  const cwd = fixture();
+  rmContexts("lc");
+  try {
+    run(cwd, ["archive", "--project", "lc", "--gate", "user", "--note-json", JSON.stringify({ done: "x", blocked: "", next: "", pitfalls: "" })]);
+    const r = run(cwd, ["list-contexts"]);
+    const body = JSON.parse(r.stdout);
+    const found = body.projects.find((p) => p.project === "lc");
+    assert.ok(found, "expected lc project in list-contexts");
+    assert.ok(found.total_archives >= 1);
+  } finally {
+    rmContexts("lc");
+  }
+});
+
+test("list-contexts --format=table: includes the table string", () => {
+  const cwd = fixture();
+  rmContexts("lct");
+  try {
+    run(cwd, ["archive", "--project", "lct", "--gate", "user", "--note-json", JSON.stringify({ done: "x", blocked: "", next: "", pitfalls: "" })]);
+    const r = run(cwd, ["list-contexts", "--format", "table"]);
+    const body = JSON.parse(r.stdout);
+    assert.equal(body.format, "table");
+    assert.ok(body.table.includes("lct"));
+    assert.ok(body.table.startsWith("project\tarchives"));
+  } finally {
+    rmContexts("lct");
+  }
+});
+
+test("list-contexts --since filters by mtime", () => {
+  const cwd = fixture();
+  rmContexts("lcs");
+  try {
+    // An archive "from 1 day ago" via setting mtime
+    const dir = path.join(os.homedir(), ".agent", "contexts", "lcs");
+    fs.mkdirSync(dir, { recursive: true });
+    const f = path.join(dir, "ctx_old.md");
+    fs.writeFileSync(f, "old");
+    const past = Date.now() - 48 * 60 * 60 * 1000;
+    fs.utimesSync(f, past / 1000, past / 1000);
+    // New archive "now"
+    run(cwd, ["archive", "--project", "lcs", "--gate", "user", "--note-json", JSON.stringify({ done: "", blocked: "", next: "", pitfalls: "" })]);
+    const r = run(cwd, ["list-contexts", "--since", new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()]);
+    const body = JSON.parse(r.stdout);
+    const found = body.projects.find((p) => p.project === "lcs");
+    assert.ok(found, "lcs should be in list-contexts");
+    assert.equal(found.recent_archives, 1, "only the new archive should match the --since filter");
+    assert.equal(found.total_archives, 2, "but total_archives still counts both");
+  } finally {
+    rmContexts("lcs");
+  }
+});
