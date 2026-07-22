@@ -1,59 +1,93 @@
 ---
 name: runtime-continuity
-description: session-manager 5-mode protocol implemented as a CLI: assess / archive / restore / status / warm. 协议源头是 .agent/sub-agents/session-manager.md(已 ship),本 skill 只把它 CLI 化。归档路径 ~/.agent/contexts/<project>/,与 session-manager 一致。
+description: session-manager 5-mode protocol implemented as a CLI: assess / archive / restore / status / warm. Reads .agent/sub-agents/session-manager.md as source of truth. Archive path is ~/.agent/contexts/<project>/, same as session-manager.
 ---
 
-# runtime-continuity (L1 — session-manager CLI 化)
+# runtime-continuity (L1 — session-manager CLI shell)
 
-host(Claude Code / Cursor / Codex)无法轻松 spawn 一个 sub-agent 定义文件并等结果。本 skill 把 session-manager 的 5 模式协议包装成 CLI,让任何 host 都能调同一套时间管控纪律。
+Hosts (Claude Code / Cursor / Codex) can't easily spawn a sub-agent
+definition like `sub-agents/session-manager.md` and wait for output.
+This skill wraps that sub-agent's 5-mode protocol in a CLI surface so
+any host can invoke the same time-management discipline.
 
-> 权威协议在 `.agent/sub-agents/session-manager.md`。本文件 **不** 重写协议,只在 CLI 语义必须时记实现差异。
+> The authoritative protocol lives at `.agent/sub-agents/session-manager.md`.
+> This file does NOT redefine it.  Only implementational details differ
+> (CLI args vs Sub-Agent triggering), and only when CLI mechanics require.
 
 ## When to Use
 
-- 命中 5 小时会话时长 → `warm` 先启动计时;每 4 小时整点 → `archive` 做检查点
-- 切 host 中途(Claude Code → Codex) → `archive` 然后新 host 跑 `host-switch`(Phase 2)
-- 第二天 / 下一会话 / 新 agent 接着干 → `restore`
-- "这会话多久没存档了?" → `status`
+- Hit the 5-hour session time limit → run `warm` first to start the
+  timer; on every 4-hour mark, run `archive` to make a checkpoint.
+- Switching host agent mid-task (Claude Code → Codex, etc.) → run
+  `archive` then `host-switch` on the new host (Phase 2).
+- Resume work next day / next session / new agent → run `restore`.
+- Checking "how stale is this session" → run `status`.
 
 ## Commands
 
 ```bash
-# 0. assess — 估算任务时间预算
+# 0. assess — evaluate time budget for a task description
 node .agent/skills/runtime-continuity/scripts/index.js assess \
   --task-description "..." --gate user
 
-# 1. archive — 写真到 ~/.agent/contexts/<project>/
+# 1. archive — write a snapshot to ~/.agent/contexts/<project>/
 node .agent/skills/runtime-continuity/scripts/index.js archive \
   --project <project> --gate user [--note "已完成 X / 进行 Y / 卡点 Z"]
 
-# 2. restore — 加载项目最近一次快照
+# 2. restore — load latest snapshot for a project
 node .agent/skills/runtime-continuity/scripts/index.js restore \
   --project <project> --gate user [--list | --load latest]
 
-# 3. status — 看上次 archive 时间
+# 3. status — show last archive timing
 node .agent/skills/runtime-continuity/scripts/index.js status \
   --project <project>
 
-# 4. warm — host 应当粘贴的"启动 5h 计时窗口"提示
+# 4. warm — output the "5-hour timer starting" prompt for the host
 node .agent/skills/runtime-continuity/scripts/index.js warm
+
+# 5. host-switch (Phase 2 — cross-host migration) ★
+#    When user wants to move work from claude-code → codex (or any host).
+#    Triggers archive() + writes session last_host + emits hand-off package
+#    for the new host.  Strongly recommended to call BEFORE ending the
+#    outgoing host's session.
+node .agent/skills/runtime-continuity/scripts/index.js host-switch \
+  --project <project> \
+  --from-host claude-code --to-host codex \
+  --reason "user wants codex now" \
+  --gate user
+
+# 6. list-contexts (Phase 2 / 3 prep) — cross-project aggregation
+#    Lists every project under ~/.agent/contexts/ with archive counts and
+#    most-recent timestamps.  No --gate required (read-only).
+node .agent/skills/runtime-continuity/scripts/index.js list-contexts \
+  [--since 2026-07-01] [--format json|table]
 ```
 
 ## Guarantees
 
-- **路径与协议零偏离**:archive 写真到 session-manager 同款 `~/.agent/contexts/<project>/`,无平行路径、无漂移
-- **审计可追溯**:每次 archive / restore / status 调用都写一条 `session_archived` / `session_restored` / `session_status_queried` 事件进 `runs/<active-run>.json#events[]`
-- **零依赖**:纯 stdlib + 沿用 management-api 写事件。无 npm install
+- **Reuses session-manager path & protocol**: archive writes to the same
+  `~/.agent/contexts/<project>/` directory that session-manager
+  sub-agent uses.  No parallel paths, no divergence.
+- **Audit-friendly**: every archive / restore / status call writes
+  one `session_archived` / `session_restored` / `session_status_queried`
+  event into `runs/<active-run>.json#events[]` so the audit-trail
+  can correlate.
+- **Zero dependency**: pure stdlib + existing management-api events
+  writer.  No npm install.
 
 ## Non-Goals
 
-- ❌ 不修改 `.agent/sub-agents/session-manager.md`
-- ❌ 不爬 host 私有状态(Claude Code transcript 等)
-- ❌ 不做 host 切换拦截(那是 `host-switch`,在 Phase 2/3 draft)
+- Does NOT modify `.agent/sub-agents/session-manager.md`.
+- Does NOT crawl host private state (Claude Code transcripts, etc.).
+- Does NOT block host switch unless explicitly invoked via
+  `host-switch` (Phase 2 / 3, draft).
 
 ## Source of Truth
 
-- `.agent/sub-agents/session-manager.md` — 协议权威源。**"怎么说"读这里**。
-- 本 `SKILL.md` — **"怎么 CLI 化"读这里**。
+- `.agent/sub-agents/session-manager.md` — the canonical 5-mode protocol.
+  When in doubt about *what to say*, read that file.
+- This `SKILL.md` — when in doubt about *how to invoke it as a CLI*,
+  read this file.
 
-详细返回值 / helper / 边界看 `scripts/index.js`,单文件 + 充分注释。
+For more on the spec (helpers, return-shape, edge cases), read
+`scripts/index.js` directly — it is single-file and well-commented.
