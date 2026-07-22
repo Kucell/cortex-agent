@@ -233,6 +233,82 @@ function warmPrompt() {
   };
 }
 
+// ─── list-contexts — cross-project aggregation (Phase 3 prep) ────────────────
+function listContextsAll({ since, format }) {
+  if (!fs.existsSync(CONTEXT_HOME)) {
+    return { ok: true, action: "list-contexts", exists: false, projects: [] };
+  }
+  const sinceMs = since ? Date.parse(since) : null;
+  if (since && Number.isNaN(sinceMs)) {
+    return { ok: false, action: "list-contexts", error: "invalid_since_iso", since };
+  }
+  const projects = [];
+  for (const project of fs.readdirSync(CONTEXT_HOME)) {
+    const dir = path.join(CONTEXT_HOME, project);
+    if (!fs.statSync(dir).isDirectory()) continue;
+    const archives = listContexts(project);
+    const recent = archives.filter((a) => !sinceMs || a.mtime >= sinceMs);
+    if (archives.length && recent.length) {
+      projects.push({
+        project,
+        total_archives: archives.length,
+        recent_archives: recent.length,
+        last_mtime: new Date(Math.max(...archives.map((a) => a.mtime))).toISOString(),
+      });
+    }
+  }
+  projects.sort((a, b) => String(b.last_mtime).localeCompare(String(a.last_mtime)));
+  // Lightweight "table" formatting for human readers; defaults to JSON
+  // envelopes which downstream tools parse cleanly.
+  if (format === "table") {
+    const lines = ["project\tarchives\tlast_archive"];
+    for (const p of projects) lines.push(`${p.project}\t${p.total_archives}\t${p.last_mtime}`);
+    return { ok: true, action: "list-contexts", format: "table", table: lines.join("\n"), count: projects.length };
+  }
+  return { ok: true, action: "list-contexts", format: "json", projects, count: projects.length };
+}
+
+// ─── markSessionLastHost (Phase 2) ──────────────────────────────────────────
+// Update sessions/<S>.json#last_host + last_switch_at.  Idempotent: if
+// no active session exists, we synthesize a minimal record so future
+// resume commands can read the host trace.
+function markSessionLastHost(project, toHost) {
+  const sessionsDir = path.join(AGENT_ROOT, "sessions");
+  fs.mkdirSync(sessionsDir, { recursive: true });
+  const stamp = ts();
+  const sessionId = `S-${project}-${stamp}`;
+  const file = path.join(sessionsDir, `${sessionId}.json`);
+  const now = new Date().toISOString();
+  // Existing session-triage creates S-*.json; we just append fields.
+  // If a session for this project already exists, prefer to update
+  // most-recent one rather than fragment.
+  let target = null;
+  if (fs.existsSync(sessionsDir)) {
+    for (const name of fs.readdirSync(sessionsDir)) {
+      if (!name.startsWith("S-") || !name.endsWith(".json")) continue;
+      const path2 = path.join(sessionsDir, name);
+      try {
+        const body = JSON.parse(fs.readFileSync(path2, "utf8"));
+        const isProjectMatch = body.project === project || body.current_task_id?.includes?.(project);
+        const isOpen = body.status === "running" || body.status === "paused";
+        if (isProjectMatch && isOpen) { target = path2; break; }
+      } catch (_) { /* ignore */ }
+    }
+  }
+  if (!target) {
+    target = file;
+    fs.writeFileSync(file, JSON.stringify({ session_id: sessionId, project, status: "running", started_at: now, last_host: toHost, last_switch_at: now }, null, 2), "utf8");
+    return sessionId;
+  }
+  let body = {};
+  try { body = JSON.parse(fs.readFileSync(target, "utf8")); } catch (_) {}
+  body.last_host = toHost;
+  body.last_switch_at = now;
+  if (body.status === "closed" || !body.status) body.status = "running";
+  fs.writeFileSync(target, JSON.stringify(body, null, 2), "utf8");
+  return body.session_id || sessionId;
+}
+
 // ─── run event appender ──────────────────────────────────────────────────────
 function findActiveRunId() {
   if (!fs.existsSync(RUNS_DIR)) return null;
@@ -291,8 +367,66 @@ function main() {
     return;
   }
 
+  // list-contexts can run without --project (lists all projects in
+  // ~/.agent/contexts/); admit early.  Default format is json; pass
+  // --format=table to get a human-readable TSV.
+  if (mode === "list-contexts") {
+    const sinceIso = flag("--since", argv);
+    const format = flag("--format", argv) || "json";
+    const out = listContextsAll({ since: sinceIso, format });
+    emit(out);
+    return;
+  }
+
   const project = flag("--project", argv);
-  if (!project) fail("missing_project", "--project is required.");
+  if (!project) fail("missing_project", "--project is required for archive / restore / status / host-switch.");
+
+  if (mode === "host-switch") {
+    // Cross-host switch bus (Phase 2).  Triggered when user wants to move
+    // work from one host (claude-code / cursor / codex / unknown) to
+    // another.  This mode:
+    //   1. calls archive() so the outgoing host's state is captured
+    //   2. updates sessions/<active>.json with last_host / last_switch_at
+    //   3. writes host_switch_initiated event to active run
+    //   4. emits a hand-off package the new host can use to resume
+    requireGate([...GATES_DESTRUCTIVE]);
+    const fromHost = flag("--from-host", argv) || "unknown";
+    const toHost = flag("--to-host", argv) || "unknown";
+    const reason = flag("--reason", argv) || "";
+    let archived;
+    try {
+      archived = archiveProject(project, parseNote(argv));
+    } catch (err) {
+      fail("host_switch_archive_failed", err.message);
+      return;
+    }
+    const sid = markSessionLastHost(project, toHost);
+    appendRunEvent({
+      type: "host_switch_initiated",
+      project,
+      from_host: fromHost,
+      to_host: toHost,
+      reason,
+      archive_path: archived.archivePath,
+    });
+    emit({
+      ok: true,
+      action: "host-switch",
+      project,
+      from_host: fromHost,
+      to_host: toHost,
+      reason,
+      archive: archived,
+      session_id: sid,
+      next_steps_for_new_host: [
+        "1. Read archive body via: runtime-continuity restore --project <P> --load latest",
+        "2. Pick up active run via: read .agent/runs/<id>.json events[] (latest host_switch_initiated tells you where to resume)",
+        "3. If the new host uses the same ~/.agent/contexts/, no extra import is required — the latest.md symlink is already in place.",
+        "4. host-only reattach: the archive does NOT carry hook secrets; re-establish Authorization: token ${secret://<ref>} via the secrets skill if needed.",
+      ],
+    });
+    return;
+  }
 
   if (mode === "archive") {
     requireGate([...GATES_DESTRUCTIVE]);
@@ -331,7 +465,7 @@ function main() {
 
   fail(
     "unknown_command",
-    "Usage: runtime-continuity {assess|archive|restore|status|warm} [--project P] [--gate user] ...",
+    "Usage: runtime-continuity {assess|archive|restore|status|warm|host-switch|list-contexts} [--project P] [--gate user] ...",
   );
 }
 
@@ -340,9 +474,11 @@ module.exports = {
   assessBudget,
   archiveProject,
   listContexts,
+  listContextsAll,
   resolveLatest,
   loadContext,
   statusReport,
   warmPrompt,
+  markSessionLastHost,
   findActiveRunId,
 };

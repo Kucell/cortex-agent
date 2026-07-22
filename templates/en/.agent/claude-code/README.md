@@ -141,3 +141,82 @@ cat .agent/runs/<run_id>.json | jq '.token_usage.by_source["claude-code"]'
 - 提案:`.agent/plans/proposals/token-usage/cortex-agent-token-usage-proposal.md`
 - normalize helper:`.agent/skills/management-api/scripts/normalize-token-usage.js`
 - 协议边界规范:`.agent/rules/normalize-input-value.md`
+
+
+## Cross-Host Switch Hook (Phase 2 — runtime-continuity)
+
+When user wants to move work from one host agent (Claude Code / Cursor / Codex) to
+another, the outgoing host should fire `runtime-continuity host-switch` so the
+incoming host has a fresh archive to restore from.
+
+### Stop hook recipe
+
+Append to your `~/.claude/settings.json` (or whatever host's hook config):
+
+```json
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/claude-code-host-switch-reporter.sh",
+            "if": "$TO_HOST"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+`TO_HOST` is an env var you set just before the user says "切换到 codex" or
+equivalent; if absent, the hook is a no-op (does not pollute state).
+
+### Reporter shell
+
+`~/.claude/hooks/claude-code-host-switch-reporter.sh`:
+
+```bash
+#!/usr/bin/env bash
+# Trigger `runtime-continuity host-switch` so the next host (codex / cursor)
+# can `restore` from the latest archive.  Reads TO_HOST + RUN_ID from env.
+# The framework CLI is the source of truth; the shell only passes values.
+set -euo pipefail
+
+# Required: TO_HOST (where the user is going next), and an active run id
+# (optional — runtime-continuity can find one automatically if absent).
+TO_HOST="${TO_HOST:-}"
+RUN_ID="${CLAUDE_RUN_ID:-}"
+PAYLOAD="${1:-}"
+[ -z "$TO_HOST" ] && exit 0
+
+# Project name = basename of the cwd
+PROJECT=$(basename "$PWD")
+
+# Hand off: archive + session last_host + run event + 4-step resume package
+node .agent/skills/runtime-continuity/scripts/index.js host-switch \
+  --project "$PROJECT" \
+  --from-host claude-code --to-host "$TO_HOST" \
+  --reason "$STOP_REASON" \
+  --run-id "$RUN_ID" \
+  --gate user 2>/dev/null || {
+  echo "host-switch reporter failed (non-fatal)" >&2
+  exit 0
+}
+```
+
+### Incoming host resume recipe
+
+When the new host (Cursor / Codex / etc.) starts a session on the same
+project, run:
+
+```bash
+node .agent/skills/runtime-continuity/scripts/index.js restore \
+  --project "$PROJECT" --gate user --load latest
+```
+
+The body contains the **结构化摘要** for the new agent.  See
+`runtime-continuity` SKILL.md for the 4-step `next_steps_for_new_host`
+contract.
