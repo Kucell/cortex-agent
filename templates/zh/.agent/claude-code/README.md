@@ -141,3 +141,75 @@ cat .agent/runs/<run_id>.json | jq '.token_usage.by_source["claude-code"]'
 - 提案:`.agent/plans/proposals/token-usage/cortex-agent-token-usage-proposal.md`
 - normalize helper:`.agent/skills/management-api/scripts/normalize-token-usage.js`
 - 协议边界规范:`.agent/rules/normalize-input-value.md`
+
+
+## 跨 Host 切换 Hook(Phase 2 — runtime-continuity)
+
+当用户需要将工作从一个 host agent(Claude Code / Cursor / Codex)迁移到另一个时,离开的 host 应触发 `runtime-continuity host-switch`,使进入的 host 有最新的 archive 可恢复。
+
+### Stop hook 配置
+
+在 `~/.claude/settings.json`(或其他 host 的 hook 配置)中添加:
+
+```json
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/claude-code-host-switch-reporter.sh",
+            "if": "$TO_HOST"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+`TO_HOST` 是用户在切换前设置的环境变量(例如 `export TO_HOST=codex`)。未设置时 hook 不执行(不会污染状态)。
+
+### Reporter 脚本
+
+`~/.claude/hooks/claude-code-host-switch-reporter.sh`:
+
+```bash
+#!/usr/bin/env bash
+# 触发 runtime-continuity host-switch,使新 host(codex / cursor)可通过 restore 恢复。
+# 从环境变量读取 TO_HOST 和 RUN_ID。
+# CLI 框架是唯一事实来源;此脚本仅传递参数。
+set -euo pipefail
+
+# 必填: TO_HOST(目标 host),以及活跃 run id(可选——runtime-continuity 可自动查找)
+TO_HOST="${TO_HOST:-}"
+RUN_ID="${CLAUDE_RUN_ID:-}"
+PAYLOAD="${1:-}"
+[ -z "$TO_HOST" ] && exit 0
+
+# 项目名 = 当前工作目录的 basename
+PROJECT=$(basename "$PWD")
+
+# 交接: archive + session last_host + run event + 4 步恢复指引
+node .agent/skills/runtime-continuity/scripts/index.js host-switch \
+  --project "$PROJECT" \
+  --from-host claude-code --to-host "$TO_HOST" \
+  --reason "$STOP_REASON" \
+  --run-id "$RUN_ID" \
+  --gate user 2>/dev/null || {
+  echo "host-switch reporter failed (non-fatal)" >&2
+  exit 0
+}
+```
+
+### 新 Host 恢复方法
+
+当新 host(Cursor / Codex / 等)在同一项目上启动会话时,执行:
+
+```bash
+node .agent/skills/runtime-continuity/scripts/index.js restore \
+  --project "$PROJECT" --gate user --load latest
+```
+
+返回的 body 包含**结构化摘要**供新 agent 使用。详见 `runtime-continuity` SKILL.md 中的 4 步 `next_steps_for_new_host` 协议。
