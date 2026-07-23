@@ -26,6 +26,11 @@ function createProject(prefix = "cortex-management-cli-") {
       : path.join(ROOT, ".agent", "skills", "management-api", "scripts", file);
     fs.copyFileSync(source, path.join(scripts, file));
   }
+  fs.mkdirSync(path.join(cwd, ".agent", "tasks", "scripts"), { recursive: true });
+  fs.copyFileSync(
+    path.join(ROOT, "templates", "_shared", ".agent", "tasks", "scripts", "task-state.js"),
+    path.join(cwd, ".agent", "tasks", "scripts", "task-state.js"),
+  );
   for (const directory of ["runs", "queues", "sessions", "inbox", "decisions", "waitpoints", "plans"]) {
     fs.mkdirSync(path.join(cwd, ".agent", directory), { recursive: true });
   }
@@ -123,4 +128,30 @@ test("existing resource aliases honor explicit projects", (t) => {
     assert.equal(result.status, 0, result.stderr);
     assert.equal(JSON.parse(result.stdout).project.root, fs.realpathSync(project));
   }
+});
+
+test("dashboard state keeps validation evidence separate from task blocking", (t) => {
+  const project = createProject();
+  t.after(() => fs.rmSync(project, { recursive: true, force: true }));
+  fs.writeFileSync(path.join(project, ".agent", "plans", "task-progress.md"), [
+    "# Task progress",
+    "",
+    "## Active Tasks",
+    "",
+    "| Task ID | Priority | Task | Progress | Plan |",
+    "| --- | --- | --- | --- | --- |",
+    "| M-005 | P1 | Observability | 94% | Runtime evidence PARTIAL; release evidence remains NOT_RUN |",
+    "| T-004 | P1 | Target benchmark | 65% | Two target environments remain NOT_RUN |",
+    "| T-009 | P0 | Explicit blocker | 20% | Status: blocked |",
+  ].join("\n"), "utf8");
+
+  const result = run(project, ["query", "dashboard-state"]);
+  assert.equal(result.status, 0, result.stderr);
+  const payload = JSON.parse(result.stdout);
+  const tasks = new Map(payload.data.tasks.map((task) => [task.id, task]));
+  assert.equal(tasks.get("M-005").status, "active");
+  assert.equal(tasks.get("M-005").validation_status, "NOT_RUN");
+  assert.equal(tasks.get("T-004").status, "active");
+  assert.equal(tasks.get("T-004").validation_status, "NOT_RUN");
+  assert.equal(tasks.get("T-009").status, "blocked");
 });

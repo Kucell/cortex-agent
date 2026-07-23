@@ -7,6 +7,7 @@ const { execSync } = require("child_process");
 
 const root = process.cwd();
 const agentRoot = path.join(root, ".agent");
+const { extractMarkdownRefs, parseTaskProgress } = require(path.join(__dirname, "../../../tasks/scripts/task-state.js"));
 
 function arg(name, fallback) {
   const idx = process.argv.indexOf(name);
@@ -442,77 +443,7 @@ const I18N = {
 
 function parseTasks() {
   const file = path.join(agentRoot, "plans", "task-progress.md");
-  const text = read(file);
-  const activeSection = (text.match(/##\s*[^\n]*(?:当前活跃任务|Active Tasks)[^\n]*\n([\s\S]*?)(?=\n##\s|\n---\s*$|$)/i) || [])[1] || "";
-  const tableTasks = [];
-  for (const line of activeSection.split(/\r?\n/)) {
-    const trimmed = line.trim();
-    if (!trimmed.startsWith("|") || /^\|\s*:?-{3,}/.test(trimmed)) continue;
-    const cells = trimmed.slice(1, -1).split("|").map((cell) => cell.trim());
-    if (cells.length < 4 || /任务\s*ID|Task\s*ID/i.test(cells[0])) continue;
-    const id = (cells[0].match(/\b(?:T|M)-[A-Za-z0-9-]+\b/) || [])[0];
-    if (!id) continue;
-    const joinedCells = cells.join(" ");
-    const progressMatch = cells[3].match(/(\d+(?:\.\d+)?)\s*%/);
-    const progress = progressMatch ? Number(progressMatch[1]) : null;
-    const blocked = /blocked|阻塞|暂停|NOT_RUN|待执行|⚠️|❌/i.test(joinedCells);
-    const done = progress === 100 || /\[[xX]\]|完成|Done|已合入|PASS/i.test(cells[3]);
-    const active = !done && !blocked && (progress !== null && progress > 0 || /active|进行中|in[- ]progress|当前/i.test(joinedCells));
-    const sourceRefs = extractMarkdownRefs(cells[2], cells[3], cells[4]);
-    tableTasks.push({
-      id,
-      priority: cells[1] || "",
-      title: cells[2] || id,
-      progress: progressMatch ? `${progressMatch[1]}%` : cells[3] || "",
-      plan: cells[4] || "",
-      source_refs: sourceRefs.length ? sourceRefs : [".agent/plans/task-progress.md"],
-      status: done ? "done" : blocked ? "blocked" : active ? "active" : "open",
-    });
-  }
-  if (tableTasks.length) return tableTasks;
-
-  const tasks = [];
-  const seen = new Set();
-  for (const line of text.split(/\r?\n/)) {
-    const id = (line.match(/\bT-[A-Za-z0-9-]+\b/) || [])[0];
-    if (!id || seen.has(id)) continue;
-    seen.add(id);
-    const done = /\[[xX]\]|✅|完成|Done/i.test(line);
-    const blocked = /blocked|阻塞|暂停|⚠️|❌/i.test(line);
-    const active = /active|进行中|in[- ]progress|当前/i.test(line);
-    const sourceRefs = extractMarkdownRefs(line);
-    tasks.push({
-      id,
-      title: line.replace(/^\s*[-*]\s*/, "").replace(/\*\*/g, "").slice(0, 180),
-      priority: "",
-      progress: "",
-      plan: "",
-      source_refs: sourceRefs.length ? sourceRefs : [".agent/plans/task-progress.md"],
-      status: done ? "done" : blocked ? "blocked" : active ? "active" : "open",
-    });
-  }
-  return tasks;
-}
-
-function extractMarkdownRefs(...values) {
-  const refs = [];
-  const seen = new Set();
-  for (const value of values) {
-    const text = String(value || "");
-    for (const match of text.matchAll(/\[[^\]]+\]\(([^)]+)\)/g)) {
-      const raw = match[1].trim().replace(/^<|>$/g, "").split(/[?#]/)[0];
-      if (!raw || raw.startsWith("/") || raw.startsWith("#") || /^[a-z][a-z0-9+.-]*:/i.test(raw)) continue;
-      const normalized = path.posix.normalize(
-        raw.startsWith(".agent/") || raw.startsWith("docs/")
-          ? raw
-          : path.posix.join(".agent/plans", raw),
-      );
-      if (normalized.startsWith("../") || seen.has(normalized)) continue;
-      seen.add(normalized);
-      refs.push(normalized);
-    }
-  }
-  return refs;
+  return parseTaskProgress(read(file));
 }
 
 function enrichTaskPreviewRefs(task, fallback) {
@@ -808,7 +739,7 @@ function taskColumn(tasks, status, labelKey) {
   const remaining = items.length - visible.length;
   return `<section class="lane">
     <h3><span data-i18n="${labelKey}">${esc(I18N.zh[labelKey])}</span> <span class="mini">${items.length}</span></h3>
-    ${visible.length ? visible.map((task) => `<article class="task-card" role="button" tabindex="0" data-task-id="${esc(task.id)}" data-task-title="${esc(task.title)}" data-task-goal="The goal is: ${esc(task.title)}"><strong>${esc(task.id)}</strong><p>${esc(task.title)}</p><p class="mini">${[task.priority, task.progress, task.plan].filter(Boolean).map(esc).join(" · ")}</p>${Array.isArray(task.source_refs) && task.source_refs.length ? `<p class="mini" data-task-refs="${esc(task.source_refs.join(","))}" data-task-deps="${esc((task.dependencies || []).join(","))}"></p>` : ""}</article>`).join("") : `<div class="empty" data-i18n="empty">${I18N.zh.empty}</div>`}
+    ${visible.length ? visible.map((task) => `<article class="task-card" role="button" tabindex="0" data-task-id="${esc(task.id)}" data-task-title="${esc(task.title)}" data-task-goal="The goal is: ${esc(task.title)}"><div class="task-card-head"><strong>${esc(task.id)}</strong>${task.validation_status ? pill(task.validation_status) : ""}</div><p>${esc(task.title)}</p><p class="mini">${[task.priority, task.progress, task.plan].filter(Boolean).map(esc).join(" · ")}</p>${Array.isArray(task.source_refs) && task.source_refs.length ? `<p class="mini" data-task-refs="${esc(task.source_refs.join(","))}" data-task-deps="${esc((task.dependencies || []).join(","))}"></p>` : ""}</article>`).join("") : `<div class="empty" data-i18n="empty">${I18N.zh.empty}</div>`}
     ${remaining > 0 ? `<div class="mini">+${remaining}</div>` : ""}
   </section>`;
 }
@@ -1019,12 +950,12 @@ main{min-width:0}.topbar{padding:20px 28px;border-bottom:1px solid var(--line);d
 .status-strip{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}.metric{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:13px}.metric-label{color:var(--muted);font-size:12px;margin-bottom:8px}.metric-value{font-size:24px;font-weight:750;line-height:1.15}.metric-detail{margin-top:7px;color:var(--muted);font-size:12px}.metric.blocked{border-color:rgba(255,107,107,.55)}.metric.running,.metric.in_progress{border-color:rgba(90,167,255,.6)}.metric.ready,.metric.approved,.metric.validated{border-color:rgba(88,214,141,.55)}
 .command-panel{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(280px,.7fr);gap:14px}.current{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:18px}.current .label{color:var(--muted);font-size:12px;margin-bottom:10px}.current .activity{font-size:20px;color:var(--accent);overflow-wrap:anywhere}.reason{margin-top:10px;color:var(--muted)}.signal-list{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px;display:grid;gap:10px}.signal{display:flex;justify-content:space-between;gap:12px;border-bottom:1px solid var(--line);padding-bottom:8px}.signal:last-child{border-bottom:0;padding-bottom:0}
 .phase-rail{display:grid;grid-template-columns:repeat(7,1fr);gap:8px}.phase-node{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:10px;min-height:76px}.phase-node span{display:block;width:10px;height:10px;border-radius:50%;background:var(--muted);margin-bottom:8px}.phase-node.active{border-color:var(--accent)}.phase-node.active span{background:var(--accent)}.phase-node.done span{background:var(--ok)}.phase-node strong{display:block}.phase-node small{display:block;color:var(--muted);margin-top:3px;overflow-wrap:anywhere}
-.lanes{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.lane{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:12px}.lane h3{margin:0 0 10px;color:var(--muted);font-size:13px}.task-card{border:1px solid var(--line);border-radius:7px;padding:10px;margin-bottom:8px;background:#0d1016;cursor:pointer}.task-card:hover,.task-card:focus-visible{border-color:var(--accent);outline:none}.task-card p{margin:4px 0 0;color:var(--muted)}
+.lanes{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.lane{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:12px}.lane h3{margin:0 0 10px;color:var(--muted);font-size:13px}.task-card{border:1px solid var(--line);border-radius:7px;padding:10px;margin-bottom:8px;background:#0d1016;cursor:pointer}.task-card:hover,.task-card:focus-visible{border-color:var(--accent);outline:none}.task-card-head{display:flex;align-items:center;justify-content:space-between;gap:8px}.task-card p{margin:4px 0 0;color:var(--muted)}
 .prd-item{display:flex;justify-content:space-between;gap:14px;border:1px solid var(--line);border-radius:8px;padding:12px;background:var(--panel2)}.prd-item p{margin:3px 0}.empty-panel{border:1px dashed var(--line);border-radius:8px;padding:18px;color:var(--muted)}.check-list{display:grid;gap:8px}.check-list div{display:flex;justify-content:space-between;gap:12px;border-bottom:1px solid var(--line);padding-bottom:7px}.check-list div:last-child{border-bottom:0}
 .trace-summary{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));border:1px solid var(--line);border-radius:8px;overflow:hidden}.trace-stage{min-width:0;padding:11px 12px;background:var(--panel2);border-right:1px solid var(--line)}.trace-stage:last-child{border-right:0}.trace-stage>span,.trace-stage small{display:block;color:var(--muted);font-size:12px}.trace-stage strong{display:block;margin:5px 0;overflow-wrap:anywhere}.trace-table{margin:14px 0 18px;overflow-x:auto}.trace-table code{white-space:normal;overflow-wrap:anywhere}.trace-table table{min-width:820px}
 .timeline{display:grid;gap:10px}.timeline-item{display:grid;grid-template-columns:140px minmax(0,1fr);gap:12px;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:11px}.timeline-item p{margin:2px 0;color:var(--muted)}
 table{width:100%;border-collapse:collapse}th,td{padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top;text-align:left}th{color:var(--muted);font-weight:600}code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:#d9e7ff}.empty{color:var(--muted);padding:10px 0}.pill{display:inline-block;border:1px solid var(--line);border-radius:999px;padding:2px 8px;color:var(--muted);white-space:nowrap}.status-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--muted);margin-right:7px}.status-dot.running,.status-dot.in_progress,.status-dot.invoking_agent{background:var(--accent)}.status-dot.done,.status-dot.ready,.status-dot.clean,.status-dot.approved{background:var(--ok)}.status-dot.blocked,.status-dot.dirty,.status-dot.stale{background:var(--bad)}
-.done,.ready,.validated,.clean,.approved,.published{color:var(--ok);border-color:rgba(88,214,141,.45)}.blocked,.validation_failed,.failed,.dirty,.stale{color:var(--bad);border-color:rgba(255,107,107,.45)}.active,.in_progress,.running,.locked,.merge_ready,.handoff_required,.held,.draft,.review,.needs_validation,.needs_evidence,.not_ready{color:var(--warn);border-color:rgba(241,180,76,.45)}pre{white-space:pre-wrap;background:#0d1016;border:1px solid var(--line);border-radius:6px;padding:10px;overflow:auto;max-height:260px}
+.done,.ready,.validated,.clean,.approved,.published,.pass{color:var(--ok);border-color:rgba(88,214,141,.45)}.blocked,.validation_failed,.failed,.fail,.dirty,.stale{color:var(--bad);border-color:rgba(255,107,107,.45)}.active,.in_progress,.running,.locked,.merge_ready,.handoff_required,.held,.draft,.review,.needs_validation,.needs_evidence,.not_ready,.partial,.not_run{color:var(--warn);border-color:rgba(241,180,76,.45)}pre{white-space:pre-wrap;background:#0d1016;border:1px solid var(--line);border-radius:6px;padding:10px;overflow:auto;max-height:260px}
 .preview-dialog{width:min(1080px,calc(100vw - 32px));height:min(860px,calc(100vh - 32px));max-width:none;max-height:none;padding:0;color:var(--text);background:var(--panel);border:1px solid var(--line);border-radius:8px}.preview-dialog::backdrop{background:rgba(0,0,0,.72)}.preview-dialog>header{position:sticky;top:0;z-index:2;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:16px 20px;background:var(--panel);border-bottom:1px solid var(--line)}.preview-dialog>header h2{margin:0;font-size:18px;overflow-wrap:anywhere}.preview-dialog>header button{width:34px;height:34px;padding:0;border:1px solid var(--line);border-radius:6px;background:var(--panel2);color:var(--text);font-size:22px;cursor:pointer}.preview-dialog>section{padding:18px 22px 32px}.preview-meta{display:grid;grid-template-columns:minmax(0,1fr) minmax(260px,.55fr);gap:18px;padding-bottom:18px;border-bottom:1px solid var(--line)}.preview-meta h3{margin:0 0 8px;font-size:13px;color:var(--muted)}.preview-meta p,.preview-meta ul{margin:0}.preview-meta ul{padding-left:20px}.preview-meta a{color:var(--accent);overflow-wrap:anywhere}.markdown-body{max-width:880px;margin:0 auto;padding:24px 0;color:var(--text);font-size:15px;line-height:1.7;overflow-wrap:anywhere}.markdown-body>:first-child{margin-top:0}.markdown-body>:last-child{margin-bottom:0}.markdown-body h1,.markdown-body h2,.markdown-body h3,.markdown-body h4{margin:1.6em 0 .65em;line-height:1.25}.markdown-body h1{padding-bottom:.35em;border-bottom:1px solid var(--line);font-size:2em}.markdown-body h2{padding-bottom:.3em;border-bottom:1px solid var(--line);font-size:1.5em}.markdown-body h3{font-size:1.2em}.markdown-body p,.markdown-body ul,.markdown-body ol,.markdown-body blockquote,.markdown-body table,.markdown-body pre{margin:0 0 1em}.markdown-body ul,.markdown-body ol{padding-left:2em}.markdown-body li+li{margin-top:.3em}.markdown-body blockquote{padding:.2em 1em;color:var(--muted);border-left:4px solid var(--accent);background:rgba(90,167,255,.06)}.markdown-body blockquote>:last-child{margin-bottom:0}.markdown-body a{color:var(--accent);text-decoration:none}.markdown-body a:hover{text-decoration:underline}.markdown-body code{padding:.15em .35em;border-radius:4px;background:#0d1016}.markdown-body pre{max-height:none;padding:14px;white-space:pre;overflow:auto}.markdown-body pre code{padding:0;background:transparent;color:#d9e7ff}.markdown-body table{display:block;width:max-content;max-width:100%;overflow:auto;border-collapse:collapse}.markdown-body th,.markdown-body td{border:1px solid var(--line);padding:7px 11px}.markdown-body th{background:var(--panel2);color:var(--text)}.markdown-body tr:nth-child(2n){background:rgba(255,255,255,.025)}.markdown-body hr{height:1px;margin:24px 0;border:0;background:var(--line)}.markdown-body img{display:block;max-width:100%;height:auto;margin:16px auto;border:1px solid var(--line);border-radius:6px}.markdown-body del{color:var(--muted)}
 .preview-meta{display:block}
 @media(max-width:1100px){.shell{display:block}aside{position:static;height:auto}.status-strip,.command-panel,.phase-rail,.lanes,.trace-summary{grid-template-columns:1fr}.trace-stage{border-right:0;border-bottom:1px solid var(--line)}.trace-stage:last-child{border-bottom:0}.panel,.third,.quarter{grid-column:span 12}.section,.topbar{padding:16px}.timeline-item{grid-template-columns:1fr}}

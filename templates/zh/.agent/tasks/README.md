@@ -10,10 +10,13 @@
 ├── index.json
 ├── index.schema.json
 ├── task.schema.json
+├── scripts/task-state.js
 └── <task-id>.json
 ```
 
 `index.json` 是精简发现索引，任务文件是流水线状态的权威来源。创建或更新任务的工作流应尽可能原子地同步两个文件；任务文件缺失不能被推断为路线图任务已完成。
+
+`scripts/task-state.js` 是路线图兼容层的共享解析器。它把任务执行状态与 `NOT_RUN`、`PARTIAL` 等验证结果分开；Dashboard 和 Management API 必须复用它，不得复制状态规则。
 
 ## 阶段与 Gates
 
