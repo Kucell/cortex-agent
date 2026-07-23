@@ -223,7 +223,6 @@ flowchart TD
 
 | 任务 | 描述 | 状态 |
 |------|------|------|
-| T-RC01 | Runtime Continuity v2 设计文档 + schema | 进行中 |
-| T-RC02 | 扩展 runtime-continuity CLI：log/checkpoint/archive full/restore auto/resume-bundle | 待开始 |
+| T-RC01 | Runtime Continuity v2 设计文档 + schema | ✅ 已完成 |
+| T-RC02 | 扩展 runtime-continuity CLI：log/checkpoint/archive full/restore auto/resume-bundle | ✅ 已完成 |
 | T-RC03 | 接入 workflows、SessionStart、briefing、templates、测试 | 待开始 |
-

@@ -1,14 +1,16 @@
 ---
 name: runtime-continuity
-description: session-manager 7-mode protocol implemented as a CLI: assess / archive / restore / status / warm / host-switch / list-contexts. Reads .agent/sub-agents/session-manager.md as source of truth. Archive path is ~/.agent/contexts/<project>/, same as session-manager.
+description: session-manager protocol plus Runtime Continuity v2 as a CLI: assess / log / checkpoint / archive / restore / status / warm / host-switch / resume-bundle / list-contexts. Writes transferable work state to .agent/runtime-continuity/ and readable archives to ~/.agent/contexts/<project>/.
 ---
 
-# runtime-continuity (L1 — session-manager CLI shell)
+# runtime-continuity (L1 — session-manager CLI shell + Runtime Continuity v2)
 
 Hosts (Claude Code / Cursor / Codex) can't easily spawn a sub-agent
 definition like `sub-agents/session-manager.md` and wait for output.
-This skill wraps that sub-agent's 5-mode protocol in a CLI surface so
-any host can invoke the same time-management discipline.
+This skill wraps that sub-agent's time-management protocol in a CLI surface so
+any host can invoke the same continuity discipline. Runtime Continuity v2 adds
+standard work-log events, structured archives, and resume bundles under
+`.agent/runtime-continuity/`.
 
 > The authoritative protocol lives at `.agent/sub-agents/session-manager.md`.
 > This file does NOT redefine it.  Only implementational details differ
@@ -19,9 +21,11 @@ any host can invoke the same time-management discipline.
 - Hit the 5-hour session time limit → run `warm` first to start the
   timer; on every 4-hour mark, run `archive` to make a checkpoint.
 - Switching host agent mid-task (Claude Code → Codex, etc.) → run
-  `archive` then `host-switch` on the new host (Phase 2).
-- Resume work next day / next session / new agent → run `restore`.
+  `host-switch` before leaving the old host.
+- Resume work next day / next session / new agent → run `resume-bundle`
+  first, then `restore --auto` if the Markdown body is needed.
 - Checking "how stale is this session" → run `status`.
+- Recording transferable work state → run `log` or `checkpoint` during work.
 
 ## Commands
 
@@ -30,39 +34,47 @@ any host can invoke the same time-management discipline.
 node .agent/skills/runtime-continuity/scripts/index.js assess \
   --task-description "..." --gate user
 
-# 1. archive — write a snapshot to ~/.agent/contexts/<project>/
+# 1. log — append transferable work log to .agent/runtime-continuity/events/
+node .agent/skills/runtime-continuity/scripts/index.js log \
+  --project <project> --gate agent --host codex --message "..." \
+  --done "..." --in-progress "..." --next "..." --files a,b
+
+# 2. checkpoint — append a stronger phase boundary event
+node .agent/skills/runtime-continuity/scripts/index.js checkpoint \
+  --project <project> --gate agent --host codex --phase validating \
+  --message "..." --command "node tests/foo.test.js" --exit-code 0
+
+# 3. archive — write Markdown + structured JSON snapshot
 node .agent/skills/runtime-continuity/scripts/index.js archive \
-  --project <project> --gate user [--note "已完成 X / 进行 Y / 卡点 Z"]
+  --project <project> --gate user --full \
+  --note-json '{"done":["X"],"in_progress":"Y","next":["Z"]}'
 
-# 2. restore — load latest snapshot for a project
+# 4. restore — load latest snapshot for a project
 node .agent/skills/runtime-continuity/scripts/index.js restore \
-  --project <project> --gate user [--list | --load latest]
+  --project <project> [--list | --auto | --gate user]
 
-# 3. status — show last archive timing
+# 5. resume-bundle — default new-agent entrypoint
+node .agent/skills/runtime-continuity/scripts/index.js resume-bundle \
+  --project <project>
+
+# 6. status — show last archive timing
 node .agent/skills/runtime-continuity/scripts/index.js status \
   --project <project>
 
-# 4. warm — output the "5-hour timer starting" prompt for the host
-#    Pure advisory: no side effects, no gate needed.
+# 7. warm — output the "5-hour timer starting" prompt for the host
 node .agent/skills/runtime-continuity/scripts/index.js warm
-
-#    --auto + --project: also writes a session_started run event on top.
-#    Designed for SessionStart hook auto-init (see .agent/hooks/hooks.json).
 node .agent/skills/runtime-continuity/scripts/index.js warm \
   --auto --project <project>
 
-# 5. host-switch (Phase 2 — cross-host migration) ★
-#    When user wants to move work from claude-code → codex (or any host).
-#    Triggers archive() + writes session last_host + emits hand-off package
-#    for the new host.  Strongly recommended to call BEFORE ending the
-#    outgoing host's session.
+# 8. host-switch — cross-host migration
 node .agent/skills/runtime-continuity/scripts/index.js host-switch \
   --project <project> \
   --from-host claude-code --to-host codex \
   --reason "user wants codex now" \
-  --gate user
+  --gate user \
+  --note-json '{"done":["X"],"in_progress":"Y","next":["Z"]}'
 
-# 6. list-contexts (Phase 2 / 3 prep) — cross-project aggregation
+# 9. list-contexts — cross-project aggregation
 #    Lists every project under ~/.agent/contexts/ with archive counts and
 #    most-recent timestamps.  No --gate required (read-only).
 node .agent/skills/runtime-continuity/scripts/index.js list-contexts \
@@ -74,6 +86,11 @@ node .agent/skills/runtime-continuity/scripts/index.js list-contexts \
 - **Reuses session-manager path & protocol**: archive writes to the same
   `~/.agent/contexts/<project>/` directory that session-manager
   sub-agent uses.  No parallel paths, no divergence.
+- **Project-local resume state**: archive also writes
+  `.agent/runtime-continuity/archives/RC-*.json` and
+  `.agent/runtime-continuity/archives/latest.json`.
+- **New-agent entrypoint**: `resume-bundle` summarizes latest archive,
+  handoffs, runs, sessions, artifacts, runtime events, and git state.
 - **Audit-friendly**: every archive / restore / status call writes
   one `session_archived` / `session_restored` / `session_status_queried`
   event into `runs/<active-run>.json#events[]` so the audit-trail
@@ -84,9 +101,10 @@ node .agent/skills/runtime-continuity/scripts/index.js list-contexts \
 ## Non-Goals
 
 - Does NOT modify `.agent/sub-agents/session-manager.md`.
-- Does NOT crawl host private state (Claude Code transcripts, etc.).
-- Does NOT block host switch unless explicitly invoked via
-  `host-switch` (Phase 2 / 3, draft).
+- Does NOT crawl host private state (Claude Code transcripts, Codex
+  conversation history, browser cookies, etc.).
+- Does NOT store secrets or full diffs; store paths, commands, summaries, and
+  artifact references instead.
 
 ## Source of Truth
 

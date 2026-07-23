@@ -24,6 +24,9 @@ const { spawnSync } = require("child_process");
 const AGENT_ROOT = path.join(process.cwd(), ".agent");
 const RUNS_DIR = path.join(AGENT_ROOT, "runs");
 const CONTEXT_HOME = path.join(os.homedir(), ".agent", "contexts");
+const RC_ROOT = path.join(AGENT_ROOT, "runtime-continuity");
+const RC_EVENTS_DIR = path.join(RC_ROOT, "events");
+const RC_ARCHIVES_DIR = path.join(RC_ROOT, "archives");
 
 const GATES_TIGHT = new Set(["user", "agent"]);
 const GATES_DESTRUCTIVE = new Set(["user"]);
@@ -57,6 +60,181 @@ function ts() {
   return `${d.getUTCFullYear()}${pad(d.getUTCMonth() + 1)}${pad(d.getUTCDate())}_${pad(d.getUTCHours())}${pad(d.getUTCMinutes())}${pad(d.getUTCSeconds())}_${String(d.getUTCMilliseconds()).padStart(3, "0")}`;
 }
 
+function nowIso() {
+  return new Date().toISOString();
+}
+
+function safeSlug(value, fallback) {
+  const base = String(value || fallback || "item").trim();
+  return base.replace(/[^A-Za-z0-9_.:-]+/g, "-").replace(/^-+|-+$/g, "") || fallback || "item";
+}
+
+function writeJsonAtomic(file, data) {
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  const temp = `${file}.${process.pid}.${Date.now()}.tmp`;
+  try {
+    fs.writeFileSync(temp, `${JSON.stringify(data, null, 2)}\n`, "utf8");
+    fs.renameSync(temp, file);
+  } finally {
+    try { if (fs.existsSync(temp)) fs.unlinkSync(temp); } catch (_) {}
+  }
+}
+
+function readJson(file) {
+  try { return JSON.parse(fs.readFileSync(file, "utf8")); } catch (_) { return null; }
+}
+
+function csvFlag(name, argv) {
+  const raw = flag(name, argv);
+  if (!raw) return [];
+  return raw.split(",").map((item) => item.trim()).filter(Boolean);
+}
+
+function asList(value) {
+  if (Array.isArray(value)) return value.map(String).filter(Boolean);
+  if (value == null || value === "") return [];
+  return String(value)
+    .split(/\r?\n/)
+    .map((line) => line.replace(/^\s*[-*]\s*/, "").trim())
+    .filter(Boolean);
+}
+
+function renderList(value) {
+  const items = asList(value);
+  return items.length ? items.map((item) => `- ${item}`).join("\n") : "_(由主 Agent 填写)_";
+}
+
+function rel(file) {
+  return path.relative(process.cwd(), file).split(path.sep).join("/");
+}
+
+function listJsonRel(dir, limit) {
+  if (!fs.existsSync(dir)) return [];
+  return fs.readdirSync(dir)
+    .filter((name) => name.endsWith(".json") && name !== "index.json" && !name.endsWith(".schema.json"))
+    .map((name) => {
+      const file = path.join(dir, name);
+      return { file, mtime: fs.statSync(file).mtimeMs };
+    })
+    .sort((a, b) => b.mtime - a.mtime)
+    .slice(0, limit)
+    .map((item) => rel(item.file));
+}
+
+function listHandoffs(limit) {
+  const dir = path.join(AGENT_ROOT, "handoffs");
+  if (!fs.existsSync(dir)) return [];
+  return fs.readdirSync(dir)
+    .filter((name) => (name.endsWith(".json") || name.endsWith(".md")) && (/^H-/.test(name) || /^\d{8,}/.test(name)))
+    .map((name) => {
+      const file = path.join(dir, name);
+      return { file, mtime: fs.statSync(file).mtimeMs };
+    })
+    .sort((a, b) => b.mtime - a.mtime)
+    .slice(0, limit)
+    .map((item) => rel(item.file));
+}
+
+function listArtifactStates(limit) {
+  const dir = path.join(AGENT_ROOT, "artifacts");
+  if (!fs.existsSync(dir)) return [];
+  const out = [];
+  for (const name of fs.readdirSync(dir)) {
+    const file = path.join(dir, name, "state.json");
+    if (fs.existsSync(file)) out.push({ file, mtime: fs.statSync(file).mtimeMs });
+  }
+  return out.sort((a, b) => b.mtime - a.mtime).slice(0, limit).map((item) => rel(item.file));
+}
+
+function latestArchiveJson() {
+  const latest = path.join(RC_ARCHIVES_DIR, "latest.json");
+  if (fs.existsSync(latest)) return latest;
+  if (!fs.existsSync(RC_ARCHIVES_DIR)) return null;
+  const archives = fs.readdirSync(RC_ARCHIVES_DIR)
+    .filter((name) => name.startsWith("RC-") && name.endsWith(".json"))
+    .map((name) => {
+      const file = path.join(RC_ARCHIVES_DIR, name);
+      return { file, mtime: fs.statSync(file).mtimeMs };
+    })
+    .sort((a, b) => b.mtime - a.mtime);
+  return archives[0]?.file || null;
+}
+
+function findLatestSessionId(project) {
+  const sessionsDir = path.join(AGENT_ROOT, "sessions");
+  if (!fs.existsSync(sessionsDir)) return null;
+  const files = fs.readdirSync(sessionsDir)
+    .filter((name) => name.endsWith(".json") && name !== "index.json" && !name.endsWith(".schema.json"))
+    .map((name) => {
+      const file = path.join(sessionsDir, name);
+      const body = readJson(file) || {};
+      return { file, body, mtime: fs.statSync(file).mtimeMs };
+    })
+    .filter((item) => !project || item.body.project === project || item.body.current_task_id?.includes?.(project));
+  files.sort((a, b) => b.mtime - a.mtime);
+  return files[0]?.body?.session_id || null;
+}
+
+function buildSummaryFromArgs(argv, note = {}) {
+  return {
+    done: asList(flag("--done", argv) || note.done),
+    in_progress: flag("--in-progress", argv) || note.in_progress || note.blocked || null,
+    next: asList(flag("--next", argv) || note.next),
+    blockers: asList(flag("--blockers", argv) || note.blockers || note.pitfalls),
+  };
+}
+
+function createRuntimeEvent(project, argv, defaults = {}) {
+  const stamp = ts();
+  const eventId = `RCE-${stamp}`;
+  const note = parseNote(argv);
+  const command = flag("--command", argv);
+  const exitCodeRaw = flag("--exit-code", argv);
+  const commands = command ? [{
+    command,
+    exit_code: exitCodeRaw == null ? null : Number(exitCodeRaw),
+    summary: flag("--command-summary", argv) || "",
+  }] : [];
+  const event = {
+    event_id: eventId,
+    project,
+    host: flag("--host", argv) || defaults.host || "unknown",
+    agent_id: flag("--agent-id", argv) || defaults.agent_id || null,
+    run_id: flag("--run-id", argv) || defaults.run_id || findActiveRunId(),
+    session_id: flag("--session-id", argv) || defaults.session_id || findLatestSessionId(project),
+    task_id: flag("--task-id", argv) || defaults.task_id || null,
+    mission_id: flag("--mission-id", argv) || defaults.mission_id || null,
+    type: defaults.type || flag("--type", argv) || "work_log",
+    phase: flag("--phase", argv) || defaults.phase || null,
+    message: flag("--message", argv) || defaults.message || "",
+    summary: buildSummaryFromArgs(argv, note),
+    refs: {
+      files: csvFlag("--files", argv),
+      commands,
+      artifacts: csvFlag("--artifacts", argv),
+      handoffs: csvFlag("--handoffs", argv),
+    },
+    created_at: nowIso(),
+  };
+  fs.mkdirSync(RC_EVENTS_DIR, { recursive: true });
+  const file = path.join(RC_EVENTS_DIR, `${stamp}-event.json`);
+  writeJsonAtomic(file, event);
+  writeJsonAtomic(path.join(RC_ROOT, "state.json"), {
+    project,
+    latest_event: rel(file),
+    latest_archive: latestArchiveJson() ? rel(latestArchiveJson()) : null,
+    updated_at: event.created_at,
+  });
+  appendRunEvent({
+    type: event.type === "checkpoint" ? "runtime_checkpoint" : "runtime_log",
+    project,
+    runtime_event: rel(file),
+    phase: event.phase,
+    message: event.message,
+  });
+  return { event, eventPath: file };
+}
+
 // ─── Mode 1 — assess ───────────────────────────────────────────────────────────
 function assessBudget(taskDescription) {
   // Crude heuristic.  Long task description → long budget; very short → short.
@@ -75,10 +253,78 @@ function assessBudget(taskDescription) {
 }
 
 // ─── Mode 2 — archive ──────────────────────────────────────────────────────────
-function archiveProject(project, note) {
+function createStructuredArchive(project, note, opts, markdownArchive) {
+  const stamp = opts.stamp || ts();
+  const archiveId = `RC-${stamp}`;
+  const cwd = process.cwd();
+  function git(cmd) {
+    try {
+      return spawnSync("git", cmd.split(" "), { cwd, encoding: "utf8" })
+        .stdout?.trim() || "";
+    } catch { return ""; }
+  }
+  const latestEvents = listJsonRel(RC_EVENTS_DIR, 12).filter((file) => file.endsWith("-event.json"));
+  const archive = {
+    archive_id: archiveId,
+    project,
+    created_at: nowIso(),
+    source_host: opts.source_host || null,
+    target_host: opts.target_host || null,
+    reason: opts.reason || null,
+    git: {
+      root: cwd,
+      branch: git("rev-parse --abbrev-ref HEAD"),
+      head: git("rev-parse --short HEAD"),
+      status_short: git("status --short"),
+    },
+    state: {
+      current_goal: note?.goal || note?.current_goal || null,
+      done: asList(note?.done),
+      in_progress: note?.in_progress || note?.blocked || null,
+      next: asList(note?.next),
+      blockers: asList(note?.blockers || note?.pitfalls),
+    },
+    refs: {
+      latest_events: latestEvents,
+      runs: listJsonRel(RUNS_DIR, 5),
+      sessions: listJsonRel(path.join(AGENT_ROOT, "sessions"), 5),
+      handoffs: listHandoffs(8),
+      artifacts: listArtifactStates(8),
+      dirty_files: git("diff --name-only HEAD").split(/\r?\n/).filter(Boolean),
+    },
+    restore: {
+      read_first: [
+        "AGENTS.md",
+        ".agent/rules/core-principles.md",
+        ".agent/rules/ai-behavior.md",
+        ".agent/rules/code-standards.md",
+        ".agent/runtime-continuity/archives/latest.json",
+      ],
+      commands: [
+        `node .agent/skills/runtime-continuity/scripts/index.js resume-bundle --project ${project}`,
+      ],
+      next_action: asList(note?.next)[0] || note?.blocked || "Read the resume bundle and continue from the latest recorded state.",
+    },
+  };
+  fs.mkdirSync(RC_ARCHIVES_DIR, { recursive: true });
+  const archivePath = path.join(RC_ARCHIVES_DIR, `${archiveId}.json`);
+  const latestPath = path.join(RC_ARCHIVES_DIR, "latest.json");
+  writeJsonAtomic(archivePath, archive);
+  writeJsonAtomic(latestPath, archive);
+  writeJsonAtomic(path.join(RC_ROOT, "state.json"), {
+    project,
+    latest_event: latestEvents[0] || null,
+    latest_archive: rel(archivePath),
+    latest_markdown_archive: markdownArchive ? markdownArchive.latestPath : null,
+    updated_at: archive.created_at,
+  });
+  return { archive, archiveJsonPath: archivePath, latestJsonPath: latestPath };
+}
+
+function archiveProject(project, note, opts = {}) {
   const dir = path.join(CONTEXT_HOME, project);
   fs.mkdirSync(dir, { recursive: true });
-  const stamp = ts();
+  const stamp = opts.stamp || ts();
   const file = path.join(dir, `ctx_${stamp}.md`);
   const latest = path.join(dir, "latest.md");
 
@@ -108,15 +354,15 @@ function archiveProject(project, note) {
     "",
     "## ✅ 本次已完成",
     "",
-    note?.done || "_(由主 Agent 填写)_",
+    renderList(note?.done),
     "",
     "## 🚧 进行中（卡点）",
     "",
-    note?.blocked || "_(由主 Agent 填写)_",
+    note?.in_progress || note?.blocked || "_(由主 Agent 填写)_",
     "",
     "## 📌 后续待开始",
     "",
-    note?.next || "_(由主 Agent 填写)_",
+    renderList(note?.next),
     "",
     "## 🔑 关键决策",
     "",
@@ -126,7 +372,7 @@ function archiveProject(project, note) {
     "",
     "## ⚠️ 注意事项 & 踩坑记录",
     "",
-    note?.pitfalls || "_(由主 Agent 填写)_",
+    renderList(note?.blockers || note?.pitfalls),
     "",
     "## 🔗 关键文件清单",
     "",
@@ -144,7 +390,9 @@ function archiveProject(project, note) {
   try { fs.unlinkSync(latest); } catch (_) {}
   try { fs.symlinkSync(file, latest); }
   catch (_) { fs.copyFileSync(file, latest); }
-  return { archivePath: file, latestPath: latest, stamp };
+  const markdownArchive = { archivePath: file, latestPath: latest, stamp };
+  const structured = createStructuredArchive(project, note || {}, opts, markdownArchive);
+  return { ...markdownArchive, ...structured };
 }
 
 // ─── Mode 3 — restore ────────────────────────────────────────────────────────
@@ -174,6 +422,22 @@ function loadContext(project, mode) {
   if (mode === "list") {
     return { ok: true, action: "list", project, contexts: listContexts(project) };
   }
+  if (mode === "auto") {
+    const markdown = resolveLatest(project);
+    const archiveFile = latestArchiveJson();
+    const archive = archiveFile ? readJson(archiveFile) : null;
+    return {
+      ok: Boolean(markdown || archive),
+      action: "restore",
+      mode: "auto",
+      project,
+      markdown_path: markdown,
+      archive_json_path: archiveFile,
+      archive,
+      resume_bundle_command: `node .agent/skills/runtime-continuity/scripts/index.js resume-bundle --project ${project}`,
+      error: markdown || archive ? undefined : "no_archive_for_project",
+    };
+  }
   const file = resolveLatest(project);
   if (!file) {
     return { ok: false, action: "restore", project, error: "no_archive_for_project" };
@@ -187,6 +451,54 @@ function loadContext(project, mode) {
     size: stat.size,
     mtime: stat.mtime.toISOString(),
     body: fs.readFileSync(file, "utf8"),
+  };
+}
+
+function buildResumeBundle(project) {
+  const archiveFile = latestArchiveJson();
+  const archive = archiveFile ? readJson(archiveFile) : null;
+  const markdown = resolveLatest(project);
+  function git(cmd) {
+    try {
+      return spawnSync("git", cmd.split(" "), { cwd: process.cwd(), encoding: "utf8" })
+        .stdout?.trim() || "";
+    } catch { return ""; }
+  }
+  const runs = listJsonRel(RUNS_DIR, 8);
+  const sessions = listJsonRel(path.join(AGENT_ROOT, "sessions"), 8);
+  const handoffs = listHandoffs(12);
+  const artifacts = listArtifactStates(12);
+  const events = listJsonRel(RC_EVENTS_DIR, 12).filter((file) => file.endsWith("-event.json"));
+  return {
+    ok: true,
+    action: "resume-bundle",
+    project,
+    generated_at: nowIso(),
+    latest_archive: archiveFile ? rel(archiveFile) : null,
+    latest_markdown_archive: markdown || null,
+    archive,
+    runtime_events: events,
+    runs,
+    sessions,
+    pending_handoffs: handoffs,
+    artifact_states: artifacts,
+    git: {
+      branch: git("rev-parse --abbrev-ref HEAD"),
+      head: git("rev-parse --short HEAD"),
+      status_short: git("status --short"),
+    },
+    read_first: archive?.restore?.read_first || [
+      "AGENTS.md",
+      ".agent/rules/core-principles.md",
+      ".agent/rules/ai-behavior.md",
+      ".agent/rules/code-standards.md",
+    ],
+    next_action: archive?.restore?.next_action || "No structured archive found. Run /briefing and inspect git status before continuing.",
+    recommended_commands: [
+      `node .agent/skills/runtime-continuity/scripts/index.js status --project ${project}`,
+      handoffs[0] ? `node .agent/handoffs/scripts/handoff-protocol.js resume-prompt --payload-file ${handoffs[0]}` : null,
+      artifacts[0] ? `node .agent/artifacts/scripts/artifact-bus.js validate --task-id <task-id>` : null,
+    ].filter(Boolean),
   };
 }
 
@@ -369,7 +681,7 @@ function main() {
     // hook).  This is the only side effect; it does NOT create files in
     // ~/.agent/contexts/.
     const project = flag("--project", argv);
-    const auto = flag("--auto", argv);
+    const auto = argv.includes("--auto");
     const result = warmPrompt();
     if (auto && project) {
       const wrote = appendRunEvent({
@@ -397,6 +709,26 @@ function main() {
   const project = flag("--project", argv);
   if (!project) fail("missing_project", "--project is required for archive / restore / status / host-switch.");
 
+  if (mode === "log" || mode === "checkpoint") {
+    requireGate([...GATES_TIGHT]);
+    const result = createRuntimeEvent(project, argv, {
+      type: mode === "checkpoint" ? "checkpoint" : (flag("--type", argv) || "work_log"),
+    });
+    emit({
+      ok: true,
+      action: mode,
+      project,
+      event_path: result.eventPath,
+      event: result.event,
+    });
+    return;
+  }
+
+  if (mode === "resume-bundle") {
+    emit(buildResumeBundle(project));
+    return;
+  }
+
   if (mode === "host-switch") {
     // Cross-host switch bus (Phase 2).  Triggered when user wants to move
     // work from one host (claude-code / cursor / codex / unknown) to
@@ -411,7 +743,11 @@ function main() {
     const reason = flag("--reason", argv) || "";
     let archived;
     try {
-      archived = archiveProject(project, parseNote(argv));
+      archived = archiveProject(project, parseNote(argv), {
+        source_host: fromHost,
+        target_host: toHost,
+        reason,
+      });
     } catch (err) {
       fail("host_switch_archive_failed", err.message);
       return;
@@ -424,6 +760,7 @@ function main() {
       to_host: toHost,
       reason,
       archive_path: archived.archivePath,
+      archive_json_path: archived.archiveJsonPath,
     });
     emit({
       ok: true,
@@ -447,10 +784,14 @@ function main() {
   if (mode === "archive") {
     requireGate([...GATES_DESTRUCTIVE]);
     const note = parseNote(argv);
-    const stamp = ts();
     let archived;
     try {
-      archived = archiveProject(project, note);
+      archived = archiveProject(project, note, {
+        source_host: flag("--from-host", argv) || flag("--host", argv) || null,
+        target_host: flag("--to-host", argv) || null,
+        reason: flag("--reason", argv) || null,
+        full: argv.includes("--full"),
+      });
     } catch (err) {
       fail("archive_failed", err.message);
       return;
@@ -459,6 +800,7 @@ function main() {
       type: "session_archived",
       project,
       archive_path: archived.archivePath,
+      archive_json_path: archived.archiveJsonPath,
     });
     emit({ ok: true, action: "archive", project, ...archived });
     return;
@@ -466,9 +808,10 @@ function main() {
 
   if (mode === "restore") {
     const wantList = argv.includes("--list");
-    if (!wantList) requireGate([...GATES_TIGHT]);
-    emit(loadContext(project, wantList ? "list" : "load"));
-    if (!wantList) appendRunEvent({ type: "session_restored", project });
+    const wantAuto = argv.includes("--auto");
+    if (!wantList && !wantAuto) requireGate([...GATES_TIGHT]);
+    emit(loadContext(project, wantList ? "list" : wantAuto ? "auto" : "load"));
+    if (!wantList) appendRunEvent({ type: "session_restored", project, mode: wantAuto ? "auto" : "load" });
     return;
   }
 
@@ -481,7 +824,7 @@ function main() {
 
   fail(
     "unknown_command",
-    "Usage: runtime-continuity {assess|archive|restore|status|warm|host-switch|list-contexts} [--project P] [--gate user] ...",
+    "Usage: runtime-continuity {assess|log|checkpoint|archive|restore|status|warm|host-switch|resume-bundle|list-contexts} [--project P] [--gate user|agent] ...",
   );
 }
 
@@ -493,6 +836,8 @@ module.exports = {
   listContextsAll,
   resolveLatest,
   loadContext,
+  createRuntimeEvent,
+  buildResumeBundle,
   statusReport,
   warmPrompt,
   markSessionLastHost,
