@@ -36,6 +36,7 @@ node .agent/skills/agent-dashboard/scripts/serve.js --port 8787 --interval-ms 30
 The server regenerates the HTML periodically and uses browser auto-refresh over SSE. Task cards open a read-only Markdown preview drawer. Related task records, proposals, source refs, artifacts, and gate evidence can be opened without leaving the dashboard.
 
 Markdown previews use the vendored `markdown-it` browser build under `vendor/`. It is embedded into generated HTML for offline use, renders CommonMark plus built-in GFM tables and strikethrough, and keeps source HTML disabled. The upstream MIT license is stored in `vendor/LICENSE.markdown-it`.
+Links inside previewed Markdown stay navigable: supported project-relative documents open in the same preview dialog, anchors scroll within the document, and external URLs open in a new tab.
 
 The preview drawer reads documents through:
 
