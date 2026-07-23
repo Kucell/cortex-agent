@@ -8,7 +8,7 @@ const assert = require("node:assert/strict");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
-const { spawnSync } = require("node:child_process");
+const { spawn, spawnSync } = require("node:child_process");
 const test = require("node:test");
 
 const ROOT = path.resolve(__dirname, "..");
@@ -25,8 +25,40 @@ function fixture() {
   return cwd;
 }
 
-function run(cwd, args) {
-  return spawnSync(process.execPath, [SKILL, ...args], { cwd, encoding: "utf8" });
+function run(cwd, args, env = {}) {
+  return spawnSync(process.execPath, [SKILL, ...args], { cwd, encoding: "utf8", env: { ...process.env, ...env } });
+}
+
+function runAsync(cwd, args, env = {}) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, [SKILL, ...args], { cwd, env: { ...process.env, ...env }, stdio: ["ignore", "pipe", "pipe"] });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (chunk) => { stdout += chunk; });
+    child.stderr.on("data", (chunk) => { stderr += chunk; });
+    child.once("error", reject);
+    child.once("exit", (status) => resolve({ status, stdout, stderr }));
+  });
+}
+
+function waitFor(check, timeoutMs = 3000) {
+  const started = Date.now();
+  while (Date.now() - started < timeoutMs) {
+    try {
+      const value = check();
+      if (value) return value;
+    } catch (_) {}
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 25);
+  }
+  throw new Error("timed out waiting for runtime continuity guard");
+}
+
+function stopGuard(cwd) {
+  const stateFile = path.join(cwd, ".agent", "runtime-continuity", "guard", "state.json");
+  const state = fs.existsSync(stateFile) ? JSON.parse(fs.readFileSync(stateFile, "utf8")) : null;
+  if (state?.pid) {
+    try { process.kill(state.pid, "SIGTERM"); } catch (_) {}
+  }
 }
 
 function readRunEvents(cwd) {
@@ -80,31 +112,120 @@ test("warm: emits the 5-hour-start prompt and zero side effects", () => {
   assert.equal(readRunEvents(cwd).length, 0);
 });
 
-test("warm --auto: writes session_started event when --project is given", () => {
+test("warm --auto starts one guard, catches up archives, renews, heartbeats, and expires", () => {
   const cwd = fixture();
-  const r = run(cwd, ["warm", "--auto", "--project", "rt-warm-auto"]);
-  assert.equal(r.status, 0);
-  const body = JSON.parse(r.stdout);
-  assert.equal(body.duration_hours, 5);
-  assert.equal(body.auto_init, true, "expected auto_init:true when project is given");
-  // session_started event appended
-  const evs = readRunEvents(cwd);
-  assert.ok(evs.length >= 1, "expected at least 1 run event");
-  const last = evs[evs.length - 1];
-  assert.equal(last.type, "session_started");
-  assert.equal(last.via, "warm_auto_init");
-  assert.equal(last.project, "rt-warm-auto");
+  const project = `rt-warm-auto-${process.pid}`;
+  const stateFile = path.join(cwd, ".agent", "runtime-continuity", "guard", "state.json");
+  const env = {
+    CORTEX_SESSION_START: "1",
+    CORTEX_CONTINUITY_ARCHIVE_INTERVAL_MS: "5000",
+    CORTEX_CONTINUITY_WINDOW_MS: "10000",
+    CORTEX_CONTINUITY_POLL_MS: "50",
+  };
+  rmContexts(project);
+  rmRuntime(cwd);
+  try {
+    const first = run(cwd, ["warm", "--auto", "--project", project], env);
+    assert.equal(first.status, 0, first.stderr);
+    const firstBody = JSON.parse(first.stdout);
+    assert.equal(firstBody.auto_init, true);
+    assert.equal(firstBody.guard.started, true);
+    const firstPid = firstBody.guard.pid;
+
+    const archivedState = waitFor(() => {
+      if (!fs.existsSync(stateFile)) return null;
+      const state = JSON.parse(fs.readFileSync(stateFile, "utf8"));
+      return state.last_archive_at && state.heartbeat_at ? state : null;
+    });
+    assert.equal(archivedState.pid, firstPid);
+    const archive = JSON.parse(fs.readFileSync(path.join(cwd, archivedState.last_archive_path), "utf8"));
+    assert.equal(archive.reason, "continuity_guard_interval");
+    assert.equal(archive.source_host, "session-start-guard");
+
+    const second = run(cwd, ["warm", "--auto", "--project", project], env);
+    assert.equal(second.status, 0, second.stderr);
+    const secondBody = JSON.parse(second.stdout);
+    assert.equal(secondBody.guard.started, false);
+    assert.equal(secondBody.guard.renewed, true);
+    assert.equal(secondBody.guard.pid, firstPid, "duplicate SessionStart must reuse the same guard");
+    const status = JSON.parse(run(cwd, ["status", "--project", project]).stdout);
+    assert.equal(status.guard.active, true);
+    assert.equal(status.guard.pid, firstPid);
+    assert.ok(status.guard.heartbeat_at);
+
+    const evs = readRunEvents(cwd);
+    assert.ok(evs.some((event) => event.type === "session_started" && event.via === "warm_auto_init"));
+    assert.ok(evs.some((event) => event.type === "session_archived" && event.via === "continuity_guard"));
+
+    const expiring = JSON.parse(fs.readFileSync(stateFile, "utf8"));
+    expiring.renew_until = new Date(Date.now() + 200).toISOString();
+    fs.writeFileSync(stateFile, `${JSON.stringify(expiring, null, 2)}\n`, "utf8");
+    const stopped = waitFor(() => {
+      const state = JSON.parse(fs.readFileSync(stateFile, "utf8"));
+      return state.status === "stopped" ? state : null;
+    }, 5000);
+    assert.equal(stopped.stop_reason, "window_expired");
+    assert.equal(fs.existsSync(path.join(cwd, ".agent", "runtime-continuity", "guard", "guard.pid")), false);
+    assert.equal(fs.existsSync(path.join(cwd, ".agent", "runtime-continuity", "guard", "guard.lock")), false);
+  } finally {
+    stopGuard(cwd);
+    rmContexts(project);
+  }
 });
 
-test("warm --auto without --project: no side effects (graceful no-op)", () => {
+test("warm --auto is SessionStart-only and requires a project", () => {
   const cwd = fixture();
-  const r = run(cwd, ["warm", "--auto"]);
-  assert.equal(r.status, 0);
-  const body = JSON.parse(r.stdout);
-  assert.equal(body.duration_hours, 5);
-  assert.equal(body.auto_init, undefined, "auto_init absent when --project missing");
-  // No event appended (graceful no-op)
+  const direct = run(cwd, ["warm", "--auto", "--project", "rt-direct"]);
+  assert.equal(direct.status, 2);
+  assert.equal(JSON.parse(direct.stdout).error, "session_start_only");
+  const missing = run(cwd, ["warm", "--auto"], { CORTEX_SESSION_START: "1" });
+  assert.equal(missing.status, 2);
+  assert.equal(JSON.parse(missing.stdout).error, "missing_project");
   assert.equal(readRunEvents(cwd).length, 0);
+});
+
+test("simultaneous SessionStart hooks converge on one guard PID", async () => {
+  const cwd = fixture();
+  const project = `rt-warm-race-${process.pid}`;
+  const archives = path.join(cwd, ".agent", "runtime-continuity", "archives");
+  fs.mkdirSync(archives, { recursive: true });
+  fs.writeFileSync(path.join(archives, "latest.json"), JSON.stringify({ project, created_at: new Date().toISOString() }), "utf8");
+  const env = {
+    CORTEX_SESSION_START: "1",
+    CORTEX_CONTINUITY_ARCHIVE_INTERVAL_MS: "5000",
+    CORTEX_CONTINUITY_WINDOW_MS: "2000",
+    CORTEX_CONTINUITY_POLL_MS: "50",
+  };
+  try {
+    const results = await Promise.all([
+      runAsync(cwd, ["warm", "--auto", "--project", project], env),
+      runAsync(cwd, ["warm", "--auto", "--project", project], env),
+    ]);
+    for (const result of results) assert.equal(result.status, 0, result.stderr);
+    const guards = results.map((result) => JSON.parse(result.stdout).guard);
+    assert.equal(new Set(guards.map((guard) => guard.pid)).size, 1);
+    assert.equal(guards.filter((guard) => guard.started).length, 1);
+    assert.equal(guards.filter((guard) => guard.renewed).length, 1);
+  } finally {
+    stopGuard(cwd);
+  }
+});
+
+test("SessionStart hooks launch the guarded automatic mode with matching descriptions", () => {
+  const hookFiles = [
+    path.join(ROOT, ".agent", "hooks", "hooks.json"),
+    path.join(ROOT, "templates", "zh", ".agent", "hooks", "hooks.json"),
+    path.join(ROOT, "templates", "en", ".agent", "hooks", "hooks.json"),
+  ];
+  for (const file of hookFiles) {
+    const config = JSON.parse(fs.readFileSync(file, "utf8"));
+    const entry = config.hooks.SessionStart.find((item) => item.hooks.some((hook) => hook.command.includes("runtime-continuity")));
+    assert.ok(entry, `missing runtime-continuity SessionStart hook in ${file}`);
+    assert.match(entry.hooks[0].command, /CORTEX_SESSION_START=1/);
+    assert.match(entry.hooks[0].command, /warm --auto --project/);
+    assert.match(entry.description, /2 (?:小时|hours)/);
+    assert.match(entry.description, /5(?: |-)(?:小时|hour)/);
+  }
 });
 
 // ─── mode 2: archive ──────────────────────────────────────────────────────────

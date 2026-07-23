@@ -18,8 +18,9 @@ standard work-log events, structured archives, and resume bundles under
 
 ## When to Use
 
-- Hit the 5-hour session time limit → run `warm` first to start the
-  timer; on every 4-hour mark, run `archive` to make a checkpoint.
+- SessionStart automatically launches or renews a single continuity guard.
+  It catches up archives older than 2 hours, archives every 2 hours, and
+  expires after the rolling 5-hour window.
 - Switching host agent mid-task (Claude Code → Codex, etc.) → run
   `host-switch` before leaving the old host.
 - Resume work next day / next session / new agent → run `resume-bundle`
@@ -63,8 +64,9 @@ node .agent/skills/runtime-continuity/scripts/index.js status \
 
 # 7. warm — output the "5-hour timer starting" prompt for the host
 node .agent/skills/runtime-continuity/scripts/index.js warm
-node .agent/skills/runtime-continuity/scripts/index.js warm \
-  --auto --project <project>
+
+# warm --auto is reserved for SessionStart hooks and requires the
+# CORTEX_SESSION_START=1 capability environment variable.
 
 # 8. host-switch — cross-host migration
 node .agent/skills/runtime-continuity/scripts/index.js host-switch \
@@ -89,6 +91,13 @@ node .agent/skills/runtime-continuity/scripts/index.js list-contexts \
 - **Project-local resume state**: archive also writes
   `.agent/runtime-continuity/archives/RC-*.json` and
   `.agent/runtime-continuity/archives/latest.json`.
+- **Single automatic guard**: `.agent/runtime-continuity/guard/` stores the
+  PID, lock, heartbeat, renewal deadline, latest archive, and last error.
+  Repeated SessionStart hooks renew the existing process instead of spawning
+  another one.
+- **Manual gate remains strict**: direct `archive` calls still require
+  `--gate user`; only the internal SessionStart guard can create automatic
+  interval archives.
 - **New-agent entrypoint**: `resume-bundle` summarizes latest archive,
   handoffs, runs, sessions, artifacts, runtime events, and git state.
 - **Audit-friendly**: every archive / restore / status call writes
@@ -100,7 +109,9 @@ node .agent/skills/runtime-continuity/scripts/index.js list-contexts \
 
 ## Non-Goals
 
-- Does NOT modify `.agent/sub-agents/session-manager.md`.
+- Does NOT expose a general-purpose daemon start command.
+- The automatic guard does NOT commit, stop Dashboard, execute product code,
+  or modify product source.
 - Does NOT crawl host private state (Claude Code transcripts, Codex
   conversation history, browser cookies, etc.).
 - Does NOT store secrets or full diffs; store paths, commands, summaries, and
