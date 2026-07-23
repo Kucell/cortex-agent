@@ -2,7 +2,7 @@
 name: session-manager
 description: >
   会话时间管理子代理。专职处理 AI 会话的 5 小时时长限制问题。
-  支持 5 种模式：assess（任务评估）、archive（立即存档）、restore（会话恢复）、status（时间查询）、warm（滚动窗口预热）。
+  支持 5 种手工模式，并定义 SessionStart 专用的自动连续性守护流程。
   调用时机：开始长时任务时、会话即将超时时、新会话恢复时，或用户说「session warm/assess/archive/restore/status」时。
 model: claude-haiku-4-5-20251001   # 轻量会话管理；可在 config/reasoning-config.yml 中调整
 tools: Read, Write, Shell
@@ -192,6 +192,20 @@ tools: Read, Write, Shell
    - 窗口快到时：`session archive` + `git commit` → 发任意消息开启下一窗口
    - 每约 10 小时：完全重启会话，避免上下文过载
    - 切忌：不要因为计时器还没到就跳过存档
+
+### 自动守护：SessionStart continuity guard
+
+该流程不是第六个用户命令，只能由 `SessionStart` Hook 通过
+`CORTEX_SESSION_START=1 ... warm --auto --project <project>` 启动：
+
+1. 使用项目内 PID、原子状态文件和锁目录确保每个项目只有一个守护进程。
+2. 启动时检查最新归档；不存在或超过 2 小时则立即生成自动摘要归档。
+3. 运行期间每 2 小时归档一次，并持续写入心跳、最近归档和错误状态。
+4. 每次新 SessionStart 只续期现有守护进程；当前窗口 5 小时后自动退出。
+5. 自动摘要只读取 Git、run、session、handoff、artifact 和 runtime event 状态；不运行或修改业务代码。
+
+手工 `archive` 仍必须使用 `--gate user`。自动守护不得提交代码、停止 Dashboard、
+触碰业务源码，也不得并行启动第二个归档进程。
 
 ---
 

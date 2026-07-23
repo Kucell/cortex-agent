@@ -43,12 +43,12 @@
         "hooks": [
           {
             "type": "command",
-            "command": "PROJ=$(node -e \"console.log(require('path').basename(process.cwd()))\"); node .agent/skills/runtime-continuity/scripts/index.js warm --auto --project \"$PROJ\" 2>/dev/null; exit 0",
+            "command": "PROJ=$(node -e \"console.log(require('path').basename(process.cwd()))\"); CORTEX_SESSION_START=1 node .agent/skills/runtime-continuity/scripts/index.js warm --auto --project \"$PROJ\" 2>/dev/null; exit 0",
             "async": true,
             "timeout": 5
           }
         ],
-        "description": "On session start, initialize runtime-continuity tracking: write a session_started event and start the 5-hour timing window"
+        "description": "On session start, launch or renew the single runtime-continuity guard: catch up stale archives, archive every 2 hours, and exit after the 5-hour window"
       }
     ]
   }

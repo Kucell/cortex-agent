@@ -19,7 +19,7 @@
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
-const { spawnSync } = require("child_process");
+const { spawn, spawnSync } = require("child_process");
 
 const AGENT_ROOT = path.join(process.cwd(), ".agent");
 const RUNS_DIR = path.join(AGENT_ROOT, "runs");
@@ -27,6 +27,15 @@ const CONTEXT_HOME = path.join(os.homedir(), ".agent", "contexts");
 const RC_ROOT = path.join(AGENT_ROOT, "runtime-continuity");
 const RC_EVENTS_DIR = path.join(RC_ROOT, "events");
 const RC_ARCHIVES_DIR = path.join(RC_ROOT, "archives");
+const RC_GUARD_DIR = path.join(RC_ROOT, "guard");
+const GUARD_STATE_FILE = path.join(RC_GUARD_DIR, "state.json");
+const GUARD_PID_FILE = path.join(RC_GUARD_DIR, "guard.pid");
+const GUARD_LOCK_DIR = path.join(RC_GUARD_DIR, "guard.lock");
+
+const DEFAULT_ARCHIVE_INTERVAL_MS = 2 * 60 * 60 * 1000;
+const DEFAULT_GUARD_WINDOW_MS = 5 * 60 * 60 * 1000;
+const DEFAULT_GUARD_POLL_MS = 60 * 1000;
+const GUARD_START_GRACE_MS = 5000;
 
 const GATES_TIGHT = new Set(["user", "agent"]);
 const GATES_DESTRUCTIVE = new Set(["user"]);
@@ -82,6 +91,33 @@ function writeJsonAtomic(file, data) {
 
 function readJson(file) {
   try { return JSON.parse(fs.readFileSync(file, "utf8")); } catch (_) { return null; }
+}
+
+function positiveEnvMs(name, fallback) {
+  const value = Number(process.env[name]);
+  return Number.isFinite(value) && value > 0 ? value : fallback;
+}
+
+function pidAlive(pid) {
+  if (!Number.isInteger(Number(pid)) || Number(pid) <= 0) return false;
+  try {
+    process.kill(Number(pid), 0);
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+function sleepMs(ms) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+function guardConfig() {
+  return {
+    archive_interval_ms: positiveEnvMs("CORTEX_CONTINUITY_ARCHIVE_INTERVAL_MS", DEFAULT_ARCHIVE_INTERVAL_MS),
+    window_ms: positiveEnvMs("CORTEX_CONTINUITY_WINDOW_MS", DEFAULT_GUARD_WINDOW_MS),
+    poll_ms: positiveEnvMs("CORTEX_CONTINUITY_POLL_MS", DEFAULT_GUARD_POLL_MS),
+  };
 }
 
 function csvFlag(name, argv) {
@@ -395,6 +431,177 @@ function archiveProject(project, note, opts = {}) {
   return { ...markdownArchive, ...structured };
 }
 
+function latestArchiveAgeMs() {
+  const file = latestArchiveJson();
+  if (!file || !fs.existsSync(file)) return Infinity;
+  const archive = readJson(file);
+  const createdAt = archive && Date.parse(archive.created_at);
+  return Date.now() - (Number.isFinite(createdAt) ? createdAt : fs.statSync(file).mtimeMs);
+}
+
+function automaticArchiveNote(project) {
+  const runId = findActiveRunId();
+  const run = runId ? readJson(path.join(RUNS_DIR, `${runId}.json`)) : null;
+  const events = Array.isArray(run?.events) ? run.events : [];
+  const latest = events.at(-1) || {};
+  const runtimeState = readJson(path.join(RC_ROOT, "state.json")) || {};
+  const latestRuntimeEvent = runtimeState.latest_event
+    ? readJson(path.resolve(process.cwd(), runtimeState.latest_event))
+    : null;
+  const summary = latestRuntimeEvent?.summary || {};
+  return {
+    goal: run?.mission_id || run?.task_id || run?.current_task_id || `Maintain continuity for ${project}`,
+    done: asList(summary.done),
+    in_progress: summary.in_progress || latest.message || latest.type || "Session is active; automatic continuity checkpoint created.",
+    next: asList(summary.next),
+    blockers: asList(summary.blockers),
+  };
+}
+
+function updateGuardState(leaseId, patch) {
+  const current = readJson(GUARD_STATE_FILE);
+  if (!current || current.lease_id !== leaseId) return false;
+  writeJsonAtomic(GUARD_STATE_FILE, { ...current, ...patch, updated_at: nowIso() });
+  return true;
+}
+
+function releaseGuard(leaseId, reason) {
+  const current = readJson(GUARD_STATE_FILE);
+  if (current && current.lease_id === leaseId) {
+    writeJsonAtomic(GUARD_STATE_FILE, {
+      ...current,
+      status: "stopped",
+      stop_reason: reason,
+      stopped_at: nowIso(),
+      updated_at: nowIso(),
+    });
+    try { fs.unlinkSync(GUARD_PID_FILE); } catch (_) {}
+    try { fs.rmSync(GUARD_LOCK_DIR, { recursive: true, force: true }); } catch (_) {}
+  }
+}
+
+function runContinuityGuard(project, leaseId) {
+  if (process.env.CORTEX_CONTINUITY_GUARD !== "1") {
+    fail("internal_guard_only", "The continuity guard can only be launched by SessionStart warm --auto.");
+  }
+  const state = readJson(GUARD_STATE_FILE);
+  if (!state || state.lease_id !== leaseId) {
+    fail("invalid_guard_lease", "Continuity guard lease is missing or superseded.");
+  }
+  const config = state.config || guardConfig();
+  fs.writeFileSync(GUARD_PID_FILE, `${process.pid}\n`, "utf8");
+  updateGuardState(leaseId, { pid: process.pid, status: "running", heartbeat_at: nowIso() });
+  let stopped = false;
+
+  const stop = (reason) => {
+    if (stopped) return;
+    stopped = true;
+    releaseGuard(leaseId, reason);
+    process.exit(0);
+  };
+
+  const tick = () => {
+    const current = readJson(GUARD_STATE_FILE);
+    if (!current || current.lease_id !== leaseId) return stop("superseded");
+    if (Date.now() >= Date.parse(current.renew_until)) return stop("window_expired");
+    const patch = { heartbeat_at: nowIso(), status: "running", pid: process.pid };
+    if (latestArchiveAgeMs() >= config.archive_interval_ms) {
+      try {
+        const archived = archiveProject(project, automaticArchiveNote(project), {
+          source_host: "session-start-guard",
+          reason: "continuity_guard_interval",
+          full: true,
+        });
+        appendRunEvent({
+          type: "session_archived",
+          project,
+          via: "continuity_guard",
+          archive_path: archived.archivePath,
+          archive_json_path: archived.archiveJsonPath,
+        });
+        patch.last_archive_at = archived.archive.created_at;
+        patch.last_archive_path = rel(archived.archiveJsonPath);
+        patch.last_error = null;
+      } catch (err) {
+        patch.last_error = { message: err.message, at: nowIso() };
+      }
+    }
+    updateGuardState(leaseId, patch);
+  };
+
+  process.once("SIGTERM", () => stop("sigterm"));
+  process.once("SIGINT", () => stop("sigint"));
+  tick();
+  setInterval(tick, Math.max(25, config.poll_ms));
+}
+
+function startOrRenewContinuityGuard(project) {
+  const config = guardConfig();
+  fs.mkdirSync(RC_GUARD_DIR, { recursive: true });
+  const renew = (current) => {
+    const renewUntil = new Date(Date.now() + config.window_ms).toISOString();
+    writeJsonAtomic(GUARD_STATE_FILE, {
+      ...current,
+      config,
+      renew_until: renewUntil,
+      last_session_start_at: nowIso(),
+      updated_at: nowIso(),
+    });
+    return { started: false, renewed: true, pid: current.pid, renew_until: renewUntil, state_path: rel(GUARD_STATE_FILE) };
+  };
+  const current = readJson(GUARD_STATE_FILE);
+  if (current && current.status === "running" && pidAlive(current.pid)) {
+    return renew(current);
+  }
+
+  let lockAcquired = false;
+  for (let attempt = 0; attempt < 120 && !lockAcquired; attempt += 1) {
+    try {
+      fs.mkdirSync(GUARD_LOCK_DIR);
+      lockAcquired = true;
+      break;
+    } catch (err) {
+      if (err.code !== "EEXIST") throw err;
+      const existing = readJson(GUARD_STATE_FILE);
+      if (existing && existing.status === "running" && pidAlive(existing.pid)) return renew(existing);
+      let lockAge = Infinity;
+      try { lockAge = Date.now() - fs.statSync(GUARD_LOCK_DIR).mtimeMs; } catch (_) {}
+      const stateAge = existing?.updated_at ? Date.now() - Date.parse(existing.updated_at) : Infinity;
+      if (lockAge <= GUARD_START_GRACE_MS || stateAge <= GUARD_START_GRACE_MS) {
+        sleepMs(50);
+        continue;
+      }
+      try { fs.rmSync(GUARD_LOCK_DIR, { recursive: true, force: true }); } catch (_) {}
+    }
+  }
+  if (!lockAcquired) throw new Error("continuity_guard_lock_timeout");
+  const now = Date.now();
+  const leaseId = `RCG-${ts()}-${process.pid}`;
+  const renewUntil = new Date(now + config.window_ms).toISOString();
+  writeJsonAtomic(GUARD_STATE_FILE, {
+    schema_version: 1,
+    project,
+    lease_id: leaseId,
+    pid: null,
+    status: "starting",
+    started_at: nowIso(),
+    last_session_start_at: nowIso(),
+    heartbeat_at: null,
+    renew_until: renewUntil,
+    config,
+  });
+  const child = spawn(process.execPath, [__filename, "__guard", "--project", project, "--lease-id", leaseId], {
+    cwd: process.cwd(),
+    detached: true,
+    stdio: "ignore",
+    env: { ...process.env, CORTEX_CONTINUITY_GUARD: "1" },
+  });
+  child.unref();
+  updateGuardState(leaseId, { pid: child.pid, status: "running", heartbeat_at: nowIso() });
+  fs.writeFileSync(GUARD_PID_FILE, `${child.pid}\n`, "utf8");
+  return { started: true, renewed: false, pid: child.pid, renew_until: renewUntil, state_path: rel(GUARD_STATE_FILE) };
+}
+
 // ─── Mode 3 — restore ────────────────────────────────────────────────────────
 function listContexts(project) {
   const dir = path.join(CONTEXT_HOME, project);
@@ -503,13 +710,30 @@ function buildResumeBundle(project) {
 }
 
 // ─── Mode 4 — status ─────────────────────────────────────────────────────────
+function continuityGuardStatus() {
+  const state = readJson(GUARD_STATE_FILE);
+  if (!state) return { exists: false, active: false };
+  const active = state.status === "running" && pidAlive(state.pid) && Date.now() < Date.parse(state.renew_until);
+  return {
+    exists: true,
+    active,
+    status: active ? "running" : state.status,
+    pid: state.pid || null,
+    heartbeat_at: state.heartbeat_at || null,
+    renew_until: state.renew_until || null,
+    last_archive_at: state.last_archive_at || null,
+    last_archive_path: state.last_archive_path || null,
+    last_error: state.last_error || null,
+  };
+}
+
 function statusReport(project) {
   const dir = path.join(CONTEXT_HOME, project);
   if (!fs.existsSync(dir)) {
-    return { ok: true, action: "status", project, exists: false };
+    return { ok: true, action: "status", project, exists: false, guard: continuityGuardStatus() };
   }
   const entries = listContexts(project);
-  if (!entries.length) return { ok: true, action: "status", project, exists: true, count: 0 };
+  if (!entries.length) return { ok: true, action: "status", project, exists: true, count: 0, guard: continuityGuardStatus() };
   const mostRecent = path.join(dir, entries[0].name);
   const stat = fs.statSync(mostRecent);
   const ageHrs = (Date.now() - stat.mtimeMs) / (1000 * 60 * 60);
@@ -523,6 +747,7 @@ function statusReport(project) {
     age_hours: Number(ageHrs.toFixed(2)),
     stale_recommendation: ageHrs > 2 ? "archive_now" : "ok",
     count: entries.length,
+    guard: continuityGuardStatus(),
   };
 }
 
@@ -664,6 +889,14 @@ function main() {
   const argv = process.argv.slice(2);
   const [mode] = argv;
 
+  if (mode === "__guard") {
+    const project = flag("--project", argv);
+    const leaseId = flag("--lease-id", argv);
+    if (!project || !leaseId) fail("invalid_guard_start", "Internal guard requires project and lease id.");
+    runContinuityGuard(project, leaseId);
+    return;
+  }
+
   if (mode === "assess") {
     requireGate([...GATES_TIGHT]);
     const desc = flag("--task-description", argv) || "";
@@ -683,13 +916,20 @@ function main() {
     const project = flag("--project", argv);
     const auto = argv.includes("--auto");
     const result = warmPrompt();
-    if (auto && project) {
-      const wrote = appendRunEvent({
+    if (auto) {
+      if (process.env.CORTEX_SESSION_START !== "1") {
+        fail("session_start_only", "warm --auto may only be invoked by the SessionStart hook.");
+      }
+      if (!project) fail("missing_project", "--project is required for SessionStart automatic mode.");
+      const eventRecorded = appendRunEvent({
         type: "session_started",
         via: "warm_auto_init",
         project,
       });
-      result.auto_init = wrote;
+      const guard = startOrRenewContinuityGuard(project);
+      result.auto_init = true;
+      result.event_recorded = eventRecorded;
+      result.guard = guard;
     }
     emit(result);
     return;
@@ -840,6 +1080,10 @@ module.exports = {
   buildResumeBundle,
   statusReport,
   warmPrompt,
+  automaticArchiveNote,
+  latestArchiveAgeMs,
+  startOrRenewContinuityGuard,
+  continuityGuardStatus,
   markSessionLastHost,
   findActiveRunId,
 };
