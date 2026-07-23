@@ -16,6 +16,7 @@ function createProject() {
   for (const relative of [
     ".agent/skills/agent-dashboard/scripts/serve.js",
     ".agent/skills/agent-dashboard/scripts/generate.js",
+    ".agent/skills/agent-dashboard/vendor/markdown-it.min.js",
     ".agent/skills/management-api/scripts/index.js",
     ".agent/skills/management-api/scripts/normalize-token-usage.js",
   ]) {
@@ -96,7 +97,8 @@ test("dev shifts ports, heartbeats, closes, and leaves scripts reusable", async 
   });
   assert.equal(running.agent_id, "dashboard-manager");
   assert.ok(running.server.port > port, `expected a fallback port above occupied ${port}`);
-  assert.match(stdout, new RegExp(`http://127\\.0\\.0\\.1:${running.server.port}`));
+  const dashboardUrl = new RegExp(`http://127\\.0\\.0\\.1:${running.server.port}`);
+  await waitFor(() => dashboardUrl.test(stdout));
   const firstHeartbeat = running.last_heartbeat_at;
   await waitFor(() => JSON.parse(fs.readFileSync(sessionFile, "utf8")).last_heartbeat_at !== firstHeartbeat);
 
