@@ -34,12 +34,12 @@ architecture:<path-or-artifact-ref>#<revision-digest>
 Use the first 8-12 digest characters in both IDs:
 
 ```bash
-node .agent/skills/management-api/scripts/index.js decisions request \
+cortex-agent decisions request --project . \
   --decision-id D-arch-<topic>-<revision-digest8> \
   --gate arch-design \
   --payload-json '{"type":"architecture","requested_by":"/arch-design","prompt":"Approve this exact architecture revision?","options":["approve","reject","revise"],"gate":{"action":"architecture","resource_ref":"<architecture-resource-ref>"}}'
 
-node .agent/skills/management-api/scripts/index.js waitpoints create \
+cortex-agent waitpoints create --project . \
   --waitpoint-id WP-arch-<topic>-<revision-digest8> \
   --gate arch-design \
   --owner-workflow /arch-design \
@@ -54,7 +54,7 @@ Direct the user to `/approve decision D-arch-<topic>-<revision-digest8>` or ask 
 On resume, recompute the revision. Only when the resource is unchanged and the Decision is explicitly approved may `/arch-design` release its Waitpoint:
 
 ```bash
-node .agent/skills/management-api/scripts/index.js waitpoints release \
+cortex-agent waitpoints release --project . \
   --waitpoint-id WP-arch-<topic>-<revision-digest8> \
   --gate owner \
   --owner-workflow /arch-design \
