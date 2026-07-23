@@ -18,6 +18,7 @@ const {
   runs,
   queues,
   sessions,
+  managementQuery,
   dev,
   printHelp,
 } = require("../lib/commands");
@@ -68,6 +69,12 @@ for (let i = 0; i < args.length; i++) {
     // Adding it here is a no-op cost when absent; honest reporting when present.
     options.dryRun = true;
   }
+  if (arg === "--project") {
+    const value = args[i + 1];
+    options.project = value && !value.startsWith("--") ? value : "";
+  } else if (arg && arg.startsWith("--project=")) {
+    options.project = arg.slice("--project=".length);
+  }
 }
 
 function detectLangFromProject(dir) {
@@ -81,7 +88,8 @@ function detectLangFromProject(dir) {
 
 const defaultLang =
   process.env.LANG && process.env.LANG.startsWith("zh") ? "zh" : "en";
-const lang = options.lang || detectLangFromProject(cwd) || defaultLang;
+const languageProject = options.project ? path.resolve(cwd, options.project) : cwd;
+const lang = options.lang || detectLangFromProject(languageProject) || defaultLang;
 const templateDir = path.join(__dirname, "../templates", lang);
 
 const ctx = { cwd, args, command, options, lang, templateDir };
@@ -106,6 +114,7 @@ const ctx = { cwd, args, command, options, lang, templateDir };
     case "runs":        runs(ctx); break;
     case "queues":      queues(ctx); break;
     case "sessions":    sessions(ctx); break;
+    case "query":       managementQuery(ctx); break;
     case "dev":         await dev(ctx); break;
     case undefined:
     case "--help":

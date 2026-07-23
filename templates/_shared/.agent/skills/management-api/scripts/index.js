@@ -5,6 +5,7 @@ const fs = require("fs");
 const path = require("path");
 const { execSync } = require("child_process");
 const { normalizeTokenUsage } = require("./normalize-token-usage.js");
+const projectionRegistryPath = path.join(__dirname, "projection-registry.json");
 
 const root = process.cwd();
 const agentRoot = path.join(root, ".agent");
@@ -1575,34 +1576,44 @@ function transitionSession(status) {
   printJson({ ok: true, action: `sessions ${status === "closed" ? "close" : "pause"}`, path: rel(file), session: next });
 }
 
+const QUERY_HANDLERS = Object.freeze({
+  "dashboard-state": queryDashboardState,
+  runs: queryRuns,
+  queues: queryQueues,
+  sessions: querySessions,
+  inbox: queryInbox,
+  decisions: queryDecisions,
+  waitpoints: queryWaitpoints,
+});
+
+function availableProjections() {
+  const registry = readJson(projectionRegistryPath);
+  if (!registry || registry.schema_version !== 1 || !Array.isArray(registry.projections)) {
+    fail("projection_registry_unavailable", "projection-registry.json is missing or invalid.", 2);
+  }
+  return registry.projections.filter((entry) => entry && typeof QUERY_HANDLERS[entry.name] === "function");
+}
+
+function queryCapabilities() {
+  return {
+    ok: true,
+    query: "capabilities",
+    generated_at: nowIso(),
+    registry_schema_version: 1,
+    projections: availableProjections(),
+  };
+}
+
 function main() {
   const [command, query] = args;
-  if (command === "query" && query === "dashboard-state") {
-    printJson(queryDashboardState());
+  if (command === "query" && query === "capabilities") {
+    printJson(queryCapabilities());
     return;
   }
-  if (command === "query" && query === "runs") {
-    printJson(queryRuns());
-    return;
-  }
-  if (command === "query" && query === "queues") {
-    printJson(queryQueues());
-    return;
-  }
-  if (command === "query" && query === "sessions") {
-    printJson(querySessions());
-    return;
-  }
-  if (command === "query" && query === "inbox") {
-    printJson(queryInbox());
-    return;
-  }
-  if (command === "query" && query === "decisions") {
-    printJson(queryDecisions());
-    return;
-  }
-  if (command === "query" && query === "waitpoints") {
-    printJson(queryWaitpoints());
+  if (command === "query" && Object.prototype.hasOwnProperty.call(QUERY_HANDLERS, query)) {
+    const registered = availableProjections().some((entry) => entry.name === query);
+    if (!registered) fail("unsupported_projection", query, 2);
+    printJson(QUERY_HANDLERS[query]());
     return;
   }
   if (command === "runs" && query === "upsert") {
@@ -1689,7 +1700,7 @@ function main() {
   printJson({
     ok: false,
     error: "unsupported_command",
-    usage: "node .agent/skills/management-api/scripts/index.js query dashboard-state|runs|queues|sessions|inbox|decisions|waitpoints | runs upsert|event|checkpoint|tokens | queues upsert|item | sessions open|heartbeat|pause|close | decisions request|resolve|supersede | inbox send|transition | waitpoints create|release|cancel",
+    usage: "node .agent/skills/management-api/scripts/index.js query capabilities|dashboard-state|runs|queues|sessions|inbox|decisions|waitpoints | runs upsert|event|checkpoint|tokens | queues upsert|item | sessions open|heartbeat|pause|close | decisions request|resolve|supersede | inbox send|transition | waitpoints create|release|cancel",
   });
   process.exitCode = 2;
 }

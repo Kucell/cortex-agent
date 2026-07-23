@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "projections": [
+    {
+      "name": "dashboard-state",
+      "kind": "aggregate",
+      "exact_lookup": false,
+      "data_field": null,
+      "filters": []
+    },
+    {
+      "name": "runs",
+      "kind": "collection",
+      "exact_lookup": false,
+      "data_field": "runs",
+      "filters": []
+    },
+    {
+      "name": "queues",
+      "kind": "collection",
+      "exact_lookup": false,
+      "data_field": "queues",
+      "filters": []
+    },
+    {
+      "name": "sessions",
+      "kind": "collection",
+      "exact_lookup": false,
+      "data_field": "sessions",
+      "filters": []
+    },
+    {
+      "name": "inbox",
+      "kind": "collection",
+      "exact_lookup": false,
+      "data_field": "inbox",
+      "filters": []
+    },
+    {
+      "name": "decisions",
+      "kind": "collection",
+      "exact_lookup": false,
+      "data_field": "decisions",
+      "filters": []
+    },
+    {
+      "name": "waitpoints",
+      "kind": "collection",
+      "exact_lookup": false,
+      "data_field": "waitpoints",
+      "filters": []
+    }
+  ]
+}
