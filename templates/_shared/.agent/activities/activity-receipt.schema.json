@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cortex-agent.local/schemas/activity-receipt.schema.json",
+  "title": "Cortex Agent Activity Receipt",
+  "type": "object",
+  "required": ["schema_version", "receipt_id", "receipt_kind", "source", "source_revision", "capture_mode", "observed_at", "activity_refs", "gaps", "evidence_refs", "availability", "redaction", "dedupe_key"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "receipt_id": { "type": "string", "pattern": "^AR-[A-Za-z0-9][A-Za-z0-9._-]*$" },
+    "receipt_kind": { "enum": ["capture", "import", "reconciliation", "delivery", "commit_intent", "commit_result"] },
+    "source": { "type": "string", "minLength": 1 },
+    "source_revision": { "type": "string", "minLength": 1 },
+    "capture_mode": { "enum": ["automatic", "workflow_required", "imported", "reconciled", "manual"] },
+    "observed_at": { "type": "string", "format": "date-time" },
+    "activity_refs": { "type": "array", "items": { "type": "string", "pattern": "^ACT-" }, "uniqueItems": true },
+    "gaps": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+    "evidence_refs": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+    "availability": { "enum": ["available", "unavailable", "failed", "stale"] },
+    "dedupe_key": { "type": "string", "minLength": 1 },
+    "redaction": {
+      "type": "object",
+      "required": ["status"],
+      "properties": {
+        "status": { "enum": ["passed", "failed", "not_applicable"] },
+        "ruleset": { "type": ["string", "null"] }
+      },
+      "additionalProperties": false
+    },
+    "commit_identity": { "type": ["string", "null"] },
+    "intent_receipt_ref": { "type": ["string", "null"] }
+  },
+  "additionalProperties": false
+}

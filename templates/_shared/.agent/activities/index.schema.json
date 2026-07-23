@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cortex-agent.local/schemas/activity-index.schema.json",
+  "title": "Cortex Agent Activity Index",
+  "type": "object",
+  "required": ["schema_version", "events", "receipts", "updated_at"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "events": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["activity_id", "path", "activity_kind", "capture_mode", "source", "source_revision", "observed_at", "availability", "dedupe_key"],
+        "properties": {
+          "activity_id": { "type": "string", "pattern": "^ACT-" },
+          "path": { "type": "string", "pattern": "^\\.agent/activities/events/ACT-" },
+          "activity_kind": { "type": "string" },
+          "capture_mode": { "type": "string" },
+          "source": { "type": "string" },
+          "source_revision": { "type": "string" },
+          "observed_at": { "type": "string", "format": "date-time" },
+          "availability": { "type": "string" },
+          "dedupe_key": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "receipts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["receipt_id", "path", "receipt_kind", "source", "source_revision", "observed_at", "availability", "dedupe_key"],
+        "properties": {
+          "receipt_id": { "type": "string", "pattern": "^AR-" },
+          "path": { "type": "string", "pattern": "^\\.agent/activities/receipts/AR-" },
+          "receipt_kind": { "type": "string" },
+          "source": { "type": "string" },
+          "source_revision": { "type": "string" },
+          "observed_at": { "type": "string", "format": "date-time" },
+          "availability": { "type": "string" },
+          "dedupe_key": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "updated_at": { "type": ["string", "null"], "format": "date-time" }
+  },
+  "additionalProperties": false
+}

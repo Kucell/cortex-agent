@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cortex-agent.local/schemas/activity-recording-profile.schema.json",
+  "title": "Cortex Agent Activity Recording Profile",
+  "type": "object",
+  "required": ["schema_version", "project_id", "policy", "sources", "retention", "redaction"],
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "project_id": { "type": "string", "minLength": 1 },
+    "policy": { "enum": ["workflow-enforced", "observe-only", "disabled"] },
+    "sources": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["mode"],
+        "properties": {
+          "mode": { "enum": ["automatic", "workflow_required", "imported", "reconciled", "manual", "unavailable", "excluded"] },
+          "required": { "type": "boolean" },
+          "reason": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "retention": {
+      "type": "object",
+      "required": ["raw_logs", "activity_events_days", "receipts"],
+      "properties": {
+        "raw_logs": { "enum": ["referenced", "excluded"] },
+        "activity_events_days": { "type": "integer", "minimum": 1 },
+        "receipts": { "enum": ["permanent", "archived"] }
+      },
+      "additionalProperties": false
+    },
+    "redaction": {
+      "type": "object",
+      "required": ["secrets", "credentials", "full_prompts", "clipboard", "browser_session", "terminal_payloads"],
+      "properties": {
+        "secrets": { "const": "required" },
+        "credentials": { "const": "excluded" },
+        "full_prompts": { "const": "excluded" },
+        "clipboard": { "const": "excluded" },
+        "browser_session": { "const": "excluded" },
+        "terminal_payloads": { "const": "referenced" }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

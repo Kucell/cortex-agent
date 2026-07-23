@@ -1,0 +1,36 @@
+schema_version: "1.0"
+project_id: auto
+policy: workflow-enforced
+
+sources:
+  workflows:
+    mode: workflow_required
+    required: true
+  git:
+    mode: automatic
+    required: true
+  filesystem:
+    mode: reconciled
+    required: false
+  runtime_continuity:
+    mode: automatic
+    required: false
+  ide:
+    mode: unavailable
+    reason: no_supported_adapter
+  browser:
+    mode: excluded
+    reason: privacy_default
+
+retention:
+  raw_logs: referenced
+  activity_events_days: 90
+  receipts: permanent
+
+redaction:
+  secrets: required
+  credentials: excluded
+  full_prompts: excluded
+  clipboard: excluded
+  browser_session: excluded
+  terminal_payloads: referenced
