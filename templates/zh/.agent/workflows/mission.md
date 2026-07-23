@@ -108,12 +108,17 @@ Use these templates when creating files:
 ## RESUME
 
 1. Read project instructions and required rules.
-2. Read the mission state files.
-3. If a JSON handoff exists, run `node .agent/handoffs/scripts/handoff-protocol.js resume-prompt --payload-file <handoff.json>`.
-4. Check `git status --short` before changing files.
-5. Compare the mission state, handoff payload, Artifact Bus state, and current repository state.
-6. If stale, report the mismatch and propose a recovery step.
-7. Continue from the current state:
+2. Run Runtime Continuity resume bundle:
+   ```bash
+   PROJECT_NAME=$(basename "$(pwd)")
+   node .agent/skills/runtime-continuity/scripts/index.js resume-bundle --project "$PROJECT_NAME"
+   ```
+3. Read the mission state files.
+4. If a JSON handoff exists, run `node .agent/handoffs/scripts/handoff-protocol.js resume-prompt --payload-file <handoff.json>`.
+5. Check `git status --short` before changing files.
+6. Compare the mission state, handoff payload, Runtime Continuity archive, Artifact Bus state, and current repository state.
+7. If stale, report the mismatch and propose a recovery step.
+8. Continue from the current state:
    - if no contract exists, return to CONTRACT
    - if a handoff is pending, go to RESUME and follow `next_action`
    - if a blocking Waitpoint exists, go to HUMAN_DECISION and do not continue the protected action
@@ -123,17 +128,26 @@ Use these templates when creating files:
 
 ## HANDOFF
 
-1. Use `/handoff create` semantics to write Markdown and JSON handoff files.
-2. Validate the JSON payload:
+1. Record a Runtime Continuity checkpoint or archive for the current mission state:
+   ```bash
+   PROJECT_NAME=$(basename "$(pwd)")
+   node .agent/skills/runtime-continuity/scripts/index.js checkpoint \
+     --project "$PROJECT_NAME" \
+     --gate agent \
+     --phase handoff \
+     --message "Mission handoff for M-xxx"
+   ```
+2. Use `/handoff create` semantics to write Markdown and JSON handoff files.
+3. Validate the JSON payload:
    ```bash
    node .agent/handoffs/scripts/handoff-protocol.js validate --payload-file .agent/missions/M-xxx/handoffs/H-xxx.json
    ```
-3. Publish the JSON payload to Artifact Bus when available:
+4. Publish the JSON payload to Artifact Bus when available:
    ```bash
    node .agent/handoffs/scripts/handoff-protocol.js publish --payload-file .agent/missions/M-xxx/handoffs/H-xxx.json --markdown-path .agent/missions/M-xxx/handoffs/xxx.md --agent-id coordinator
    ```
-4. Record the handoff paths in `command-log.md` or the current milestone.
-5. Release Progress Locks held by the handing-off agent, or let TTL expire if the agent is unavailable.
+5. Record the handoff paths and Runtime Continuity event/archive paths in `command-log.md` or the current milestone.
+6. Release Progress Locks held by the handing-off agent, or let TTL expire if the agent is unavailable.
 
 ## HUMAN_DECISION
 

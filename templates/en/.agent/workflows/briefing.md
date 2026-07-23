@@ -7,6 +7,29 @@ description: Produce a read-only project briefing covering progress, active work
 
 Use this workflow to regain project context without changing coordinator state.
 
+## 0. Runtime Continuity Resume Bundle
+
+Run the read-only resume entrypoint first so a new host agent can recover the
+latest transferable work state for the same project:
+
+```bash
+PROJECT_NAME=$(basename "$(pwd)")
+node .agent/skills/runtime-continuity/scripts/index.js resume-bundle --project "$PROJECT_NAME"
+```
+
+Summarize these fields when present:
+
+- `latest_archive` / `latest_markdown_archive`
+- `runtime_events`
+- `pending_handoffs`
+- `runs` / `sessions`
+- `artifact_states`
+- `git.status_short`
+- `next_action`
+
+If `latest_archive` is absent, say that no Runtime Continuity archive exists
+yet, then continue with the rest of the read-only briefing scan.
+
 ## 1. Progress Scan
 
 - Read `.agent/plans/task-progress.md`, active Mission plans, milestones, and Task state.

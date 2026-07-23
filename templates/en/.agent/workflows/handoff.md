@@ -33,20 +33,30 @@ T-C06 handoff output is dual-format:
    - `git status --short`
    - current branch
    - relevant changed files
-3. Create `.agent/handoffs/` if it does not exist.
-4. Write a compact Markdown handoff using the `handoff` skill template.
-5. Write the matching JSON payload using `.agent/handoffs/handoff.schema.json` semantics.
-6. Reference existing artifacts by path or URL instead of copying their contents.
-7. Validate the JSON payload:
+3. Record a Runtime Continuity checkpoint before writing the handoff:
+   ```bash
+   PROJECT_NAME=$(basename "$(pwd)")
+   node .agent/skills/runtime-continuity/scripts/index.js checkpoint \
+     --project "$PROJECT_NAME" \
+     --gate agent \
+     --type handoff \
+     --phase handoff \
+     --message "Creating handoff for <task-or-focus>"
+   ```
+4. Create `.agent/handoffs/` if it does not exist.
+5. Write a compact Markdown handoff using the `handoff` skill template.
+6. Write the matching JSON payload using `.agent/handoffs/handoff.schema.json` semantics.
+7. Reference existing artifacts by path or URL instead of copying their contents.
+8. Validate the JSON payload:
    ```bash
    node .agent/handoffs/scripts/handoff-protocol.js validate --payload-file .agent/handoffs/H-YYYYMMDD-HHMMSS-focus.json
    ```
-8. When Artifact Bus exists, publish the JSON payload:
+9. When Artifact Bus exists, publish the JSON payload:
    ```bash
    node .agent/handoffs/scripts/handoff-protocol.js publish --payload-file .agent/handoffs/H-YYYYMMDD-HHMMSS-focus.json --markdown-path .agent/handoffs/YYYYMMDD-HHMMSS-focus.md --agent-id coordinator
    ```
-9. End the Markdown with a `Resume Prompt` that the next agent can follow directly.
-10. If Management API exists, append a `handoff_created` Run event for the active task:
+10. End the Markdown with a `Resume Prompt` that the next agent can follow directly.
+11. If Management API exists, append a `handoff_created` Run event for the active task:
     ```bash
     node .agent/skills/management-api/scripts/index.js runs checkpoint \
       --run-id R-<task-id> \
@@ -59,17 +69,22 @@ T-C06 handoff output is dual-format:
 ## RESUME
 
 1. Read `AGENTS.md` and required `.agent/rules/` files.
-2. If the input is Markdown, read the requested handoff document.
-3. If the input is JSON, run:
+2. Run Runtime Continuity resume bundle first:
+   ```bash
+   PROJECT_NAME=$(basename "$(pwd)")
+   node .agent/skills/runtime-continuity/scripts/index.js resume-bundle --project "$PROJECT_NAME"
+   ```
+3. If the input is Markdown, read the requested handoff document.
+4. If the input is JSON, run:
    ```bash
    node .agent/handoffs/scripts/handoff-protocol.js resume-prompt --payload-file <handoff.json>
    ```
-4. Check `git status --short` before changing files.
-5. Read the referenced plans, Artifact Bus state, source files, tests, and docs.
-6. Compare the handoff with current repository state.
-7. For writable continuation, acquire required Progress Lock scopes when available.
-8. Continue from `Next Steps` or `next_action`, or report conflicts if the handoff is stale.
-9. If Management API exists, update Run journal with `status=running`, `phase=handoff`, and a `state_changed` event before writable continuation.
+5. Check `git status --short` before changing files.
+6. Read the referenced plans, Artifact Bus state, source files, tests, and docs.
+7. Compare the handoff, Runtime Continuity archive, and current repository state.
+8. For writable continuation, acquire required Progress Lock scopes when available.
+9. Continue from `Next Steps` or `next_action`, or report conflicts if the handoff is stale.
+10. If Management API exists, update Run journal with `status=running`, `phase=handoff`, and a `state_changed` event before writable continuation.
 
 ## Quality Bar
 
