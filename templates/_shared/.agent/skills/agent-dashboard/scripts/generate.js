@@ -1208,10 +1208,26 @@ document.addEventListener('click', (event) => {
     event.preventDefault();
     const path = link.getAttribute('data-preview-path');
     if (path) loadPreview(path);
+    return;
+  }
+  const markdownLink = event.target.closest('#preview-body a[data-markdown-reference]');
+  if (markdownLink) {
+    const reference = resolvePreviewReference(markdownLink.getAttribute('href'), window.__cortexPreviewPath || '');
+    if (!reference) return;
+    event.preventDefault();
+    if (reference.path) {
+      loadPreview(reference.path).then(function () {
+        if (reference.hash) scrollPreviewAnchor(reference.hash);
+      });
+    } else if (reference.hash) {
+      scrollPreviewAnchor(reference.hash);
+    }
   }
 });
 
 ${renderMarkdown.toString()}
+${resolvePreviewReference.toString()}
+${scrollPreviewAnchor.toString()}
 ${documentOverview.toString()}
 ${loadPreview.toString()}
 ${openPreview.toString()}
@@ -1255,15 +1271,60 @@ function renderMarkdown(markdown) {
       return self.renderToken(tokens, idx, options);
     };
     renderer.renderer.rules.link_open = function (tokens, idx, options, env, self) {
-      const targetIndex = tokens[idx].attrIndex('target');
-      if (targetIndex < 0) tokens[idx].attrPush(['target', '_blank']);
-      else tokens[idx].attrs[targetIndex][1] = '_blank';
-      tokens[idx].attrSet('rel', 'noopener noreferrer');
+      const href = tokens[idx].attrGet('href') || '';
+      if (/^(?:[a-z][a-z0-9+.-]*:|\/\/)/i.test(href)) {
+        tokens[idx].attrSet('target', '_blank');
+        tokens[idx].attrSet('rel', 'noopener noreferrer');
+      } else {
+        tokens[idx].attrSet('data-markdown-reference', 'true');
+      }
       return defaultLinkOpen(tokens, idx, options, env, self);
     };
     window.__cortexMarkdownRenderer = renderer;
   }
   return window.__cortexMarkdownRenderer.render(source);
+}
+
+function resolvePreviewReference(href, currentPath) {
+  const raw = String(href || '').trim();
+  if (!raw || /^(?:[a-z][a-z0-9+.-]*:|\/\/)/i.test(raw)) return null;
+  let decodedHash = '';
+  try { decodedHash = decodeURIComponent((raw.split('#')[1] || '')); } catch (_) { return null; }
+  if (raw.charAt(0) === '#') return { path: '', hash: decodedHash };
+  const hashIndex = raw.indexOf('#');
+  const hash = hashIndex >= 0 ? decodedHash : '';
+  const withoutHash = hashIndex >= 0 ? raw.slice(0, hashIndex) : raw;
+  const queryIndex = withoutHash.indexOf('?');
+  let reference = queryIndex >= 0 ? withoutHash.slice(0, queryIndex) : withoutHash;
+  try { reference = decodeURIComponent(reference); } catch (_) { return null; }
+  reference = reference.replace(/\\/g, '/');
+  const rootRelative = reference.charAt(0) === '/' || reference.startsWith('.agent/') || reference.startsWith('docs/');
+  const base = rootRelative ? [] : String(currentPath || '').replace(/\\/g, '/').split('/').slice(0, -1);
+  const segments = base.concat(reference.replace(/^\/+/, '').split('/'));
+  const normalized = [];
+  for (const segment of segments) {
+    if (!segment || segment === '.') continue;
+    if (segment === '..') {
+      if (!normalized.length) return null;
+      normalized.pop();
+      continue;
+    }
+    normalized.push(segment);
+  }
+  const path = normalized.join('/');
+  if (!/\.(?:md|markdown|json)$/i.test(path)) return null;
+  return { path, hash };
+}
+
+function scrollPreviewAnchor(hash) {
+  if (!hash) return;
+  const body = document.getElementById('preview-body');
+  if (!body) return;
+  const wanted = String(hash).toLowerCase().replace(/[^\p{L}\p{N}\s-]/gu, '').trim().replace(/\s+/g, '-');
+  const heading = Array.from(body.querySelectorAll('h1,h2,h3,h4,h5,h6')).find(function (node) {
+    return node.textContent.toLowerCase().replace(/[^\p{L}\p{N}\s-]/gu, '').trim().replace(/\s+/g, '-') === wanted;
+  });
+  if (heading) heading.scrollIntoView({ block: 'start', behavior: 'smooth' });
 }
 
 function documentOverview(content, path, lang) {
@@ -1326,6 +1387,7 @@ function loadPreview(path) {
       return res.json();
     })
     .then(function (data) {
+      window.__cortexPreviewPath = data.path;
       const summary = documentOverview(data.content, data.path, document.documentElement.lang);
       if (overview) overview.textContent = summary.summary || summary.title;
       if (body) body.innerHTML = renderMarkdown(data.content);
