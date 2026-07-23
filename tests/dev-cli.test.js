@@ -20,10 +20,14 @@ function createProject() {
     ".agent/skills/management-api/scripts/index.js",
     ".agent/skills/management-api/scripts/normalize-token-usage.js",
     ".agent/skills/management-api/scripts/projection-registry.json",
+    ".agent/skills/management-api/scripts/query-activity.js",
   ]) {
     const target = path.join(cwd, relative);
     fs.mkdirSync(path.dirname(target), { recursive: true });
-    fs.copyFileSync(path.join(ROOT, relative), target);
+    const source = relative.endsWith("/query-activity.js")
+      ? path.join(ROOT, "templates", "_shared", relative)
+      : path.join(ROOT, relative);
+    fs.copyFileSync(source, target);
   }
   for (const directory of ["metrics", "sessions", "runs", "queues", "inbox", "decisions", "waitpoints"]) {
     fs.mkdirSync(path.join(cwd, ".agent", directory), { recursive: true });
@@ -132,4 +136,6 @@ test("help lists dev and generic management query options", () => {
   assert.match(result.stdout, /dev \[options\]\s+Start the live project dashboard/);
   assert.match(result.stdout, /query <projection>\s+Query a project Management API and output JSON/);
   assert.match(result.stdout, /--project <path>\s+Target an explicit project/);
+  assert.match(result.stdout, /--since <date\|time>\s+Inclusive activity query start boundary/);
+  assert.match(result.stdout, /--until <date\|time>\s+Inclusive activity query end boundary/);
 });
