@@ -40,4 +40,18 @@ Classify the capability before writing files:
 - L3: write to the framework or capability provider's self-maintenance area and ensure it never enters ordinary project templates.
 - Temporary artifacts: write to the corresponding task, proposal, Mission, experiment, or temporary-collaboration area and state completion or cleanup conditions.
 
+## New Capability Bootstrap Verification Order
+
+When a framework or capability provider promotes a new capability through `/agent-update` into reusable templates, it must verify the capability in the provider's own `.agent/` before syncing it to templates or downstream projects.
+
+Standard order:
+
+1. **Update the provider instance first**: land or complete the rule in the provider repository's `.agent/` and confirm it can govern the current session.
+2. **Verify by self-use**: run the capability once through a real or dry-run path and leave reviewable evidence such as the command, exit code, generated report, artifact path, or workflow check record.
+3. **Then sync templates**: sync to general templates or shared capability sources only after provider-side bootstrap verification passes.
+4. **Finally sync downstream projects**: use update/upgrade flows for real projects only after template semantics are stable.
+5. **Report evidence**: final summaries must include the provider-side `.agent` verification result, not only state that templates were updated.
+
+Pure typo fixes, link fixes, or explanatory changes with no behavior change may skip a bootstrap run, but the summary must explicitly state that there was no behavior change and therefore no bootstrap verification was run.
+
 `/agent-update` must complete this scope classification before creating or changing an agent capability.
