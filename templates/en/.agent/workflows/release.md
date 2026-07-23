@@ -35,12 +35,12 @@ Any candidate change requires validation and a new digest.
 Use the digest prefix in both IDs:
 
 ```bash
-node .agent/skills/management-api/scripts/index.js decisions request \
+cortex-agent decisions request --project . \
   --decision-id D-release-<version>-<candidate-digest8> \
   --gate release \
   --payload-json '{"type":"release","requested_by":"/release","prompt":"Approve the exact release candidate?","options":["approve","reject","revise"],"gate":{"action":"release","resource_ref":"<resource-ref>"}}'
 
-node .agent/skills/management-api/scripts/index.js waitpoints create \
+cortex-agent waitpoints create --project . \
   --waitpoint-id WP-release-<version>-<candidate-digest8> \
   --gate release \
   --owner-workflow /release \
@@ -57,7 +57,7 @@ Stop and direct the user to `/approve decision D-release-<version>-<candidate-di
 After approval, rebuild and recompute the resource. Any package, version, registry, base commit, digest, or tag drift invalidates the old Decision. If unchanged, `/release` releases its own Waitpoint:
 
 ```bash
-node .agent/skills/management-api/scripts/index.js waitpoints release \
+cortex-agent waitpoints release --project . \
   --waitpoint-id WP-release-<version>-<candidate-digest8> \
   --gate owner \
   --owner-workflow /release \

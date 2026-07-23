@@ -39,7 +39,7 @@ Before moving a legacy worktree, run the read-only `plan` command, check dirty s
 Checkpoint runtime progress with the Management API, including the exact phase and evidence:
 
 ```bash
-node .agent/skills/management-api/scripts/index.js runs checkpoint \
+cortex-agent runs checkpoint --project . \
   --run-id R-<id> \
   --gate worktree \
   --payload-json '{"phase":"editing","task_id":"T-<id>","worktree_path":"<path>"}'
@@ -71,12 +71,12 @@ git:<repository>#integrate:<source-branch>@<source-head>-><target-branch>@<targe
 IDs include source and target short SHAs plus the first 8-12 digest characters:
 
 ```bash
-node .agent/skills/management-api/scripts/index.js decisions request \
+cortex-agent decisions request --project . \
   --decision-id D-worktree-<task-id>-<source-short-sha>-<target-short-sha>-<resource-digest8> \
   --gate worktree \
   --payload-json '{"type":"merge","requested_by":"/worktree","prompt":"Approve this exact single-task integration?","options":["approve","reject","revise"],"gate":{"action":"merge","resource_ref":"<resource-ref>"}}'
 
-node .agent/skills/management-api/scripts/index.js waitpoints create \
+cortex-agent waitpoints create --project . \
   --waitpoint-id WP-worktree-<task-id>-<source-short-sha>-<target-short-sha>-<resource-digest8> \
   --gate worktree \
   --owner-workflow /worktree \
@@ -91,7 +91,7 @@ Stop and display `/approve decision <decision-id>`. Dashboard is read-only and c
 Only `/worktree` may consume its matching Waitpoint:
 
 ```bash
-node .agent/skills/management-api/scripts/index.js waitpoints release \
+cortex-agent waitpoints release --project . \
   --waitpoint-id WP-worktree-<task-id>-<source-short-sha>-<target-short-sha>-<resource-digest8> \
   --gate owner \
   --owner-workflow /worktree \

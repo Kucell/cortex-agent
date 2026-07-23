@@ -58,7 +58,7 @@ T-C06 handoff 输出为双格式：
 10. Markdown 以 `Resume Prompt` 结尾，让下一个 Agent 可以直接继续。
 11. 若 Management API 存在，为当前任务追加 `handoff_created` Run event：
     ```bash
-    node .agent/skills/management-api/scripts/index.js runs checkpoint \
+    cortex-agent runs checkpoint --project . \
       --run-id R-<task-id> \
       --status running \
       --phase handoff \

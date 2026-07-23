@@ -19,9 +19,9 @@ When `.agent/tasks/<task-id>.json` exists, `/start-task` is the only workflow al
 1. **环境准备与上下文同步**:
     - 查阅任务进度文档（如 `.agent/plans/task-progress.md`）了解当前项目的开发状态。
     - 确保工作空间是最新的，并运行必要的环境检查。
-    - 若 `.agent/skills/management-api/scripts/index.js` 存在，为本次任务创建或更新 Run journal：
+    - If `cortex-agent help --json` is available, create or update the Run journal for this task:
       ```bash
-      node .agent/skills/management-api/scripts/index.js runs checkpoint \
+      cortex-agent runs checkpoint --project . \
         --run-id R-<task-id> \
         --task-id <task-id> \
         --kind implement \
@@ -52,7 +52,7 @@ When `.agent/tasks/<task-id>.json` exists, `/start-task` is the only workflow al
     - planner 应在 `.agent/plans/` 目录下创建具体的任务实施文档，并包含接口定义、测试规划等。
     - 计划生成后追加 Run event：
       ```bash
-      node .agent/skills/management-api/scripts/index.js runs checkpoint \
+      cortex-agent runs checkpoint --project . \
         --run-id R-<task-id> \
         --type task_decomposed \
         --phase planning \
@@ -80,7 +80,7 @@ When `.agent/tasks/<task-id>.json` exists, `/start-task` is the only workflow al
     - 更新任务进度文档，记录已完成的工作及遗留问题。
     - 任务完成、阻塞或失败时更新 Run journal：
       ```bash
-      node .agent/skills/management-api/scripts/index.js runs checkpoint \
+      cortex-agent runs checkpoint --project . \
         --run-id R-<task-id> \
         --status completed \
         --phase completed \

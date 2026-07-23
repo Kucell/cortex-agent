@@ -18,8 +18,12 @@ const {
   runs,
   queues,
   sessions,
+  decisions,
+  inbox,
+  waitpoints,
   managementQuery,
   dev,
+  cliHelp,
   printHelp,
 } = require("../lib/commands");
 
@@ -114,12 +118,16 @@ const ctx = { cwd, args, command, options, lang, templateDir };
     case "runs":        runs(ctx); break;
     case "queues":      queues(ctx); break;
     case "sessions":    sessions(ctx); break;
+    case "decisions":   decisions(ctx); break;
+    case "inbox":       inbox(ctx); break;
+    case "waitpoints":  waitpoints(ctx); break;
     case "query":       managementQuery(ctx); break;
+    case "help":        args.includes("--json") ? cliHelp(ctx) : printHelp(); break;
     case "dev":         await dev(ctx); break;
     case undefined:
     case "--help":
     case "-h":
-      printHelp();
+      args.includes("--json") ? cliHelp(ctx) : printHelp();
       break;
     default:
       console.error(`Unknown command: ${command}`);

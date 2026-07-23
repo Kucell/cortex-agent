@@ -47,9 +47,9 @@ yet, then continue with the rest of the read-only briefing scan.
 Run only these read-only queries:
 
 ```bash
-node .agent/skills/management-api/scripts/index.js query decisions
-node .agent/skills/management-api/scripts/index.js query waitpoints
-node .agent/skills/management-api/scripts/index.js query inbox
+cortex-agent query decisions --project .
+cortex-agent query waitpoints --project .
+cortex-agent query inbox --project .
 ```
 
 Report:

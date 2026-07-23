@@ -134,7 +134,7 @@ test("help lists dev and generic management query options", () => {
   const result = run(ROOT, ["--help"]);
   assert.equal(result.status, 0);
   assert.match(result.stdout, /dev \[options\]\s+Start the live project dashboard/);
-  assert.match(result.stdout, /query <projection>\s+Query a project Management API and output JSON/);
+  assert.match(result.stdout, /query <projection> \[filters\]\s+Query a project Management API and output JSON/);
   assert.match(result.stdout, /--project <path>\s+Target an explicit project/);
   assert.match(result.stdout, /--since <date\|time>\s+Inclusive activity query start boundary/);
   assert.match(result.stdout, /--until <date\|time>\s+Inclusive activity query end boundary/);

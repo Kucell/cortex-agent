@@ -108,7 +108,7 @@ node .agent/locks/scripts/progress-lock.js acquire \
 6. 记录 worktree 创建和锁获取事件：
 
 ```bash
-node .agent/skills/management-api/scripts/index.js runs checkpoint \
+cortex-agent runs checkpoint --project . \
   --run-id R-<task-id> \
   --task-id <task-id> \
   --agent-id <agent-id> \
@@ -218,7 +218,7 @@ validation: <commands and exit codes>
 6. 更新 Run journal：
 
 ```bash
-node .agent/skills/management-api/scripts/index.js runs checkpoint \
+cortex-agent runs checkpoint --project . \
   --run-id R-<task-id> \
   --type command_finished \
   --phase running_command \
@@ -252,7 +252,7 @@ git:<repository>#integrate:<source-branch>@<source-head>-><target-branch>@<targe
 用同一个 `resource_ref` 创建 Decision 和 blocking Waitpoint：
 
 ```bash
-node .agent/skills/management-api/scripts/index.js decisions request \
+cortex-agent decisions request --project . \
   --decision-id D-worktree-<task-id>-<source-short-sha>-<target-short-sha>-<resource-digest8> \
   --gate worktree \
   --type merge \
@@ -261,7 +261,7 @@ node .agent/skills/management-api/scripts/index.js decisions request \
   --action merge \
   --resource-ref "<resource-ref>"
 
-node .agent/skills/management-api/scripts/index.js waitpoints create \
+cortex-agent waitpoints create --project . \
   --waitpoint-id WP-worktree-<task-id>-<source-short-sha>-<target-short-sha>-<resource-digest8> \
   --gate worktree \
   --owner-workflow /worktree \
@@ -274,7 +274,7 @@ node .agent/skills/management-api/scripts/index.js waitpoints create \
 创建后停止，向用户显示包含本次资源摘要的 `/approve decision <decision-id>`。Dashboard 只能展示该请求，不能批准。用户解析后，由 `/worktree merge` 重新读取 Decision，确认状态为 `approved`、选项为 `approve`、用户解析证据完整，且 action/resource 与当前 source/target commit 和 integration strategy 完全一致，再消费 Waitpoint：
 
 ```bash
-node .agent/skills/management-api/scripts/index.js waitpoints release \
+cortex-agent waitpoints release --project . \
   --waitpoint-id WP-worktree-<task-id>-<source-short-sha>-<target-short-sha>-<resource-digest8> \
   --gate owner \
   --owner-workflow /worktree \

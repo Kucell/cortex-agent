@@ -60,12 +60,12 @@ Run the milestone's declared commands and independent semantic review. Record ex
 4. Create an open Decision and blocking Waitpoint owned by `/mission`:
 
    ```bash
-   node .agent/skills/management-api/scripts/index.js decisions request \
+   cortex-agent decisions request --project . \
      --decision-id D-<mission-id>-<choice>-<resource-digest8> \
      --gate mission \
      --payload-json '{"type":"<type>","requested_by":"/mission","prompt":"<explicit choice>","options":["approve","reject","revise"],"gate":{"action":"<architecture|merge|release|destructive|credential|external_side_effect>","resource_ref":"<exact-resource-ref>"}}'
 
-   node .agent/skills/management-api/scripts/index.js waitpoints create \
+   cortex-agent waitpoints create --project . \
      --waitpoint-id WP-<mission-id>-<choice>-<resource-digest8> \
      --gate mission \
      --owner-workflow /mission \
@@ -80,7 +80,7 @@ Run the milestone's declared commands and independent semantic review. Record ex
 7. Only `/mission` may release its Waitpoint:
 
    ```bash
-   node .agent/skills/management-api/scripts/index.js waitpoints release \
+   cortex-agent waitpoints release --project . \
      --waitpoint-id WP-<mission-id>-<choice>-<resource-digest8> \
      --gate owner \
      --owner-workflow /mission \

@@ -123,6 +123,8 @@ cortex-agent dev --port 8787 --interval-ms 3000 --session-id local-dashboard
 标准 CLI 可以从任意目录查询明确项目，并始终输出 JSON：
 
 ```bash
+cortex-agent help --json
+cortex-agent help query --json --project /path/to/project
 cortex-agent query dashboard-state --project /path/to/project
 cortex-agent query runs --project /path/to/project
 cortex-agent query activity --project /path/to/project --since 2026-07-13 --until 2026-07-19
@@ -131,6 +133,8 @@ cortex-agent query activity --project /path/to/project --since 2026-07-13 --unti
 `--project` 指向项目或 worktree 根目录；共享 `.agent` 软链接会保留代码工作区 `project.root`，并通过 `project.agent_root` 报告真实 Agent 状态目录。成功结果使用稳定的 `command`、`projection`、`project`、`filters`、`data`、`summary`、`warnings` JSON 字段。未知 projection、项目缺失、旧项目缺少 capability registry 或 Management API 不可用时，stdout 返回结构化错误，stderr 仅输出诊断，并以稳定的非零退出码结束。
 
 `activity` 只聚合任务、Run、Session、Decision、Handoff 和 Artifact 中的结构化时间；日期边界按项目进程本地自然日解释并包含起止时刻。缺少有效时间的记录进入 `data.unknown_time`，不会使用文件 mtime 或计划文本推断完成时间。
+
+Agent 与自动化应先读取 `cortex-agent help --json` 的机器契约；查询特定项目时再使用 `help query --json --project <path>` 获取真实 projection capability。新增公开 CLI 命令必须登记到中央契约，否则契约一致性测试会失败。
 
 常用工作流示例：
 
@@ -289,6 +293,7 @@ node .agent/plugins/graphify/scripts/extract-subgraph.js \
 | [docs/architecture/harness-optimization-design.md](docs/architecture/harness-optimization-design.md) | Harness Engineering 与 Mission Lite 演进设计 |
 | [docs/architecture/multi-agent-coordinator.md](docs/architecture/multi-agent-coordinator.md) | Multi-Agent Coordinator（多 agent × 多模型协调层）设计稿 |
 | [docs/architecture/runtime-continuity-v2-design.md](docs/architecture/runtime-continuity-v2-design.md) | Runtime Continuity v2：跨 agent 工具切换、长会话恢复和结构化工作日志同步 |
+| [docs/architecture/one-click-update-design.md](docs/architecture/one-click-update-design.md) | One-Click Update：`cortex-agent update` 一键升级、语义合并、升级验证和跨 agent 接手保障 |
 | [docs/architecture/self-bootstrapping.md](docs/architecture/self-bootstrapping.md) | 自举工作流：框架使用自身能力完成自我验证和实时更新 |
 | [docs/architecture/experience-recursion.md](docs/architecture/experience-recursion.md) | 经验自递归：踩坑→沉淀→检索→防复发闭环设计 |
 | [docs/architecture/animation-library-evaluation.md](docs/architecture/animation-library-evaluation.md) | README / Docs 演示增强的动画库评估，覆盖 Mermaid、Anime.js、Remotion、Rive 等选型 |

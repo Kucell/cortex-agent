@@ -13,95 +13,44 @@ Runtime writers are intentionally narrow: write run state and run events through
 
 ## Commands
 
+Agents must discover and use the public CLI contract first:
+
 ```bash
-node .agent/skills/management-api/scripts/index.js query dashboard-state
-node .agent/skills/management-api/scripts/index.js query runs
-node .agent/skills/management-api/scripts/index.js query queues
-node .agent/skills/management-api/scripts/index.js query sessions
-node .agent/skills/management-api/scripts/index.js query inbox
-node .agent/skills/management-api/scripts/index.js query decisions
-node .agent/skills/management-api/scripts/index.js query waitpoints
-node .agent/skills/management-api/scripts/index.js runs upsert --run-id R-T005 --task-id T-005 --kind implement --status running --phase decomposing --activity "正在拆分 Adapter"
-node .agent/skills/management-api/scripts/index.js runs event --run-id R-T005 --type agent_invoked --phase invoking_agent --message "已调用 editor-adapter-agent"
-node .agent/skills/management-api/scripts/index.js runs checkpoint --run-id R-T005 --task-id T-005 --type validation_started --phase validating --activity "Running focused tests"
-node .agent/skills/management-api/scripts/index.js queues upsert --queue-id Q-batch-1 --gate parallel --name "Batch 1" --concurrency-limit 2
-node .agent/skills/management-api/scripts/index.js decisions request --decision-id D-merge --gate mission --requested-by coordinator --prompt "Approve merge?" --options '["approve","reject"]' --action merge --resource-ref branch:integration
-node .agent/skills/management-api/scripts/index.js decisions resolve --gate user --decision-id D-merge --status approved --selected-option approve --resolved-by maintainer --rationale "Validation passed."
-node .agent/skills/management-api/scripts/index.js inbox send --message-id IM-001 --gate workflow --sender-id coordinator --recipient-ids reviewer --subject "Review ready"
-node .agent/skills/management-api/scripts/index.js inbox transition --message-id IM-001 --gate recipient --actor-id reviewer --status acknowledged
-node .agent/skills/management-api/scripts/index.js waitpoints create --waitpoint-id WP-merge --gate mission --owner-workflow /checkpoint-merge --reason "Merge approval required" --action merge --resource-ref branch:integration --decision-id D-merge
-node .agent/skills/management-api/scripts/index.js waitpoints release --waitpoint-id WP-merge --gate owner --owner-workflow /checkpoint-merge --decision-id D-merge --released-by coordinator
-node .agent/skills/management-api/scripts/index.js waitpoints cancel --waitpoint-id WP-cancel --gate owner --owner-workflow /checkpoint-merge --reason "External action removed"
-node .agent/skills/management-api/scripts/index.js queues item --queue-id Q-batch-1 --gate parallel --task-id T-005 --state running --run-id R-T005
-node .agent/skills/management-api/scripts/index.js sessions open --session-id S-dashboard --agent-id dashboard-manager --role dashboard-manager
-node .agent/skills/management-api/scripts/index.js sessions heartbeat --session-id S-dashboard --agent-id dashboard-manager --activity "Refreshing dashboard"
-node .agent/skills/management-api/scripts/index.js sessions close --session-id S-dashboard --agent-id dashboard-manager --gate owner
-node .agent/skills/management-api/scripts/index.js decisions request --decision-id D-merge --gate mission --type merge --requested-by coordinator --prompt "Approve merge?" --action merge --resource-ref branch:integration
-node .agent/skills/management-api/scripts/index.js decisions resolve --decision-id D-merge --gate user --status approved --selected-option approve --resolved-by maintainer --rationale "Validation passed"
-node .agent/skills/management-api/scripts/index.js decisions supersede --decision-id D-old --gate requester --superseded-by-decision-id D-new --superseded-by coordinator --rationale "A new revision replaced the old one"
-node .agent/skills/management-api/scripts/index.js waitpoints create --waitpoint-id WP-merge --gate mission --owner-workflow /checkpoint-merge --reason "Merge approval required" --action merge --resource-ref branch:integration --decision-id D-merge
-node .agent/skills/management-api/scripts/index.js waitpoints release --waitpoint-id WP-merge --gate owner --owner-workflow /checkpoint-merge --decision-id D-merge --released-by coordinator
-node .agent/skills/management-api/scripts/index.js waitpoints cancel --waitpoint-id WP-merge --gate owner --owner-workflow /checkpoint-merge --reason "Checkpoint scope changed"
+cortex-agent help --json
+cortex-agent help query --json --project .
+cortex-agent query dashboard-state --project .
+cortex-agent query runs --project .
+cortex-agent query activity --project . --since 2026-07-13 --until 2026-07-19
+cortex-agent runs checkpoint --project . --run-id R-T005 --task-id T-005 --type validation_started --phase validating --activity "Running focused tests"
+cortex-agent queues upsert --project . --queue-id Q-batch-1 --gate parallel --name "Batch 1" --concurrency-limit 2
+cortex-agent sessions heartbeat --project . --session-id S-dashboard --agent-id dashboard-manager --activity "Refreshing dashboard"
+cortex-agent decisions resolve --project . --decision-id D-merge --gate user --status approved --selected-option approve --resolved-by maintainer --rationale "Validation passed"
+cortex-agent waitpoints release --project . --waitpoint-id WP-merge --gate owner --owner-workflow /checkpoint-merge --decision-id D-merge --released-by coordinator
 ```
 
-These commands feed the Dashboard read-only view: every mutation is gated by an explicit workflow, owner, user, or recipient role.
+`cortex-agent help --json` is the machine-readable source for CLI grammar and writer actions. `cortex-agent help query --json --project <path>` adds the target project's real projection capabilities. Internal `.agent/skills/management-api/scripts/index.js` commands are implementation/debug entry points and may be used only when an older installed CLI cannot expose the required capability; record that fallback explicitly.
 
 ## Output Contract
 
-`query dashboard-state` returns JSON:
+Public `cortex-agent query` returns a stable envelope:
 
 ```json
 {
   "ok": true,
-  "query": "dashboard-state",
+  "command": "query",
+  "projection": "dashboard-state",
   "project": {
-    "name": "project-name",
-    "root": "/path/to/project"
+    "root": "/path/to/project",
+    "agent_root": "/path/to/project/.agent"
   },
-  "tasks": [],
-  "runs": [],
-  "queues": [],
-  "sessions": [],
-  "prds": [],
-  "prd_summary": {
-    "status": "not_started",
-    "design": "not_started",
-    "review": "open",
-    "completeness": 0,
-    "missing": [],
-    "current_id": null
-  },
-  "worktrees": [],
-  "agents": [],
-  "locks": [],
-  "handoffs": [],
-  "artifacts": [],
-  "git_status": "",
-  "derived": {
-    "state": "idle",
-    "next": "...",
-    "nextEn": "...",
-    "why": "...",
-    "whyEn": "..."
-  },
-  "summary": {
-    "active_tasks": 0,
-    "held_locks": 0,
-    "non_main_worktrees": 0
-  }
+  "filters": {},
+  "data": {},
+  "summary": {},
+  "warnings": []
 }
 ```
 
-Focused runtime queries are read-only and return smaller payloads:
-
-- `query runs`: `{ ok, query, generated_at, runs, summary }`
-- `query queues`: `{ ok, query, generated_at, queues, summary }`
-- `query sessions`: `{ ok, query, generated_at, sessions, summary }`
-- `query inbox`: `{ ok, query, generated_at, inbox, summary }`
-- `query decisions`: `{ ok, query, generated_at, decisions, summary }`
-- `query waitpoints`: `{ ok, query, generated_at, waitpoints, summary }`
-
-Use focused queries for CLI/status views that do not need the full dashboard payload.
+All public queries are read-only. `activity` places records without valid structured timestamps in `data.unknown_time`; it never infers completion from file mtime or plan text. Failures write structured JSON to stdout and diagnostics to stderr, with stable exit classes documented by the CLI contract.
 
 ## Runtime State Contract
 
@@ -150,6 +99,8 @@ Prefer these stable `events[].type` values:
 
 ## Rules
 
+- Use `cortex-agent help --json` before relying on remembered CLI syntax; use target capability discovery before cross-project automation.
+- Standard Agent workflows must call `cortex-agent`, not the internal Management API script path.
 - Keep this skill zero dependency.
 - Read from `.agent/` and Git only.
 - Only mutate `.agent/runs/*.json` through the `runs upsert`, `runs event`, and `runs checkpoint` commands.
