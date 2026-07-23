@@ -2,7 +2,7 @@
 name: session-manager
 description: >
   Session time management sub-agent for the ~5h session limit.
-  Modes: assess, archive, restore, status, warm.
+  Five manual modes plus the SessionStart-only continuity guard protocol.
   Use when starting long tasks, near timeout, resuming a session, or when the user says session warm/assess/archive/restore/status.
 model: claude-haiku-4-5-20251001
 tools: Read, Write, Shell
@@ -166,6 +166,20 @@ Read the above, confirm progress, then list the next 3 concrete steps.
    ```
 
 3. Remind: near end → `archive` + commit → new message; ~10h → full restart; don’t skip archives.
+
+### Automatic continuity guard (SessionStart only)
+
+This is not a sixth user command. Only the `SessionStart` hook may launch it
+through `CORTEX_SESSION_START=1 ... warm --auto --project <project>`:
+
+1. A project-local PID, atomic state file, and lock directory enforce one guard per project.
+2. At startup, create a catch-up archive when no archive exists or the latest is older than 2 hours.
+3. Archive every 2 hours and maintain heartbeat, latest-archive, and error state.
+4. A new SessionStart renews the existing guard; the current 5-hour window then expires automatically.
+5. Automatic summaries only read Git, run, session, handoff, artifact, and runtime-event state.
+
+Manual `archive` still requires `--gate user`. The guard must not commit code,
+stop the Dashboard, touch product source, or start a second archival process.
 
 ---
 
