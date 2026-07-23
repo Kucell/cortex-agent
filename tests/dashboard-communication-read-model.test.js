@@ -19,6 +19,12 @@ function project(fixture) {
   fs.mkdirSync(dashboardDir, { recursive: true });
   fs.mkdirSync(managementDir, { recursive: true });
   fs.copyFileSync(GENERATOR, path.join(dashboardDir, "generate.js"));
+  const taskScripts = path.join(cwd, ".agent", "tasks", "scripts");
+  fs.mkdirSync(taskScripts, { recursive: true });
+  fs.copyFileSync(
+    path.join(ROOT, "templates", "_shared", ".agent", "tasks", "scripts", "task-state.js"),
+    path.join(taskScripts, "task-state.js"),
+  );
   const vendorDir = path.join(cwd, ".agent", "skills", "agent-dashboard", "vendor");
   fs.mkdirSync(vendorDir, { recursive: true });
   fs.copyFileSync(MARKDOWN_IT, path.join(vendorDir, "markdown-it.min.js"));
@@ -216,4 +222,28 @@ test("task table Markdown links become preview references when API tasks omit th
 
   const { html } = generate(cwd);
   assert.ok(html.includes(".agent/plans/proposals/linked/proposal.md"));
+});
+
+test("Markdown validation outcomes render as evidence without blocking active tasks", (t) => {
+  const fixture = { ...baseFixture(), tasks: null };
+  const cwd = project(fixture);
+  t.after(() => fs.rmSync(cwd, { recursive: true, force: true }));
+  const plansDir = path.join(cwd, ".agent", "plans");
+  fs.mkdirSync(plansDir, { recursive: true });
+  fs.writeFileSync(path.join(plansDir, "task-progress.md"), [
+    "# Task progress",
+    "",
+    "## Active Tasks",
+    "",
+    "| Task ID | Priority | Task | Progress | Plan |",
+    "| --- | --- | --- | --- | --- |",
+    "| M-005 | P1 | Observability | 94% | VC-017 PARTIAL |",
+    "| T-004 | P1 | Target benchmark | 65% | Target environments NOT_RUN |",
+  ].join("\n"), "utf8");
+
+  const { result, html } = generate(cwd);
+  assert.notEqual(result.state, "blocked");
+  assert.match(html, /data-task-id="M-005"[\s\S]*?<span class="pill partial">PARTIAL<\/span>/);
+  assert.match(html, /data-task-id="T-004"[\s\S]*?<span class="pill not_run">NOT_RUN<\/span>/);
+  assert.match(html, /data-i18n="blocked">阻塞<\/span> <span class="mini">0<\/span>/);
 });

@@ -10,6 +10,7 @@ const projectionRegistryPath = path.join(__dirname, "projection-registry.json");
 
 const root = process.cwd();
 const agentRoot = path.join(root, ".agent");
+const { parseTaskProgress } = require(path.join(__dirname, "../../../tasks/scripts/task-state.js"));
 const args = process.argv.slice(2);
 
 const RUN_PHASES = new Set([
@@ -156,52 +157,7 @@ function rel(file) {
 
 function parseTasks() {
   const file = path.join(agentRoot, "plans", "task-progress.md");
-  const text = read(file);
-  const activeSection = (text.match(/##\s*[^\n]*(?:当前活跃任务|Active Tasks)[^\n]*\n([\s\S]*?)(?=\n##\s|\n---\s*$|$)/i) || [])[1] || "";
-  const tableTasks = [];
-  for (const line of activeSection.split(/\r?\n/)) {
-    const trimmed = line.trim();
-    if (!trimmed.startsWith("|") || /^\|\s*:?-{3,}/.test(trimmed)) continue;
-    const cells = trimmed.slice(1, -1).split("|").map((cell) => cell.trim());
-    if (cells.length < 4 || /任务\s*ID|Task\s*ID/i.test(cells[0])) continue;
-    const id = (cells[0].match(/\b(?:T|M)-[A-Za-z0-9-]+\b/) || [])[0];
-    if (!id) continue;
-    const joinedCells = cells.join(" ");
-    const progressMatch = cells[3].match(/(\d+(?:\.\d+)?)\s*%/);
-    const progress = progressMatch ? Number(progressMatch[1]) : null;
-    const blocked = /blocked|阻塞|暂停|NOT_RUN|待执行|⚠️|❌/i.test(joinedCells);
-    const done = progress === 100 || /\[[xX]\]|完成|Done|已合入|PASS/i.test(cells[3]);
-    const active = !done && !blocked && (progress !== null && progress > 0 || /active|进行中|in[- ]progress|当前/i.test(joinedCells));
-    tableTasks.push({
-      id,
-      priority: cells[1] || "",
-      title: cells[2] || id,
-      progress: progressMatch ? `${progressMatch[1]}%` : cells[3] || "",
-      plan: cells[4] || "",
-      status: done ? "done" : blocked ? "blocked" : active ? "active" : "open",
-    });
-  }
-  if (tableTasks.length) return tableTasks;
-
-  const tasks = [];
-  const seen = new Set();
-  for (const line of text.split(/\r?\n/)) {
-    const id = (line.match(/\bT-[A-Za-z0-9-]+\b/) || [])[0];
-    if (!id || seen.has(id)) continue;
-    seen.add(id);
-    const done = /\[[xX]\]|✅|完成|Done/i.test(line);
-    const blocked = /blocked|阻塞|暂停|⚠️|❌/i.test(line);
-    const active = /active|进行中|in[- ]progress|当前/i.test(line);
-    tasks.push({
-      id,
-      title: line.replace(/^\s*[-*]\s*/, "").replace(/\*\*/g, "").slice(0, 180),
-      priority: "",
-      progress: "",
-      plan: "",
-      status: done ? "done" : blocked ? "blocked" : active ? "active" : "open",
-    });
-  }
-  return tasks;
+  return parseTaskProgress(read(file));
 }
 
 function parseWorktrees() {

@@ -10,10 +10,13 @@
 ├── index.json
 ├── index.schema.json
 ├── task.schema.json
+├── scripts/task-state.js
 └── <task-id>.json
 ```
 
 `index.json` is a compact discovery index. The task file is authoritative for pipeline state. Workflows that create or update a task must update both files atomically when practical and must not infer that a missing task file means the roadmap task is complete.
+
+`scripts/task-state.js` is the shared parser for roadmap compatibility. It keeps task execution status separate from validation outcomes such as `NOT_RUN` and `PARTIAL`; Dashboard and Management API must reuse it instead of copying status rules.
 
 ## Stages And Gates
 

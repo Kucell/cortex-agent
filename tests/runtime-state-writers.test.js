@@ -141,6 +141,12 @@ test("dashboard server owns and closes its runtime session", async (t) => {
     path.join(ROOT, "templates", "_shared", ".agent", "skills", "management-api", "scripts", "query-activity.js"),
     path.join(managementScripts, "query-activity.js"),
   );
+  const taskScripts = path.join(agent, "tasks", "scripts");
+  fs.mkdirSync(taskScripts, { recursive: true });
+  fs.copyFileSync(
+    path.join(ROOT, "templates", "_shared", ".agent", "tasks", "scripts", "task-state.js"),
+    path.join(taskScripts, "task-state.js"),
+  );
   fs.copyFileSync(path.join(ROOT, "templates", "_shared", ".agent", "skills", "agent-dashboard", "scripts", "generate.js"), path.join(dashboardScripts, "generate.js"));
   fs.copyFileSync(path.join(ROOT, "templates", "_shared", ".agent", "skills", "agent-dashboard", "scripts", "serve.js"), path.join(dashboardScripts, "serve.js"));
   const dashboardVendor = path.join(agent, "skills", "agent-dashboard", "vendor");

@@ -21,10 +21,11 @@ function createProject() {
     ".agent/skills/management-api/scripts/normalize-token-usage.js",
     ".agent/skills/management-api/scripts/projection-registry.json",
     ".agent/skills/management-api/scripts/query-activity.js",
+    ".agent/tasks/scripts/task-state.js",
   ]) {
     const target = path.join(cwd, relative);
     fs.mkdirSync(path.dirname(target), { recursive: true });
-    const source = relative.endsWith("/query-activity.js")
+    const source = relative.endsWith("/query-activity.js") || relative === ".agent/tasks/scripts/task-state.js"
       ? path.join(ROOT, "templates", "_shared", relative)
       : path.join(ROOT, relative);
     fs.copyFileSync(source, target);
