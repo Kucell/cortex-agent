@@ -152,6 +152,9 @@ test("task cards open a read-only Markdown preview with related proposals and ta
   assert.ok(html.includes("T-related"));
   assert.match(html, /fetch\('\/api\/preview\?path='/);
   assert.match(html, /function renderMarkdown\(markdown\)/);
+  assert.match(html, /function resolvePreviewReference\(href, currentPath\)/);
+  assert.match(html, /#preview-body a\[data-markdown-reference\]/);
+  assert.match(html, /window\.__cortexPreviewPath = data\.path/);
   assert.match(html, /data-vendor="markdown-it@14\.3\.0"/);
   assert.match(html, /window\.markdownit\(\{ html: false/);
   assert.match(html, /class="markdown-body"/);
@@ -165,6 +168,26 @@ test("task cards open a read-only Markdown preview with related proposals and ta
   assert.ok(browserScript, "missing dashboard browser script");
   assert.doesNotThrow(() => new vm.Script(browserScript));
   assert.doesNotMatch(html, /<button[^>]+(?:approve|release|resolve)/i);
+
+  const resolverStart = html.indexOf("function resolvePreviewReference");
+  const resolverEnd = html.indexOf("function scrollPreviewAnchor", resolverStart);
+  const resolverSource = html.slice(resolverStart, resolverEnd);
+  const context = {};
+  vm.runInNewContext(resolverSource, context);
+  assert.deepEqual(
+    { ...context.resolvePreviewReference("../../plans/proposal.md#Goal", ".agent/missions/M-001/mission-plan.md") },
+    { path: ".agent/plans/proposal.md", hash: "Goal" },
+  );
+  assert.deepEqual(
+    { ...context.resolvePreviewReference(".agent/references/guide.md", ".agent/missions/M-001/mission-plan.md") },
+    { path: ".agent/references/guide.md", hash: "" },
+  );
+  assert.deepEqual(
+    { ...context.resolvePreviewReference("#Scope", ".agent/missions/M-001/mission-plan.md") },
+    { path: "", hash: "Scope" },
+  );
+  assert.equal(context.resolvePreviewReference("https://example.com", ".agent/missions/M-001/mission-plan.md"), null);
+  assert.equal(context.resolvePreviewReference("../../../../escape.md", ".agent/missions/M-001/mission-plan.md"), null);
 });
 
 test("task table Markdown links become preview references when API tasks omit them", (t) => {
