@@ -254,6 +254,22 @@ test("reconcile is idempotent: second run applies nothing", () => {
   assert.equal(second.applied.length, 0);
 });
 
+test("reconcile repairs a stale manifest when project and template are identical", () => {
+  const { templateDir, cwd } = makeEnv();
+  const rel = "artifacts/scripts/artifact-bus.js";
+  copyTemplateInto(templateDir, cwd, rel);
+  sm.writeManifest(cwd, {
+    schema_version: 1,
+    scripts: { [rel]: { origin_hash: "stale-origin", sha256: "stale-origin" } },
+  });
+
+  const report = sm.reconcileScripts({ cwd, templateDir, lang: "en", apply: true });
+  assert.ok(report.skipped.some((item) => item.path === rel && item.reason === "in_sync"));
+  const manifest = sm.readManifest(cwd);
+  assert.equal(manifest.scripts[rel].origin_hash, sm.hashFile(projFile(cwd, rel)));
+  assert.equal(manifest.scripts[rel].source_template_sha256, manifest.scripts[rel].origin_hash);
+});
+
 test("reconcile does not overwrite user-modified file without force", () => {
   const { templateDir, cwd, tplScripts } = makeEnv();
   const rel = "artifacts/scripts/artifact-bus.js";
