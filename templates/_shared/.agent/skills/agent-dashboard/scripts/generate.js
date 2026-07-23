@@ -1026,6 +1026,7 @@ main{min-width:0}.topbar{padding:20px 28px;border-bottom:1px solid var(--line);d
 table{width:100%;border-collapse:collapse}th,td{padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top;text-align:left}th{color:var(--muted);font-weight:600}code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:#d9e7ff}.empty{color:var(--muted);padding:10px 0}.pill{display:inline-block;border:1px solid var(--line);border-radius:999px;padding:2px 8px;color:var(--muted);white-space:nowrap}.status-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--muted);margin-right:7px}.status-dot.running,.status-dot.in_progress,.status-dot.invoking_agent{background:var(--accent)}.status-dot.done,.status-dot.ready,.status-dot.clean,.status-dot.approved{background:var(--ok)}.status-dot.blocked,.status-dot.dirty,.status-dot.stale{background:var(--bad)}
 .done,.ready,.validated,.clean,.approved,.published{color:var(--ok);border-color:rgba(88,214,141,.45)}.blocked,.validation_failed,.failed,.dirty,.stale{color:var(--bad);border-color:rgba(255,107,107,.45)}.active,.in_progress,.running,.locked,.merge_ready,.handoff_required,.held,.draft,.review,.needs_validation,.needs_evidence,.not_ready{color:var(--warn);border-color:rgba(241,180,76,.45)}pre{white-space:pre-wrap;background:#0d1016;border:1px solid var(--line);border-radius:6px;padding:10px;overflow:auto;max-height:260px}
 .preview-dialog{width:min(1080px,calc(100vw - 32px));height:min(860px,calc(100vh - 32px));max-width:none;max-height:none;padding:0;color:var(--text);background:var(--panel);border:1px solid var(--line);border-radius:8px}.preview-dialog::backdrop{background:rgba(0,0,0,.72)}.preview-dialog>header{position:sticky;top:0;z-index:2;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:16px 20px;background:var(--panel);border-bottom:1px solid var(--line)}.preview-dialog>header h2{margin:0;font-size:18px;overflow-wrap:anywhere}.preview-dialog>header button{width:34px;height:34px;padding:0;border:1px solid var(--line);border-radius:6px;background:var(--panel2);color:var(--text);font-size:22px;cursor:pointer}.preview-dialog>section{padding:18px 22px 32px}.preview-meta{display:grid;grid-template-columns:minmax(0,1fr) minmax(260px,.55fr);gap:18px;padding-bottom:18px;border-bottom:1px solid var(--line)}.preview-meta h3{margin:0 0 8px;font-size:13px;color:var(--muted)}.preview-meta p,.preview-meta ul{margin:0}.preview-meta ul{padding-left:20px}.preview-meta a{color:var(--accent);overflow-wrap:anywhere}.markdown-body{max-width:880px;margin:0 auto;padding:24px 0;color:var(--text);font-size:15px;line-height:1.7;overflow-wrap:anywhere}.markdown-body>:first-child{margin-top:0}.markdown-body>:last-child{margin-bottom:0}.markdown-body h1,.markdown-body h2,.markdown-body h3,.markdown-body h4{margin:1.6em 0 .65em;line-height:1.25}.markdown-body h1{padding-bottom:.35em;border-bottom:1px solid var(--line);font-size:2em}.markdown-body h2{padding-bottom:.3em;border-bottom:1px solid var(--line);font-size:1.5em}.markdown-body h3{font-size:1.2em}.markdown-body p,.markdown-body ul,.markdown-body ol,.markdown-body blockquote,.markdown-body table,.markdown-body pre{margin:0 0 1em}.markdown-body ul,.markdown-body ol{padding-left:2em}.markdown-body li+li{margin-top:.3em}.markdown-body blockquote{padding:.2em 1em;color:var(--muted);border-left:4px solid var(--accent);background:rgba(90,167,255,.06)}.markdown-body blockquote>:last-child{margin-bottom:0}.markdown-body a{color:var(--accent);text-decoration:none}.markdown-body a:hover{text-decoration:underline}.markdown-body code{padding:.15em .35em;border-radius:4px;background:#0d1016}.markdown-body pre{max-height:none;padding:14px;white-space:pre;overflow:auto}.markdown-body pre code{padding:0;background:transparent;color:#d9e7ff}.markdown-body table{display:block;width:max-content;max-width:100%;overflow:auto;border-collapse:collapse}.markdown-body th,.markdown-body td{border:1px solid var(--line);padding:7px 11px}.markdown-body th{background:var(--panel2);color:var(--text)}.markdown-body tr:nth-child(2n){background:rgba(255,255,255,.025)}.markdown-body hr{height:1px;margin:24px 0;border:0;background:var(--line)}.markdown-body img{display:block;max-width:100%;height:auto;margin:16px auto;border:1px solid var(--line);border-radius:6px}.markdown-body del{color:var(--muted)}
+.preview-meta{display:block}
 @media(max-width:1100px){.shell{display:block}aside{position:static;height:auto}.status-strip,.command-panel,.phase-rail,.lanes,.trace-summary{grid-template-columns:1fr}.trace-stage{border-right:0;border-bottom:1px solid var(--line)}.trace-stage:last-child{border-bottom:0}.panel,.third,.quarter{grid-column:span 12}.section,.topbar{padding:16px}.timeline-item{grid-template-columns:1fr}}
 @media(max-width:700px){.preview-dialog{width:100vw;height:100vh;border:0;border-radius:0}.preview-dialog>section{padding:16px}.preview-meta{grid-template-columns:1fr}.markdown-body{padding-top:20px}}
 </style>
@@ -1203,13 +1204,6 @@ document.addEventListener('click', (event) => {
     else if (dialog) dialog.removeAttribute('open');
     return;
   }
-  const link = event.target.closest('#related-docs a[data-preview-path]');
-  if (link) {
-    event.preventDefault();
-    const path = link.getAttribute('data-preview-path');
-    if (path) loadPreview(path);
-    return;
-  }
   const markdownLink = event.target.closest('#preview-body a[data-markdown-reference]');
   if (markdownLink) {
     const reference = resolvePreviewReference(markdownLink.getAttribute('href'), window.__cortexPreviewPath || '');
@@ -1237,7 +1231,6 @@ ${openPreview.toString()}
   <section>
     <div class="preview-meta">
       <div><h3 data-i18n="contentOverview">Content Overview</h3><p id="overview-text"></p></div>
-      <div><h3 data-i18n="relatedDocs">Related Documents &amp; Proposals</h3><ul id="related-docs"></ul></div>
     </div>
     <article id="preview-body" class="markdown-body"></article>
   </section>
@@ -1280,6 +1273,26 @@ function renderMarkdown(markdown) {
       }
       return defaultLinkOpen(tokens, idx, options, env, self);
     };
+    renderer.core.ruler.after('inline', 'cortex_document_references', function (state) {
+      state.tokens.forEach(function (blockToken) {
+        if (blockToken.type !== 'inline' || !blockToken.children) return;
+        const next = [];
+        let linkDepth = 0;
+        blockToken.children.forEach(function (token) {
+          if (token.type === 'link_open') linkDepth += 1;
+          if (token.type === 'code_inline' && linkDepth === 0 && /^(?:\.agent\/|docs\/|(?:\.\.?\/)+)[^\s<>]+\.(?:md|markdown|json)(?:#[^\s<>]+)?$/i.test(token.content.trim())) {
+            const open = new state.Token('link_open', 'a', 1);
+            open.attrSet('href', token.content.trim());
+            const close = new state.Token('link_close', 'a', -1);
+            next.push(open, token, close);
+          } else {
+            next.push(token);
+          }
+          if (token.type === 'link_close') linkDepth = Math.max(0, linkDepth - 1);
+        });
+        blockToken.children = next;
+      });
+    });
     window.__cortexMarkdownRenderer = renderer;
   }
   return window.__cortexMarkdownRenderer.render(source);
@@ -1349,29 +1362,11 @@ function documentOverview(content, path, lang) {
 function openPreview(task) {
   const dialog = document.getElementById('preview-dialog');
   const overview = document.getElementById('overview-text');
-  const related = document.getElementById('related-docs');
   const goal = document.getElementById('preview-goal');
   const body = document.getElementById('preview-body');
   if (goal) goal.textContent = task.id + ' · ' + task.title;
   if (overview) overview.textContent = '正在加载关联内容...';
   if (body) body.innerHTML = renderMarkdown('# ' + task.title + '\n\n' + (task.id || ''));
-  if (related) {
-    related.textContent = '';
-    (task.refs || []).forEach(function (ref) {
-      const item = document.createElement('li');
-      const link = document.createElement('a');
-      link.href = '#';
-      link.dataset.previewPath = ref;
-      link.textContent = ref;
-      item.appendChild(link);
-      related.appendChild(item);
-    });
-    (task.deps || []).forEach(function (dep) {
-      const item = document.createElement('li');
-      item.textContent = dep;
-      related.appendChild(item);
-    });
-  }
   if (dialog && typeof dialog.showModal === 'function' && !dialog.open) dialog.showModal();
   else if (dialog) dialog.setAttribute('open', '');
   if (task.refs && task.refs[0]) loadPreview(task.refs[0]);
