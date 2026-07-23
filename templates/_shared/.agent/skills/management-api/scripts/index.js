@@ -5,6 +5,7 @@ const fs = require("fs");
 const path = require("path");
 const { execSync } = require("child_process");
 const { normalizeTokenUsage } = require("./normalize-token-usage.js");
+const { queryActivity } = require("./query-activity.js");
 const projectionRegistryPath = path.join(__dirname, "projection-registry.json");
 
 const root = process.cwd();
@@ -1576,6 +1577,14 @@ function transitionSession(status) {
   printJson({ ok: true, action: `sessions ${status === "closed" ? "close" : "pause"}`, path: rel(file), session: next });
 }
 
+function queryActivityProjection() {
+  try {
+    return queryActivity({ root, agentRoot, args });
+  } catch (error) {
+    fail(error.code || "activity_query_failed", error.message || "Activity query failed.", 2);
+  }
+}
+
 const QUERY_HANDLERS = Object.freeze({
   "dashboard-state": queryDashboardState,
   runs: queryRuns,
@@ -1584,6 +1593,7 @@ const QUERY_HANDLERS = Object.freeze({
   inbox: queryInbox,
   decisions: queryDecisions,
   waitpoints: queryWaitpoints,
+  activity: queryActivityProjection,
 });
 
 function availableProjections() {
@@ -1700,15 +1710,9 @@ function main() {
   printJson({
     ok: false,
     error: "unsupported_command",
-    usage: "node .agent/skills/management-api/scripts/index.js query capabilities|dashboard-state|runs|queues|sessions|inbox|decisions|waitpoints | runs upsert|event|checkpoint|tokens | queues upsert|item | sessions open|heartbeat|pause|close | decisions request|resolve|supersede | inbox send|transition | waitpoints create|release|cancel",
+    usage: "node .agent/skills/management-api/scripts/index.js query capabilities|dashboard-state|runs|queues|sessions|inbox|decisions|waitpoints|activity | runs upsert|event|checkpoint|tokens | queues upsert|item | sessions open|heartbeat|pause|close | decisions request|resolve|supersede | inbox send|transition | waitpoints create|release|cancel",
   });
   process.exitCode = 2;
 }
 
 main();
-// Explicit exit so callers using `spawnSync(... stdio: ['ignore', 'pipe', 'pipe'])`
-// always observe EOF on stdout within the configured timeout. Without this, a Node
-// process can linger briefly while V8 drains microtasks even after main() returns,
-// which under burst spawn rates (e.g. `tests/*.test.js` running the dashboard
-// server lifecycle suite) accumulates orphan management-api processes.
-process.exit(process.exitCode || 0);

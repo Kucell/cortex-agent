@@ -125,9 +125,12 @@ cortex-agent dev --port 8787 --interval-ms 3000 --session-id local-dashboard
 ```bash
 cortex-agent query dashboard-state --project /path/to/project
 cortex-agent query runs --project /path/to/project
+cortex-agent query activity --project /path/to/project --since 2026-07-13 --until 2026-07-19
 ```
 
 `--project` 指向项目或 worktree 根目录；共享 `.agent` 软链接会保留代码工作区 `project.root`，并通过 `project.agent_root` 报告真实 Agent 状态目录。成功结果使用稳定的 `command`、`projection`、`project`、`filters`、`data`、`summary`、`warnings` JSON 字段。未知 projection、项目缺失、旧项目缺少 capability registry 或 Management API 不可用时，stdout 返回结构化错误，stderr 仅输出诊断，并以稳定的非零退出码结束。
+
+`activity` 只聚合任务、Run、Session、Decision、Handoff 和 Artifact 中的结构化时间；日期边界按项目进程本地自然日解释并包含起止时刻。缺少有效时间的记录进入 `data.unknown_time`，不会使用文件 mtime 或计划文本推断完成时间。
 
 常用工作流示例：
 

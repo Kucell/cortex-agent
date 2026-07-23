@@ -49,6 +49,13 @@
       "exact_lookup": false,
       "data_field": "waitpoints",
       "filters": []
+    },
+    {
+      "name": "activity",
+      "kind": "collection",
+      "exact_lookup": false,
+      "data_field": null,
+      "filters": ["since", "until"]
     }
   ]
 }
