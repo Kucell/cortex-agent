@@ -58,7 +58,7 @@ T-C06 handoff output is dual-format:
 10. End the Markdown with a `Resume Prompt` that the next agent can follow directly.
 11. If Management API exists, append a `handoff_created` Run event for the active task:
     ```bash
-    node .agent/skills/management-api/scripts/index.js runs checkpoint \
+    cortex-agent runs checkpoint --project . \
       --run-id R-<task-id> \
       --status running \
       --phase handoff \

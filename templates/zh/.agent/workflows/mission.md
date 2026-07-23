@@ -159,7 +159,7 @@ When architecture, risk, destructive behavior, credentials, merge/release, or an
 4. Create an open Decision and a blocking Waitpoint owned by `/mission`:
 
    ```bash
-   node .agent/skills/management-api/scripts/index.js decisions request \
+   cortex-agent decisions request --project . \
      --decision-id D-<mission-id>-<choice>-<resource-digest8> \
      --gate mission \
      --type <architecture|risk|approval|merge|release> \
@@ -168,7 +168,7 @@ When architecture, risk, destructive behavior, credentials, merge/release, or an
      --action <architecture|merge|release|destructive|credential|external_side_effect> \
      --resource-ref "<exact-resource-ref>"
 
-   node .agent/skills/management-api/scripts/index.js waitpoints create \
+   cortex-agent waitpoints create --project . \
      --waitpoint-id WP-<mission-id>-<choice>-<resource-digest8> \
      --gate mission \
      --owner-workflow /mission \
@@ -183,7 +183,7 @@ When architecture, risk, destructive behavior, credentials, merge/release, or an
 7. Only `/mission` may release its Waitpoint:
 
    ```bash
-   node .agent/skills/management-api/scripts/index.js waitpoints release \
+   cortex-agent waitpoints release --project . \
      --waitpoint-id WP-<mission-id>-<choice>-<resource-digest8> \
      --gate owner \
      --owner-workflow /mission \

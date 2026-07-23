@@ -50,7 +50,7 @@ planner 返回分批结果，例如：
 依赖分析完成后记录调度事件：
 
 ```bash
-node .agent/skills/management-api/scripts/index.js runs checkpoint \
+cortex-agent runs checkpoint --project . \
   --run-id R-parallel-<batch-id> \
   --kind plan \
   --status running \
@@ -139,7 +139,7 @@ When the result is `worktree`, automatically enter `/worktree plan <task-ids>` t
 派发每个 sub-agent 前，为对应任务写入 Run journal：
 
 ```bash
-node .agent/skills/management-api/scripts/index.js runs checkpoint \
+cortex-agent runs checkpoint --project . \
   --run-id R-<task-id> \
   --task-id <task-id> \
   --agent-id <agent-id> \
