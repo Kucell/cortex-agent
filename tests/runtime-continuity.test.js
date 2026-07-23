@@ -37,6 +37,10 @@ function rmContexts(projectName) {
   fs.rmSync(path.join(os.homedir(), ".agent", "contexts", projectName), { recursive: true, force: true });
 }
 
+function rmRuntime(cwd) {
+  fs.rmSync(path.join(cwd, ".agent", "runtime-continuity"), { recursive: true, force: true });
+}
+
 // ─── mode 0: assess ──────────────────────────────────────────────────────────
 
 test("assess: short task description produces low risk", () => {
@@ -108,6 +112,7 @@ test("warm --auto without --project: no side effects (graceful no-op)", () => {
 test("archive writes ctx_<ts>.md and symlinks latest.md", () => {
   const cwd = fixture();
   rmContexts("rt-arch");
+  rmRuntime(cwd);
   try {
     const r = run(cwd, ["archive", "--project", "rt-arch", "--gate", "user",
       "--note-json", JSON.stringify({ done: "M1", blocked: "", next: "M2", pitfalls: "" })]);
@@ -115,10 +120,15 @@ test("archive writes ctx_<ts>.md and symlinks latest.md", () => {
     const body = JSON.parse(r.stdout);
     assert.ok(body.archivePath.includes("/rt-arch/"));
     assert.ok(fs.existsSync(body.archivePath));
+    assert.ok(fs.existsSync(body.archiveJsonPath), "expected project-local structured archive");
     assert.ok(body.latestPath.endsWith("latest.md"));
     assert.ok(fs.lstatSync(body.latestPath).isSymbolicLink());
     const body2 = fs.readFileSync(body.archivePath, "utf8");
     assert.ok(body2.includes("M1"));
+    const archive = JSON.parse(fs.readFileSync(body.archiveJsonPath, "utf8"));
+    assert.equal(archive.project, "rt-arch");
+    assert.deepEqual(archive.state.done, ["M1"]);
+    assert.equal(archive.restore.commands[0], "node .agent/skills/runtime-continuity/scripts/index.js resume-bundle --project rt-arch");
   } finally {
     rmContexts("rt-arch");
   }
@@ -170,6 +180,7 @@ test("restore --list enumerates archived contexts", () => {
 test("restore returns body containing note marker", () => {
   const cwd = fixture();
   rmContexts("rt-res-load");
+  rmRuntime(cwd);
   try {
     run(cwd, ["archive", "--project", "rt-res-load", "--gate", "user",
       "--note-json", JSON.stringify({ done: "DONE-MARKER", blocked: "", next: "", pitfalls: "" })]);
@@ -179,6 +190,84 @@ test("restore returns body containing note marker", () => {
     assert.ok(body.body.includes("DONE-MARKER"));
   } finally {
     rmContexts("rt-res-load");
+  }
+});
+
+// ─── Runtime Continuity v2 ───────────────────────────────────────────────────
+
+test("log writes transferable runtime event and appends run event", () => {
+  const cwd = fixture();
+  rmRuntime(cwd);
+  const r = run(cwd, [
+    "log", "--project", "rt-v2-log", "--gate", "agent",
+    "--host", "codex", "--message", "implemented v2 log",
+    "--done", "schema", "--in-progress", "cli", "--next", "tests",
+    "--files", "a.js,b.js",
+  ]);
+  assert.equal(r.status, 0, r.stderr);
+  const body = JSON.parse(r.stdout);
+  assert.equal(body.action, "log");
+  assert.equal(body.event.host, "codex");
+  assert.equal(body.event.summary.done[0], "schema");
+  assert.deepEqual(body.event.refs.files, ["a.js", "b.js"]);
+  assert.ok(fs.existsSync(body.event_path));
+  const last = readRunEvents(cwd).at(-1);
+  assert.equal(last.type, "runtime_log");
+});
+
+test("checkpoint records command evidence", () => {
+  const cwd = fixture();
+  rmRuntime(cwd);
+  const r = run(cwd, [
+    "checkpoint", "--project", "rt-v2-cp", "--gate", "agent",
+    "--host", "codex", "--phase", "validating", "--message", "tests passed",
+    "--command", "node tests/runtime-continuity.test.js", "--exit-code", "0",
+    "--command-summary", "passed",
+  ]);
+  assert.equal(r.status, 0, r.stderr);
+  const body = JSON.parse(r.stdout);
+  assert.equal(body.event.type, "checkpoint");
+  assert.equal(body.event.refs.commands[0].exit_code, 0);
+  const last = readRunEvents(cwd).at(-1);
+  assert.equal(last.type, "runtime_checkpoint");
+});
+
+test("restore --auto returns latest structured archive without gate", () => {
+  const cwd = fixture();
+  rmContexts("rt-v2-auto");
+  rmRuntime(cwd);
+  try {
+    run(cwd, ["archive", "--project", "rt-v2-auto", "--gate", "user", "--full",
+      "--note-json", JSON.stringify({ done: ["D1"], in_progress: "I1", next: ["N1"] })]);
+    const r = run(cwd, ["restore", "--project", "rt-v2-auto", "--auto"]);
+    assert.equal(r.status, 0, r.stderr);
+    const body = JSON.parse(r.stdout);
+    assert.equal(body.mode, "auto");
+    assert.equal(body.archive.project, "rt-v2-auto");
+    assert.equal(body.archive.state.next[0], "N1");
+  } finally {
+    rmContexts("rt-v2-auto");
+  }
+});
+
+test("resume-bundle summarizes archive, runs, sessions, events, and git", () => {
+  const cwd = fixture();
+  rmContexts("rt-v2-bundle");
+  rmRuntime(cwd);
+  try {
+    run(cwd, ["log", "--project", "rt-v2-bundle", "--gate", "agent", "--message", "log1"]);
+    run(cwd, ["archive", "--project", "rt-v2-bundle", "--gate", "user", "--full",
+      "--note-json", JSON.stringify({ done: ["D1"], in_progress: "I1", next: ["N1"] })]);
+    const r = run(cwd, ["resume-bundle", "--project", "rt-v2-bundle"]);
+    assert.equal(r.status, 0, r.stderr);
+    const body = JSON.parse(r.stdout);
+    assert.equal(body.action, "resume-bundle");
+    assert.ok(body.latest_archive.endsWith("latest.json") || body.latest_archive.includes("RC-"));
+    assert.ok(body.runtime_events.length >= 1);
+    assert.ok(body.runs.some((file) => file.includes("R-rt-test-001.json")));
+    assert.equal(body.next_action, "N1");
+  } finally {
+    rmContexts("rt-v2-bundle");
   }
 });
 
