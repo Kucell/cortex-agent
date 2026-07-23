@@ -19,6 +19,7 @@ function createProject() {
     ".agent/skills/agent-dashboard/vendor/markdown-it.min.js",
     ".agent/skills/management-api/scripts/index.js",
     ".agent/skills/management-api/scripts/normalize-token-usage.js",
+    ".agent/skills/management-api/scripts/projection-registry.json",
   ]) {
     const target = path.join(cwd, relative);
     fs.mkdirSync(path.dirname(target), { recursive: true });
@@ -34,7 +35,7 @@ function run(cwd, args) {
   return spawnSync(process.execPath, [CLI, ...args], { cwd, encoding: "utf8", env: { ...process.env, LANG: "en_US.UTF-8" } });
 }
 
-function waitFor(check, timeoutMs = 8000) {
+function waitFor(check, timeoutMs = 8000, label = "cortex-agent dev") {
   const started = Date.now();
   return new Promise((resolve, reject) => {
     const poll = () => {
@@ -42,7 +43,7 @@ function waitFor(check, timeoutMs = 8000) {
         const value = check();
         if (value) return resolve(value);
       } catch (_) {}
-      if (Date.now() - started > timeoutMs) return reject(new Error("Timed out waiting for cortex-agent dev"));
+      if (Date.now() - started > timeoutMs) return reject(new Error(`Timed out waiting for ${label}`));
       setTimeout(poll, 50);
     };
     poll();
@@ -83,24 +84,29 @@ test("dev shifts ports, heartbeats, closes, and leaves scripts reusable", async 
   let stderr = "";
   const child = spawn(process.execPath, [CLI, "dev", "--port", String(port), "--interval-ms", "1000", "--session-id", sessionId], {
     cwd,
-    env: { ...process.env, LANG: "en_US.UTF-8" },
+    env: { ...process.env, LANG: "en_US.UTF-8", AGENT_DASHBOARD_HEARTBEAT_MS: "1000" },
     stdio: ["ignore", "pipe", "pipe"],
   });
   child.stdout.on("data", (chunk) => { stdout += chunk; });
   child.stderr.on("data", (chunk) => { stderr += chunk; });
   t.after(() => { if (child.exitCode === null) child.kill("SIGKILL"); });
 
-  const running = await waitFor(() => {
-    if (!fs.existsSync(sessionFile)) return null;
-    const session = JSON.parse(fs.readFileSync(sessionFile, "utf8"));
-    return session.status === "running" ? session : null;
-  });
+  let running;
+  try {
+    running = await waitFor(() => {
+      if (!fs.existsSync(sessionFile)) return null;
+      const session = JSON.parse(fs.readFileSync(sessionFile, "utf8"));
+      return session.status === "running" ? session : null;
+    });
+  } catch (error) {
+    throw new Error(`${error.message}; child=${child.exitCode}/${child.signalCode}; stdout=${stdout}; stderr=${stderr}`);
+  }
   assert.equal(running.agent_id, "dashboard-manager");
   assert.ok(running.server.port > port, `expected a fallback port above occupied ${port}`);
   const dashboardUrl = new RegExp(`http://127\\.0\\.0\\.1:${running.server.port}`);
-  await waitFor(() => dashboardUrl.test(stdout));
+  await waitFor(() => dashboardUrl.test(stdout), 8000, "dashboard URL");
   const firstHeartbeat = running.last_heartbeat_at;
-  await waitFor(() => JSON.parse(fs.readFileSync(sessionFile, "utf8")).last_heartbeat_at !== firstHeartbeat);
+  await waitFor(() => JSON.parse(fs.readFileSync(sessionFile, "utf8")).last_heartbeat_at !== firstHeartbeat, 8000, "session heartbeat");
 
   child.kill("SIGTERM");
   const exit = await new Promise((resolve, reject) => {
@@ -120,8 +126,10 @@ test("dev shifts ports, heartbeats, closes, and leaves scripts reusable", async 
   assert.equal(JSON.parse(query.stdout).sessions.find((item) => item.session_id === sessionId).status, "closed");
 });
 
-test("help lists dev", () => {
+test("help lists dev and generic management query options", () => {
   const result = run(ROOT, ["--help"]);
   assert.equal(result.status, 0);
   assert.match(result.stdout, /dev \[options\]\s+Start the live project dashboard/);
+  assert.match(result.stdout, /query <projection>\s+Query a project Management API and output JSON/);
+  assert.match(result.stdout, /--project <path>\s+Target an explicit project/);
 });

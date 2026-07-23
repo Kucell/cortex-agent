@@ -102,6 +102,7 @@ npx cortex-agent init --global
 | `cortex-agent track` | 开启 Git 追踪：移除本地忽略，自动 `git add .agent` |
 | `cortex-agent untrack` | 关闭 Git 追踪：`git rm --cached` + 写入本地忽略，不删除文件 |
 | `cortex-agent doctor` | 健康检查：验证 `.agent`/`AGENTS.md`/`GEMINI.md` 识别与 Git 状态 |
+| `cortex-agent query <projection> --project <path>` | 查询目标项目公开的 Management API projection，输出 JSON |
 | `cortex-agent dev` | 前台启动 Agent 协作 Dashboard；端口占用时自动选择后续可用端口 |
 | `cortex-agent runs list` | 通过 Management API 列出最近的 Run，输出 JSON |
 | `cortex-agent runs show <run-id>` | 从 Management API read model 查看指定 Run，输出 JSON |
@@ -110,6 +111,8 @@ npx cortex-agent init --global
 | `cortex-agent add <platform>` | 添加平台集成（如 `cline`、`roo`、`codex`）|
 | `cortex-agent remove <platform>` | 移除平台集成 |
 | `cortex-agent list` | 列出当前已安装的平台集成 |
+
+`query` 成功时 stdout 使用稳定的 JSON envelope，包含 `command`、`projection`、`project`、`filters`、`data`、`summary` 和 `warnings`。失败时 stdout 返回结构化 `error.code`，stderr 仅用于诊断；参数或 projection 错误退出 `2`，项目或 Management API 不可用退出 `3`。
 
 ---
 
