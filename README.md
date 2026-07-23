@@ -136,6 +136,8 @@ cortex-agent query activity --project /path/to/project --since 2026-07-13 --unti
 
 Agent 与自动化应先读取 `cortex-agent help --json` 的机器契约；查询特定项目时再使用 `help query --json --project <path>` 获取真实 projection capability。新增公开 CLI 命令必须登记到中央契约，否则契约一致性测试会失败。
 
+需要 MCP 的宿主可运行 `cortex-agent mcp serve --project <path>`。该 stdio server 只绑定一个明确本地项目，Resources 来自真实 capability registry，并只提供只读 `cortex.query`；writer tools 保持禁用。
+
 常用工作流示例：
 
 ```

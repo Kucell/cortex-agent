@@ -1,24 +1,32 @@
 ---
 name: runtime-state-mcp
-description: 通过可选、只读的 MCP stdio adapter 暴露 Cortex Agent 运行态投影。当本地 MCP 客户端需要读取与 CLI、Dashboard 相同的 Management API 状态，且不能直接解析 .agent 状态时使用。
+description: 通过标准、只读的 Management API MCP stdio adapter 暴露一个明确的 Cortex Agent 项目。
 ---
 
 # Runtime State MCP
 
-使用明确配置的 Management API 脚本启动可选 adapter：
+## 启动
+
+使用公开 CLI，并且只绑定一个明确项目：
 
 ```bash
-CORTEX_MANAGEMENT_API_SCRIPT=.agent/skills/management-api/scripts/index.js \
-  node .agent/skills/runtime-state-mcp/scripts/server.js
+cortex-agent mcp serve --project /path/to/project
 ```
 
-服务支持 `initialize`、`resources/list` 和 `resources/read`。资源 URI 为 `cortex://runtime-state/<query>`，其中 `<query>` 必须是已冻结的投影查询之一。
+使用 `cortex-agent help --json` 获取机器可读 CLI 契约；使用 `cortex-agent help query --json --project <path>` 获取目标项目真实支持的 projection。
+
+## 协议
+
+- 仅支持 stdio JSON-RPC；协议帧写 stdout，诊断写 stderr。
+- Resource URI 使用 `cortex://management/<projection>`，列表由真实 Management API capability registry 动态生成。
+- `resources/list` 中每个 resource 都能通过 `resources/read` 读取，并与直接 Management API projection 语义一致。
+- 唯一 Tool 是只读 `cortex.query`，projection filter 继续由同一 registry 校验。
+- `initialize` 阶段协商支持的 protocol version；未知版本 fail closed。
 
 ## 边界
 
-- Management API projection 是唯一数据源；禁止在此解析 `.agent/` 状态文件。
-- adapter 只读；禁止增加变更方法或 MCP tools。
-- stdout 只输出协议帧，诊断只输出到 stderr。
-- 未知 URI、不支持的方法、异常投影或 API 不可用时必须 fail closed。
-- 服务保持可选：只有 MCP 客户端主动启动时才运行，不影响其他功能。
-
+- 进程只绑定 `--project` 指定的本地项目；MCP roots 不得改变 scope。
+- 禁止直接解析 `.agent` 状态；Management API 是唯一 projection 来源。
+- Writer tools 默认并持续禁用。禁止增加 mutation、shell、daemon、dispatch、trigger、credential 或任意路径工具。
+- 未知 projection、URI、method、tool、参数、畸形 API 输出和不可用项目都必须 fail closed。
+- 内部 server 脚本只作为实现/调试入口，不是 Agent 标准命令。
