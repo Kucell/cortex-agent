@@ -53,6 +53,7 @@ Specialized agents with isolated model, tools, and context boundaries.
 | Rule | Role |
 | :--- | :--- |
 | `ai-behavior.md` | Git safety, minimal edits, plan-before-act, design confirmation, staged commits + `task-progress.md` resume |
+| `agent-scope.md` | Agent capability ownership: L1 template / L2 project instance / L3 provider self-maintenance, including bootstrap-before-template verification |
 | `integration-safety.md` | Cross-module calls: verify signatures, payload vs schema, avoid swapped args |
 | `refactoring-safety.md` | Refactor without behavior change; don’t blindly “fix” all lints |
 | `task-decomposition.md` | Large-requirement breakdown, multi-agent parallel judgment, task boundaries, and closure rules |
