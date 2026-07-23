@@ -1,0 +1,93 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Cortex Agent Runtime Continuity Event",
+  "type": "object",
+  "required": [
+    "event_id",
+    "project",
+    "host",
+    "type",
+    "message",
+    "created_at"
+  ],
+  "properties": {
+    "event_id": { "type": "string", "minLength": 1 },
+    "project": { "type": "string", "minLength": 1 },
+    "host": { "type": "string", "minLength": 1 },
+    "agent_id": { "type": ["string", "null"] },
+    "run_id": { "type": ["string", "null"] },
+    "session_id": { "type": ["string", "null"] },
+    "task_id": { "type": ["string", "null"] },
+    "mission_id": { "type": ["string", "null"] },
+    "type": {
+      "type": "string",
+      "enum": [
+        "session_started",
+        "work_log",
+        "checkpoint",
+        "command",
+        "decision",
+        "blocked",
+        "handoff",
+        "archive",
+        "host_switch",
+        "restore"
+      ]
+    },
+    "phase": { "type": ["string", "null"] },
+    "message": { "type": "string" },
+    "summary": {
+      "type": "object",
+      "properties": {
+        "done": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "in_progress": { "type": ["string", "null"] },
+        "next": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "blockers": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "refs": {
+      "type": "object",
+      "properties": {
+        "files": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "commands": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["command", "exit_code"],
+            "properties": {
+              "command": { "type": "string" },
+              "exit_code": { "type": ["integer", "null"] },
+              "summary": { "type": "string" }
+            },
+            "additionalProperties": false
+          }
+        },
+        "artifacts": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "handoffs": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "created_at": { "type": "string", "format": "date-time" }
+  },
+  "additionalProperties": false
+}
+

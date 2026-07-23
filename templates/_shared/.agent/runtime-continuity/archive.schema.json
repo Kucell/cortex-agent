@@ -1,0 +1,102 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Cortex Agent Runtime Continuity Archive",
+  "type": "object",
+  "required": [
+    "archive_id",
+    "project",
+    "created_at",
+    "git",
+    "state",
+    "refs",
+    "restore"
+  ],
+  "properties": {
+    "archive_id": { "type": "string", "minLength": 1 },
+    "project": { "type": "string", "minLength": 1 },
+    "created_at": { "type": "string", "format": "date-time" },
+    "source_host": { "type": ["string", "null"] },
+    "target_host": { "type": ["string", "null"] },
+    "reason": { "type": ["string", "null"] },
+    "git": {
+      "type": "object",
+      "required": ["root", "branch", "head", "status_short"],
+      "properties": {
+        "root": { "type": "string" },
+        "branch": { "type": "string" },
+        "head": { "type": "string" },
+        "status_short": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "state": {
+      "type": "object",
+      "required": ["done", "in_progress", "next", "blockers"],
+      "properties": {
+        "current_goal": { "type": ["string", "null"] },
+        "done": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "in_progress": { "type": ["string", "null"] },
+        "next": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "blockers": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "refs": {
+      "type": "object",
+      "required": ["latest_events", "runs", "sessions", "handoffs", "artifacts", "dirty_files"],
+      "properties": {
+        "latest_events": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "runs": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "sessions": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "handoffs": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "artifacts": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "dirty_files": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "restore": {
+      "type": "object",
+      "required": ["read_first", "commands", "next_action"],
+      "properties": {
+        "read_first": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "commands": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "next_action": { "type": "string" }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}
