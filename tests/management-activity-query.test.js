@@ -21,6 +21,9 @@ function createProject() {
   const scripts = path.join(project, ".agent", "skills", "management-api", "scripts");
   fs.mkdirSync(scripts, { recursive: true });
   for (const file of FILES) fs.copyFileSync(path.join(ROOT, "templates", "_shared", ".agent", "skills", "management-api", "scripts", file), path.join(scripts, file));
+  const taskScripts = path.join(project, ".agent", "tasks", "scripts");
+  fs.mkdirSync(taskScripts, { recursive: true });
+  fs.copyFileSync(path.join(ROOT, "templates", "_shared", ".agent", "tasks", "scripts", "task-state.js"), path.join(taskScripts, "task-state.js"));
   writeJson(path.join(project, ".agent", "runs", "R-1.json"), {
     run_id: "R-1", task_id: "T-1", mission_id: "M-1", status: "completed", started_at: "2026-07-12T16:00:00.000Z",
     events: [

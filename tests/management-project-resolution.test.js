@@ -20,6 +20,11 @@ function installAgent(agentRoot) {
       : path.join(ROOT, ".agent", "skills", "management-api", "scripts", file);
     fs.copyFileSync(source, path.join(scripts, file));
   }
+  fs.mkdirSync(path.join(agentRoot, "tasks", "scripts"), { recursive: true });
+  fs.copyFileSync(
+    path.join(ROOT, "templates", "_shared", ".agent", "tasks", "scripts", "task-state.js"),
+    path.join(agentRoot, "tasks", "scripts", "task-state.js"),
+  );
   for (const directory of ["runs", "queues", "sessions", "inbox", "decisions", "waitpoints", "plans"]) {
     fs.mkdirSync(path.join(agentRoot, directory), { recursive: true });
   }

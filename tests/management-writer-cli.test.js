@@ -16,6 +16,9 @@ function createProject() {
   const scripts = path.join(project, ".agent", "skills", "management-api", "scripts");
   fs.mkdirSync(scripts, { recursive: true });
   for (const file of FILES) fs.copyFileSync(path.join(ROOT, "templates", "_shared", ".agent", "skills", "management-api", "scripts", file), path.join(scripts, file));
+  const taskScripts = path.join(project, ".agent", "tasks", "scripts");
+  fs.mkdirSync(taskScripts, { recursive: true });
+  fs.copyFileSync(path.join(ROOT, "templates", "_shared", ".agent", "tasks", "scripts", "task-state.js"), path.join(taskScripts, "task-state.js"));
   for (const dir of ["runs", "queues", "sessions", "decisions", "inbox", "waitpoints"]) fs.mkdirSync(path.join(project, ".agent", dir), { recursive: true });
   return project;
 }

@@ -19,6 +19,10 @@ function createProject() {
   for (const file of ["index.js", "normalize-token-usage.js", "projection-registry.json", "query-activity.js"]) {
     copy(path.join(ROOT, "templates", "_shared", ".agent", "skills", "management-api", "scripts", file), path.join(management, file));
   }
+  copy(
+    path.join(ROOT, "templates", "_shared", ".agent", "tasks", "scripts", "task-state.js"),
+    path.join(project, ".agent", "tasks", "scripts", "task-state.js"),
+  );
   const mcp = path.join(project, ".agent", "skills", "runtime-state-mcp", "scripts");
   for (const file of ["server.js", "server-core.js"]) {
     copy(path.join(ROOT, "templates", "_shared", ".agent", "skills", "runtime-state-mcp", "scripts", file), path.join(mcp, file));
