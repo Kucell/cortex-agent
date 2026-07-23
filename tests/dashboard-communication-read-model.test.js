@@ -10,6 +10,7 @@ const vm = require("node:vm");
 
 const ROOT = path.resolve(__dirname, "..");
 const GENERATOR = path.join(ROOT, ".agent", "skills", "agent-dashboard", "scripts", "generate.js");
+const MARKDOWN_IT = path.join(ROOT, ".agent", "skills", "agent-dashboard", "vendor", "markdown-it.min.js");
 
 function project(fixture) {
   const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-dashboard-communication-"));
@@ -18,6 +19,9 @@ function project(fixture) {
   fs.mkdirSync(dashboardDir, { recursive: true });
   fs.mkdirSync(managementDir, { recursive: true });
   fs.copyFileSync(GENERATOR, path.join(dashboardDir, "generate.js"));
+  const vendorDir = path.join(cwd, ".agent", "skills", "agent-dashboard", "vendor");
+  fs.mkdirSync(vendorDir, { recursive: true });
+  fs.copyFileSync(MARKDOWN_IT, path.join(vendorDir, "markdown-it.min.js"));
   fs.writeFileSync(
     path.join(managementDir, "index.js"),
     `process.stdout.write(${JSON.stringify(JSON.stringify(fixture))});\n`,
@@ -148,6 +152,9 @@ test("task cards open a read-only Markdown preview with related proposals and ta
   assert.ok(html.includes("T-related"));
   assert.match(html, /fetch\('\/api\/preview\?path='/);
   assert.match(html, /function renderMarkdown\(markdown\)/);
+  assert.match(html, /data-vendor="markdown-it@14\.3\.0"/);
+  assert.match(html, /window\.markdownit\(\{ html: false/);
+  assert.match(html, /class="markdown-body"/);
   assert.match(html, /function documentOverview\(content, path, lang\)/);
   assert.match(html, /function loadPreview\(path\)/);
   assert.match(html, /task\.refs && task\.refs\[0\]/);
