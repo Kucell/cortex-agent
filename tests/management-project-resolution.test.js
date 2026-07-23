@@ -9,13 +9,16 @@ const test = require("node:test");
 
 const ROOT = path.resolve(__dirname, "..");
 const CLI = path.join(ROOT, "bin", "cli.js");
-const MANAGEMENT_FILES = ["index.js", "normalize-token-usage.js", "projection-registry.json"];
+const MANAGEMENT_FILES = ["index.js", "normalize-token-usage.js", "projection-registry.json", "query-activity.js"];
 
 function installAgent(agentRoot) {
   const scripts = path.join(agentRoot, "skills", "management-api", "scripts");
   fs.mkdirSync(scripts, { recursive: true });
   for (const file of MANAGEMENT_FILES) {
-    fs.copyFileSync(path.join(ROOT, ".agent", "skills", "management-api", "scripts", file), path.join(scripts, file));
+    const source = file === "query-activity.js"
+      ? path.join(ROOT, "templates", "_shared", ".agent", "skills", "management-api", "scripts", file)
+      : path.join(ROOT, ".agent", "skills", "management-api", "scripts", file);
+    fs.copyFileSync(source, path.join(scripts, file));
   }
   for (const directory of ["runs", "queues", "sessions", "inbox", "decisions", "waitpoints", "plans"]) {
     fs.mkdirSync(path.join(agentRoot, directory), { recursive: true });

@@ -114,6 +114,8 @@ npx cortex-agent init --global
 
 `query` 成功时 stdout 使用稳定的 JSON envelope，包含 `command`、`projection`、`project`、`filters`、`data`、`summary` 和 `warnings`。失败时 stdout 返回结构化 `error.code`，stderr 仅用于诊断；参数或 projection 错误退出 `2`，项目或 Management API 不可用退出 `3`。
 
+周报和审计可使用 `cortex-agent query activity --project <path> --since <date-or-rfc3339> --until <date-or-rfc3339>`。时间边界包含首尾；纯日期按本地自然日解释。只有记录内的结构化时间会进入筛选结果，未知或无效时间单独返回，文件 mtime 不参与推断。
+
 ---
 
 ## 开发服务与静态降级

@@ -13,6 +13,7 @@ const MANAGEMENT_FILES = [
   "index.js",
   "normalize-token-usage.js",
   "projection-registry.json",
+  "query-activity.js",
 ];
 
 function createProject(prefix = "cortex-management-cli-") {
@@ -20,7 +21,10 @@ function createProject(prefix = "cortex-management-cli-") {
   const scripts = path.join(cwd, ".agent", "skills", "management-api", "scripts");
   fs.mkdirSync(scripts, { recursive: true });
   for (const file of MANAGEMENT_FILES) {
-    fs.copyFileSync(path.join(ROOT, ".agent", "skills", "management-api", "scripts", file), path.join(scripts, file));
+    const source = file === "query-activity.js"
+      ? path.join(ROOT, "templates", "_shared", ".agent", "skills", "management-api", "scripts", file)
+      : path.join(ROOT, ".agent", "skills", "management-api", "scripts", file);
+    fs.copyFileSync(source, path.join(scripts, file));
   }
   for (const directory of ["runs", "queues", "sessions", "inbox", "decisions", "waitpoints", "plans"]) {
     fs.mkdirSync(path.join(cwd, ".agent", directory), { recursive: true });
@@ -55,7 +59,8 @@ test("generic query delegates every registered core projection", (t) => {
     assert.equal(payload.command, "query");
     assert.equal(payload.projection, entry.name);
     assert.ok(Object.prototype.hasOwnProperty.call(payload, "data"));
-    assert.deepEqual(payload.filters, {});
+    if (entry.name === "activity") assert.equal(payload.filters.inclusive, true);
+    else assert.deepEqual(payload.filters, {});
     assert.deepEqual(payload.warnings, []);
     assert.equal(payload.project.root, fs.realpathSync(project));
     assert.equal(payload.project.agent_root, fs.realpathSync(path.join(project, ".agent")));
