@@ -34,7 +34,7 @@ CREATE -> PLAN -> DISPATCH -> EXECUTE -> VALIDATE -> COMPLETE
                      +-> RESUME +-> HUMAN_DECISION
 ```
 
-On every resume, read the mission plan, active milestone, command log, Task/Run/Queue/Session state, locks, handoffs, Decisions, and Waitpoints. If a blocking Waitpoint exists, enter `HUMAN_DECISION` and stop the protected action.
+On every resume, first run `node .agent/skills/runtime-continuity/scripts/index.js resume-bundle --project "$(basename "$(pwd)")"`, then read the mission plan, active milestone, command log, Task/Run/Queue/Session state, locks, handoffs, Decisions, and Waitpoints. If a blocking Waitpoint exists, enter `HUMAN_DECISION` and stop the protected action.
 
 ## CREATE and PLAN
 
@@ -46,7 +46,7 @@ On every resume, read the mission plan, active milestone, command log, Task/Run/
 
 ## DISPATCH and EXECUTE
 
-Create Task, Run, Queue, Session, lock, and handoff records through their owning APIs. Keep one coordinator owner for mission transitions. Checkpoint meaningful phase changes; never infer progress from chat alone.
+Create Task, Run, Queue, Session, lock, Runtime Continuity checkpoint, and handoff records through their owning APIs. Keep one coordinator owner for mission transitions. Checkpoint meaningful phase changes; never infer progress from chat alone.
 
 ## VALIDATE
 

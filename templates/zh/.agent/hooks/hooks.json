@@ -37,6 +37,18 @@
           }
         ],
         "description": "会话启动时加载 .agent/memory/MEMORY.md 索引（≤200 行 / 25KB cap，topic 文件按需 Read）"
+      },
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "PROJ=$(node -e \"console.log(require('path').basename(process.cwd()))\"); node .agent/skills/runtime-continuity/scripts/index.js warm --auto --project \"$PROJ\" 2>/dev/null; exit 0",
+            "async": true,
+            "timeout": 5
+          }
+        ],
+        "description": "会话启动时自动初始化 runtime-continuity 状态追踪：写入 session_started 事件，启动 5 小时计时窗口"
       }
     ]
   }

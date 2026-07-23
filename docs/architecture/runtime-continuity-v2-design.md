@@ -210,14 +210,14 @@ flowchart TD
 
 ## 8. 验收标准
 
-- [ ] `archive.schema.json` 和 `event.schema.json` 存在，字段覆盖 host、agent、run、task、state、refs、restore。
-- [ ] `archive --full` 写入 `.agent/runtime-continuity/archives/RC-*.json` 和 `latest.json`。
-- [ ] `log` / `checkpoint` 写入 events 并能被 archive 引用。
-- [ ] `host-switch` 自动创建结构化 archive。
-- [ ] `restore --auto` 可在没有用户说明时返回最新恢复上下文。
-- [ ] `resume-bundle` 可输出新 agent 的 read-first 与 next-action。
-- [ ] 中英模板同步。
-- [ ] 测试覆盖 runtime-continuity v2 新命令。
+- [x] `archive.schema.json` 和 `event.schema.json` 存在，字段覆盖 host、agent、run、task、state、refs、restore。
+- [x] `archive --full` 写入 `.agent/runtime-continuity/archives/RC-*.json` 和 `latest.json`。
+- [x] `log` / `checkpoint` 写入 events 并能被 archive 引用。
+- [x] `host-switch` 自动创建结构化 archive。
+- [x] `restore --auto` 可在没有用户说明时返回最新恢复上下文。
+- [x] `resume-bundle` 可输出新 agent 的 read-first 与 next-action。
+- [x] 中英模板同步。
+- [x] 测试覆盖 runtime-continuity v2 新命令。
 
 ## 9. 分阶段任务
 
@@ -225,4 +225,4 @@ flowchart TD
 |------|------|------|
 | T-RC01 | Runtime Continuity v2 设计文档 + schema | ✅ 已完成 |
 | T-RC02 | 扩展 runtime-continuity CLI：log/checkpoint/archive full/restore auto/resume-bundle | ✅ 已完成 |
-| T-RC03 | 接入 workflows、SessionStart、briefing、templates、测试 | 待开始 |
+| T-RC03 | 接入 workflows、SessionStart、briefing、templates、测试 | ✅ 已完成 |
