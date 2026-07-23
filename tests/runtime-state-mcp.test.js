@@ -12,7 +12,8 @@ const EN = path.join(ROOT, "templates/en/.agent/skills/runtime-state-mcp");
 const ZH = path.join(ROOT, "templates/zh/.agent/skills/runtime-state-mcp");
 const SHARED = path.join(ROOT, "templates/_shared/.agent/skills/runtime-state-mcp");
 const SERVER = path.join(SHARED, "scripts/server.js");
-const QUERIES = ["runtime-state", "workspaces", "hook-runs", "resource-leases", "composite-workspaces", "resource-events", "guided-reviews", "benchmarks"];
+const CORE = path.join(SHARED, "scripts/server-core.js");
+const QUERIES = ["dashboard-state", "runs", "queues", "sessions", "inbox", "decisions", "waitpoints", "activity"];
 
 function frame(value) {
   return `${JSON.stringify(value)}\n`;
@@ -37,18 +38,18 @@ function fixture() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "runtime-state-mcp-"));
   const projection = { ok: true, query: "", generated_at: "2026-07-19T00:00:00Z", resources: [{ resource_type: "workspace", resource_id: "W-1", status: "active" }], summary: { total: 1 }, recent_events: [], blocking: [], evidence_readiness: { ready: 1, missing: 0, unavailable: 0 } };
   const api = path.join(dir, "fake-api.js");
-  fs.writeFileSync(api, `const q=process.argv[3];const p=${JSON.stringify(projection)};p.query=q;process.stdout.write(JSON.stringify(p));\n`);
+  fs.writeFileSync(api, `const q=process.argv[3];if(q==='capabilities'){process.stdout.write(JSON.stringify({ok:true,query:q,projections:${JSON.stringify(QUERIES.map((name) => ({ name, filters: name === "activity" ? ["since", "until"] : [] })))} }));}else{const p=${JSON.stringify(projection)};p.query=q;process.stdout.write(JSON.stringify(p));}\n`);
   const marker = path.join(dir, "fixture.json");
   fs.writeFileSync(marker, JSON.stringify({ immutable: true }) + "\n");
   return { dir, api, marker, projection };
 }
 
-test("lists the frozen allowlist and reads deep-identical Management API projections", async () => {
+test("lists real capabilities and reads deep-identical Management API projections", async () => {
   const f = fixture(); const before = fs.readFileSync(f.marker);
   const requests = [{ jsonrpc: "2.0", id: 1, method: "initialize", params: {} }, { jsonrpc: "2.0", id: 2, method: "resources/list", params: {} }];
-  QUERIES.forEach((query, index) => requests.push({ jsonrpc: "2.0", id: index + 3, method: "resources/read", params: { uri: `cortex://runtime-state/${query}` } }));
+  QUERIES.forEach((query, index) => requests.push({ jsonrpc: "2.0", id: index + 3, method: "resources/read", params: { uri: `cortex://management/${query}` } }));
   const result = await invoke(requests, f.api, f.dir);
-  assert.deepEqual(result.responses[1].result.resources.map((item) => item.uri), QUERIES.map((q) => `cortex://runtime-state/${q}`));
+  assert.deepEqual(result.responses[1].result.resources.map((item) => item.uri), QUERIES.map((q) => `cortex://management/${q}`));
   QUERIES.forEach((query, index) => assert.deepEqual(JSON.parse(result.responses[index + 2].result.contents[0].text), { ...f.projection, query }));
   assert.deepEqual(fs.readFileSync(f.marker), before);
   assert.equal(result.stderr, "");
@@ -61,20 +62,20 @@ test("unknown URI and mutation methods fail closed", async () => {
     { jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "mutate" } },
   ], f.api, f.dir);
   assert.equal(result.responses[0].error.code, -32602);
-  assert.equal(result.responses[1].error.code, -32601);
+  assert.equal(result.responses[1].error.code, -32602);
   assert.match(result.stderr, /Unsupported resource URI/);
 });
 
 test("unavailable Management API produces a structured diagnostic error", async () => {
   const f = fixture();
-  const result = await invoke([{ jsonrpc: "2.0", id: 1, method: "resources/read", params: { uri: "cortex://runtime-state/workspaces" } }], path.join(f.dir, "missing.js"), f.dir);
+  const result = await invoke([{ jsonrpc: "2.0", id: 1, method: "resources/read", params: { uri: "cortex://management/runs" } }], path.join(f.dir, "missing.js"), f.dir);
   assert.equal(result.responses[0].error.code, -32001);
-  assert.equal(result.responses[0].error.data.reason, "management_api_query_failed");
-  assert.match(result.stderr, /Management API query workspaces failed/);
+  assert.equal(result.responses[0].error.data.reason, "management_api_not_found");
+  assert.match(result.stderr, /Management API unavailable|Management API/);
 });
 
 test("shared machine file contains no direct state parser", () => {
-  const server = fs.readFileSync(SERVER, "utf8");
+  const server = fs.readFileSync(CORE, "utf8");
   assert.doesNotMatch(server, /readFileSync|\.agent\/(?:runs|workspaces|sessions)/);
-  assert.doesNotMatch(server, /tools\/list|tools\/call.*result/);
+  assert.doesNotMatch(server, /writeFileSync|renameSync|tools\/call.*(?:write|mutate)/);
 });

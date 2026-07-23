@@ -21,6 +21,7 @@ const {
   decisions,
   inbox,
   waitpoints,
+  mcp,
   managementQuery,
   dev,
   cliHelp,
@@ -73,6 +74,17 @@ for (let i = 0; i < args.length; i++) {
     // Adding it here is a no-op cost when absent; honest reporting when present.
     options.dryRun = true;
   }
+  if (arg === "--report") {
+    options.report = args[i + 1] || "";
+  } else if (arg && arg.startsWith("--report=")) {
+    options.report = arg.slice("--report=".length);
+  }
+  if (arg === "--verify") {
+    options.verify = true;
+  }
+  if (arg === "--verify-full") {
+    options.verifyFull = true;
+  }
   if (arg === "--project") {
     const value = args[i + 1];
     options.project = value && !value.startsWith("--") ? value : "";
@@ -121,6 +133,7 @@ const ctx = { cwd, args, command, options, lang, templateDir };
     case "decisions":   decisions(ctx); break;
     case "inbox":       inbox(ctx); break;
     case "waitpoints":  waitpoints(ctx); break;
+    case "mcp":         await mcp(ctx); break;
     case "query":       managementQuery(ctx); break;
     case "help":        args.includes("--json") ? cliHelp(ctx) : printHelp(); break;
     case "dev":         await dev(ctx); break;

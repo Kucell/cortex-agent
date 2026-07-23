@@ -104,6 +104,7 @@ npx cortex-agent init --global
 | `cortex-agent doctor` | 健康检查：验证 `.agent`/`AGENTS.md`/`GEMINI.md` 识别与 Git 状态 |
 | `cortex-agent help --json` | 输出 Agent/自动化可读取的 CLI 命令、参数、Management writer 与安全边界契约 |
 | `cortex-agent query <projection> --project <path>` | 查询目标项目公开的 Management API projection，输出 JSON |
+| `cortex-agent mcp serve --project <path>` | 启动绑定单项目的只读 Management API MCP stdio server；writer tools 禁用 |
 | `cortex-agent dev` | 前台启动 Agent 协作 Dashboard；端口占用时自动选择后续可用端口 |
 | `cortex-agent runs list` | 通过 Management API 列出最近的 Run，输出 JSON |
 | `cortex-agent runs show <run-id>` | 从 Management API read model 查看指定 Run，输出 JSON |
