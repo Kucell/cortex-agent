@@ -118,6 +118,17 @@ cortex-agent dev --port 8787 --interval-ms 3000 --session-id local-dashboard
 
 按 `Ctrl+C` 停止服务并结束 Session。开发服务停止后，静态 Dashboard 生成器与 Management API 的只读查询仍可独立使用。
 
+### 查询项目 Management API
+
+标准 CLI 可以从任意目录查询明确项目，并始终输出 JSON：
+
+```bash
+cortex-agent query dashboard-state --project /path/to/project
+cortex-agent query runs --project /path/to/project
+```
+
+`--project` 指向项目或 worktree 根目录；共享 `.agent` 软链接会保留代码工作区 `project.root`，并通过 `project.agent_root` 报告真实 Agent 状态目录。成功结果使用稳定的 `command`、`projection`、`project`、`filters`、`data`、`summary`、`warnings` JSON 字段。未知 projection、项目缺失、旧项目缺少 capability registry 或 Management API 不可用时，stdout 返回结构化错误，stderr 仅输出诊断，并以稳定的非零退出码结束。
+
 常用工作流示例：
 
 ```
