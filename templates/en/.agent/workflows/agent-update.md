@@ -73,5 +73,7 @@ Per project ≤30 feedback entries; on overflow **auto-archive** the earliest 5 
 
 ## 5. Verification and Summary
 
+- **Bootstrap First**: If this `/agent-update` promotes a new capability from a framework or capability provider into reusable templates, verify it in the provider's own `.agent/` first. Follow `.agent/rules/agent-scope.md` "New Capability Bootstrap Verification Order".
+- **Evidence Required**: Record concrete self-use evidence: command, exit code, generated report/artifact path, or workflow dry-run result. Do not claim template or downstream-project readiness before provider-side `.agent` verification passes.
 - **Verify Links**: If it's a global update, confirm that the symlinks in the local project are effective.
 - **Submit Report**: Explain the adjustments made, confirm the synchronization status, and report whether an experience record was created.
