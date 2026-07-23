@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cortex-agent.local/schemas/dashboard-automation.schema.json",
+  "title": "Dashboard Automation Policy",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "enabled",
+    "mode",
+    "dashboard_root",
+    "requested_port",
+    "refresh_interval_ms",
+    "poll_interval_ms",
+    "idle_shutdown_ms",
+    "start_on",
+    "exclude_roles",
+    "localhost_only"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "enabled": {
+      "type": "boolean",
+      "default": false
+    },
+    "mode": {
+      "const": "active-workload"
+    },
+    "dashboard_root": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?:/|[A-Za-z]:[\\\\/])"
+        }
+      ]
+    },
+    "requested_port": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 65535
+    },
+    "refresh_interval_ms": {
+      "type": "integer",
+      "minimum": 500
+    },
+    "poll_interval_ms": {
+      "type": "integer",
+      "minimum": 1000
+    },
+    "idle_shutdown_ms": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "start_on": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "session_running",
+          "run_running",
+          "task_active",
+          "queue_running",
+          "worktree_in_progress"
+        ]
+      }
+    },
+    "exclude_roles": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "localhost_only": {
+      "const": true
+    }
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "enabled": false,
+  "mode": "active-workload",
+  "dashboard_root": null,
+  "requested_port": 8787,
+  "refresh_interval_ms": 3000,
+  "poll_interval_ms": 5000,
+  "idle_shutdown_ms": 900000,
+  "start_on": [
+    "session_running",
+    "run_running",
+    "task_active"
+  ],
+  "exclude_roles": [
+    "dashboard-manager",
+    "runtime-continuity"
+  ],
+  "localhost_only": true
+}

@@ -1,0 +1,152 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cortex-agent.local/schemas/dashboard-supervisor-state.schema.json",
+  "title": "Dashboard Supervisor Runtime State",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "status",
+    "agent_root",
+    "dashboard_root",
+    "supervisor_pid",
+    "dashboard_pid",
+    "url",
+    "started_at",
+    "last_heartbeat_at",
+    "last_active_at",
+    "idle_deadline_at",
+    "last_reason",
+    "last_error"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "status": {
+      "enum": [
+        "disabled",
+        "enabled_idle",
+        "starting",
+        "running",
+        "idle_grace",
+        "stopping",
+        "degraded",
+        "recovering",
+        "stopped"
+      ]
+    },
+    "agent_root": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?:/|[A-Za-z]:[\\\\/])"
+    },
+    "dashboard_root": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?:/|[A-Za-z]:[\\\\/])"
+    },
+    "supervisor_pid": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "integer",
+          "minimum": 1
+        }
+      ]
+    },
+    "dashboard_pid": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "integer",
+          "minimum": 1
+        }
+      ]
+    },
+    "url": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "string",
+          "format": "uri"
+        }
+      ]
+    },
+    "started_at": {
+      "$ref": "#/$defs/nullableDateTime"
+    },
+    "last_heartbeat_at": {
+      "$ref": "#/$defs/nullableDateTime"
+    },
+    "last_active_at": {
+      "$ref": "#/$defs/nullableDateTime"
+    },
+    "idle_deadline_at": {
+      "$ref": "#/$defs/nullableDateTime"
+    },
+    "last_reason": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "string",
+          "minLength": 1
+        }
+      ]
+    },
+    "last_error": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "code",
+            "message",
+            "at"
+          ],
+          "properties": {
+            "code": {
+              "type": "string",
+              "minLength": 1
+            },
+            "message": {
+              "type": "string",
+              "minLength": 1
+            },
+            "at": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "details": {
+              "type": "object"
+            }
+          }
+        }
+      ]
+    }
+  },
+  "$defs": {
+    "nullableDateTime": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "string",
+          "format": "date-time"
+        }
+      ]
+    }
+  }
+}
