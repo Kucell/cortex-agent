@@ -147,11 +147,12 @@ test("task cards open a read-only Markdown preview with related proposals and ta
   assert.match(html, /id="preview-dialog"/);
   assert.match(html, /id="overview-text"/);
   assert.match(html, /Content Overview/);
-  assert.match(html, /Related Documents &amp; Proposals|Related Documents & Proposals/);
+  assert.doesNotMatch(html, /id="related-docs"/);
   assert.ok(html.includes(".agent/plans/proposals/preview/preview-proposal.md"));
   assert.ok(html.includes("T-related"));
   assert.match(html, /fetch\('\/api\/preview\?path='/);
   assert.match(html, /function renderMarkdown\(markdown\)/);
+  assert.match(html, /cortex_document_references/);
   assert.match(html, /function resolvePreviewReference\(href, currentPath\)/);
   assert.match(html, /#preview-body a\[data-markdown-reference\]/);
   assert.match(html, /window\.__cortexPreviewPath = data\.path/);
@@ -188,6 +189,17 @@ test("task cards open a read-only Markdown preview with related proposals and ta
   );
   assert.equal(context.resolvePreviewReference("https://example.com", ".agent/missions/M-001/mission-plan.md"), null);
   assert.equal(context.resolvePreviewReference("../../../../escape.md", ".agent/missions/M-001/mission-plan.md"), null);
+
+  const renderStart = html.indexOf("function renderMarkdown");
+  const renderEnd = html.indexOf("function resolvePreviewReference", renderStart);
+  const renderContext = { window: {} };
+  renderContext.self = renderContext.window;
+  vm.createContext(renderContext);
+  vm.runInContext(fs.readFileSync(MARKDOWN_IT, "utf8"), renderContext);
+  renderContext.window.markdownit = renderContext.markdownit;
+  vm.runInContext(html.slice(renderStart, renderEnd), renderContext);
+  const linkedPath = renderContext.renderMarkdown("Source: `.agent/plans/proposal.md`");
+  assert.match(linkedPath, /<a href="\.agent\/plans\/proposal\.md" data-markdown-reference="true"><code>\.agent\/plans\/proposal\.md<\/code><\/a>/);
 });
 
 test("task table Markdown links become preview references when API tasks omit them", (t) => {
