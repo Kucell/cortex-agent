@@ -46,10 +46,10 @@ Layer 4: 执行熔断 (skill-executor)
 
 | 案例 | 涉及层 | 修复 |
 |------|--------|------|
-| 机票误判旅游推荐 | Layer 1 | 排除关键词列表 |
-| 邮件误用于餐厅查询 | Layer 2 | domain 维度强制匹配 |
-| 高速低成功率支付接口 | Layer 3 | success_rate 权重 0.25 |
-| 物流查询卡死系统 | Layer 4 | 超时熔断 + 状态降级 |
+| "查询代码结构"误判复合意图（knowledge_query vs code_explore） | Layer 1 | 排除关键词 + 专精意图优先 |
+| graphify 被选中但 graph.json 不存在 | Layer 2 | 前置条件文件存在性预检 |
+| knowledge-retrieval 因更快胜过 experience-recall | Layer 3 | 位置因子 + 固定 speed 基线 + success_rate 权重 |
+| runtime-continuity warm --auto 守护进程卡死 | Layer 4 | 超时熔断 + 连续失败降级 + checkpoint |
 
 ## 使用方式
 
