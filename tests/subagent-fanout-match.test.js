@@ -4,10 +4,13 @@
 // Validates the keyword table (zh + en) and the matching algorithm.
 
 const assert = require("node:assert/strict");
+const path = require("node:path");
 const test = require("node:test");
 
+const ROOT = path.resolve(__dirname, "..");
+
 const { matchFanoutTrigger, listKeywords, normalize } = require(
-  "/Users/xueyq/myworks/cortex-agent/templates/_shared/.agent/skills/subagent-trace/scripts/match-trigger.js",
+  path.join(ROOT, "templates", "_shared", ".agent", "skills", "subagent-trace", "scripts", "match-trigger.js"),
 );
 
 // ─── zh first ────────────────────────────────────────────────────────────
