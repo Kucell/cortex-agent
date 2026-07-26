@@ -196,7 +196,8 @@ assert.deepStrictEqual(taskSchema.$defs.stage.enum, stages);
 assert.deepStrictEqual(taskSchema.properties.stage.enum, stages);
 assert.deepStrictEqual(taskSchema.$defs.artifactKind.enum, artifactKinds);
 assert.deepStrictEqual(indexSchema.properties.tasks.items.properties.stage.enum, stages);
-assert.deepStrictEqual(index, { tasks: [] });
+assert.ok(Array.isArray(index.tasks));
+for (const entry of index.tasks) assert.ok(stages.includes(entry.stage), `invalid runtime task stage: ${entry.stage}`);
 
 for (const locale of ["zh", "en"]) {
   assertIncludes(`templates/${locale}/.agent/tasks/README.md`, [
@@ -209,7 +210,7 @@ for (const locale of ["zh", "en"]) {
 
 assert.deepStrictEqual(readJson("templates/_shared/.agent/tasks/task.schema.json"), taskSchema);
 assert.deepStrictEqual(readJson("templates/_shared/.agent/tasks/index.schema.json"), indexSchema);
-assert.deepStrictEqual(readJson("templates/_shared/.agent/tasks/index.json"), index);
+assert.deepStrictEqual(readJson("templates/_shared/.agent/tasks/index.json"), { tasks: [] });
 
 const workflowMarkers = {
   "plan.md": [".agent/tasks/<task-id>.json", "draft -> spec", "spec -> plan", "payload.artifact_kind"],

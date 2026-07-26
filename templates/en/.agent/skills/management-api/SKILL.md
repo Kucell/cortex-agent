@@ -20,12 +20,18 @@ cortex-agent help --json
 cortex-agent help query --json --project .
 cortex-agent query dashboard-state --project .
 cortex-agent query runs --project .
+cortex-agent query inbox --project .
+cortex-agent query decisions --project .
+cortex-agent query waitpoints --project .
 cortex-agent query activity --project . --since 2026-07-13 --until 2026-07-19
 cortex-agent runs checkpoint --project . --run-id R-T005 --task-id T-005 --type validation_started --phase validating --activity "Running focused tests"
 cortex-agent queues upsert --project . --queue-id Q-batch-1 --gate parallel --name "Batch 1" --concurrency-limit 2
 cortex-agent sessions heartbeat --project . --session-id S-dashboard --agent-id dashboard-manager --activity "Refreshing dashboard"
+cortex-agent decisions request --project . --decision-id D-merge --gate mission --type merge --requested-by coordinator --prompt "Approve merge?" --action merge --resource-ref branch:integration
 cortex-agent decisions resolve --project . --decision-id D-merge --gate user --status approved --selected-option approve --resolved-by maintainer --rationale "Validation passed"
+cortex-agent waitpoints create --project . --waitpoint-id WP-merge --gate mission --owner-workflow /checkpoint-merge --reason "Merge approval required" --action merge --resource-ref branch:integration --decision-id D-merge
 cortex-agent waitpoints release --project . --waitpoint-id WP-merge --gate owner --owner-workflow /checkpoint-merge --decision-id D-merge --released-by coordinator
+cortex-agent waitpoints cancel --project . --waitpoint-id WP-merge --gate owner --owner-workflow /checkpoint-merge --reason "Merge canceled"
 ```
 
 `cortex-agent help --json` is the machine-readable source for CLI grammar and writer actions. `cortex-agent help query --json --project <path>` adds the target project's real projection capabilities. Internal `.agent/skills/management-api/scripts/index.js` commands are implementation/debug entry points and may be used only when an older installed CLI cannot expose the required capability; record that fallback explicitly.

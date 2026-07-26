@@ -23,6 +23,7 @@ const {
   waitpoints,
   mcp,
   managementQuery,
+  phaseZeroAutomation,
   dev,
   cliHelp,
   printHelp,
@@ -135,6 +136,9 @@ const ctx = { cwd, args, command, options, lang, templateDir };
     case "waitpoints":  waitpoints(ctx); break;
     case "mcp":         await mcp(ctx); break;
     case "query":       managementQuery(ctx); break;
+    case "dispatch":
+    case "daemon":
+    case "trigger":     phaseZeroAutomation(ctx); break;
     case "help":        args.includes("--json") ? cliHelp(ctx) : printHelp(); break;
     case "dev":         await dev(ctx); break;
     case undefined:

@@ -77,3 +77,17 @@ These rules reduce destructive edits, scope drift, and half-finished work across
 3. **Read source files only as needed**: use the graph for orientation, then deep-read only the files that actually matter.
 
 > **Why**: `graphify-out/graph.json` contains AST-level nodes and relationships for the whole project. A single query locates cross-file dependencies faster and cheaper than grep or sequential reads. Falls back gracefully to normal exploration when Graphify is not installed.
+
+---
+
+## 9. Dispatch / Daemon / Trigger Vocabulary and Boundaries
+
+**Trigger**: discussing or implementing automatic task handoff, persistent coordination, or automatic triggers.
+
+- **Dispatch**: one attempt to hand an approved task to an execution agent. It must first check idempotency, concurrency, Queues, Locks, and Workflow Gates and record the Run journal; it must not bypass `/approve`, `/mission`, `/worktree`, or `/ship`.
+- **Daemon**: an optional local user-space coordinator. It is **disabled by default**, starts only after an explicit user action, and never fabricates or directly mutates workflow-owned business state.
+- **Trigger**: a declarative request asking a Daemon to consider Dispatch; it is **not authorization**. `schedule`, `file_change`, and `post_commit` require explicit opt-in.
+- **Management API boundary**: it remains the query and controlled Run-journal layer; automation must not turn it into an arbitrary scheduler or shell execution surface.
+- **Phase 0 boundary**: CLI stubs provide discovery and a fail-closed contract only. They create no process, Lock, Queue, Run, Session, Trigger, or Dispatch record.
+
+> **Why**: stable vocabulary and separate authorization, coordination, triggering, and execution layers prevent automation from bypassing human decisions or existing state machines.

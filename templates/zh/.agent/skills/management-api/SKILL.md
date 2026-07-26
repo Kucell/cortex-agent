@@ -20,12 +20,18 @@ cortex-agent help --json
 cortex-agent help query --json --project .
 cortex-agent query dashboard-state --project .
 cortex-agent query runs --project .
+cortex-agent query inbox --project .
+cortex-agent query decisions --project .
+cortex-agent query waitpoints --project .
 cortex-agent query activity --project . --since 2026-07-13 --until 2026-07-19
 cortex-agent runs checkpoint --project . --run-id R-T005 --task-id T-005 --type validation_started --phase validating --activity "Running focused tests"
 cortex-agent queues upsert --project . --queue-id Q-batch-1 --gate parallel --name "Batch 1" --concurrency-limit 2
 cortex-agent sessions heartbeat --project . --session-id S-dashboard --agent-id dashboard-manager --activity "Refreshing dashboard"
+cortex-agent decisions request --project . --decision-id D-merge --gate mission --type merge --requested-by coordinator --prompt "Approve merge?" --action merge --resource-ref branch:integration
 cortex-agent decisions resolve --project . --decision-id D-merge --gate user --status approved --selected-option approve --resolved-by maintainer --rationale "Validation passed"
+cortex-agent waitpoints create --project . --waitpoint-id WP-merge --gate mission --owner-workflow /checkpoint-merge --reason "Merge approval required" --action merge --resource-ref branch:integration --decision-id D-merge
 cortex-agent waitpoints release --project . --waitpoint-id WP-merge --gate owner --owner-workflow /checkpoint-merge --decision-id D-merge --released-by coordinator
+cortex-agent waitpoints cancel --project . --waitpoint-id WP-merge --gate owner --owner-workflow /checkpoint-merge --reason "Merge canceled"
 ```
 
 `cortex-agent help --json` 是 CLI grammar 与 writer action 的机器可读事实来源；`cortex-agent help query --json --project <path>` 会附加目标项目真实支持的 projection。内部 `.agent/skills/management-api/scripts/index.js` 仅作为实现、调试或旧版 CLI 降级入口，发生降级时必须明确记录。
