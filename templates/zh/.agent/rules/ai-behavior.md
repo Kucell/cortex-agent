@@ -81,3 +81,17 @@
 3. **再按需深入源文件**：图谱给出全景后，只 `Read` 真正需要细读的文件，避免逐文件盲扫。
 
 > **原因**：`graphify-out/graph.json` 包含全项目 AST 级节点与关系，一次查询即可定位跨文件依赖，比 grep 更准、比逐文件 Read 成本更低。未安装 Graphify 时自动降级为常规探索。
+
+---
+
+## 9. Dispatch / Daemon / Trigger 词汇与边界
+
+**触发条件**：讨论或实现任务自动派发、常驻协调进程或自动触发时。
+
+- **Dispatch（派发）**：一次把已批准任务交给执行 Agent 的尝试。必须先检查幂等、并发、Queue、Lock 与 Workflow Gate，并写 Run journal；不得绕过 `/approve`、`/mission`、`/worktree` 或 `/ship`。
+- **Daemon（守护进程）**：可选的本地用户空间协调进程。**默认关闭**，只能由用户显式启动；不得直接伪造或修改 Workflow 拥有的业务状态。
+- **Trigger（触发器）**：请求 Daemon 考虑 Dispatch 的声明式条件，**不是授权**。`schedule`、`file_change`、`post_commit` 必须显式 opt-in。
+- **Management API 边界**：继续作为查询和受控 Run journal 层，不得因自动化需求演变为任意调度器或 Shell 执行入口。
+- **Phase 0 边界**：CLI stub 只提供发现和 fail-closed 契约，不创建进程、Lock、Queue、Run、Session、Trigger 或 Dispatch 记录。
+
+> **原因**：统一词汇并把授权、协调、触发和执行分层，可防止自动化绕过人类决策与现有状态机。

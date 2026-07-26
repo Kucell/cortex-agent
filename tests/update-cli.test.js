@@ -62,5 +62,5 @@ test("unknown commands fail instead of silently printing successful help", () =>
 test("help exposes the update command", () => {
   const result = run(ROOT, ["--help"]);
   assert.equal(result.status, 0);
-  assert.match(result.stdout, /update\s+Add new files/);
+  assert.match(result.stdout, /update \[options\]\s+Add files and safely refresh/);
 });

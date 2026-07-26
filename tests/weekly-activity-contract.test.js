@@ -9,9 +9,10 @@ const test = require("node:test");
 const { ROOT, createProject } = require("./helpers/management-mcp");
 
 const CLI = path.join(ROOT, "bin", "cli.js");
-const GLOBAL_WORKFLOW_ROOT = path.join(os.homedir(), ".agent", "workflows");
-const WEEKLY_REPORT = path.join(GLOBAL_WORKFLOW_ROOT, "weekly-report.md");
-const WEEKLY_SUMMARY = path.join(GLOBAL_WORKFLOW_ROOT, "weekly-summary.md");
+const WEEKLY_WORKFLOWS = [
+  path.join(ROOT, ".agent", "workflows", "weekly-report.md"),
+  path.join(ROOT, "templates", "_shared", ".agent", "workflows", "weekly-report.md"),
+];
 
 function writeJson(file, payload) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
@@ -19,7 +20,7 @@ function writeJson(file, payload) {
 }
 
 test("weekly workflows are activity-first and distinguish empty from unavailable", () => {
-  for (const file of [WEEKLY_REPORT, WEEKLY_SUMMARY]) {
+  for (const file of WEEKLY_WORKFLOWS) {
     const source = fs.readFileSync(file, "utf8");
     assert.match(source, /cortex-agent help query --json --project/);
     assert.match(source, /cortex-agent query activity --project/);
@@ -28,7 +29,7 @@ test("weekly workflows are activity-first and distinguish empty from unavailable
     assert.match(source, /Git/);
     assert.match(source, /为空|empty/);
   }
-  assert.match(fs.readFileSync(WEEKLY_SUMMARY, "utf8"), /unavailable/);
+  for (const file of WEEKLY_WORKFLOWS) assert.match(fs.readFileSync(file, "utf8"), /unavailable/);
 });
 
 test("activity CLI and direct-state fallback yield equivalent fixed-date facts without rewriting reports", (t) => {

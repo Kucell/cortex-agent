@@ -42,3 +42,22 @@ description: 生成周报，根据 Git 记录汇总，支持自定义存储路�
 ## 5. 提示
 
 > 此周报存储在全局目录下的 `reports` 文件夹，方便跨项目管理。
+
+---
+
+## 6. Activity-first Evidence Contract
+
+Before reading Git or filesystem timestamps, discover the project query contract and request the inclusive activity projection:
+
+```bash
+cortex-agent help query --json --project .
+cortex-agent query activity --project . --since <start> --until <end>
+```
+
+Classify the result explicitly:
+
+- non-empty activity: generate the report from structured Task, Run, Decision, validation, and delivery facts;
+- empty / 为空: report that the query succeeded and returned no structured activity in the interval;
+- unavailable: record the diagnostic, then use `direct-state-fallback` and label the lower-confidence source.
+
+`direct-state-fallback` may inspect project-local Task/Run/Decision records, then Git history, and finally file `mtime`. Git and `mtime` are reconciliation evidence only: they must not invent approval, validation PASS, or task completion. Do not rewrite historical reports while collecting evidence.
