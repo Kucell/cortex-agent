@@ -30,6 +30,27 @@ Summarize these fields when present:
 If `latest_archive` is absent, say that no Runtime Continuity archive exists
 yet, then continue with the rest of the read-only briefing scan.
 
+## 0.5 One-Click Update Status
+
+Read `.agent/updates/latest.json` when present and summarize the latest
+`cortex-agent update` / `update --verify` status:
+
+```text
+## One-Click Update: {status}
+
+- Update ID: {update_id}
+- Finished: {finished_at}
+- Changes: added={summary.added}, updated={summary.updated}, merged={summary.merged}, protected={summary.protected}
+- Verification: failed={summary.verification_failed}, skipped={summary.verification_skipped}
+- Report: .agent/updates/latest.json
+```
+
+If `status` is `failed`, include it in Risks. If it is `partial`, list the
+protected items and remind the user to review before considering
+`--force-scripts`. If the report is missing, say: "No One-Click Update report
+has been generated yet; run `cortex-agent update --verify --report json` to
+check the current upgrade state."
+
 ## 1. Progress Scan
 
 - Read `.agent/plans/task-progress.md`, active Mission plans, milestones, and Task state.

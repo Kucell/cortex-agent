@@ -27,6 +27,22 @@ node .agent/skills/runtime-continuity/scripts/index.js resume-bundle --project "
 
 若 `latest_archive` 不存在，明确说明尚未建立 Runtime Continuity archive，并继续执行后续只读扫描。
 
+## 0.5 One-Click Update 状态
+
+读取 `.agent/updates/latest.json`（若存在），展示最近一次 `cortex-agent update` / `update --verify` 的状态：
+
+```
+## One-Click Update: {status}
+
+- Update ID: {update_id}
+- Finished: {finished_at}
+- Changes: added={summary.added}, updated={summary.updated}, merged={summary.merged}, protected={summary.protected}
+- Verification: failed={summary.verification_failed}, skipped={summary.verification_skipped}
+- Report: .agent/updates/latest.json
+```
+
+如果 `status` 是 `failed`，把它列入风险；如果是 `partial`，列出 protected 项并提醒先 review 后再考虑 `--force-scripts`。若报告不存在，显示：“尚未生成 One-Click Update 报告，可运行 `cortex-agent update --verify --report json` 检查当前升级状态。”
+
 ## 1. 进度回顾 (Progress Scan)
 - **核心数据**：详细阅读 `.agent/plans/task-progress.md`，提取当前的 Roadmap 阶段和总体百分比。
 - **昨日成就**：扫描 `task-progress.md` 的 "Accomplishments" 部分，汇总最近完成的关键里程碑。
