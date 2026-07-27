@@ -7,9 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-07-27
+
 ### Added
 
 - **v1.7.0 Phase 0 自动化词汇与契约骨架**：统一 `Dispatch / Daemon / Trigger` 术语，新增三份 shared Schema、双语边界文档与 fail-closed CLI stub；Daemon 默认关闭，Trigger 不是授权，Management API 不承担调度职责。
+
+- **v1.7.0 Team Agent Pack（M-TAP L1 capability）**：在 `.agent-shared/` 与 `.agent/` 之间引入 L1 Provider / L2 Team Pack / L3 Local 三层模型；`.agent-shared/` 是 Git 可提交的团队分发源，`.agent/` 仍是唯一运行时入口。
+  - **CLI**:`cortex-agent team <init|status|install|update|publish|verify>` 六个子命令；`update --team` 串联 L1 apply → Team Pack apply；`upgrade --team` 显式拒绝（exit=3，指向 P-002 §4）；`doctor --fix` 在 Team Pack 上下文只允许创建 receipt 骨架，绝不触碰 `.agent-shared/`。
+  - **manifest schema**（`lib/team-pack.js` + `lib/cli-contract.js` 的 `team` section）:`schema_version=1`、`files[].mode ∈ {add, merge}`、`signers.mode=git_committers` + `fallback=reject`、排除 5 类宿主入口文件（`.claude/settings.json`、`AGENTS.md`、`CLAUDE.md`、`GEMINI.md`、`.claude/settings.local.json`）。
+  - **三方合并 planner**:`base=receipt.baseline` + `local=.agent/` + `incoming=pack`；cold-start base 固定为空（不把 `.agent/` 现有内容误判为冲突）；conflict 文件保留 local + 写 `.agent/team-sync/conflicts/<ts>-<n>-conflict.json`；**conflict 不推进 receipt baseline**，是 alice 本地修改不被下次 update 静默覆盖的关键安全保证。
+  - **secret-scan**（`lib/secret-scan.js`，17/17 单测 PASS）：9 类规则（PEM 私钥头 / AWS `AKIA*` / GitHub `ghp_*` `gho_*` / OpenAI `sk-proj-` / Anthropic `sk-ant-` / Slack `xoxb-` / URL userinfo / `env_assignment_token` / 本机绝对路径）+ `.env` body 检测；严格 redact 防侧信道；供 `team publish/verify` 与 PostToolUse 共用。
+  - **machine contract**：`cortex-agent help --json` 暴露 `team` 命令域、3 个新选项（`--team`、`--paths <path...>`、`--strict`）、顶层 `team` section（`pack_layout` / `init|status|install|update|publish|verify` 各命令契约 + `boundary_with_update` + `safety` 数组 6 条）。
+  - **用户文档**:`docs/architecture/team-agent-pack.md` 三层模型 + CLI 速查 + 与 `update`/`upgrade`/`doctor` 的边界 + manifest schema + 三方合并表 + 安全不变量 + SamHMI 实战回流边界。
+  - **测试**:64/64 PASS（`lib/secret-scan.test.js` 17 + `tests/team-pack/team-pack-core` 25 + `merge-matrix` 7 + `install-dry-run` 4 + `publish-verify` 6 + `samhmi-pilot` 2 + `cross-developer-conflict` 3）；CI-friendly：`team verify --strict` 可在 CI 只读运行。
+  - **关联提案**:`.agent/plans/proposals/projects/team-agent-pack/`（P-001 / P-002 / D-001 全部翻 done）；**Mission `M-TAP` 已 COMPLETE**，4 commits `841d026` / `ae57fe0` / `abbfe13` / `300bd9b` 已 push 到 `origin/main`。
+
+### Changed
+
+- `lib/cli-contract.js` 增加 `team` 命令域、3 个新选项（`--team` / `--paths <path...>` / `--strict`）与顶层 `team` section；`--json` 文案扩展为"Emit machine-readable output when supported, including help and Phase 0 stubs"。
+
+### Security
+
+- Team Pack 默认拒绝符号链接、绝对路径、设备文件、`..` 逃逸；写入使用同目录临时文件 + 原子 rename；`.agent-shared/` 中的脚本不是授权（仍需 Decision / Waitpoint gate）；publish 不自动 commit / push / PR。
+- `upgrade --team` 显式拒绝（`upgrade` 是 additive-only 不接触 Team Pack）；`doctor --fix` 永远不触碰 `.agent-shared/`。
 
 ## [1.6.0] - 2026-07-21
 
