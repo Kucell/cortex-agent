@@ -1,111 +1,116 @@
 ---
 name: context-budget
-description: 基于启发式规则的上下文预算控制。为任务选择最相关的 reference 文档，防止上下文溢出导致 AI 性能下降。使用确定性规则（零额外 token），输出 context-manifest.json。
+description: 基于 L0/L1/L2 分层摘要的上下文预算控制（受 OpenViking 启发）。从 `.agent/references/` 中按 L0 关键词筛选、L1 排序、最后才加载 L2 全文，将注入量控制在模型上下文窗口的 40% 以内。零额外 token（前端启发式），输出 context-manifest.json + retrieval trajectory。
 ---
 
-# 上下文预算控制 (Context Budget Skill)
+# 上下文预算控制 (Context Budget Skill) — L0/L1/L2 版
 
 ## 目标
 
-在 `/start-task` 的规划阶段，从 `.agent/references/` 中智能选择最相关的上下文文档，将注入量控制在模型上下文窗口的 40% 以内。
+在 `/start-task` 的规划阶段，从 `.agent/references/` 中按层级选择最相关的上下文文档，将注入量控制在模型上下文窗口的 40% 以内。
 
-## 为什么需要预算控制
+## 为什么升级到 L0/L1/L2
 
-Harness Engineering 研究表明：**Agent 性能在上下文利用率超过 40% 后开始下降**。
-- 不相关上下文稀释关键信息，导致 AI 注意力分散
-- 全量注入在大型项目中可能占用 80%+ 上下文窗口
-- 预算控制后，AI 专注于任务真正需要的模块，质量更高
+v0 的纯启发式算法对全量文档打分，无 L0/L1 摘要时需要在 budget 内逐个 keyword 匹配全文，导致大型项目 references/ > 50 时打分成本急剧上升。
 
-## 选择算法（确定性，零额外 Token）
+受 OpenViking `viking://` 三层载荷启发，cortex-agent 引入 L0/L1：
+
+| 层 | 大小 | 用途 | 何时加载 |
+|---|---|---|---|
+| L0 abstract | ~100 tokens | 一句话摘要 | 总是加载（filter） |
+| L1 overview | ~2k tokens | 章节结构 + 关键段落 | 候选命中后加载（rerank） |
+| L2 detail | 全量 | 完整原文 | 预算允许 + 分数 ≥ 7 时加载 |
+
+L0/L1 摘要由 `scripts/build-l0l1.js` 离线生成（基于 frontmatter + 首段 + 标题大纲，**零 LLM 调用**），可作为 PostCommit hook 自动刷新。
+
+## 选择算法
 
 ### Step 1：读取上下文索引
 
-读取 `.agent/context-index.json`，获取所有 reference 模块的元数据（模块名、关键词、token 估算、依赖关系）。
+读取 `.agent/context-index.json`，获取所有 module 的元数据：
+- `l0` / `l1` 摘要（可选，没有时回退到 `summary`）
+- `l0_tokens` / `l1_tokens` / `l2_tokens`
+- `keywords` / `module_path` / `dependencies`
 
-如果 `context-index.json` 不存在或为空，提示用户先运行 `/scan-project`。
+如果 `context-index.json` 不存在或为空，提示用户先运行 `/scan-project` + `build-l0l1.js --all`。
 
-### Step 2：关键词匹配评分
-
-从任务描述中提取关键词，与每个模块的 `keywords` 字段做交集计算：
+### Step 2：L0/L1 关键词匹配
 
 ```
-score = 关键词命中数 / 模块关键词总数 × 10
+score = L0 命中数 × 1 + L1 命中数 × 1 + 关键词命中数 × 0.5
+路径前缀命中额外 +5
 ```
 
-同时检查任务描述中是否包含文件路径。若路径与模块的 `module_path` 存在前缀匹配，额外加 5 分（直接相关模块）。
+> **关键差异（vs v0）**：v0 是全量文本匹配；v1 优先在 L0（~100 tokens）上匹配，未命中再扫 L1（~2k tokens），L2 仅在分数 ≥ 7 且预算允许时加载。**整轮打分成本近似 O(L0_sum)，与 references/ 数量解耦**。
 
 ### Step 3：依赖图扩展
 
-对评分 ≥ 7 的模块，读取其 `dependencies` 字段，将直接依赖模块纳入候选集（分数设为 6）。
+对评分 ≥ 7 的模块，读取 `dependencies`，将直接依赖模块纳入候选集（分数设为 6）。
 
-### Step 4：分层预算分配（Tier 贪心填充）
+### Step 4：分层预算分配
 
 **预算计算**：
-- 总预算 = `estimated_context_tokens` × 40%（来自 `context-index.json._meta`）
-- 已占用 = 系统指令估算（约 3000 tokens）+ rules 估算（约 5000 tokens）
-- 可用预算 = 总预算 - 已占用
+- 总预算 = llm-window × 40%
+- 固定开销 = system(3000) + rules(5000)
+- 可用预算 = 总预算 - 固定开销
 
 **分层策略**：
 
-| Tier | 条件 | 处理方式 |
-|------|------|---------|
-| Tier 0（必选）| task-progress.md + 当前任务描述 | 始终注入，不占预算 |
-| Tier 1（高相关）| score ≥ 7 | 按分数降序，分数相同优先选 token 少的，贪心填充至预算 |
-| Tier 2（中相关）| score 4-6 | 剩余预算允许时填入 |
-| Tier 3（低相关）| score 0-3 | 只注入摘要首行（模块名 + 一句话描述），不注入完整文档 |
+| Tier | 分数 | 处理方式 |
+|---|---|---|
+| Tier 1 | ≥ 7 | 加载 L2 全文 |
+| Tier 2 | 4-6 | 加载 L1 概览（~2k tokens）而非 L2 |
+| Tier 3 | 1-3 | 仅 L0 一句话（~100 tokens） |
 
-### Step 5：输出 context-manifest.json
+Greedy 填充：按分数降序，分数相同优先选 token 少的。
 
-在 `.agent/plans/` 下写入 `context-manifest.json`：
+### Step 5：输出 manifest + trajectory
 
-```json
-{
-  "task_id": "{任务 ID}",
-  "generated_at": "{ISO 时间}",
-  "budget": {
-    "total_available": 32000,
-    "used": {
-      "system": 3000,
-      "rules": 5000,
-      "tier0": 1500,
-      "tier1": 8400,
-      "tier2": 2100,
-      "tier3_summaries": 300,
-      "total": 20300
-    },
-    "utilization": "25.4%",
-    "within_limit": true
-  },
-  "selected": {
-    "tier1": [
-      { "module": "auth-service", "tokens": 1200, "score": 9, "path": ".agent/references/auth-service.md" }
-    ],
-    "tier2": [
-      { "module": "redis-cache", "tokens": 900, "score": 5, "path": ".agent/references/redis-cache.md" }
-    ],
-    "tier3_summaries": ["payment-service", "notification-service"]
-  }
-}
-```
+- `context-manifest.json` 写入 `.agent/plans/`（planner / implementer / phase-gate 读取）
+- 同时经 `retrieval-trajectory/scripts/record.js` 写入 `.agent/runtime-evidence/trajectory/{task-id}_{ts}.jsonl`（用于回放与回归 fixture）
+
+### Step 6：URI 标注
+
+每个选中的 module 在 `selected.tier1/tier2/tier3_summaries` 中额外附带 `uri` 字段（`cortex://references/{module_path}`），便于跨项目复制。
 
 ## 使用方式
 
-在 `/start-task` 工作流的 planner 阶段调用此 skill：
+```bash
+# 1. 先生成 L0/L1（首次或 PostCommit）
+node .agent/skills/context-budget/scripts/build-l0l1.js --all --write --inject-index
 
-1. 读取 `context-index.json` 和任务描述
-2. 执行上述评分算法
-3. 输出 `context-manifest.json` 到 `.agent/plans/`
-4. 向 planner 提供选中的 Tier1 + Tier2 文档内容，Tier3 只提供摘要
+# 2. 在 /start-task 的 planner 阶段调用
+node .agent/skills/context-budget/scripts/select.js \
+  --task "实现 OAuth 第三方登录" \
+  --task-id T-DEMO-001 \
+  --llm-window 128000
+
+# 3. 单独文件构建（增量更新）
+node .agent/skills/context-budget/scripts/build-l0l1.js \
+  --file .agent/rules/core-principles.md --write
+```
 
 ## 边界情况
 
-- **context-index.json 不存在**：跳过预算控制，注入所有 references（同旧行为），并提示用户运行 `/scan-project`
+- **没有任何 module 有 L0/L1**：自动回退 v0 行为（用 `summary` 字段做关键词匹配），不破坏现有项目
 - **所有模块 score = 0**：注入 Tier 0 + 分数最高的 3 个模块（最小保障）
-- **预算不足**：优先保留 Tier 1，裁剪 Tier 2，Tier 3 降级为摘要
-- **单个模块超过可用预算**：注入该模块的前 50 行（摘要截断）并标注 `[truncated]`
+- **预算不足**：优先保留 Tier 1，Tier 2 降级为 L1 → L0，Tier 3 完全丢弃
+- **context-index.json 不存在**：跳过预算，注入所有 references（旧行为），提示先跑 `/scan-project`
+
+## 兼容性
+
+- `context-manifest.json` schema 完全向后兼容 v0（新增 `uri` 字段、`l0_tokens/l1_tokens/l2_tokens` 字段，旧消费者忽略）
+- 旧项目无 L0/L1 字段时 selector 自动用 `summary` 当 L0，不会报错
+
+## 验收
+
+- L0/L1 生成率：`build-l0l1.js --all` 在 1 个实战项目（>50 references）跑通，>95% module 有 L0/L1
+- 检索加速：一次 context-budget 评估时，对 references/ 全量匹配的字符数 ≤ 100 chars × N（vs v0 的全文匹配）
+- Token 节省：同等 query 下，context-manifest.json 报告 `used < v0_baseline × 0.7`
 
 ## 与其他组件的关系
 
-- **输入**：`context-index.json`（由 `/scan-project` 生成）
-- **输出**：`context-manifest.json`（供 planner 和 implementer 使用，也作为 phase-gate 的检查依据）
-- **维护**：`/update-refs` 和 PostCommit entropy-scanner（Phase 3 实现）负责保持 `context-index.json` 更新
+- 输入：`context-index.json`（`/scan-project` + `build-l0l1.js` 双源生成）
+- 输出：`context-manifest.json`（planner / implementer / phase-gate）+ `.agent/runtime-evidence/trajectory/{task-id}_*.jsonl`（retrieval-trajectory）
+- 维护：`/update-refs` 和 PostCommit entropy-scanner 调度 `build-l0l1.js --all` 增量
+- 配套：`uri-resolver` skill 解析 `cortex://references/...` 为路径
