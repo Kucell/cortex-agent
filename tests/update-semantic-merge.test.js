@@ -1,0 +1,180 @@
+"use strict";
+
+const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
+const { spawnSync } = require("node:child_process");
+const test = require("node:test");
+
+const ROOT = path.resolve(__dirname, "..");
+const CLI = path.join(ROOT, "bin", "cli.js");
+
+function writeJson(file, value) {
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+}
+
+function createLegacyProject() {
+  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-update-semantic-"));
+  fs.mkdirSync(path.join(cwd, ".agent"), { recursive: true });
+  fs.writeFileSync(path.join(cwd, "AGENTS.md"), [
+    "# Cortex Agent Entry",
+    "",
+    "This project uses `.agent/` as the single source of truth.",
+    "",
+    "## Session Bootstrap",
+    "",
+    "If the hook does not fire, run manually:",
+    "",
+    "```bash",
+    "node .agent/skills/runtime-continuity/scripts/index.js warm --auto --project legacy",
+    "node .agent/skills/runtime-continuity/scripts/index.js status --project legacy",
+    "```",
+    "",
+    "## Load These Next",
+    "",
+    "1. `.agent/rules/core-principles.md`",
+    "",
+  ].join("\n"), "utf8");
+  writeJson(path.join(cwd, ".agent", "hooks", "hooks.json"), {
+    hooks: {
+      SessionStart: [
+        {
+          matcher: "*",
+          hooks: [
+            {
+              type: "command",
+              command: "PROJ=$(node -e \"console.log(require('path').basename(process.cwd()))\"); node .agent/skills/runtime-continuity/scripts/index.js warm --auto --project \"$PROJ\" 2>/dev/null; exit 0",
+              async: true,
+              timeout: 5,
+            },
+          ],
+          description: "old runtime hook",
+        },
+      ],
+    },
+  });
+  writeJson(path.join(cwd, ".claude", "settings.json"), {
+    hooks: {
+      SessionStart: [
+        {
+          matcher: "*",
+          hooks: [
+            {
+              type: "command",
+              command: "node -e \"console.log('memory')\"",
+            },
+          ],
+          description: "custom memory hook",
+        },
+      ],
+    },
+  });
+  return cwd;
+}
+
+function createRegistryProject() {
+  const cwd = createLegacyProject();
+  const scripts = path.join(cwd, ".agent", "skills", "management-api", "scripts");
+  fs.mkdirSync(scripts, { recursive: true });
+  writeJson(path.join(scripts, "projection-registry.json"), {
+    schema_version: 1,
+    projections: [
+      {
+        name: "runs",
+        kind: "collection",
+        exact_lookup: false,
+        data_field: "runs",
+        filters: [],
+      },
+      {
+        name: "local-custom",
+        kind: "collection",
+        exact_lookup: false,
+        data_field: "custom",
+        filters: ["owner"],
+      },
+    ],
+  });
+  return cwd;
+}
+
+function runCli(cwd, args) {
+  return spawnSync(process.execPath, [CLI, ...args], {
+    cwd,
+    encoding: "utf8",
+    env: { ...process.env, LANG: "en_US.UTF-8" },
+  });
+}
+
+test("update dry-run report includes entry and hook semantic merge candidates", (t) => {
+  const cwd = createLegacyProject();
+  t.after(() => fs.rmSync(cwd, { recursive: true, force: true }));
+  const result = runCli(cwd, ["update", "--lang", "en", "--dry-run", "--report", "json"]);
+  assert.equal(result.status, 0, result.stderr);
+  const payload = JSON.parse(result.stdout);
+  const merged = payload.changes.merged.map((item) => `${item.path}:${item.reason}`);
+  assert.ok(merged.includes("AGENTS.md:entry_runtime_bootstrap_stale"));
+  assert.ok(merged.includes(".agent/hooks/hooks.json:hook_runtime_continuity_stale"));
+  assert.ok(merged.includes(".claude/settings.json:hook_runtime_continuity_stale"));
+});
+
+test("update semantically upgrades AGENTS and runtime-continuity hooks", (t) => {
+  const cwd = createLegacyProject();
+  t.after(() => fs.rmSync(cwd, { recursive: true, force: true }));
+  const result = runCli(cwd, ["update", "--lang", "en"]);
+  assert.equal(result.status, 0, `stderr: ${result.stderr}\nstdout: ${result.stdout}`);
+
+  const agents = fs.readFileSync(path.join(cwd, "AGENTS.md"), "utf8");
+  assert.match(agents, /cortex-agent:session-bootstrap:start/);
+  assert.match(agents, /CORTEX_SESSION_START=1/);
+  assert.match(agents, /do not manually fake automatic mode/);
+  assert.doesNotMatch(agents, /If the hook does not fire, run manually/);
+
+  const agentHooks = JSON.parse(fs.readFileSync(path.join(cwd, ".agent", "hooks", "hooks.json"), "utf8"));
+  const agentRuntimeRules = agentHooks.hooks.SessionStart.filter((rule) => JSON.stringify(rule).includes("runtime-continuity"));
+  assert.equal(agentRuntimeRules.length, 1);
+  assert.match(JSON.stringify(agentRuntimeRules[0]), /CORTEX_SESSION_START=1/);
+
+  const claude = JSON.parse(fs.readFileSync(path.join(cwd, ".claude", "settings.json"), "utf8"));
+  assert.ok(JSON.stringify(claude).includes("custom memory hook"));
+  const claudeRuntimeRules = claude.hooks.SessionStart.filter((rule) => JSON.stringify(rule).includes("runtime-continuity"));
+  assert.equal(claudeRuntimeRules.length, 1);
+  assert.match(JSON.stringify(claudeRuntimeRules[0]), /CORTEX_SESSION_START=1/);
+
+  const updateReport = JSON.parse(fs.readFileSync(path.join(cwd, ".agent", "updates", "latest.json"), "utf8"));
+  assert.equal(updateReport.command, "update");
+  assert.equal(updateReport.mode, "apply");
+  assert.equal(updateReport.status, "passed");
+  assert.equal(updateReport.summary.verification_failed, 0);
+
+  const dashboard = runCli(cwd, ["query", "dashboard-state"]);
+  assert.equal(dashboard.status, 0, dashboard.stderr);
+  const state = JSON.parse(dashboard.stdout);
+  assert.equal(state.data.latest_update.update_id, updateReport.update_id);
+  assert.equal(state.data.latest_update.status, "passed");
+  assert.equal(state.summary.latest_update_status, "passed");
+});
+
+test("update merges projection registry by name while preserving local projections", (t) => {
+  const cwd = createRegistryProject();
+  t.after(() => fs.rmSync(cwd, { recursive: true, force: true }));
+
+  const dry = runCli(cwd, ["update", "--lang", "en", "--dry-run", "--report", "json"]);
+  assert.equal(dry.status, 0, dry.stderr);
+  const payload = JSON.parse(dry.stdout);
+  assert.ok(payload.changes.merged.some((item) =>
+    item.path === ".agent/skills/management-api/scripts/projection-registry.json" &&
+    item.reason === "projection_registry_stale"));
+
+  const result = runCli(cwd, ["update", "--lang", "en"]);
+  assert.equal(result.status, 0, `stderr: ${result.stderr}\nstdout: ${result.stdout}`);
+  const registry = JSON.parse(fs.readFileSync(path.join(cwd, ".agent", "skills", "management-api", "scripts", "projection-registry.json"), "utf8"));
+  const names = registry.projections.map((entry) => entry.name);
+  assert.ok(names.includes("runs"));
+  assert.ok(names.includes("activity"));
+  assert.ok(names.includes("dashboard-state"));
+  assert.ok(names.includes("local-custom"));
+  assert.equal(registry.projections.filter((entry) => entry.name === "runs").length, 1);
+});

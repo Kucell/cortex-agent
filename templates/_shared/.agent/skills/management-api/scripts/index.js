@@ -237,6 +237,22 @@ function parseArtifacts() {
   });
 }
 
+function parseLatestUpdate() {
+  const file = path.join(agentRoot, "updates", "latest.json");
+  const data = readJson(file);
+  if (!data) return null;
+  return {
+    update_id: data.update_id || null,
+    status: data.status || "unknown",
+    mode: data.mode || "",
+    command: data.command || "",
+    started_at: data.started_at || null,
+    finished_at: data.finished_at || data.generated_at || null,
+    summary: data.summary || {},
+    path: rel(file),
+  };
+}
+
 function parsePrds() {
   const roots = [path.join(agentRoot, "prd"), path.join(agentRoot, "prds")];
   const prds = [];
@@ -480,6 +496,7 @@ function queryDashboardState() {
   const handoffs = parseHandoffs();
   const artifacts = parseArtifacts();
   const prds = parsePrds();
+  const latestUpdate = parseLatestUpdate();
   const prdSummary = summarizePrds(prds);
   const runs = parseRuns();
   const queues = parseQueues();
@@ -520,6 +537,7 @@ function queryDashboardState() {
     locks,
     handoffs,
     artifacts,
+    latest_update: latestUpdate,
     prds,
     prd_summary: prdSummary,
     approvals,
@@ -541,6 +559,7 @@ function queryDashboardState() {
       open_decisions: approvals.counts.open_decisions,
       open_waitpoints: approvals.counts.open_waitpoints,
       pending_inbox: approvals.counts.pending_inbox,
+      latest_update_status: latestUpdate ? latestUpdate.status : null,
     },
   };
 }
