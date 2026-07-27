@@ -198,19 +198,28 @@ function commandStop({ ifIdle }) {
   return withLock(() => {
     const current = loadState();
     if (current.state === "stopped") return { ok: true, ...current };
-    if (ifIdle && current.state !== "idle") {
-      const diag = diagnostic(
-        DIAGNOSTIC_CODES.WORKLOAD_INPUT_INVALID,
-        "warning",
-        "Dashboard is not idle; refusing to stop.",
-        { state: current.state },
-      );
-      return {
-        ok: false,
-        refused: true,
-        ...current,
-        diagnostics: [diag],
-      };
+    if (ifIdle) {
+      // Excluded roles must never block stop --if-idle. The dashboard-
+      // manager / runtime-continuity roles are explicitly filtered.
+      const sessionId = current.dashboard && current.dashboard.session_id;
+      const excludedRoles = new Set(["dashboard-manager", "dashboard-supervisor", "runtime-continuity"]);
+      const isExcluded = typeof sessionId === "string"
+        && Array.from(excludedRoles).some((role) => sessionId.toLowerCase().includes(role));
+      const isIdle = current.state === "idle" || isExcluded;
+      if (!isIdle) {
+        const diag = diagnostic(
+          DIAGNOSTIC_CODES.WORKLOAD_INPUT_INVALID,
+          "warning",
+          "Dashboard is not idle; refusing to stop.",
+          { state: current.state },
+        );
+        return {
+          ok: false,
+          refused: true,
+          ...current,
+          diagnostics: [diag],
+        };
+      }
     }
     const next = writeState({ state: "stopped", dashboard: null, start_token: null });
     return { ok: true, ...next };
