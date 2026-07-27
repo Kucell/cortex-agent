@@ -100,3 +100,29 @@ T-C06 handoff output is dual-format:
 - After publishing a handoff, pause the source owner session with `sessions pause --session-id <id> --gate handoff --activity "Handoff published"`.
 - On resume, the target opens its own session or heartbeats an existing owner-matched session; it must not refresh the source owner heartbeat.
 - Session transition evidence must reference the handoff and active Run; stale remains a read-time derived status.
+
+## Recording Points
+
+`/handoff` owns activity at the publish boundary. Record a capture receipt after the handoff JSON is published to the artifact bus:
+
+```bash
+# After handoff JSON is published
+node .agent/skills/activity-recording/scripts/index.js record-receipt \
+  --kind capture \
+  --source /handoff \
+  --activity-refs ACT-handoff-<HANDOFF_ID>-publish \
+  --availability available \
+  --redaction not_applicable \
+  --dedupe-key "handoff:<HANDOFF_ID>:capture"
+
+# When the target agent resumes (optional)
+node .agent/skills/activity-recording/scripts/index.js record-event \
+  --kind coordination \
+  --source /handoff \
+  --summary "Handoff <HANDOFF_ID> resumed by <target-agent>" \
+  --actor-type workflow \
+  --actor-id /handoff \
+  --dedupe-key "handoff:<HANDOFF_ID>:resume"
+```
+
+If the helper is missing or recording is unavailable, continue with the legacy workflow behavior and skip the call. Do not invent receipts.

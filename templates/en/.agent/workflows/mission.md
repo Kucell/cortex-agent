@@ -95,3 +95,29 @@ Release authorizes only the exact recorded resource and does not transfer Task g
 Complete only when every milestone and validation gate passes, required artifacts exist, and the mission record contains final evidence. At a multi-source project integration boundary, report that the project-level Checkpoint integration route is pending approval. Do not name or invoke an unapproved or nonexistent workflow.
 
 Dashboard and read-only queries never perform Mission transitions, resolve Decisions, or release Waitpoints.
+
+## Recording Points
+
+`/mission` owns activity at every state transition. Record an event after milestone state changes and a delivery receipt after validation contract execution:
+
+```bash
+# After a milestone transition (PLAN -> CONTRACT, EXECUTE -> VALIDATE, etc.)
+node .agent/skills/activity-recording/scripts/index.js record-event \
+  --kind coordination \
+  --source /mission \
+  --summary "Mission <MISSION_ID> milestone <MS-XXX> -> <next-state>" \
+  --actor-type workflow \
+  --actor-id /mission \
+  --dedupe-key "mission:<MISSION_ID>:<MS-XXX>:transition"
+
+# After validation contract execution
+node .agent/skills/activity-recording/scripts/index.js record-receipt \
+  --kind delivery \
+  --source /mission \
+  --activity-refs ACT-mission-<MISSION_ID>-<MS-XXX>-validate \
+  --availability available \
+  --redaction not_applicable \
+  --dedupe-key "mission:<MISSION_ID>:<MS-XXX>:validate:receipt"
+```
+
+If the helper is missing or recording is unavailable, continue with the legacy workflow behavior and skip the call. Do not invent receipts.

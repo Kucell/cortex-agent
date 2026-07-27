@@ -87,3 +87,29 @@ description: 开始新开发任务的工作流
         --type completed \
         --activity "Task completed"
       ```
+
+## 录制节点
+
+`/start-task` 在规划边界拥有 workflow_required 活动。在第 4 步（context-manifest 生成）后与第 9 步（最终验证状态确定）后调用 helper：
+
+```bash
+# 1) 规划意图——第 4 步后冻结
+node .agent/skills/activity-recording/scripts/index.js record-event \
+  --kind intent \
+  --source /start-task \
+  --summary "规划任务 <TASK_ID>：<简短描述>" \
+  --actor-type workflow \
+  --actor-id /start-task \
+  --dedupe-key "task:<TASK_ID>:plan"
+
+# 2) 验证结果——第 9 步后记录
+node .agent/skills/activity-recording/scripts/index.js record-event \
+  --kind validation \
+  --source /start-task \
+  --summary "任务 <TASK_ID> 验证：<passed|failed>" \
+  --actor-type workflow \
+  --actor-id /start-task \
+  --dedupe-key "task:<TASK_ID>:validation"
+```
+
+如果 helper 缺失或录制不可用（如宿主不能写 `.agent/`），保持原工作流行为并跳过调用，不得编造收据。

@@ -100,3 +100,29 @@ T-C06 handoff 输出为双格式：
 - handoff 发布后，使用 `sessions pause --session-id <id> --gate handoff --activity "Handoff published"` pause 来源 owner session。
 - resume 时由目标 Agent 打开自己的 session，或 heartbeat 与其 owner 匹配的 session；不得刷新来源 owner heartbeat。
 - Session 转换证据必须引用 handoff 和 active Run；`stale` 仍然只在读取时派生。
+
+## 录制节点
+
+`/handoff` 在发布边界拥有活动。handoff JSON 发布到 artifact bus 后记录 capture 收据：
+
+```bash
+# handoff JSON 发布后
+node .agent/skills/activity-recording/scripts/index.js record-receipt \
+  --kind capture \
+  --source /handoff \
+  --activity-refs ACT-handoff-<HANDOFF_ID>-publish \
+  --availability available \
+  --redaction not_applicable \
+  --dedupe-key "handoff:<HANDOFF_ID>:capture"
+
+# 目标 Agent resume 时（可选）
+node .agent/skills/activity-recording/scripts/index.js record-event \
+  --kind coordination \
+  --source /handoff \
+  --summary "Handoff <HANDOFF_ID> 由 <target-agent> resume" \
+  --actor-type workflow \
+  --actor-id /handoff \
+  --dedupe-key "handoff:<HANDOFF_ID>:resume"
+```
+
+如果 helper 缺失或录制不可用，保持原工作流行为并跳过调用，不得编造收据。

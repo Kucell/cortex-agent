@@ -314,6 +314,97 @@ function validateAll() {
   return issues;
 }
 
+function buildEventFromFlags() {
+  const kind = option("--kind");
+  const source = option("--source");
+  const summary = option("--summary");
+  const actorType = option("--actor-type");
+  const actorId = option("--actor-id");
+  const dedupeKey = option("--dedupe-key");
+  const evidenceRefsRaw = option("--evidence-refs");
+  const sourceRevision = option("--source-revision") || "HEAD";
+
+  if (!kind || !ACTIVITY_KINDS.has(kind)) throw new Error("activity_kind is invalid");
+  if (!source) throw new Error("source is required");
+  if (!summary) throw new Error("summary is required");
+  if (!["user", "agent", "workflow", "system", "external"].includes(actorType)) throw new Error("actor.type is invalid");
+  if (!actorId) throw new Error("actor.id is required");
+  if (!dedupeKey) throw new Error("dedupe_key is required");
+
+  const observedAt = new Date().toISOString();
+  const projectId = path.basename(root);
+  const activityId = `ACT-${dedupeKey.replace(/[^A-Za-z0-9._-]/g, "-").slice(0, 80)}`;
+  const evidenceRefs = evidenceRefsRaw ? evidenceRefsRaw.split(",").map((s) => s.trim()).filter(Boolean) : [];
+
+  return {
+    schema_version: 1,
+    activity_id: activityId,
+    activity_kind: kind,
+    capture_mode: "workflow_required",
+    project_id: projectId,
+    source,
+    source_revision: sourceRevision,
+    observed_at: observedAt,
+    occurred_at: observedAt,
+    actor: { type: actorType, id: actorId },
+    summary,
+    changed_path_refs: [],
+    evidence_refs: evidenceRefs,
+    log_cursor_refs: [],
+    completeness: "complete",
+    confidence: "observed",
+    availability: "available",
+    dedupe_key: dedupeKey,
+    parent_activity_id: null,
+    receipt_ref: null,
+  };
+}
+
+function buildReceiptFromFlags() {
+  const kind = option("--kind");
+  const source = option("--source");
+  const activityRefsRaw = option("--activity-refs");
+  const availability = option("--availability") || "available";
+  const redaction = option("--redaction") || "not_applicable";
+  const dedupeKey = option("--dedupe-key");
+  const commitIdentity = option("--commit-identity") || null;
+  const intentReceiptRef = option("--intent-receipt-ref") || null;
+  const sourceRevision = option("--source-revision") || "HEAD";
+
+  if (!kind || !RECEIPT_KINDS.has(kind)) throw new Error("receipt_kind is invalid");
+  if (!source) throw new Error("source is required");
+  if (!activityRefsRaw) throw new Error("activity_refs is required");
+  if (!AVAILABILITY.has(availability)) throw new Error("availability is invalid");
+  if (!["passed", "failed", "not_applicable"].includes(redaction)) throw new Error("redaction.status is invalid");
+  if (!dedupeKey) throw new Error("dedupe_key is required");
+
+  const observedAt = new Date().toISOString();
+  const activityRefs = activityRefsRaw.split(",").map((s) => s.trim()).filter(Boolean);
+  if (activityRefs.length === 0) throw new Error("activity_refs must include at least one reference");
+  for (const ref of activityRefs) {
+    if (!/^ACT-/.test(ref)) throw new Error(`activity_refs[${ref}] has an invalid format`);
+  }
+  const receiptId = `AR-${dedupeKey.replace(/[^A-Za-z0-9._-]/g, "-").slice(0, 80)}`;
+
+  return {
+    schema_version: 1,
+    receipt_id: receiptId,
+    receipt_kind: kind,
+    source,
+    source_revision: sourceRevision,
+    capture_mode: "workflow_required",
+    observed_at: observedAt,
+    activity_refs: activityRefs,
+    gaps: [],
+    evidence_refs: [],
+    availability,
+    redaction: { status: redaction },
+    dedupe_key: dedupeKey,
+    commit_identity: kind === "commit_result" ? commitIdentity : null,
+    intent_receipt_ref: kind === "commit_result" ? intentReceiptRef : null,
+  };
+}
+
 function main() {
   try {
     const [resource, action] = args;
@@ -333,6 +424,16 @@ function main() {
       output({ ok: true, action: "receipt append", path: path.relative(root, result.file), idempotent: result.idempotent });
       return;
     }
+    if (resource === "record-event") {
+      const result = append("event", buildEventFromFlags());
+      output({ ok: true, action: "record-event", path: path.relative(root, result.file), idempotent: result.idempotent });
+      return;
+    }
+    if (resource === "record-receipt") {
+      const result = append("receipt", buildReceiptFromFlags());
+      output({ ok: true, action: "record-receipt", path: path.relative(root, result.file), idempotent: result.idempotent });
+      return;
+    }
     if (resource === "rebuild-index") {
       output({ ok: true, action: "rebuild-index", index: rebuildIndex() });
       return;
@@ -343,7 +444,7 @@ function main() {
       if (issues.length) process.exitCode = 1;
       return;
     }
-    fail("unsupported_command", "Use init, event append, receipt append, rebuild-index, or validate");
+    fail("unsupported_command", "Use init, event append, receipt append, record-event, record-receipt, rebuild-index, or validate");
   } catch (error) {
     fail("activity_recording_failed", error.message);
   }
