@@ -11,6 +11,16 @@
 
 ---
 
+## 0. 适用场景
+
+必须使用本规则的情况：
+
+- `/agent-update` 先在 provider `.agent/` 做自举验证，然后把同一能力同步到 `templates/{zh,en}/.agent/`
+- 同一任务同时修改 `<repo>/.agent/` 与 `<repo>/templates/`、`lib/`、`docs/` 或其他外仓源码
+- 外仓提交需要引用内仓工作实例的规则、工作流、技能、hook 或运行态产物
+
+只改外仓源码、且没有 provider `.agent/` 语义变化时，可以只提交外仓；只改 provider `.agent/` 私有 L3 能力且不进入模板时，可以只提交内仓。最终汇报必须说明采用了单仓还是双仓提交。
+
 ## 1. 顺序(MUST 按此顺序)
 
 ```
