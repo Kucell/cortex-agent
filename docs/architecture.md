@@ -250,13 +250,31 @@ Runtime Continuity 与 `/handoff` 的边界：前者负责“会话和宿主工�
 
 ---
 
-## 七、Mission Lite 长周期任务编排
+## 七、One-Click Update 一键升级
+
+One-Click Update 是 Cortex Agent 面向实战项目升级的迁移层。它的目标不是强制覆盖已有 `.agent`，而是在保护本地修改的前提下，对 agent entry、hooks、Management API projection registry 和受管脚本执行语义合并，并通过 smoke test 证明项目已经具备最新运行能力。
+
+详细设计见 [One-Click Update 架构设计提案](architecture/one-click-update-design.md)。
+
+| 能力 | 说明 |
+| :--- | :--- |
+| 升级计划 | `update --dry-run` 输出将新增、更新、合并、保护和阻塞的文件 |
+| 语义合并 | 对 `AGENTS.md`、hook JSON、projection registry 等结构化升级 |
+| 升级验证 | 自动验证 runtime-continuity、Management API、dashboard-state 和 activity 查询 |
+| 升级报告 | 写入 `.agent/updates/latest.json`，供 `/briefing`、Dashboard 和 Coordinator 读取 |
+| 接手保障 | `--verify-full` 可证明新 agent 能通过 `resume-bundle` 继续工作 |
+
+One-Click Update 是 Runtime Continuity 能在存量项目中落地的前置条件：如果 update 不能自动修复 entry/hook 漂移，新 agent 的恢复入口就仍然依赖人工补丁。
+
+---
+
+## 八、Mission Lite 长周期任务编排
 
 Mission Lite 是 Cortex Agent 面向长周期、多功能、多里程碑任务的编排层。它借鉴 Factory Missions 的可靠性思想，但保持 Cortex 的轻量架构：不引入新的运行时依赖，不把所有任务都升级为重型流程，只在任务规模超过普通 `/start-task` + `/ship` 能稳定承载时启用。
 
 详细设计见 [Mission Lite 架构设计方案](architecture/mission-lite-design.md)。
 
-### 7.1 适用边界
+### 8.1 适用边界
 
 | 场景 | 推荐流程 |
 | :--- | :--- |
@@ -267,7 +285,7 @@ Mission Lite 是 Cortex Agent 面向长周期、多功能、多里程碑任务�
 
 Mission Lite 的目标不是最大化并行，而是最大化长周期任务的稳定性。默认策略是：代码修改串行，研究、验证和文档类工作可并行。
 
-### 7.2 三角色模型
+### 8.2 三角色模型
 
 ```mermaid
 flowchart TD
@@ -292,7 +310,7 @@ flowchart TD
 | Worker | 在干净上下文中实现单个 feature，提交结构化结果 | 不重写 mission 计划，不扩大范围 |
 | Validator | 按验证契约做对抗式检查，运行测试和必要的 runtime 验证 | 不依赖 Worker 的自我解释 |
 
-### 7.3 核心产物
+### 8.3 核心产物
 
 Mission Lite 应把状态写入文件，而不是依赖对话记忆：
 
@@ -315,7 +333,7 @@ Mission Lite 应把状态写入文件，而不是依赖对话记忆：
 | `milestones/*.md` | 记录每个 checkpoint 的状态、验证结论和修复项 |
 | `handoffs/*.md` | 复用 `/handoff` 的通用交接模板 |
 
-### 7.4 验证契约
+### 8.4 验证契约
 
 Mission Lite 要求计划阶段先产出验证契约，再允许进入实现。契约不追求一次性覆盖所有细节，但必须让 Validator 有明确检查依据。
 
@@ -354,7 +372,7 @@ Mission Lite 要求计划阶段先产出验证契约，再允许进入实现。�
 - `.agent/rules/integration-safety.md` 提供接口契约一致性要求
 - `/handoff` 提供跨 Agent / 跨会话的结构化交接格式
 
-### 7.5 执行策略
+### 8.5 执行策略
 
 Mission Lite 的默认状态流：
 
@@ -371,7 +389,7 @@ SCOPE → PLAN → CONTRACT → EXECUTE_FEATURE → HANDOFF → VALIDATE_MILESTO
 - 失败时由 Orchestrator 创建 follow-up fix task，而不是让 Worker 无限自修
 - 命令执行必须记录 exit code；未运行的命令也要记录原因
 
-### 7.6 与现有工作流的关系
+### 8.6 与现有工作流的关系
 
 | 现有能力 | Mission Lite 中的角色 |
 | :--- | :--- |
@@ -384,13 +402,13 @@ SCOPE → PLAN → CONTRACT → EXECUTE_FEATURE → HANDOFF → VALIDATE_MILESTO
 
 ---
 
-## 八、Multi-Agent Coordinator 多智能体协调层
+## 九、Multi-Agent Coordinator 多智能体协调层
 
 Multi-Agent Coordinator 是 Cortex Agent 下一阶段的完整主线，目标是在多 agent / 多模型 / 多会话切换时，提供统一的 agent 登记、结构化产物、进度锁、handoff 协议和恢复路径。
 
 详细设计见 [Multi-Agent Coordinator 设计](architecture/multi-agent-coordinator.md)。
 
-### 8.1 与 Harness / Mission Lite 的关系
+### 9.1 与 Harness / Mission Lite 的关系
 
 ```mermaid
 flowchart TD
@@ -410,7 +428,7 @@ flowchart TD
 | Mission Lite | mission scope、milestone、validation contract、command log、验证证据 | agent registry、artifact bus、lock、跨模型 resume |
 | Multi-Agent Coordinator | registry、artifact bus、progress lock、handoff JSON、model preference、resume 决策 | 重写 mission scope、替代 `/ship`、替代业务实现 |
 
-### 8.2 核心构件
+### 9.2 核心构件
 
 | 构件 | 作用 |
 | :--- | :--- |
@@ -420,7 +438,7 @@ flowchart TD
 | Handoff Protocol | 同时提供人可读 Markdown 与 agent 可消费 JSON |
 | Model Registry | 记录模型能力、上下文窗口、成本和偏好，辅助 handoff 接手决策 |
 
-### 8.3 推进顺序
+### 9.3 推进顺序
 
 Coordinator 保持完整目标，但按阶段交付：
 
@@ -432,7 +450,7 @@ T-C01A -> T-C02 -> T-C03/T-C04 -> T-C05/T-C06 -> T-C07/T-C08 -> T-C09/T-C10
 
 ---
 
-## 九、Hooks 触发机制
+## 十、Hooks 触发机制
 
 ```mermaid
 sequenceDiagram
@@ -453,7 +471,7 @@ sequenceDiagram
 
 ---
 
-## 十、版本与演进
+## 十一、版本与演进
 
 架构变更时，请至少同步以下资产：
 

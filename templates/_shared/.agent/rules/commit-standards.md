@@ -13,10 +13,23 @@ Follow the [Conventional Commits 1.0.0](https://www.conventionalcommits.org/en/v
 ```
 
 - **type**: See the type table below. Lowercase only.
-- **scope** (optional): Affected module or directory, e.g. `auth`, `api`, `ui`.
+- **scope** (optional): Stable affected module, domain, or directory, e.g. `auth`, `api`, `ui`.
+  Do not use task, proposal, Mission, Milestone, or batch identifiers such as `T-001`, `P-004`,
+  `M-010`, `MS-002`, or `batch-a` as the scope. Put those identifiers in the body or footer when
+  traceability is useful. Omit the scope if no stable module or domain name applies.
 - **subject**: Concise description, max 72 characters, **no trailing period**.
 - **body** (optional): Explain the motivation and details of the change, max 100 chars per line.
 - **footer** (optional): Reference issues (`Closes #123`) or declare breaking changes (`BREAKING CHANGE:`).
+
+## Commit Boundary
+
+- Commit at an independently verifiable milestone, stage, or coherent batch boundary.
+- Do not create a separate commit merely because one proposal document or control contract is complete.
+- A batch checkpoint does not require a commit when the larger milestone remains short-lived and uninterrupted;
+  record progress evidence instead. Commit the checkpoint when work may be interrupted, handed off, or moved
+  across branches.
+- Do not defer all commits until an entire multi-milestone proposal or project is complete.
+- Keep each commit limited to the relevant task files and exclude unrelated working-tree changes.
 
 ## Types
 
