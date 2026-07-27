@@ -1,0 +1,36 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://cortex-agent.dev/schemas/trajectory.schema.json",
+  "title": "Retrieval Trajectory Line",
+  "description": "One JSONL line of a retrieval trajectory. Inspired by OpenViking's observable-retrieval design — every search/find step leaves a line so the path can be replayed and debugged.",
+  "type": "object",
+  "required": ["event"],
+  "properties": {
+    "event": {
+      "type": "string",
+      "enum": ["header", "step", "anchor", "summary"]
+    },
+    "task_id": { "type": "string" },
+    "started_at": { "type": "string", "format": "date-time" },
+    "task": { "type": "string", "description": "Truncated task description (≤200 chars)" },
+    "scoring_strategy": { "type": "string", "description": "e.g. l0+l1+keyword, wikilink-centrality, hybrid" },
+    "l0_l1_available": { "type": "integer", "description": "Count of modules with L0/L1 pre-generated" },
+    "idx": { "type": "integer" },
+    "step": { "type": "integer", "description": "Pipeline step number (1=scan, 2=tokenize, 3=score, 4=expand, 5=load)" },
+    "action": {
+      "type": "string",
+      "enum": ["scan", "tokenize", "score", "expand", "promote", "demote", "l0_only", "load", "skip", "error"]
+    },
+    "candidates": { "type": "integer" },
+    "scanned_pool": { "type": "string" },
+    "task_tokens": { "type": "integer" },
+    "path_hints": { "type": "integer" },
+    "scored": { "type": "integer" },
+    "top_score": { "type": "number" },
+    "uri": { "type": "string", "description": "cortex://resource/path" },
+    "tier": { "type": "string", "enum": ["tier0", "tier1", "tier2", "tier3"] },
+    "tokens": { "type": "integer" },
+    "reason": { "type": "string" },
+    "ts": { "type": "string", "format": "date-time" }
+  }
+}

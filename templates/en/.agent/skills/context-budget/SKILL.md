@@ -1,111 +1,107 @@
 ---
 name: context-budget
-description: Deterministic context budget control. Selects the most relevant reference documents for a task to prevent context overflow degrading AI performance. Uses heuristic rules (zero extra tokens), outputs context-manifest.json.
+description: L0/L1/L2 layered context budget (inspired by OpenViking). Filter references by L0, rerank by L1, load L2 only when budget allows. Caps injection at 40% of the model window. Zero external tokens (deterministic). Emits context-manifest.json and a retrieval trajectory.
 ---
 
-# Context Budget Skill
+# Context Budget — L0/L1/L2 Edition
 
 ## Goal
 
-During `/start-task` planning phase, intelligently select the most relevant documents from `.agent/references/` and keep injection within 40% of the model's context window.
+In the planner stage of `/start-task`, select the most relevant `.agent/references/` modules in three layers so total injected content stays within 40% of the LLM window.
 
-## Why Context Budget Control
+## Why L0/L1/L2
 
-Harness Engineering research shows: **Agent performance degrades when context utilization exceeds 40%**.
-- Irrelevant context dilutes critical information, scattering AI attention
-- Full injection in large projects may consume 80%+ of the context window
-- With budget control, AI focuses on what the task actually needs, yielding higher quality
+The v0 heuristic scored full documents together. With references/ > 50 documents, scoring cost scales linearly with content size.
 
-## Selection Algorithm (Deterministic, Zero Extra Tokens)
+Inspired by OpenViking's `viking://`, cortex-agent adopts L0/L1:
 
-### Step 1: Read Context Index
+| layer | size | purpose | when loaded |
+|---|---|---|---|
+| L0 abstract | ~100 tokens | one-line summary | always (filter) |
+| L1 overview | ~2k tokens | heading outline + key paragraphs | when candidate hits (rerank) |
+| L2 detail | full | original document | budget allows + score ≥ 7 |
 
-Read `.agent/context-index.json` to get metadata for all reference modules (name, keywords, token estimate, dependencies).
+L0/L1 are generated offline by `scripts/build-l0l1.js` (deterministic, no LLM): it extracts frontmatter, first paragraphs, and heading outlines. Suitable for a PostCommit hook.
 
-If `context-index.json` doesn't exist or is empty, prompt user to run `/scan-project` first.
+## Algorithm
 
-### Step 2: Keyword Match Scoring
+### Step 1 — Load index
 
-Extract keywords from task description, compute intersection with each module's `keywords` field:
+Read `.agent/context-index.json`. Modules may carry `l0` / `l1` / `l0_tokens` / `l1_tokens` / `l2_tokens`. If absent, the selector falls back to `summary` as L0 (back-compat).
+
+### Step 2 — Score with L0/L1
 
 ```
-score = keyword_hits / module_keyword_count × 10
+score = L0_hits × 1 + L1_hits × 1 + keyword_hits × 0.5
+path_prefix_match += 5
 ```
 
-Also check if the task description contains file paths. If a path prefix-matches a module's `module_path`, add 5 bonus points (directly relevant module).
+The scoring cost is bounded by L0 size, not L2.
 
-### Step 3: Dependency Graph Expansion
+### Step 3 — Dependency expansion
 
-For modules scoring ≥ 7, read their `dependencies` field and add direct dependencies to the candidate set (with score = 6).
+For modules with score ≥ 7, follow `dependencies` and pull direct dependents into the candidate pool.
 
-### Step 4: Tiered Budget Allocation (Greedy Fill)
+### Step 4 — Tiered allocation
 
-**Budget calculation**:
-- Total budget = `estimated_context_tokens` × 40% (from `context-index.json._meta`)
-- Already used = system instructions estimate (~3000 tokens) + rules estimate (~5000 tokens)
-- Available budget = total budget - already used
+- `total_budget = llm_window × 40%`
+- `fixed = system(3000) + rules(5000)`
+- `available = total_budget − fixed`
 
-**Tiering strategy**:
+| Tier | score | load |
+|---|---|---|
+| Tier 1 | ≥ 7 | full L2 |
+| Tier 2 | 4–6 | L1 overview only |
+| Tier 3 | 1–3 | L0 line only |
 
-| Tier | Condition | Treatment |
-|------|-----------|-----------|
-| Tier 0 (required) | task-progress.md + current task description | Always inject, doesn't count toward budget |
-| Tier 1 (high relevance) | score ≥ 7 | Sort by score descending (tie-break: fewer tokens first), greedy fill to budget |
-| Tier 2 (medium relevance) | score 4-6 | Fill if remaining budget allows |
-| Tier 3 (low relevance) | score 0-3 | Inject only first-line summary (module name + one-sentence description), not full doc |
+Greedy fill: descending score, tie-break by token count ascending.
 
-### Step 5: Output context-manifest.json
+### Step 5 — Emit manifest + trajectory
 
-Write `context-manifest.json` under `.agent/plans/`:
+- `context-manifest.json` → `.agent/plans/`
+- retrieval trajectory → `.agent/runtime-evidence/trajectory/{task-id}_{ts}.jsonl`
 
-```json
-{
-  "task_id": "{task ID}",
-  "generated_at": "{ISO timestamp}",
-  "budget": {
-    "total_available": 32000,
-    "used": {
-      "system": 3000,
-      "rules": 5000,
-      "tier0": 1500,
-      "tier1": 8400,
-      "tier2": 2100,
-      "tier3_summaries": 300,
-      "total": 20300
-    },
-    "utilization": "25.4%",
-    "within_limit": true
-  },
-  "selected": {
-    "tier1": [
-      { "module": "auth-service", "tokens": 1200, "score": 9, "path": ".agent/references/auth-service.md" }
-    ],
-    "tier2": [
-      { "module": "redis-cache", "tokens": 900, "score": 5, "path": ".agent/references/redis-cache.md" }
-    ],
-    "tier3_summaries": ["payment-service", "notification-service"]
-  }
-}
-```
+### Step 6 — URI tagging
+
+Every selected module in `selected.tier1/tier2/tier3_summaries` carries a `uri` field (`cortex://references/{module_path}`).
 
 ## Usage
 
-Called by the `/start-task` workflow during the planner phase:
+```bash
+# 1. Build L0/L1 (first time or PostCommit)
+node .agent/skills/context-budget/scripts/build-l0l1.js --all --write --inject-index
 
-1. Read `context-index.json` and task description
-2. Execute the scoring algorithm above
-3. Output `context-manifest.json` to `.agent/plans/`
-4. Provide planner with selected Tier 1 + Tier 2 document content; Tier 3 as summaries only
+# 2. Plan stage
+node .agent/skills/context-budget/scripts/select.js \
+  --task "implement OAuth login" \
+  --task-id T-DEMO-001 \
+  --llm-window 128000
 
-## Edge Cases
+# 3. Single-file regeneration
+node .agent/skills/context-budget/scripts/build-l0l1.js \
+  --file .agent/rules/core-principles.md --write
+```
 
-- **context-index.json missing**: Skip budget control, inject all references (legacy behavior), and prompt user to run `/scan-project`
-- **All modules score = 0**: Inject Tier 0 + top 3 modules by score (minimum guarantee)
-- **Budget insufficient**: Prioritize Tier 1, trim Tier 2, demote Tier 3 to summaries
-- **Single module exceeds available budget**: Inject first 50 lines (summary truncation) and mark `[truncated]`
+## Boundaries
 
-## Relationships with Other Components
+- **No L0/L1 on any module**: selector falls back to v0 (uses `summary` as L0).
+- **All scores = 0**: inject Tier 0 + top-3 modules (minimum guarantee).
+- **Budget exhausted**: keep Tier 1, demote Tier 2 → L0, drop Tier 3.
+- **No context-index.json**: skip budget, inject all references (legacy behavior); prompt `/scan-project`.
 
-- **Input**: `context-index.json` (generated by `/scan-project`)
-- **Output**: `context-manifest.json` (used by planner and implementer; also a phase-gate checkpoint)
-- **Maintenance**: `/update-refs` and PostCommit entropy-scanner (Phase 3) keep `context-index.json` up to date
+## Compatibility
+
+- `context-manifest.json` schema is backward-compatible with v0. New fields: `uri`, `l0_tokens`, `l1_tokens`, `l2_tokens`. Old consumers ignore them.
+- Old projects without L0/L1 fields still work.
+
+## Acceptance
+
+- Coverage: `build-l0l1.js --all` succeeds on a real project with >50 references; >95% modules have L0/L1.
+- Speed: scoring reads ≤ 100 chars × N characters (vs full-text in v0).
+- Saving: same query reports `used < v0_baseline × 0.7`.
+
+## Related
+
+- Input: `context-index.json` (regenerated by `/scan-project` + `build-l0l1.js`)
+- Output: `context-manifest.json` + `.agent/runtime-evidence/trajectory/{task-id}_*.jsonl`
+- Companion: `uri-resolver` parses `cortex://references/...` to paths
