@@ -1,0 +1,31 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://cortex-agent.dev/schemas/uri-map.schema.json",
+  "title": "Cortex URI Map",
+  "description": "Maps cortex:// scheme URIs to filesystem paths. Inspired by OpenViking viking:// protocol, adapted for cortex-agent's file-system-only context architecture (no separate runtime).",
+  "type": "object",
+  "required": ["version", "generated_at", "scopes"],
+  "properties": {
+    "version": { "type": "integer", "minimum": 1 },
+    "generated_at": { "type": "string", "format": "date-time" },
+    "scopes": {
+      "type": "object",
+      "required": ["rules", "workflows", "skills", "references", "memory", "decisions", "experiences", "resources"],
+      "properties": {
+        "rules": { "type": "string", "description": "Root directory for rules (e.g. .agent/rules)" },
+        "workflows": { "type": "string", "description": "Root directory for workflows" },
+        "skills": { "type": "string", "description": "Root directory for skills" },
+        "references": { "type": "string", "description": "Root directory for references" },
+        "memory": { "type": "string", "description": "Root directory for memory (note layer)" },
+        "decisions": { "type": "string", "description": "Root directory for decisions" },
+        "experiences": { "type": "string", "description": "Root directory for experiences" },
+        "resources": { "type": "string", "description": "Root directory for external resources" }
+      }
+    },
+    "aliases": {
+      "type": "object",
+      "description": "Optional short-name to URI aliases (e.g. decision/latest -> cortex://decisions/D-2026-07-24-001).",
+      "additionalProperties": { "type": "string" }
+    }
+  }
+}
