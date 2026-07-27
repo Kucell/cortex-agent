@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "name": "test-fixture-pack",
+  "version": "0.1.0",
+  "requires": {
+    "cortex_agent": ">=1.6.0"
+  },
+  "signers": {
+    "mode": "git_committers",
+    "allowed_committers": [],
+    "fallback": "reject"
+  },
+  "includes": [
+    "rules/**/*.md",
+    "workflows/**/*.md",
+    "skills/**",
+    "references/**/*.md",
+    "schemas/**/*.json"
+  ],
+  "excludes": [
+    "**/.DS_Store",
+    "**/*.local.*",
+    "**/*secret*",
+    "**/*token*",
+    "**/.claude/settings.json",
+    "**/AGENTS.md",
+    "**/CLAUDE.md",
+    "**/GEMINI.md"
+  ],
+  "files": [
+    {
+      "path": "rules/fixture-team-rule.md",
+      "sha256": "14145a21389d3f2817bf5ba09c64021a00997b15139510b51861bb18124affbb",
+      "mode": "add"
+    }
+  ]
+}
