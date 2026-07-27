@@ -252,7 +252,11 @@ function buildIndex() {
     source_revision: value.source_revision,
     observed_at: value.observed_at,
     availability: value.availability,
-    dedupe_key: value.dedupe_key
+    dedupe_key: value.dedupe_key,
+    gaps: value.gaps ?? [],
+    activity_refs: value.activity_refs ?? [],
+    commit_identity: value.commit_identity ?? null,
+    intent_receipt_ref: value.intent_receipt_ref ?? null,
   }));
   return { schema_version: 1, events, receipts, updated_at: new Date().toISOString() };
 }

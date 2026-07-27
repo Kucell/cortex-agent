@@ -77,18 +77,65 @@ If the user requests changes, adjust and re-display before proceeding.
 
 ## Step 5: Execute the Commit
 
-After confirmation:
+After confirmation, **record the commit intent before executing** and **record the result only after Git returns a real identity**.
 
 ```bash
 # Stage any unstaged files if needed:
 git add <files>
 
-# Commit (using HEREDOC to handle special characters safely)
+# 5a. Freeze commit_intent receipt — git tree state, scope, language, dedupe key
+node .agent/skills/activity-recording/scripts/index.js receipt append --payload-json "$(cat <<'EOF'
+{
+  "schema_version": 1,
+  "receipt_id": "AR-commit-intent-<utc timestamp>",
+  "receipt_kind": "commit_intent",
+  "source": "/commit",
+  "source_revision": "HEAD",
+  "capture_mode": "workflow_required",
+  "observed_at": "<UTC RFC 3339 timestamp>",
+  "activity_refs": [],
+  "gaps": [],
+  "evidence_refs": [],
+  "availability": "available",
+  "redaction": { "status": "not_applicable" },
+  "dedupe_key": "commit:intent:<scope>:<subject-hash>",
+  "commit_identity": null,
+  "intent_receipt_ref": null
+}
+EOF
+)"
+
+# 5b. Execute the commit (HEREDOC handles special characters safely)
 git commit -m "$(cat <<'EOF'
 <full commit message>
 EOF
 )"
+
+# 5c. Record commit_result receipt only after Git returns a real commit identity
+COMMIT_SHA=$(git rev-parse HEAD)
+node .agent/skills/activity-recording/scripts/index.js receipt append --payload-json "$(cat <<'EOF'
+{
+  "schema_version": 1,
+  "receipt_id": "AR-commit-result-<utc timestamp>",
+  "receipt_kind": "commit_result",
+  "source": "/commit",
+  "source_revision": "<COMMIT_SHA>",
+  "capture_mode": "workflow_required",
+  "observed_at": "<UTC RFC 3339 timestamp>",
+  "activity_refs": [],
+  "gaps": [],
+  "evidence_refs": [".git/refs/heads/<branch>"],
+  "availability": "available",
+  "redaction": { "status": "not_applicable" },
+  "dedupe_key": "commit:result:<COMMIT_SHA>",
+  "commit_identity": "<COMMIT_SHA>",
+  "intent_receipt_ref": "AR-commit-intent-..."
+}
+EOF
+)"
 ```
+
+If the commit fails (non-zero exit from `git commit`), record a `commit_result` with `availability: "failed"` and `commit_identity: null`. **Never fabricate a sha for a failed commit.**
 
 On success, output the commit hash and summary.
 

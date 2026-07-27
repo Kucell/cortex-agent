@@ -75,18 +75,65 @@ Closes #42
 
 ## 第五步：执行提交
 
-确认后执行：
+确认后，**先记录 commit_intent 再执行 git commit**，**仅在 Git 返回真实身份后记录 commit_result**。
 
 ```bash
 # 如有未暂存的文件需要包含，先执行：
 git add <files>
 
-# 提交（使用 HEREDOC 避免特殊字符问题）
+# 5a. 冻结 commit_intent 收据——git 树状态、scope、语言、dedupe key
+node .agent/skills/activity-recording/scripts/index.js receipt append --payload-json "$(cat <<'EOF'
+{
+  "schema_version": 1,
+  "receipt_id": "AR-commit-intent-<utc 时间戳>",
+  "receipt_kind": "commit_intent",
+  "source": "/commit",
+  "source_revision": "HEAD",
+  "capture_mode": "workflow_required",
+  "observed_at": "<UTC RFC 3339 时间戳>",
+  "activity_refs": [],
+  "gaps": [],
+  "evidence_refs": [],
+  "availability": "available",
+  "redaction": { "status": "not_applicable" },
+  "dedupe_key": "commit:intent:<scope>:<subject-hash>",
+  "commit_identity": null,
+  "intent_receipt_ref": null
+}
+EOF
+)"
+
+# 5b. 提交（使用 HEREDOC 避免特殊字符问题）
 git commit -m "$(cat <<'EOF'
 <完整提交信息>
 EOF
 )"
+
+# 5c. 仅在 Git 返回真实 commit 身份后记录 commit_result 收据
+COMMIT_SHA=$(git rev-parse HEAD)
+node .agent/skills/activity-recording/scripts/index.js receipt append --payload-json "$(cat <<'EOF'
+{
+  "schema_version": 1,
+  "receipt_id": "AR-commit-result-<utc 时间戳>",
+  "receipt_kind": "commit_result",
+  "source": "/commit",
+  "source_revision": "<COMMIT_SHA>",
+  "capture_mode": "workflow_required",
+  "observed_at": "<UTC RFC 3339 时间戳>",
+  "activity_refs": [],
+  "gaps": [],
+  "evidence_refs": [".git/refs/heads/<branch>"],
+  "availability": "available",
+  "redaction": { "status": "not_applicable" },
+  "dedupe_key": "commit:result:<COMMIT_SHA>",
+  "commit_identity": "<COMMIT_SHA>",
+  "intent_receipt_ref": "AR-commit-intent-..."
+}
+EOF
+)"
 ```
+
+如果 commit 失败（`git commit` 返回非零退出），记录一条 `availability: "failed"` 且 `commit_identity: null` 的 `commit_result` 收据。**绝不为失败的 commit 编造 sha。**
 
 提交成功后，输出 commit hash 和简要信息。
 
