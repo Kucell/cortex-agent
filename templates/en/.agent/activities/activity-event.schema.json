@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cortex-agent.local/schemas/activity-event.schema.json",
+  "title": "Cortex Agent Activity Event",
+  "type": "object",
+  "required": ["schema_version", "activity_id", "activity_kind", "capture_mode", "project_id", "source", "source_revision", "observed_at", "occurred_at", "actor", "summary", "evidence_refs", "log_cursor_refs", "completeness", "confidence", "availability", "dedupe_key"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "activity_id": { "type": "string", "pattern": "^ACT-[A-Za-z0-9][A-Za-z0-9._-]*$" },
+    "activity_kind": { "enum": ["intent", "execution", "change", "validation", "decision", "coordination", "runtime", "knowledge", "external"] },
+    "capture_mode": { "enum": ["automatic", "workflow_required", "imported", "reconciled", "manual"] },
+    "project_id": { "type": "string", "minLength": 1 },
+    "task_id": { "type": ["string", "null"] },
+    "mission_id": { "type": ["string", "null"] },
+    "run_id": { "type": ["string", "null"] },
+    "session_id": { "type": ["string", "null"] },
+    "operation_id": { "type": ["string", "null"] },
+    "workspace_id": { "type": ["string", "null"] },
+    "source": { "type": "string", "minLength": 1 },
+    "source_revision": { "type": "string", "minLength": 1 },
+    "observed_at": { "type": "string", "format": "date-time" },
+    "occurred_at": { "type": ["string", "null"], "format": "date-time" },
+    "actor": {
+      "type": "object",
+      "required": ["type", "id"],
+      "properties": {
+        "type": { "enum": ["user", "agent", "workflow", "system", "external"] },
+        "id": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+    "summary": { "type": "string", "minLength": 1, "maxLength": 1000 },
+    "changed_path_refs": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+    "evidence_refs": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+    "log_cursor_refs": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+    "completeness": { "enum": ["complete", "partial", "unknown"] },
+    "confidence": { "enum": ["observed", "reported", "inferred"] },
+    "availability": { "enum": ["available", "unavailable", "failed", "stale"] },
+    "dedupe_key": { "type": "string", "minLength": 1 },
+    "parent_activity_id": { "type": ["string", "null"] },
+    "receipt_ref": { "type": ["string", "null"] }
+  },
+  "additionalProperties": false
+}

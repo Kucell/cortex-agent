@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cortex-agent.local/schemas/activity-source-health.schema.json",
+  "title": "Cortex Agent Activity Source Health",
+  "type": "object",
+  "required": ["schema_version", "source", "status", "checked_at", "last_success_at", "message"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "source": { "type": "string", "minLength": 1 },
+    "status": { "enum": ["healthy", "unavailable", "failed", "stale", "excluded", "unknown"] },
+    "checked_at": { "type": "string", "format": "date-time" },
+    "last_success_at": { "type": ["string", "null"], "format": "date-time" },
+    "message": { "type": ["string", "null"] }
+  },
+  "additionalProperties": false
+}
