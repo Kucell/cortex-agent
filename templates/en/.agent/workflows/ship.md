@@ -325,3 +325,29 @@ git diff --staged  # 若已有暂存区，优先审查暂存内容
 | 快速提交，跳过审查 | `/ship T-001 --no-review` |
 | 一次性交付多个小任务 | `/ship T-001 T-002 T-003` |
 | 只想提交，不更新计划 | `/commit`（直接用提交工作流）|
+
+## Recording Points
+
+`/ship` owns activity at each pipeline stage. Record an event when entering REVIEW, when entering TEST, and when the final SHIP state is reached:
+
+```bash
+# Entering REVIEW
+node .agent/skills/activity-recording/scripts/index.js record-event \
+  --kind validation \
+  --source /ship \
+  --summary "Ship <TASK_ID> entered REVIEW" \
+  --actor-type workflow \
+  --actor-id /ship \
+  --dedupe-key "ship:<TASK_ID>:review:enter"
+
+# Final SHIP outcome
+node .agent/skills/activity-recording/scripts/index.js record-receipt \
+  --kind delivery \
+  --source /ship \
+  --activity-refs ACT-ship-<TASK_ID>-review,ACT-ship-<TASK_ID>-test \
+  --availability available \
+  --redaction not_applicable \
+  --dedupe-key "ship:<TASK_ID>:delivered"
+```
+
+If the helper is missing or recording is unavailable, continue with the legacy workflow behavior and skip the call. Do not invent receipts.

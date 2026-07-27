@@ -325,3 +325,29 @@ git diff --staged  # 若已有暂存区，优先审查暂存内容
 | 快速提交，跳过审查 | `/ship T-001 --no-review` |
 | 一次性交付多个小任务 | `/ship T-001 T-002 T-003` |
 | 只想提交，不更新计划 | `/commit`（直接用提交工作流）|
+
+## 录制节点
+
+`/ship` 在每个流水线阶段拥有活动。进入 REVIEW 时、进入 TEST 时、最终 SHIP 状态到达时各记录一次：
+
+```bash
+# 进入 REVIEW
+node .agent/skills/activity-recording/scripts/index.js record-event \
+  --kind validation \
+  --source /ship \
+  --summary "Ship <TASK_ID> 进入 REVIEW" \
+  --actor-type workflow \
+  --actor-id /ship \
+  --dedupe-key "ship:<TASK_ID>:review:enter"
+
+# 最终 SHIP 结果
+node .agent/skills/activity-recording/scripts/index.js record-receipt \
+  --kind delivery \
+  --source /ship \
+  --activity-refs ACT-ship-<TASK_ID>-review,ACT-ship-<TASK_ID>-test \
+  --availability available \
+  --redaction not_applicable \
+  --dedupe-key "ship:<TASK_ID>:delivered"
+```
+
+如果 helper 缺失或录制不可用，保持原工作流行为并跳过调用，不得编造收据。

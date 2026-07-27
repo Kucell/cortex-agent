@@ -87,3 +87,29 @@ When `.agent/tasks/<task-id>.json` exists, `/start-task` is the only workflow al
         --type completed \
         --activity "Task completed"
       ```
+
+## Recording Points
+
+`/start-task` owns workflow_required activity at the planning boundary. Call the helper after step 4 (context-manifest generated) and after step 9 (final validation status known):
+
+```bash
+# 1) Planning intent — frozen after step 4
+node .agent/skills/activity-recording/scripts/index.js record-event \
+  --kind intent \
+  --source /start-task \
+  --summary "Planned task <TASK_ID>: <short subject>" \
+  --actor-type workflow \
+  --actor-id /start-task \
+  --dedupe-key "task:<TASK_ID>:plan"
+
+# 2) Validation outcome — record after step 9
+node .agent/skills/activity-recording/scripts/index.js record-event \
+  --kind validation \
+  --source /start-task \
+  --summary "Task <TASK_ID> validation: <passed|failed>" \
+  --actor-type workflow \
+  --actor-id /start-task \
+  --dedupe-key "task:<TASK_ID>:validation"
+```
+
+If the helper is missing or recording is unavailable (e.g. host cannot write `.agent/`), continue with the legacy workflow behavior and skip the call. Do not invent receipts.

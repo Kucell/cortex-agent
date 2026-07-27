@@ -278,3 +278,29 @@ mission 不能只因为子 worktree 验证通过就完成；必须在合并目�
 - 用户通过 `decisions resolve --gate user` 批准后，`/mission` 调用 `waitpoints release --gate owner` 解锁下游 run。
 - `/mission` 不转移 Task gate ownership —— Task Pipeline 仍由 `/start-task`、`/ship` 等 owning workflow 持有；mission 只暴露与消费决策。
 - Checkpoint 状态挂在 Decision / Waitpoint 的 relations 上，pending approval 时标记 `Checkpoint`，其余 run 仍可推进到不依赖该决策的位置。
+
+## 录制节点
+
+`/mission` 在每次状态转换时拥有活动。里程碑状态变更后记录 event，验证契约执行后记录 delivery 收据：
+
+```bash
+# 里程碑转换后（PLAN -> CONTRACT、EXECUTE -> VALIDATE 等）
+node .agent/skills/activity-recording/scripts/index.js record-event \
+  --kind coordination \
+  --source /mission \
+  --summary "Mission <MISSION_ID> 里程碑 <MS-XXX> -> <next-state>" \
+  --actor-type workflow \
+  --actor-id /mission \
+  --dedupe-key "mission:<MISSION_ID>:<MS-XXX>:transition"
+
+# 验证契约执行后
+node .agent/skills/activity-recording/scripts/index.js record-receipt \
+  --kind delivery \
+  --source /mission \
+  --activity-refs ACT-mission-<MISSION_ID>-<MS-XXX>-validate \
+  --availability available \
+  --redaction not_applicable \
+  --dedupe-key "mission:<MISSION_ID>:<MS-XXX>:validate:receipt"
+```
+
+如果 helper 缺失或录制不可用，保持原工作流行为并跳过调用，不得编造收据。
