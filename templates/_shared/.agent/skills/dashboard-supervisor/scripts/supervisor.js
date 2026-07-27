@@ -220,9 +220,56 @@ function commandStop({ ifIdle }) {
 function commandHelp() {
   return {
     ok: true,
-    usage: "node supervisor.js status | ensure | stop [--if-idle] | --help",
+    usage: "node supervisor.js status | ensure | stop [--if-idle] | auto status|enable|disable | --help",
     states: Array.from(VALID_STATES),
   };
+}
+
+function commandAutoStatus() {
+  return withLock(() => {
+    const config = loadConfig();
+    return {
+      ok: true,
+      enabled: !!config.value.enabled,
+      config_path: configFile,
+    };
+  });
+}
+
+function commandAutoEnable() {
+  return withLock(() => {
+    const raw = readJson(configFile, {});
+    const next = {
+      ...DEFAULT_CONFIG,
+      ...raw,
+      enabled: true,
+    };
+    atomicWrite(configFile, next);
+    return {
+      ok: true,
+      enabled: true,
+      transitioned_at: new Date().toISOString(),
+      trigger_source: "manual_auto_enable",
+    };
+  });
+}
+
+function commandAutoDisable() {
+  return withLock(() => {
+    const raw = readJson(configFile, {});
+    const next = {
+      ...DEFAULT_CONFIG,
+      ...raw,
+      enabled: false,
+    };
+    atomicWrite(configFile, next);
+    return {
+      ok: true,
+      enabled: false,
+      transitioned_at: new Date().toISOString(),
+      trigger_source: "manual_auto_disable",
+    };
+  });
 }
 
 function main() {
@@ -232,14 +279,22 @@ function main() {
     output(commandHelp());
     return;
   }
-  const [command] = args;
+  const [command, subcommand] = args;
   const config = loadConfig();
   if (!config.ok) {
     fail("invalid_config", "dashboard-automation.json failed validation", config.error);
     process.exit(diagnosticExitCode(config.error.diagnostics?.[0]?.code) || EXIT_CODES.INVALID_INPUT);
     return;
   }
-  if (!config.value.enabled && command !== "status") {
+  // auto status is always allowed (it never writes).
+  // auto enable / disable always operate on the config and never need
+  // the supervisor to be enabled.
+  // Manual commands (status, ensure, stop) require enabled except
+  // status which is read-only.
+  const isAuto = command === "auto";
+  const isAutoWrite = isAuto && (subcommand === "enable" || subcommand === "disable");
+  const isReadOnly = command === "status" || (isAuto && subcommand === "status");
+  if (!config.value.enabled && !isAutoWrite && !isReadOnly) {
     fail("supervisor_disabled", "Dashboard supervisor is default-disabled; run `auto enable` first.",
       { config_enabled: config.value.enabled });
     process.exit(EXIT_CODES.UNAVAILABLE);
@@ -253,13 +308,18 @@ function main() {
       payload = commandEnsure();
     } else if (command === "stop") {
       payload = commandStop({ ifIdle: args.includes("--if-idle") });
+    } else if (isAuto && subcommand === "status") {
+      payload = commandAutoStatus();
+    } else if (isAuto && subcommand === "enable") {
+      payload = commandAutoEnable();
+    } else if (isAuto && subcommand === "disable") {
+      payload = commandAutoDisable();
     } else {
-      fail("unsupported_command", "Use status, ensure, stop [--if-idle], or --help.", { command });
+      fail("unsupported_command", "Use status, ensure, stop [--if-idle], auto status|enable|disable, or --help.", { command, subcommand });
       process.exit(EXIT_CODES.INVALID_INPUT);
       return;
     }
     output(payload);
-    // Exit codes: refused stop -> 1, ensure -> 0, status -> 0.
     if (payload.refused) process.exit(EXIT_CODES.CONFLICT);
   } catch (error) {
     fail("supervisor_failed", error.message, { stack: error.stack });
