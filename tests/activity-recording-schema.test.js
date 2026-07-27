@@ -14,13 +14,14 @@ function readJson(file) {
 }
 
 test("activity recording schemas are synchronized and fail closed", () => {
+  // Compare schema files only; the derived index.json is generated
+  // runtime state and is not byte-identical across workspaces.
   for (const name of [
     "activity-recording-profile.schema.json",
     "activity-source-health.schema.json",
     "activity-event.schema.json",
     "activity-receipt.schema.json",
     "index.schema.json",
-    "index.json"
   ]) {
     assert.deepStrictEqual(readJson(path.join(local, name)), readJson(path.join(shared, name)), name);
   }
