@@ -27,6 +27,7 @@ const {
   dev,
   cliHelp,
   printHelp,
+  teamPack,
 } = require("../lib/commands");
 
 // ─── Context ──────────────────────────────────────────────────────────────────
@@ -92,6 +93,18 @@ for (let i = 0; i < args.length; i++) {
   } else if (arg && arg.startsWith("--project=")) {
     options.project = arg.slice("--project=".length);
   }
+  if (arg === "--team") {
+    options.team = true;
+  }
+  if (arg === "--name") {
+    const value = args[i + 1];
+    options.name = value && !value.startsWith("--") ? value : "";
+  } else if (arg && arg.startsWith("--name=")) {
+    options.name = arg.slice("--name=".length);
+  }
+  if (arg === "--strict") {
+    options.strict = true;
+  }
 }
 
 function detectLangFromProject(dir) {
@@ -119,9 +132,18 @@ const ctx = { cwd, args, command, options, lang, templateDir };
     case "add":         await addPlatforms(ctx); break;
     case "remove":      await removePlatforms(ctx); break;
     case "list":        listPlatforms(ctx); break;
-    case "upgrade":     await upgrade(ctx); break;
+    case "upgrade":
+      if (ctx.options.team) {
+        console.error("❌ `upgrade --team` is rejected: `upgrade` is additive-only and never touches Team Pack. Use `update --team` for Team Pack sync. See .agent/plans/proposals/projects/team-agent-pack/proposals/P-002-team-pack-cli-lifecycle-proposal.md §4.");
+        process.exitCode = 3;
+        break;
+      }
+      await upgrade(ctx); break;
     case "update":
       ctx.options.updateScripts = true;
+      if (ctx.options.team) {
+        ctx.options.teamPhase = "L1-then-L2";
+      }
       await upgrade(ctx);
       break;
     case "track":       trackAgent(ctx); break;
@@ -139,6 +161,7 @@ const ctx = { cwd, args, command, options, lang, templateDir };
     case "dispatch":
     case "daemon":
     case "trigger":     phaseZeroAutomation(ctx); break;
+    case "team":        await teamPack(ctx); break;
     case "help":        args.includes("--json") ? cliHelp(ctx) : printHelp(); break;
     case "dev":         await dev(ctx); break;
     case undefined:

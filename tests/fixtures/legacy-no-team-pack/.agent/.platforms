@@ -1,0 +1,7 @@
+{
+  "schema_version": 1,
+  "generated_by": "cortex-agent-fixture",
+  "name": "legacy-fixture",
+  "platforms": [],
+  "languages": ["zh"]
+}
