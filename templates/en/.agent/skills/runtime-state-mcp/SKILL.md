@@ -21,6 +21,7 @@ Use `cortex-agent help --json` for the machine-readable CLI contract and `cortex
 - Resources use `cortex://management/<projection>` and are generated from the real Management API capability registry.
 - Every listed resource is readable through `resources/read` and semantically matches the direct Management API projection.
 - The only tool is read-only `cortex.query`, with projection filters validated against the same registry.
+- Coordination task, event, ownership, and notification projections are discovered from that registry; no coordination writer tool is enabled by default.
 - Supported protocol versions are negotiated during `initialize`; unknown versions fail closed.
 
 ## Boundaries
