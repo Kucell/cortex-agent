@@ -70,6 +70,38 @@ check("publish rejects /Users/<name>/... leak", () => {
   assert.match(r.skipped[0].reason, /secret_or_path_scan/);
 });
 
+check("publish rejects source path traversal", () => {
+  const root = tmpDir("source-traversal");
+  const outside = path.join(root, "..", `${path.basename(root)}-outside.md`);
+  fs.writeFileSync(outside, "# Outside");
+  const r = t.publishPack(root, [{ source: `../${path.basename(outside)}`, dest: "rules/outside.md" }], {
+    name: "p", version: "0.1.0",
+    requires: { cortex_agent: ">=1.7.0" },
+    signers: { mode: "disabled" },
+    includes: [], excludes: [],
+  });
+  assert.strictEqual(r.ok, false);
+  assert.strictEqual(r.skipped[0].reason, "unsafe_source_path");
+  fs.unlinkSync(outside);
+});
+
+check("publish rejects a symlinked destination ancestor", () => {
+  const root = tmpDir("destination-symlink");
+  const outside = tmpDir("destination-outside");
+  writeFile(root, "src/rules/foo.md", "# Safe");
+  fs.mkdirSync(path.join(root, ".agent-shared"), { recursive: true });
+  fs.symlinkSync(outside, path.join(root, ".agent-shared/rules"));
+  const r = t.publishPack(root, [{ source: "src/rules/foo.md", dest: "rules/foo.md" }], {
+    name: "p", version: "0.1.0",
+    requires: { cortex_agent: ">=1.7.0" },
+    signers: { mode: "disabled" },
+    includes: [], excludes: [],
+  });
+  assert.strictEqual(r.ok, false);
+  assert.strictEqual(r.skipped[0].reason, "destination_symlink_rejected");
+  assert.strictEqual(fs.existsSync(path.join(outside, "foo.md")), false);
+});
+
 // ─── publish accepts safe content ───────────────────────────────────────────
 check("publish accepts safe rule content", () => {
   const root = tmpDir("ok");
@@ -86,6 +118,24 @@ check("publish accepts safe rule content", () => {
   const m = JSON.parse(fs.readFileSync(path.join(root, ".agent-shared/team-pack.json"), "utf8"));
   assert.strictEqual(m.files.length, 1);
   assert.strictEqual(m.files[0].path, "rules/foo.md");
+});
+
+check("publish dry-run validates without writing target or manifest", () => {
+  const root = tmpDir("dry-run-zero-write");
+  writeFile(root, "src/rules/planned.md", "# Planned\n");
+  t.initSkeleton(root, "dry-run-pack");
+  const manifestPath = path.join(root, ".agent-shared/team-pack.json");
+  const beforeManifest = fs.readFileSync(manifestPath);
+
+  const result = t.publishPack(
+    root,
+    [{ source: "src/rules/planned.md", dest: "rules/planned.md" }],
+    { dryRun: true },
+  );
+
+  assert.strictEqual(result.ok, true);
+  assert.strictEqual(fs.existsSync(path.join(root, ".agent-shared/rules/planned.md")), false);
+  assert.deepStrictEqual(fs.readFileSync(manifestPath), beforeManifest);
 });
 
 // ─── verify-strict fails on tampered manifest ───────────────────────────────
@@ -131,10 +181,14 @@ check("signers rejects committer not in allowlist (when fallback=reject)", () =>
   });
   assert.strictEqual(r.ok, true);
   const loaded = t.loadPack(root);
+  execSync("git add .agent-shared && git -c commit.gpgsign=false commit -q -m pack", { cwd: root });
+  execSync("git config user.email someone-else@example.com", { cwd: root });
+  fs.writeFileSync(path.join(root, "README.md"), "# Later unrelated change");
+  execSync("git add README.md && git -c commit.gpgsign=false commit -q -m unrelated", { cwd: root });
   const verifyReport = t.verifyStrict(loaded.manifest, root);
   const sig = verifyReport.checks.find((c) => c.id === "manifest_signature");
   assert.strictEqual(sig.status, "fail");
-  assert.match(sig.reason, /committer_not_allowed/);
+  assert.match(sig.reason, /committer_not_allowed:test@example.com/);
 });
 
 if (failures > 0) { console.error(`\nFAIL: ${failures}`); process.exit(1); }
