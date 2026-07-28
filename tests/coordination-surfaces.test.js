@@ -78,6 +78,10 @@ test("public task CLI opens the real Application Service for writes", () => {
   assert.equal(result.status, 0, result.stderr);
   assert.equal(JSON.parse(result.stdout).result.task.state, STATES.CREATED);
   assert.equal(fs.readdirSync(path.join(project, ".agent-runtime/coordination/tasks")).length, 1);
+  assert.equal(
+    fs.readFileSync(path.join(project, ".agent-runtime/.gitignore"), "utf8"),
+    "*\n!.gitignore\n"
+  );
   fs.rmSync(project, { recursive: true, force: true });
 });
 
