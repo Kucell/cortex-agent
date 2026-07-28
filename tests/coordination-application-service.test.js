@@ -124,3 +124,44 @@ test("repairs a missing snapshot from the authoritative journal", () => {
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("persists fencing and pending takeover state across restart", () => {
+  const dir = runtimeDir();
+  let app = CoordinationApplicationService.open(dir, { journal: { lock: false } });
+  const lease = app.acquireOwnership("lib/coordination/**", "claude-1", {
+    actorId: "session-1",
+    ttl: 1_000,
+  });
+  const request = app.requestOwnershipTakeover("lib/coordination/**", "codex", {
+    actorId: "coordinator",
+    evidence: "operation:stop-requested",
+  });
+  app.close();
+
+  app = CoordinationApplicationService.open(dir, { journal: { lock: false } });
+  try {
+    assert.equal(app.leases.getLease(lease.leaseId).owner, "claude-1");
+    assert.equal(app.leases.getTakeoverRequest(request.requestId).status, "pending");
+    const completed = app.completeOwnershipTakeover(request.requestId, {
+      actorId: "coordinator",
+      recoveryEvidence: "operation:process-exited",
+    });
+    assert.ok(completed.lease.fencingToken > lease.fencingToken);
+  } finally {
+    app.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("fails closed when durable lease state is corrupted", () => {
+  const dir = runtimeDir();
+  let app = CoordinationApplicationService.open(dir, { journal: { lock: false } });
+  app.acquireOwnership("src/**", "agent");
+  app.close();
+  fs.writeFileSync(path.join(dir, "leases", "state.json"), "{broken");
+  assert.throws(
+    () => CoordinationApplicationService.open(dir, { journal: { lock: false } }),
+    { key: "ERR_INVALID_STATE" }
+  );
+  fs.rmSync(dir, { recursive: true, force: true });
+});
