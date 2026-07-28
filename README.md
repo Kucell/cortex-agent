@@ -292,6 +292,7 @@ node .agent/plugins/graphify/scripts/extract-subgraph.js \
 | [docs/customization.md](docs/customization.md) | 自定义规则、扩展 Sub-agent、添加 Hooks |
 | [docs/architecture.md](docs/architecture.md) | 整体架构设计、模块职责、Mission Lite 设计、Hooks 触发机制 |
 | [docs/architecture/mission-lite-design.md](docs/architecture/mission-lite-design.md) | Mission Lite 长周期任务编排的详细架构方案 |
+| [docs/architecture/team-agent-pack.md](docs/architecture/team-agent-pack.md) | Team Agent Pack 的分层模型、CLI、安全边界与冲突处理 |
 | [docs/architecture/harness-optimization-design.md](docs/architecture/harness-optimization-design.md) | Harness Engineering 与 Mission Lite 演进设计 |
 | [docs/architecture/multi-agent-coordinator.md](docs/architecture/multi-agent-coordinator.md) | Multi-Agent Coordinator（多 agent × 多模型协调层）设计稿 |
 | [docs/architecture/runtime-continuity-v2-design.md](docs/architecture/runtime-continuity-v2-design.md) | Runtime Continuity v2：跨 agent 工具切换、长会话恢复和结构化工作日志同步 |

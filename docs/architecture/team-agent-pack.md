@@ -42,7 +42,7 @@ Team Pack 是 Cortex Agent 的 L2 能力:让团队实践(规则、工作流、�
 | `cortex-agent team status [--json]` | 对比 pack / receipt / `.agent/`,报告 ahead / behind / conflict |
 | `cortex-agent team install [--dry-run] [--report text\|json]` | 首次安装;cold-start base 固定为空 |
 | `cortex-agent team update [--dry-run] [--report text\|json]` | 基于 receipt baseline 执行三方合并 |
-| `cortex-agent team publish --paths <path...> [--dry-run]` | 显式发布到 `.agent-shared/`,重建 manifest |
+| `cortex-agent team publish --paths <path...> [--dry-run]` | 显式发布到 `.agent-shared/`,重建 manifest；dry-run 保证零写入 |
 | `cortex-agent team verify [--strict] [--json]` | CI 友好的只读检查 |
 
 所有命令支持 `--project <path>` 跨项目。
@@ -95,19 +95,28 @@ Team Pack 是 Cortex Agent 的 L2 能力:让团队实践(规则、工作流、�
 | 已变 | 已变且不同 | **conflict**(保留 local + 写 conflict artifact) |
 | 文件不存在 | 新增 | add |
 
-冲突文件不进入 receipt baseline;冲突详情写入 `.agent/team-sync/conflicts/<timestamp>-<n>-conflict.json`。
+冲突文件不会把 baseline 推进到 incoming；原 baseline 会保留供下一次三方比较。
+冲突详情写入 `.agent/team-sync/conflicts/<timestamp>-<n>-conflict.json`。
 
 ## 7. 安全不变量
 
 - 所有写入限制在项目根目录内;
 - 默认拒绝符号链接和 hard-link 异常目标;
 - 写入使用同目录临时文件 + 原子 rename;
+- `install/update` 在替换已有文件前写入 `.agent/team-sync/backups/`,任一写入失败时回滚本次事务;
 - 检测到私钥头、Token 前缀、URL 用户信息、`.env` 全文、本机绝对路径时 fail closed;
 - 扫描日志只报告规则与位置,不回显 secret value;
 - `.agent-shared/` 中的脚本不是授权;执行外部副作用仍遵循 Decision / Waitpoint;
-- `verify` 可在 CI 只读运行;`publish` 必须由用户或受保护的维护流程显式触发。
+- `verify` 可在 CI 只读运行;`publish` 必须由用户或受保护的维护流程显式触发;
+- signer 校验绑定最后修改 `.agent-shared/team-pack.json` 的提交者,不使用仓库无关的最新提交。
 
-## 8. 实战回流(SamHMI 边界)
+## 8. v1.7.0 已知缺陷修复
+
+v1.7.0 的 `team publish --dry-run` 曾复用 apply 写入函数，导致目标规则提前
+落入 `.agent-shared/` 而 manifest 未更新。修复后 publish 先执行纯校验，
+dry-run 在校验后直接返回；CLI 回归测试会比较命令前后的完整项目树摘要。
+
+## 9. 实战回流(SamHMI 边界)
 
 允许回流到 Cortex Agent L1:
 
@@ -124,7 +133,7 @@ Team Pack 是 Cortex Agent 的 L2 能力:让团队实践(规则、工作流、�
 
 回流路径:在 Cortex Agent 主仓库 `/agent-update` 工作流,而不是直接在 SamHMI Team Pack 内。
 
-## 9. 相关资产
+## 10. 相关资产
 
 - 提案:`.agent/plans/proposals/projects/team-agent-pack/proposals/P-001-team-pack-contract-proposal.md`
 - CLI 生命周期:`.agent/plans/proposals/projects/team-agent-pack/proposals/P-002-team-pack-cli-lifecycle-proposal.md`

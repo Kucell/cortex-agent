@@ -47,8 +47,16 @@ function setupPackDir(root, content) {
 }
 
 function copyDir(src, dest) {
-  // Copy .agent-shared/ from source to destination.
-  fs.cpSync(path.join(src, ".agent-shared"), path.join(dest, ".agent-shared"), { recursive: true });
+  function copyTree(source, target) {
+    fs.mkdirSync(target, { recursive: true });
+    for (const entry of fs.readdirSync(source, { withFileTypes: true })) {
+      const sourcePath = path.join(source, entry.name);
+      const targetPath = path.join(target, entry.name);
+      if (entry.isDirectory()) copyTree(sourcePath, targetPath);
+      else fs.copyFileSync(sourcePath, targetPath);
+    }
+  }
+  copyTree(path.join(src, ".agent-shared"), path.join(dest, ".agent-shared"));
 }
 
 function tmpDir(label) {
@@ -136,9 +144,7 @@ check("alice has local change + upstream change → conflict", () => {
   assert.ok(fs.existsSync(conflictFile));
 });
 
-check("receipt after conflict still records only applied files", () => {
-  // Conflict files are NOT included in the new receipt baseline — only
-  // applied/add items advance the baseline.
+check("receipt after conflict preserves prior baselines without advancing them", () => {
   const root = tmpDir("conflict-receipt");
   fs.mkdirSync(path.join(root, ".agent-shared/rules"), { recursive: true });
   fs.writeFileSync(path.join(root, ".agent-shared/rules/a.md"), "A1");
@@ -181,10 +187,15 @@ check("receipt after conflict still records only applied files", () => {
   const bItem = plan2.items.find((it) => it.path === "rules/b.md");
   assert.strictEqual(aItem.decision, "conflict");
   assert.strictEqual(bItem.decision, "unchanged");
-  // Build receipt from plan2 — only apply items advance baseline
+  // Build receipt from plan2 — conflicts and unchanged items retain their
+  // previous baselines; neither advances to the incoming hash.
   const manifestSha2 = sha(JSON.stringify(manifest));
-  const receipt2 = t.buildReceiptFromPlan(manifest, manifestSha2, plan2);
-  assert.strictEqual(receipt2.files.length, 0, "no applied/add items — receipt baseline stays empty for this iteration");
+  const receipt2 = t.buildReceiptFromPlan(manifest, manifestSha2, plan2, receipt1);
+  assert.strictEqual(receipt2.files.length, 2);
+  assert.strictEqual(
+    receipt2.files.find((entry) => entry.path === "rules/a.md").baseline_sha256,
+    sha("A1"),
+  );
 });
 
 if (failures > 0) { console.error(`\nFAIL: ${failures}`); process.exit(1); }

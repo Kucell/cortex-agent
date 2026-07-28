@@ -140,6 +140,7 @@ check("SamHMI pilot: signers rejects unknown committer (defense in depth)", () =
     files: [{ path: "rules/x.md", sha256: sha("# X"), mode: "add" }],
   };
   fs.writeFileSync(path.join(root, ".agent-shared/team-pack.json"), JSON.stringify(manifest, null, 2));
+  execSync("git add .agent-shared && git -c commit.gpgsign=false commit -q -m team-pack", { cwd: root });
 
   const loaded = t.loadPack(root);
   assert.strictEqual(loaded.ok, true);

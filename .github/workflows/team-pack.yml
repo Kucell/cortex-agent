@@ -1,0 +1,36 @@
+name: Team Pack
+
+on:
+  push:
+    paths:
+      - "bin/cli.js"
+      - "lib/commands.js"
+      - "lib/team-pack.js"
+      - "lib/secret-scan.js"
+      - "tests/team-pack/**"
+      - ".github/workflows/team-pack.yml"
+  pull_request:
+    paths:
+      - "bin/cli.js"
+      - "lib/commands.js"
+      - "lib/team-pack.js"
+      - "lib/secret-scan.js"
+      - "tests/team-pack/**"
+      - ".github/workflows/team-pack.yml"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node: [14, 18, 22]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - run: node lib/secret-scan.test.js
+      - run: |
+          for test_file in tests/team-pack/*.test.js; do
+            node "$test_file"
+          done

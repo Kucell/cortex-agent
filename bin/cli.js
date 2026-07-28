@@ -123,6 +123,9 @@ const lang = options.lang || detectLangFromProject(languageProject) || defaultLa
 const templateDir = path.join(__dirname, "../templates", lang);
 
 const ctx = { cwd, args, command, options, lang, templateDir };
+const l1Ctx = options.project
+  ? { ...ctx, cwd: languageProject, options: { ...options, project: "" } }
+  : ctx;
 
 // ─── Dispatch ─────────────────────────────────────────────────────────────────
 
@@ -133,18 +136,18 @@ const ctx = { cwd, args, command, options, lang, templateDir };
     case "remove":      await removePlatforms(ctx); break;
     case "list":        listPlatforms(ctx); break;
     case "upgrade":
-      if (ctx.options.team) {
+      if (l1Ctx.options.team) {
         console.error("❌ `upgrade --team` is rejected: `upgrade` is additive-only and never touches Team Pack. Use `update --team` for Team Pack sync. See .agent/plans/proposals/projects/team-agent-pack/proposals/P-002-team-pack-cli-lifecycle-proposal.md §4.");
         process.exitCode = 3;
         break;
       }
-      await upgrade(ctx); break;
+      await upgrade(l1Ctx); break;
     case "update":
-      ctx.options.updateScripts = true;
-      if (ctx.options.team) {
-        ctx.options.teamPhase = "L1-then-L2";
+      l1Ctx.options.updateScripts = true;
+      if (l1Ctx.options.team) {
+        l1Ctx.options.teamPhase = "L1-then-L2";
       }
-      await upgrade(ctx);
+      await upgrade(l1Ctx);
       break;
     case "track":       trackAgent(ctx); break;
     case "untrack":     untrackAgent(ctx); break;
