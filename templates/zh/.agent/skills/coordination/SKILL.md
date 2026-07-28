@@ -25,6 +25,23 @@ Application Service 维护。
 ACK 只表示已收到通知，不代表批准 Decision、释放 Waitpoint，也不授权
 commit、push、merge、publish、dispatch 或任务状态变更。
 
+生产通知通过公共 CLI 运行：
+
+```bash
+cortex-agent notification pump --project . --consumer coordinator \
+  --target coordinator:root --adapter codex --once
+cortex-agent notification pump --project . --consumer coordinator \
+  --target coordinator:root --adapter codex --watch
+cortex-agent notification pump --project . --consumer coordinator \
+  --target coordinator:root --adapter codex --status
+cortex-agent notification pump --project . --consumer coordinator \
+  --target coordinator:root --adapter codex --stop
+```
+
+`watch` 是单 consumer 前台常驻进程，使用文件事件加有界退避；`status`
+只读，`stop` 幂等。宿主 capability 未验证时必须保留 pending 并报告
+`CORTEX_READY_HOST_ADAPTER_PENDING`，不得伪造投递或 ACK。
+
 运行态只保存在已 Git ignore 的 `.agent-runtime/coordination/`。Team Pack
 只能分发 `.agent/coordination/README.md`、`notification-policy.json` 与
 Schema；禁止分发 journal、snapshot、lease、cursor、delivery、socket、

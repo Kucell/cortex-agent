@@ -8,6 +8,24 @@ directory and must never be published through a Team Pack.
 The journal is authoritative. Snapshots and Management API results are rebuildable
 read-only projections; notification transports are optional acceleration layers.
 
+The public notification runtime is operated through:
+
+```bash
+cortex-agent notification pump --project . --consumer coordinator \
+  --target coordinator:root --adapter codex --once
+cortex-agent notification pump --project . --consumer coordinator \
+  --target coordinator:root --adapter codex --watch
+cortex-agent notification pump --project . --consumer coordinator \
+  --target coordinator:root --adapter codex --status
+cortex-agent notification pump --project . --consumer coordinator \
+  --target coordinator:root --adapter codex --stop
+```
+
+`watch` is a foreground, single-consumer process driven by filesystem events
+with bounded backoff. `status` is read-only and `stop` is idempotent. Adapters
+without a verified host capability return `deferred`, retain pending delivery,
+and must report `CORTEX_READY_HOST_ADAPTER_PENDING`; they never simulate ACK.
+
 `authorization-policy.json` is a project-controlled allowlist for workflow
 gates that are not already registered as `.agent/missions/M-*/mission-plan.md`.
 The CLI treats `--auth-context-json` as a local caller claim, not an independent
