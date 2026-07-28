@@ -38,6 +38,39 @@ test("task CLI delegates writes and reads without duplicating state rules", () =
   assert.equal(calls.length, 2);
 });
 
+test("task CLI accepts only the bounded auth context contract", () => {
+  const calls = [];
+  const service = {
+    submit(event, authContext) {
+      calls.push(authContext);
+      return { event, task: { state: "CREATED" } };
+    },
+  };
+  const event = { eventType: "task.created", taskId: "T-1" };
+  const invalid = executeCoordinationCommand([
+    "task", "create", "--event-json", JSON.stringify(event),
+    "--auth-context-json", JSON.stringify({
+      actorId: "coordinator", kind: "coordinator", sessionId: "session-1",
+      workflowGate: "M-008", trusted: true,
+    }),
+  ], { service });
+  assert.equal(invalid.error.code, "INVALID_AUTH_CONTEXT");
+  assert.equal(calls.length, 0);
+
+  const valid = executeCoordinationCommand([
+    "task", "create", "--event-json", JSON.stringify(event),
+    "--auth-context-json", JSON.stringify({
+      actorId: "coordinator", kind: "coordinator", sessionId: "session-1",
+      workflowGate: "M-008",
+    }),
+  ], { service });
+  assert.equal(valid.ok, true);
+  assert.deepEqual(calls[0], {
+    actorId: "coordinator", kind: "coordinator", sessionId: "session-1",
+    workflowGate: "M-008",
+  });
+});
+
 test("event ACK uses an injected store and never calls task submit", () => {
   let submitted = false;
   const service = {

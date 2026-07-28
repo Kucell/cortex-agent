@@ -17,8 +17,12 @@ const { createManualClock } = require("../lib/coordination/lease");
 const { NotificationPump } = require("../lib/coordination/notification-pump");
 
 const COORDINATOR = { actorId: "codex-coordinator", kind: "coordinator" };
-const CLAUDE = { actorId: "claude-worker", kind: "agent" };
-const SUCCESSOR = { actorId: "codex-recovery", kind: "agent" };
+const CLAUDE = {
+  actorId: "claude-worker", kind: "agent", sessionId: "session-claude",
+};
+const SUCCESSOR = {
+  actorId: "codex-recovery", kind: "agent", sessionId: "session-recovery",
+};
 const COORDINATOR_AUTH = {
   ...COORDINATOR,
   sessionId: "session-coordinator",
@@ -84,7 +88,7 @@ function submitLifecycle(app, taskId = "TASK-SAMHMI-PILOT") {
     eventType: "task.assigned",
     previousState: STATES.CREATED,
     currentState: STATES.ASSIGNED,
-    targets: [CLAUDE],
+    targets: [{ actorId: CLAUDE.actorId, kind: CLAUDE.kind }],
   }), COORDINATOR_AUTH);
   app.submit(event({
     taskId,
@@ -145,7 +149,10 @@ test("SamHMI pilot completes Codex to Claude to Codex input, restart, unacked an
     }),
   }).hookName, "TestStart");
 
-  let app = CoordinationApplicationService.open(root, { journal: { lock: false } });
+  let app = CoordinationApplicationService.open(root, {
+    journal: { lock: false },
+    authorization: { workflowGates: ["M-008"] },
+  });
   submitLifecycle(app);
   app.submit(event({
     eventId: "CE-INPUT-REQUIRED",
@@ -186,7 +193,10 @@ test("SamHMI pilot completes Codex to Claude to Codex input, restart, unacked an
   assert.equal(cursor.read().acknowledged && Object.keys(cursor.read().acknowledged).length, 0);
   app.close();
 
-  app = CoordinationApplicationService.open(root, { journal: { lock: false } });
+  app = CoordinationApplicationService.open(root, {
+    journal: { lock: false },
+    authorization: { workflowGates: ["M-008"] },
+  });
   cursor = new ConsumerCursorStore(path.join(root, "consumers"), "codex-coordinator");
   pump = new NotificationPump({
     journal: app.journal,
@@ -259,6 +269,7 @@ test("SamHMI pilot fails closed before a fenced takeover and completes with reco
   const app = CoordinationApplicationService.open(root, {
     clock,
     journal: { lock: false },
+    authorization: { workflowGates: ["M-008"] },
   });
   t.after(() => app.close());
 
@@ -313,6 +324,7 @@ test("SamHMI pilot fails closed before a fenced takeover and completes with reco
 
   const takeover = app.completeOwnershipTakeover(requested.requestId, {
     actorId: COORDINATOR.actorId,
+    sessionId: SUCCESSOR_AUTH.sessionId,
     recoveryEvidence: "operation:worktree-reconciled",
     ttl: 10_000,
   });
