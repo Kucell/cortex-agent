@@ -317,6 +317,18 @@ test("validateEvent rejects nested fields and values outside the machine schema"
   }
 });
 
+test("validateEvent keeps runtime IDs and nullable fields aligned with schema", () => {
+  assert.throws(() => validateEvent(makeEvent({ eventId: "event-1" })), {
+    key: "ERR_INVALID_EVENT",
+  });
+  assert.throws(() => validateEvent(makeEvent({
+    progress: { phase: null },
+  })), { key: "ERR_INVALID_EVENT" });
+  assert.throws(() => validateEvent(makeEvent({
+    requestedAction: { kind: "review", ref: null },
+  })), { key: "ERR_INVALID_EVENT" });
+});
+
 test("all EVENT_TYPES are in vocabulary", () => {
   assert.equal(EVENT_TYPES.length, 20);
   assert.ok(EVENT_TYPES.includes("task.created"));

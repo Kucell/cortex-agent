@@ -11,7 +11,10 @@
   ],
   "properties": {
     "schemaVersion": { "const": "1.0" },
-    "eventId": { "type": "string", "minLength": 1 },
+    "eventId": {
+      "type": "string",
+      "pattern": "^CE-[A-Za-z0-9._-]+$"
+    },
     "projectId": { "type": "string", "minLength": 1 },
     "taskId": { "type": "string", "minLength": 1 },
     "parentTaskId": { "type": ["string", "null"] },

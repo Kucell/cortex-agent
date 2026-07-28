@@ -77,14 +77,14 @@ function event(overrides) {
 function submitLifecycle(app, taskId = "TASK-SAMHMI-PILOT") {
   app.submit(event({
     taskId,
-    eventId: `${taskId}-CREATED`,
+    eventId: `CE-${taskId}-CREATED`,
     eventType: "task.created",
     previousState: null,
     currentState: STATES.CREATED,
   }), COORDINATOR_AUTH);
   app.submit(event({
     taskId,
-    eventId: `${taskId}-ASSIGNED`,
+    eventId: `CE-${taskId}-ASSIGNED`,
     eventType: "task.assigned",
     previousState: STATES.CREATED,
     currentState: STATES.ASSIGNED,
@@ -92,7 +92,7 @@ function submitLifecycle(app, taskId = "TASK-SAMHMI-PILOT") {
   }), COORDINATOR_AUTH);
   app.submit(event({
     taskId,
-    eventId: `${taskId}-ACCEPTED`,
+    eventId: `CE-${taskId}-ACCEPTED`,
     producer: CLAUDE,
     eventType: "task.accepted",
     previousState: STATES.ASSIGNED,
@@ -100,7 +100,7 @@ function submitLifecycle(app, taskId = "TASK-SAMHMI-PILOT") {
   }), CLAUDE_AUTH);
   app.submit(event({
     taskId,
-    eventId: `${taskId}-EXECUTING`,
+    eventId: `CE-${taskId}-EXECUTING`,
     producer: CLAUDE,
     eventType: "task.progress",
     previousState: STATES.ACCEPTED,

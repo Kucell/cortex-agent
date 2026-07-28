@@ -118,6 +118,59 @@ test("public task CLI opens the real Application Service for writes", () => {
   fs.rmSync(project, { recursive: true, force: true });
 });
 
+test("public task CLI resolves workflow gates from the project mission registry", () => {
+  const project = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-coordination-gate-"));
+  const run = (action, event, authContext) => spawnSync(process.execPath, [
+    path.join(ROOT, "bin/cli.js"), "task", action, "--project", project,
+    "--event-json", JSON.stringify(event),
+    ...(authContext
+      ? ["--auth-context-json", JSON.stringify(authContext)]
+      : []),
+  ], { cwd: ROOT, encoding: "utf8" });
+  const base = {
+    projectId: "project",
+    taskId: "T-GATE",
+    correlationId: "CORR-GATE",
+    producer: { actorId: "coordinator", kind: "coordinator" },
+    targets: [],
+    timestamp: "2026-07-28T00:00:00.000Z",
+    repository: { repositoryId: "repo" },
+    notification: { policy: "journal_only", dedupeKey: "gate" },
+  };
+  try {
+    assert.equal(run("create", createEvent({
+      ...base, eventId: "CE-gate-create", eventType: "task.created",
+      previousState: null, currentState: STATES.CREATED, sequence: 1,
+    })).status, 0);
+    assert.equal(run("assign", createEvent({
+      ...base, eventId: "CE-gate-assign", eventType: "task.assigned",
+      previousState: STATES.CREATED, currentState: STATES.ASSIGNED, sequence: 2,
+      targets: [{ actorId: "agent", kind: "agent" }],
+    })).status, 0);
+    const cancellation = createEvent({
+      ...base, eventId: "CE-gate-cancel", eventType: "task.cancel_requested",
+      previousState: STATES.ASSIGNED,
+      currentState: STATES.CANCEL_REQUESTED,
+      sequence: 3,
+    });
+    const claim = {
+      actorId: "coordinator", kind: "coordinator",
+      sessionId: "session-coordinator", workflowGate: "M-008",
+    };
+    const unknown = run("cancel", cancellation, claim);
+    assert.equal(unknown.status, 3);
+    assert.equal(JSON.parse(unknown.stdout).error.code, "ERR_ACTOR_MISMATCH");
+
+    const mission = path.join(project, ".agent/missions/M-008");
+    fs.mkdirSync(mission, { recursive: true });
+    fs.writeFileSync(path.join(mission, "mission-plan.md"), "# M-008\n");
+    const registered = run("cancel", cancellation, claim);
+    assert.equal(registered.status, 0, registered.stderr || registered.stdout);
+  } finally {
+    fs.rmSync(project, { recursive: true, force: true });
+  }
+});
+
 test("public event ACK opens a durable consumer store", () => {
   const project = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-coordination-ack-"));
   const event = createEvent({
