@@ -188,6 +188,28 @@ node .agent/skills/management-api/scripts/index.js inbox transition \
 
 可选的 **MCP 只读适配器**（`runtime-state-mcp`）通过 stdio 把同一份 `dashboard-state` 投影暴露给 Claude Code / Cursor 等 MCP 客户端，不直接读 `.agent/`。未安装时 Dashboard 与 CLI 路径不受影响。
 
+### Coordination 通知进程
+
+关键 Coordination 事件可由公共 Notification Pump 低延迟消费：
+
+```bash
+cortex-agent notification pump --project /path/to/project \
+  --consumer coordinator --target coordinator:root --adapter codex --once
+cortex-agent notification pump --project /path/to/project \
+  --consumer coordinator --target coordinator:root --adapter codex --watch
+cortex-agent notification pump --project /path/to/project \
+  --consumer coordinator --target coordinator:root --adapter codex --status
+cortex-agent notification pump --project /path/to/project \
+  --consumer coordinator --target coordinator:root --adapter codex --stop
+```
+
+`watch` 是显式启动的前台单实例进程，使用文件事件与有界退避；状态、锁、
+cursor 和重试记录仅写入 Git ignored 的 `.agent-runtime/coordination/`。
+`status` 只读，`stop` 幂等，通知 ACK 不会批准任何操作或改变任务状态。
+当前 Cortex 侧 transport 已就绪，但在 Codex Desktop 提供并验证真实 thread
+wakeup capability 前，状态保持 `CORTEX_READY_HOST_ADAPTER_PENDING`，不得用
+mock 投递替代真实宿主验收或删除既有兜底监控。
+
 ### 上手流程一览
 
 <p align="center">
