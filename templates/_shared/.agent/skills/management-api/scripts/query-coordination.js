@@ -38,7 +38,7 @@ function listEvents(journalDir) {
       .filter((name) => /^events-\d+\.jsonl$/.test(name))
       .sort();
   } catch (_) {
-    return [];
+    return { events: [], warnings: [] };
   }
   const events = [];
   const warnings = [];

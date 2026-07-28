@@ -14,6 +14,7 @@ const MANAGEMENT_FILES = [
   "normalize-token-usage.js",
   "projection-registry.json",
   "query-activity.js",
+  "query-coordination.js",
 ];
 
 function createProject(prefix = "cortex-management-cli-") {
