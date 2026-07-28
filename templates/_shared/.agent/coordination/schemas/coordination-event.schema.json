@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cortex-agent.local/schemas/coordination-event.schema.json",
+  "title": "Cortex Agent Coordination Event",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion", "eventId", "projectId", "taskId", "correlationId",
+    "producer", "targets", "eventType", "previousState", "currentState",
+    "timestamp", "sequence", "repository", "notification"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "1.0" },
+    "eventId": { "type": "string", "minLength": 1 },
+    "projectId": { "type": "string", "minLength": 1 },
+    "taskId": { "type": "string", "minLength": 1 },
+    "parentTaskId": { "type": ["string", "null"] },
+    "correlationId": { "type": "string", "minLength": 1 },
+    "producer": {
+      "type": "object",
+      "required": ["actorId", "kind"],
+      "properties": {
+        "actorId": { "type": "string", "minLength": 1 },
+        "kind": { "enum": ["coordinator", "agent", "user", "service", "adapter"] },
+        "vendor": { "type": ["string", "null"] },
+        "sessionId": { "type": ["string", "null"] }
+      }
+    },
+    "targets": { "type": "array", "items": { "type": "object" } },
+    "eventType": { "type": "string", "minLength": 1 },
+    "previousState": { "type": ["string", "null"] },
+    "currentState": { "type": "string", "minLength": 1 },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "sequence": { "type": "integer", "minimum": 1 },
+    "repository": { "type": "object" },
+    "fileOwnership": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["leaseId", "scope", "owner", "fencingToken", "expiresAt"],
+        "properties": {
+          "leaseId": { "type": "string" },
+          "scope": { "type": "string" },
+          "owner": { "type": "string" },
+          "fencingToken": { "type": "integer", "minimum": 1 },
+          "expiresAt": { "type": "string", "format": "date-time" }
+        }
+      }
+    },
+    "progress": { "type": ["object", "null"] },
+    "message": { "type": ["string", "null"], "maxLength": 4000 },
+    "evidence": { "type": "array", "items": { "type": "object" } },
+    "requestedAction": { "type": ["object", "null"] },
+    "expiresAt": { "type": ["string", "null"], "format": "date-time" },
+    "notification": { "type": "object" },
+    "operationId": { "type": ["string", "null"] },
+    "operationAttempt": { "type": ["integer", "null"], "minimum": 1 }
+  }
+}

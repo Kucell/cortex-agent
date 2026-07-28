@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cortex-agent.local/schemas/coordination-task-state.schema.json",
+  "title": "Cortex Agent Coordination Task State",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion", "taskId", "projectId", "state", "revision",
+    "lastSequence", "producerSequences", "createdAt", "updatedAt",
+    "ownership", "evidenceRefs", "pendingCriticalEvents"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "1.0" },
+    "taskId": { "type": "string", "minLength": 1 },
+    "projectId": { "type": "string", "minLength": 1 },
+    "parentTaskId": { "type": ["string", "null"] },
+    "correlationId": { "type": ["string", "null"] },
+    "state": {
+      "enum": [
+        "CREATED", "ASSIGNED", "ACCEPTED", "EXECUTING", "TESTING",
+        "READY_FOR_REVIEW", "WAITING_FOR_INPUT", "BLOCKED", "FAILED",
+        "CANCEL_REQUESTED", "CANCELLED", "TAKEOVER_REQUESTED",
+        "TAKEN_OVER", "STALE", "COMPLETED"
+      ]
+    },
+    "revision": { "type": "integer", "minimum": 1 },
+    "lastSequence": { "type": "integer", "minimum": 1 },
+    "producerSequences": {
+      "type": "object",
+      "additionalProperties": { "type": "integer", "minimum": 1 }
+    },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "updatedAt": { "type": "string", "format": "date-time" },
+    "heartbeatDueAt": { "type": ["string", "null"], "format": "date-time" },
+    "lastHeartbeatAt": { "type": ["string", "null"], "format": "date-time" },
+    "lastEventId": { "type": ["string", "null"] },
+    "lastEventAt": { "type": ["string", "null"], "format": "date-time" },
+    "assignee": { "type": ["string", "null"] },
+    "ownership": { "type": "array", "items": { "type": "object" } },
+    "progress": { "type": ["object", "null"] },
+    "requestedAction": { "type": ["object", "null"] },
+    "evidenceRefs": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+    "pendingCriticalEvents": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+    "operationId": { "type": ["string", "null"] },
+    "operationAttempt": { "type": ["integer", "null"], "minimum": 1 }
+  }
+}

@@ -95,8 +95,7 @@ test("Claude uses hooks when available and always exposes explicit fallback", ()
     processBoundaryEvidence: true,
   });
   const report = adapter.buildReport("task.testing", {
-    taskId: "TASK-010",
-    actorId: "claude-worker",
+    event: { eventType: "task.testing" },
   });
   assert.equal(adapter.reportingMode, REPORTING_MODES.HOOK);
   assert.equal(report.hookName, "TestStart");
@@ -114,8 +113,7 @@ test("Claude falls back to explicit CLI when hooks are unavailable", () => {
 test("Claude uses explicit CLI for events without a corresponding hook", () => {
   const adapter = createClaudeAdapter({ hooks: true, explicitCli: true });
   const report = adapter.buildReport("task.heartbeat", {
-    taskId: "TASK-010",
-    actorId: "claude-worker",
+    event: { eventType: "task.heartbeat" },
   });
   assert.equal(report.mode, REPORTING_MODES.EXPLICIT_CLI);
   assert.equal(report.hookName, null);
@@ -123,8 +121,7 @@ test("Claude uses explicit CLI for events without a corresponding hook", () => {
 
 test("explicit report is argv data and rejects unsupported events", () => {
   const report = buildExplicitReport("task.heartbeat", {
-    taskId: "TASK-010",
-    actorId: "claude-worker",
+    event: { eventType: "task.heartbeat" },
   });
   assert.equal(report.executable, "cortex-agent");
   assert.equal(typeof report.args, "object");
