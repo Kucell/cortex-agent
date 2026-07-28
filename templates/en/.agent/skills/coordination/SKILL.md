@@ -25,6 +25,24 @@ schema, actor, sequence, transition, journal, and snapshot rules.
 ACK confirms delivery only. It never approves a Decision, releases a Waitpoint,
 commits, pushes, merges, publishes, dispatches, or changes task state.
 
+Operate production notifications through the public CLI:
+
+```bash
+cortex-agent notification pump --project . --consumer coordinator \
+  --target coordinator:root --adapter codex --once
+cortex-agent notification pump --project . --consumer coordinator \
+  --target coordinator:root --adapter codex --watch
+cortex-agent notification pump --project . --consumer coordinator \
+  --target coordinator:root --adapter codex --status
+cortex-agent notification pump --project . --consumer coordinator \
+  --target coordinator:root --adapter codex --stop
+```
+
+`watch` is a foreground single-consumer process using filesystem events and
+bounded backoff; `status` is read-only and `stop` is idempotent. Until the host
+capability is verified, retain pending delivery and report
+`CORTEX_READY_HOST_ADAPTER_PENDING`; never simulate delivery or ACK.
+
 Runtime data stays under `.agent-runtime/coordination/` and is Git ignored.
 Team Packs may distribute only `.agent/coordination/README.md`,
 `notification-policy.json`, and schemas; never journals, snapshots, leases,

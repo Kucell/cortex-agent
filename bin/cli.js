@@ -22,6 +22,7 @@ const {
   inbox,
   waitpoints,
   coordination,
+  notification,
   mcp,
   managementQuery,
   phaseZeroAutomation,
@@ -162,6 +163,7 @@ const l1Ctx = options.project
     case "waitpoints":  waitpoints(ctx); break;
     case "task":
     case "event":       coordination(ctx); break;
+    case "notification": await notification(ctx); break;
     case "mcp":         await mcp(ctx); break;
     case "query":       managementQuery(ctx); break;
     case "dispatch":
