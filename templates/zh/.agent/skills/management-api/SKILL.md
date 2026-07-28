@@ -24,6 +24,8 @@ cortex-agent query inbox --project .
 cortex-agent query decisions --project .
 cortex-agent query waitpoints --project .
 cortex-agent query activity --project . --since 2026-07-13 --until 2026-07-19
+cortex-agent query coordination-tasks --project . --state READY_FOR_REVIEW
+cortex-agent query coordination-events --project . --task T-001
 cortex-agent runs checkpoint --project . --run-id R-T005 --task-id T-005 --type validation_started --phase validating --activity "Running focused tests"
 cortex-agent queues upsert --project . --queue-id Q-batch-1 --gate parallel --name "Batch 1" --concurrency-limit 2
 cortex-agent sessions heartbeat --project . --session-id S-dashboard --agent-id dashboard-manager --activity "Refreshing dashboard"
@@ -117,6 +119,7 @@ Prefer these stable `events[].type` values:
 - 调用方提供的日期时间必须是有效 RFC 3339 值，校验通过后才能写入记录。
 - Inbox 状态转换必须校验 recipient 或 originating workflow 所有权。确认消息不会批准 Decision，也不会释放 Waitpoint。
 - Dashboard 和所有 `query` 命令均为 read-only，不得解析 Decision 或释放 Waitpoint。
+- Coordination projection 只读 `.agent-runtime/coordination/`，不得派生或回写 stale 状态；运行态缺失时返回兼容的空结果。
 - Runtime JSON writes use a temporary sibling file followed by atomic rename; read-only queries never write derived stale state.
 - Runtime 与协作对象位于 `.agent/runs/`、`.agent/queues/`、`.agent/sessions/`、`.agent/inbox/`、`.agent/decisions/` 和 `.agent/waitpoints/`。
 - PRD objects live under `.agent/prd/` or `.agent/prds/`; dashboard-state exposes `prds` and `prd_summary`.

@@ -24,6 +24,8 @@ cortex-agent query inbox --project .
 cortex-agent query decisions --project .
 cortex-agent query waitpoints --project .
 cortex-agent query activity --project . --since 2026-07-13 --until 2026-07-19
+cortex-agent query coordination-tasks --project . --state READY_FOR_REVIEW
+cortex-agent query coordination-events --project . --task T-001
 cortex-agent runs checkpoint --project . --run-id R-T005 --task-id T-005 --type validation_started --phase validating --activity "Running focused tests"
 cortex-agent queues upsert --project . --queue-id Q-batch-1 --gate parallel --name "Batch 1" --concurrency-limit 2
 cortex-agent sessions heartbeat --project . --session-id S-dashboard --agent-id dashboard-manager --activity "Refreshing dashboard"
@@ -117,6 +119,7 @@ Prefer these stable `events[].type` values:
 - Caller-provided date-time values must be valid RFC 3339 values before any record is written.
 - Inbox transitions enforce recipient or originating-workflow ownership. Acknowledging a message never approves a Decision or releases a Waitpoint.
 - Dashboard and all `query` commands are read-only; they cannot resolve Decisions or release Waitpoints.
+- Coordination projections read `.agent-runtime/coordination/` without deriving or writing stale state. Missing runtime data is an empty compatible result.
 - Runtime JSON writes use a temporary sibling file followed by atomic rename; read-only queries never write derived stale state.
 - Runtime and coordination objects live under `.agent/runs/`, `.agent/queues/`, `.agent/sessions/`, `.agent/inbox/`, `.agent/decisions/`, and `.agent/waitpoints/`.
 - PRD objects live under `.agent/prd/` or `.agent/prds/`; dashboard-state exposes `prds` and `prd_summary`.
