@@ -9,12 +9,13 @@ const {
   EVIDENCE_KINDS, REQUESTED_ACTION_KINDS, RETENTION,
   assertSchemaVersion, isTerminalState, isValidTransition, getTransitionRule,
   assertValidTransition, createEvent, validateEvent,
-  createTaskState, validateTaskState, createEventId, createLeaseId,
-  LeaseManager, ConsumerCursor, validateEvidenceRef, validateEvidenceRefs,
+  createTaskState, validateTaskState, createEventId,
+  validateEvidenceRef, validateEvidenceRefs,
   redactSensitive, isCriticalEventType, isTakenOverTransitional,
-  CRITICAL_EVENT_TYPES, DEFAULT_LEASE_TTL_MS,
+  CRITICAL_EVENT_TYPES,
   assertCompletedSyncToRun, assertAbsentState,
 } = require("../lib/coordination/contract");
+const { LeaseManager, DEFAULT_LEASE_TTL_MS } = require("../lib/coordination/lease");
 const { CODES, CoordinationError, byCode, byKey } = require("../lib/coordination/errors");
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
@@ -428,12 +429,6 @@ test("LeaseManager: release with wrong actor throws", () => {
   }, { key: "ERR_LEASE_OWNER_MISMATCH" });
 });
 
-test("LeaseManager: isExpired returns true for expired lease", () => {
-  const lm = new LeaseManager();
-  const lease = lm.acquire("src/", "agent-a", { ttl: -1 });
-  assert.ok(lm.isExpired(lease.leaseId));
-});
-
 test("LeaseManager: isExpired returns true for released lease", () => {
   const lm = new LeaseManager();
   const lease = lm.acquire("src/", "agent-a");
@@ -446,74 +441,11 @@ test("LeaseManager: isExpired returns true for unknown lease", () => {
   assert.ok(lm.isExpired("LEASE-nonexistent"));
 });
 
-test("LeaseManager: listActiveLeases returns only active leases", () => {
-  const lm = new LeaseManager();
-  lm.acquire("src/", "agent-a");
-  lm.acquire("docs/", "agent-b", { ttl: -1 }); // expired
-  assert.equal(lm.listActiveLeases().length, 1);
-});
-
 test("LeaseManager: findConflicts", () => {
   const lm = new LeaseManager();
   lm.acquire("src/", "agent-a");
   assert.equal(lm.findConflicts("src/", "agent-b").length, 1);
   assert.equal(lm.findConflicts("src/", "agent-a").length, 0);
-});
-
-// ─── 6. Consumer Cursor / ACK ──────────────────────────────────────────────
-
-test("ConsumerCursor: register creates consumer", () => {
-  const cc = new ConsumerCursor();
-  const cursor = cc.register("coordinator-1");
-  assert.deepEqual(cursor.taskCursors, {});
-});
-
-test("ConsumerCursor: getConsumer throws for unknown", () => {
-  const cc = new ConsumerCursor();
-  assert.throws(() => cc.getConsumer("unknown"), { key: "ERR_CONSUMER_NOT_FOUND" });
-});
-
-test("ConsumerCursor: ackEvent marks event as acknowledged", () => {
-  const cc = new ConsumerCursor();
-  cc.register("coordinator-1");
-  const result = cc.ackEvent("coordinator-1", "TASK-001", "CE-001", 1);
-  assert.equal(result.lastSequence, 1);
-  assert.equal(result.ackedCount, 1);
-  assert.ok(cc.isAcked("coordinator-1", "TASK-001", "CE-001"));
-});
-
-test("ConsumerCursor: ackEvent dedupe throws ERR_ACK_ALREADY", () => {
-  const cc = new ConsumerCursor();
-  cc.register("coordinator-1");
-  cc.ackEvent("coordinator-1", "TASK-001", "CE-001", 1);
-  assert.throws(() => {
-    cc.ackEvent("coordinator-1", "TASK-001", "CE-001", 1);
-  }, { key: "ERR_ACK_ALREADY" });
-});
-
-test("ConsumerCursor: ackEvent advances sequence only forward", () => {
-  const cc = new ConsumerCursor();
-  cc.register("coordinator-1");
-  cc.ackEvent("coordinator-1", "TASK-001", "CE-001", 5);
-  cc.ackEvent("coordinator-1", "TASK-001", "CE-002", 3); // lower sequence, should not change lastSequence
-  const cursor = cc.getCursor("coordinator-1", "TASK-001");
-  assert.equal(cursor.lastSequence, 5);
-});
-
-test("ConsumerCursor: getPendingCriticalEvents filters acked events", () => {
-  const cc = new ConsumerCursor();
-  cc.register("coordinator-1");
-  const taskState = { taskId: "TASK-001", pendingCriticalEvents: ["CE-001", "CE-002", "CE-003"] };
-  assert.deepEqual(cc.getPendingCriticalEvents("coordinator-1", taskState), ["CE-001", "CE-002", "CE-003"]);
-  cc.ackEvent("coordinator-1", "TASK-001", "CE-001", 1);
-  assert.deepEqual(cc.getPendingCriticalEvents("coordinator-1", taskState), ["CE-002", "CE-003"]);
-});
-
-test("ConsumerCursor: advanceSequence", () => {
-  const cc = new ConsumerCursor();
-  cc.register("coordinator-1");
-  const result = cc.advanceSequence("coordinator-1", "TASK-001", 10);
-  assert.equal(result.lastSequence, 10);
 });
 
 // ─── 7. Error Codes ────────────────────────────────────────────────────────
@@ -781,11 +713,6 @@ test("createEventId returns CE- prefixed ID", () => {
   assert.ok(id.startsWith("CE-"));
 });
 
-test("createLeaseId returns LEASE- prefixed ID", () => {
-  const id = createLeaseId();
-  assert.ok(id.startsWith("LEASE-"));
-});
-
 // ─── 24. Evidence refs in event creation ───────────────────────────────────
 
 test("createEvent validates evidence refs", () => {
@@ -828,7 +755,6 @@ test("contract exports all required symbols", () => {
     "assertSchemaVersion", "isTerminalState", "isValidTransition",
     "getTransitionRule", "assertValidTransition",
     "createEvent", "validateEvent", "createTaskState", "validateTaskState",
-    "LeaseManager", "ConsumerCursor",
     "validateEvidenceRef", "validateEvidenceRefs",
     "redactSensitive", "isCriticalEventType",
     "assertCompletedSyncToRun", "isTakenOverTransitional", "assertAbsentState",

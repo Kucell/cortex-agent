@@ -326,7 +326,7 @@ test("replay across a gap throws and does not produce a partial advanced state",
   const gapEvent = makeEvent({
     eventId: "CE-G", eventType: "task.progress",
     previousState: STATES.ACCEPTED, currentState: STATES.EXECUTING,
-    sequence: 99, targets: [],
+    sequence: 99, targets: [], timestamp: "2026-07-28T00:01:39.000Z",
   });
   assert.throws(() => replay([...events, gapEvent]), { key: "ERR_SEQUENCE_GAP" });
 });
@@ -769,7 +769,7 @@ test("recoverSnapshot with a gapped event stream fails closed (no guessing)", ()
     const gap = makeEvent({
       eventId: "CE-G", eventType: "task.progress",
       previousState: STATES.ACCEPTED, currentState: STATES.EXECUTING,
-      sequence: 99, targets: [],
+      sequence: 99, targets: [], timestamp: "2026-07-28T00:01:39.000Z",
     });
     assert.throws(() => recoverSnapshot(dir, "TASK-001", [...events, gap]), { key: "ERR_SEQUENCE_GAP" });
   } finally {
