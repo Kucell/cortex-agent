@@ -226,6 +226,13 @@ test("executeNotificationCommand --once delegates to the injected pump", async (
   assert.equal(result.ok, true);
   assert.equal(result.exitCode, EXIT.SUCCESS);
   assert.equal(result.action, "once");
+  assert.deepEqual(result.report, {
+    scanned: 0,
+    delivered: 0,
+    acknowledged: 0,
+    deferred: 0,
+    failed: 0,
+  });
   assert.equal(calls.runOnce, 1);
   assert.equal(calls.stop, 0);
 });
@@ -286,35 +293,29 @@ test("executeNotificationCommand maps pump errors to runtime exit code", async (
   assert.equal(result.error.details.originalCode, "ERR_JOURNAL_READ");
 });
 
-test("executeNotificationCommand --watch exits via stop flag without sleeping full interval", async () => {
+test("executeNotificationCommand --watch delegates to the production runtime", async () => {
+  let watched = 0;
   const harness = {
     async resolvePump() {
       return {
-        pump: { async runOnce() { return { scanned: 0, delivered: 1 }; } },
+        pump: {
+          async runOnce() { return { scanned: 0, delivered: 1 }; },
+          async watch() { watched += 1; },
+        },
         stop: async () => {},
         getStatus: async () => ({}),
       };
     },
     notify: () => {},
   };
-  const start = Date.now();
-  const runPromise = notificationCli.executeNotificationCommand(
+  const result = await notificationCli.executeNotificationCommand(
     withArgs("--watch", "--interval-ms", "10000"),
     harness,
   );
-  // Trigger stop after a short delay (well under the 10s interval).
-  setTimeout(() => {
-    if (typeof global.__cortexNotificationStopFlag === "function") {
-      global.__cortexNotificationStopFlag();
-    }
-  }, 100);
-  const result = await runPromise;
-  const elapsed = Date.now() - start;
   assert.equal(result.ok, true);
   assert.equal(result.exitCode, EXIT.SUCCESS);
   assert.equal(result.action, "watch");
-  assert.ok(elapsed < 5000, `watch loop did not respect stop flag (elapsed=${elapsed}ms)`);
-  assert.equal(global.__cortexNotificationStopFlag, undefined, "stop flag must be cleared after watch ends");
+  assert.equal(watched, 1);
 });
 
 // ─── help notification --json / contract discovery ──────────────────────────
