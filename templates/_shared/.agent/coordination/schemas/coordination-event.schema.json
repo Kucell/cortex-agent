@@ -18,6 +18,7 @@
     "correlationId": { "type": "string", "minLength": 1 },
     "producer": {
       "type": "object",
+      "additionalProperties": false,
       "required": ["actorId", "kind"],
       "properties": {
         "actorId": { "type": "string", "minLength": 1 },
@@ -26,17 +27,63 @@
         "sessionId": { "type": ["string", "null"] }
       }
     },
-    "targets": { "type": "array", "items": { "type": "object" } },
-    "eventType": { "type": "string", "minLength": 1 },
-    "previousState": { "type": ["string", "null"] },
-    "currentState": { "type": "string", "minLength": 1 },
+    "targets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["actorId"],
+        "properties": {
+          "actorId": { "type": "string", "minLength": 1 },
+          "kind": { "enum": ["coordinator", "agent", "user", "service", "adapter"] }
+        }
+      }
+    },
+    "eventType": {
+      "enum": [
+        "task.created", "task.assigned", "task.accepted", "task.progress",
+        "task.heartbeat", "task.testing", "task.ready_for_review",
+        "task.completed", "task.failed", "task.blocked", "task.input_required",
+        "task.cancel_requested", "task.cancelled", "task.takeover_requested",
+        "task.taken_over", "task.stale", "ownership.acquired",
+        "ownership.released", "ownership.conflict", "artifact.ready"
+      ]
+    },
+    "previousState": {
+      "type": ["string", "null"],
+      "enum": [
+        null, "CREATED", "ASSIGNED", "ACCEPTED", "EXECUTING", "TESTING",
+        "READY_FOR_REVIEW", "WAITING_FOR_INPUT", "BLOCKED", "FAILED",
+        "CANCEL_REQUESTED", "CANCELLED", "TAKEOVER_REQUESTED",
+        "TAKEN_OVER", "STALE", "COMPLETED"
+      ]
+    },
+    "currentState": {
+      "enum": [
+        "CREATED", "ASSIGNED", "ACCEPTED", "EXECUTING", "TESTING",
+        "READY_FOR_REVIEW", "WAITING_FOR_INPUT", "BLOCKED", "FAILED",
+        "CANCEL_REQUESTED", "CANCELLED", "TAKEOVER_REQUESTED",
+        "TAKEN_OVER", "STALE", "COMPLETED"
+      ]
+    },
     "timestamp": { "type": "string", "format": "date-time" },
     "sequence": { "type": "integer", "minimum": 1 },
-    "repository": { "type": "object" },
+    "repository": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repositoryId"],
+      "properties": {
+        "repositoryId": { "type": "string", "minLength": 1 },
+        "worktreeId": { "type": ["string", "null"] },
+        "branch": { "type": ["string", "null"] },
+        "baselineCommit": { "type": ["string", "null"] }
+      }
+    },
     "fileOwnership": {
       "type": "array",
       "items": {
         "type": "object",
+        "additionalProperties": false,
         "required": ["leaseId", "scope", "owner", "fencingToken", "expiresAt"],
         "properties": {
           "leaseId": { "type": "string" },
@@ -47,12 +94,51 @@
         }
       }
     },
-    "progress": { "type": ["object", "null"] },
+    "progress": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "properties": {
+        "phase": { "type": "string", "minLength": 1 },
+        "percent": { "type": "number", "minimum": 0, "maximum": 100 },
+        "summary": { "type": "string", "maxLength": 4000 }
+      }
+    },
     "message": { "type": ["string", "null"], "maxLength": 4000 },
-    "evidence": { "type": "array", "items": { "type": "object" } },
-    "requestedAction": { "type": ["object", "null"] },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["kind", "ref"],
+        "properties": {
+          "kind": { "enum": ["artifact", "validation", "run", "operation", "log_cursor"] },
+          "ref": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "requestedAction": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "enum": ["provide_input", "review", "approve", "stop", "release_ownership", "takeover"] },
+        "ref": { "type": "string", "minLength": 1 },
+        "decisionRef": { "type": "string", "minLength": 1 },
+        "waitpointRef": { "type": "string", "minLength": 1 },
+        "message": { "type": "string", "minLength": 1 }
+      },
+      "required": ["kind"]
+    },
     "expiresAt": { "type": ["string", "null"], "format": "date-time" },
-    "notification": { "type": "object" },
+    "notification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["policy"],
+      "properties": {
+        "policy": { "enum": ["journal_only", "coordinator_notify", "user_attention", "urgent"] },
+        "dedupeKey": { "type": "string", "minLength": 1 },
+        "ackRequired": { "type": "boolean" }
+      }
+    },
     "operationId": { "type": ["string", "null"] },
     "operationAttempt": { "type": ["integer", "null"], "minimum": 1 }
   }

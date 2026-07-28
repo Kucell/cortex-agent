@@ -131,6 +131,42 @@ test("explicit report is argv data and rejects unsupported events", () => {
   }), /unsupported report event/);
 });
 
+test("Claude explicit fallback carries a bounded auth context for owned work", () => {
+  const report = buildExplicitReport("task.progress", {
+    event: {
+      eventType: "task.progress",
+      producer: {
+        actorId: "claude-worker",
+        kind: "agent",
+        sessionId: "SESSION-010",
+      },
+    },
+    authContext: {
+      actorId: "claude-worker",
+      kind: "agent",
+      sessionId: "SESSION-010",
+    },
+  });
+  const marker = report.args.indexOf("--auth-context-json");
+  assert.ok(marker > 0);
+  assert.deepEqual(JSON.parse(report.args[marker + 1]), {
+    actorId: "claude-worker",
+    kind: "agent",
+    sessionId: "SESSION-010",
+  });
+  assert.throws(() => buildExplicitReport("task.progress", {
+    event: {
+      eventType: "task.progress",
+      producer: { actorId: "claude-worker", kind: "agent" },
+    },
+    authContext: {
+      actorId: "other-agent",
+      kind: "agent",
+      sessionId: "SESSION-010",
+    },
+  }), /match event producer/);
+});
+
 test("Claude exit evidence never guesses FAILED or completion", () => {
   const adapter = createClaudeAdapter({
     hooks: false,

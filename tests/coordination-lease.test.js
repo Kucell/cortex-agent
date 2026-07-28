@@ -532,6 +532,25 @@ test("completeTakeover within deadline + evidence -> TAKEN_OVER with higher fenc
   assert.equal(taken[0].details.newOwner, "agent-b");
 });
 
+test("completeTakeover binds the successor lease to its authenticated session", () => {
+  const lm = new LeaseManager({ clock: createManualClock(0) });
+  const previous = lm.acquire("src/**", "agent-a", {
+    actorId: "session-a",
+    ttl: 1,
+  });
+  lm.markStale(previous.leaseId, { evidence: "RUN-stale" });
+  const request = lm.requestTakeover("src/**", "agent-b", {
+    actorId: "coordinator",
+  });
+  const completed = lm.completeTakeover(request.requestId, {
+    actorId: "coordinator",
+    sessionId: "session-b",
+    recoveryEvidence: "RUN-recovered",
+  });
+  assert.equal(completed.lease.owner, "agent-b");
+  assert.equal(completed.lease.actorId, "session-b");
+});
+
 test("completeTakeover past deadline throws TAKEOVER_REQUEST_TIMEOUT", () => {
   const clock = createManualClock(0);
   const lm = mk(clock);
