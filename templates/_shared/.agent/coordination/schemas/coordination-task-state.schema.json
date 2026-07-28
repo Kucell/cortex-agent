@@ -24,10 +24,10 @@
       ]
     },
     "revision": { "type": "integer", "minimum": 1 },
-    "lastSequence": { "type": "integer", "minimum": 1 },
+    "lastSequence": { "type": "integer", "minimum": 0 },
     "producerSequences": {
       "type": "object",
-      "additionalProperties": { "type": "integer", "minimum": 1 }
+      "additionalProperties": { "type": "integer", "minimum": 0 }
     },
     "createdAt": { "type": "string", "format": "date-time" },
     "updatedAt": { "type": "string", "format": "date-time" },
@@ -36,9 +36,42 @@
     "lastEventId": { "type": ["string", "null"] },
     "lastEventAt": { "type": ["string", "null"], "format": "date-time" },
     "assignee": { "type": ["string", "null"] },
-    "ownership": { "type": "array", "items": { "type": "object" } },
-    "progress": { "type": ["object", "null"] },
-    "requestedAction": { "type": ["object", "null"] },
+    "ownership": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["leaseId", "scope", "owner", "fencingToken", "expiresAt"],
+        "properties": {
+          "leaseId": { "type": "string", "minLength": 1 },
+          "scope": { "type": "string", "minLength": 1 },
+          "owner": { "type": "string", "minLength": 1 },
+          "fencingToken": { "type": "integer", "minimum": 1 },
+          "expiresAt": { "type": "string", "format": "date-time" }
+        }
+      }
+    },
+    "progress": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "properties": {
+        "phase": { "type": "string", "minLength": 1 },
+        "percent": { "type": "number", "minimum": 0, "maximum": 100 },
+        "summary": { "type": "string", "maxLength": 4000 }
+      }
+    },
+    "requestedAction": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "enum": ["provide_input", "review", "approve", "stop", "release_ownership", "takeover"] },
+        "ref": { "type": "string", "minLength": 1 },
+        "decisionRef": { "type": "string", "minLength": 1 },
+        "waitpointRef": { "type": "string", "minLength": 1 },
+        "message": { "type": "string", "minLength": 1 }
+      },
+      "required": ["kind"]
+    },
     "evidenceRefs": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
     "pendingCriticalEvents": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
     "operationId": { "type": ["string", "null"] },

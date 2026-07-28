@@ -300,6 +300,23 @@ test("validateEvent passes for valid event", () => {
   assert.doesNotThrow(() => validateEvent(makeEvent()));
 });
 
+test("validateEvent rejects nested fields and values outside the machine schema", () => {
+  const cases = [
+    { producer: { actorId: "agent-1", kind: "agent", unexpected: true } },
+    { targets: [{ actorId: "agent-1", kind: "unknown" }] },
+    { repository: { repositoryId: "repo", privatePath: "/Users/alice/repo" } },
+    { notification: { policy: "sometimes", dedupeKey: "event" } },
+    { evidence: [{ kind: "unknown", ref: "ARTIFACT-1" }] },
+    { requestedAction: { kind: "unknown" } },
+    { progress: { percent: 101 } },
+  ];
+  for (const overrides of cases) {
+    assert.throws(() => validateEvent(makeEvent(overrides)), {
+      key: "ERR_INVALID_EVENT",
+    });
+  }
+});
+
 test("all EVENT_TYPES are in vocabulary", () => {
   assert.equal(EVENT_TYPES.length, 20);
   assert.ok(EVENT_TYPES.includes("task.created"));
@@ -352,6 +369,25 @@ test("validateTaskState validates required fields", () => {
 
 test("validateTaskState passes for valid state", () => {
   assert.doesNotThrow(() => validateTaskState(createTaskState({ taskId: "T-1", projectId: "p" })));
+});
+
+test("validateTaskState rejects unknown and malformed nested state fields", () => {
+  const state = createTaskState({ taskId: "T-1", projectId: "p" });
+  state.unexpected = true;
+  assert.throws(() => validateTaskState(state), { key: "ERR_INVALID_STATE" });
+
+  const malformed = createTaskState({
+    taskId: "T-1",
+    projectId: "p",
+    ownership: [{
+      leaseId: "LEASE-1",
+      scope: "src/**",
+      owner: "agent-1",
+      fencingToken: 0,
+      expiresAt: "not-a-date",
+    }],
+  });
+  assert.throws(() => validateTaskState(malformed), { key: "ERR_INVALID_STATE" });
 });
 
 // ─── 5. Lease ──────────────────────────────────────────────────────────────
