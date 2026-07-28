@@ -6,6 +6,7 @@ const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
 
+const { createEvent, STATES } = require("../lib/coordination/contract");
 const { ConsumerCursorStore } = require("../lib/coordination/consumer-cursor");
 const { Journal } = require("../lib/coordination/journal");
 const { LeaseManager, createManualClock } = require("../lib/coordination/lease");
@@ -13,6 +14,24 @@ const { writeLeaseState } = require("../lib/coordination/lease-store");
 
 function freshDir(prefix) {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+}
+
+function event() {
+  return createEvent({
+    eventId: "CE-lock-1",
+    projectId: "project",
+    taskId: "TASK-lock",
+    correlationId: "CORR-lock",
+    producer: { actorId: "agent-a", kind: "agent" },
+    targets: [],
+    eventType: "task.created",
+    previousState: null,
+    currentState: STATES.CREATED,
+    timestamp: "2026-07-28T00:00:00.000Z",
+    sequence: 1,
+    repository: { repositoryId: "repo" },
+    notification: { policy: "journal_only", dedupeKey: "lock" },
+  });
 }
 
 test("journal renews a live lock before its TTL expires", async (t) => {
@@ -39,7 +58,7 @@ test("journal rejects stale-lock reclaim when the observed owner changes before 
     owner: "observed-stale",
     acquiredAt: "2020-01-01T00:00:00.000Z",
     expiresAt: "2020-01-01T00:01:00.000Z",
-    pid: 1,
+    pid: 999999,
   }));
   const originalRename = fs.renameSync;
   let injected = false;
@@ -63,6 +82,63 @@ test("journal rejects stale-lock reclaim when the observed owner changes before 
       error.details && error.details.reason === "reclaim_raced"
   );
   assert.equal(JSON.parse(fs.readFileSync(lockFile, "utf8")).owner, "replacement-owner");
+});
+
+test("busy event loop beyond TTL cannot make a live local writer reclaimable", (t) => {
+  const dir = freshDir("cortex-journal-busy-");
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const journal = Journal.open(dir, { lockTtlMs: 20, fsync: false });
+  t.after(() => journal.close());
+
+  const blockedUntil = Date.now() + 60;
+  while (Date.now() < blockedUntil) {
+    // Deliberately prevent the renewal timer from running past the lock TTL.
+  }
+
+  assert.throws(
+    () => Journal.open(dir, { lockTtlMs: 20, fsync: false }),
+    (error) => error && error.key === "ERR_LEASE_CONFLICT" &&
+      error.details && error.details.reason === "owner_process_alive"
+  );
+  assert.equal(journal.append(event()).appended, true);
+});
+
+test("append fails closed after lock identity is replaced", (t) => {
+  const dir = freshDir("cortex-journal-fencing-");
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const journal = Journal.open(dir, { lockTtlMs: 60_000, fsync: false });
+  t.after(() => journal.close());
+  const lockFile = path.join(dir, "journal.lock");
+  const lock = JSON.parse(fs.readFileSync(lockFile, "utf8"));
+  fs.writeFileSync(lockFile, JSON.stringify({ ...lock, token: "replacement-token" }));
+
+  assert.throws(
+    () => journal.append(event()),
+    (error) => error && error.key === "ERR_LEASE_CONFLICT" &&
+      error.details && error.details.reason === "lock_ownership_lost"
+  );
+});
+
+test("renewal I/O failure is retained and blocks later append", (t) => {
+  const dir = freshDir("cortex-journal-renew-fail-");
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const journal = Journal.open(dir, { lockTtlMs: 60_000, fsync: false });
+  t.after(() => journal.close());
+  const originalWrite = fs.writeSync;
+  fs.writeSync = () => {
+    throw Object.assign(new Error("forced renewal failure"), { code: "EIO" });
+  };
+  try {
+    journal._renewLock();
+  } finally {
+    fs.writeSync = originalWrite;
+  }
+
+  assert.throws(
+    () => journal.append(event()),
+    (error) => error && error.key === "ERR_LEASE_CONFLICT" &&
+      error.details && error.details.reason === "lock_renewal_failed"
+  );
 });
 
 test("consumer cursor rejects stale-lock reclaim when the observed token changes", (t) => {
