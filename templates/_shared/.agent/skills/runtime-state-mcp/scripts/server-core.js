@@ -57,7 +57,7 @@ function queryProjection(query, filters = {}) {
   if (!available.names.has(query)) throw rpcError(-32602, "Unsupported Management API projection", { query, allowed_queries: [...available.names] });
   const args = ["query", query];
   const definition = available.projections.find((entry) => entry.name === query);
-  for (const name of ["since", "until"]) {
+  for (const name of ["since", "until", "task", "state", "event-type", "producer"]) {
     if (filters[name] === undefined) continue;
     if (!Array.isArray(definition.filters) || !definition.filters.includes(name) || typeof filters[name] !== "string") {
       throw rpcError(-32602, "Unsupported projection filter", { query, filter: name });
@@ -114,7 +114,7 @@ function handle(request) {
     return { tools: [{
       name: "cortex.query",
       description: "Read one supported Management API projection from the bound project.",
-      inputSchema: { type: "object", required: ["projection"], properties: { projection: { type: "string" }, since: { type: "string" }, until: { type: "string" } }, additionalProperties: false },
+      inputSchema: { type: "object", required: ["projection"], properties: { projection: { type: "string" }, since: { type: "string" }, until: { type: "string" }, task: { type: "string" }, state: { type: "string" }, "event-type": { type: "string" }, producer: { type: "string" } }, additionalProperties: false },
       annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     }] };
   }
@@ -122,9 +122,9 @@ function handle(request) {
     const name = request.params && request.params.name;
     const args = request.params && request.params.arguments;
     if (name !== "cortex.query" || !args || typeof args.projection !== "string") throw rpcError(-32602, "Unsupported tool call", { name: name || null, read_only: true });
-    const allowed = new Set(["projection", "since", "until"]);
+    const allowed = new Set(["projection", "since", "until", "task", "state", "event-type", "producer"]);
     if (Object.keys(args).some((key) => !allowed.has(key))) throw rpcError(-32602, "Unsupported tool argument", { read_only: true });
-    const projection = queryProjection(args.projection, { since: args.since, until: args.until });
+    const projection = queryProjection(args.projection, args);
     return { content: [{ type: "text", text: JSON.stringify(projection) }], structuredContent: projection, isError: false };
   }
   throw rpcError(-32601, "Method not found", { method: request.method, read_only: true });
