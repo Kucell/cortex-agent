@@ -55,3 +55,22 @@ test("allows stable IDs and repository-relative evidence", () => {
   });
   assert.doesNotThrow(() => validateEvent(event));
 });
+
+test("rejects unknown fields even when they try to hide credentials", () => {
+  const event = safeEvent();
+  event.unrecognized = { api_key: "super-secret-value" };
+  assert.throws(() => validateEvent(event), (error) => {
+    assert.equal(error.key, "ERR_INVALID_EVENT");
+    assert.equal(error.details.reason, "unknown fields");
+    assert.deepEqual(error.details.fields, ["unrecognized"]);
+    return true;
+  });
+});
+
+test("rejects traversal in repository-relative evidence", () => {
+  assert.throws(() => safeEvent({
+    evidence: [{ kind: "artifact", ref: "safe/../../etc/passwd" }],
+  }), {
+    key: "ERR_EVIDENCE_REF_INVALID",
+  });
+});

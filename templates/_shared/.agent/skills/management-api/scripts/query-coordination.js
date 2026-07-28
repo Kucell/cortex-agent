@@ -25,6 +25,12 @@ function listJson(dir) {
   }
 }
 
+function listSnapshots(dir) {
+  return listJson(dir)
+    .map((envelope) => envelope && envelope.payload)
+    .filter((payload) => payload && typeof payload === "object");
+}
+
 function listEvents(journalDir) {
   let files;
   try {
@@ -40,7 +46,14 @@ function listEvents(journalDir) {
     const lines = fs.readFileSync(path.join(journalDir, name), "utf8").split(/\r?\n/);
     for (const line of lines) {
       if (!line.trim()) continue;
-      try { events.push(JSON.parse(line)); } catch (_) {
+      try {
+        const record = JSON.parse(line);
+        if (record && record.event && typeof record.event === "object") {
+          events.push(record.event);
+        } else {
+          warnings.push({ code: "coordination_journal_record_invalid", segment: name });
+        }
+      } catch (_) {
         warnings.push({ code: "coordination_journal_parse_error", segment: name });
       }
     }
@@ -52,7 +65,7 @@ function queryCoordination({ root, args, projection }) {
   const runtime = path.join(root, ".agent-runtime", "coordination");
   const taskId = option(args, "task");
   if (projection === "coordination-tasks") {
-    let tasks = listJson(path.join(runtime, "tasks"));
+    let tasks = listSnapshots(path.join(runtime, "tasks"));
     const state = option(args, "state");
     if (taskId) tasks = tasks.filter((task) => task.taskId === taskId);
     if (state) tasks = tasks.filter((task) => task.state === state);
@@ -71,8 +84,13 @@ function queryCoordination({ root, args, projection }) {
     return { ok: true, query: projection, generated_at: new Date().toISOString(), events, summary: { total: events.length }, warnings: journal.warnings };
   }
   const field = projection === "coordination-ownership" ? "ownership" : "notifications";
-  const source = field === "notifications" ? "consumers" : field;
-  let records = listJson(path.join(runtime, source));
+  let records;
+  if (field === "ownership") {
+    const durable = readJson(path.join(runtime, "leases", "state.json"));
+    records = durable && Array.isArray(durable.leases) ? durable.leases : [];
+  } else {
+    records = listJson(path.join(runtime, "consumers"));
+  }
   if (field === "notifications") {
     const eventTasks = new Map(listEvents(path.join(runtime, "journal")).events.map((event) => [event.eventId, event.taskId]));
     records = records.flatMap((cursor) => Object.entries(cursor.pending || {}).map(([deliveryKey, pending]) => ({

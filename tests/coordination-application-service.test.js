@@ -10,6 +10,7 @@ const { createEvent, STATES } = require("../lib/coordination/contract");
 const {
   CoordinationApplicationService,
 } = require("../lib/coordination/application-service");
+const { createManualClock } = require("../lib/coordination/lease");
 
 function runtimeDir() {
   return fs.mkdtempSync(path.join(os.tmpdir(), "cortex-coordination-app-"));
@@ -164,4 +165,49 @@ test("fails closed when durable lease state is corrupted", () => {
     { key: "ERR_INVALID_STATE" }
   );
   fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test("owner writes require the current active fencing token", () => {
+  const dir = runtimeDir();
+  const clock = createManualClock(Date.parse("2026-07-28T00:00:00.000Z"));
+  const app = CoordinationApplicationService.open(dir, {
+    journal: { lock: false },
+    clock,
+  });
+  try {
+    const lease = app.acquireOwnership("src/**", "claude-1", {
+      actorId: "claude-1",
+      ttl: 100,
+    });
+    app.submit(event({ eventId: "CE-create", sequence: 1 }));
+    app.submit(event({
+      eventId: "CE-assign", sequence: 2, eventType: "task.assigned",
+      previousState: STATES.CREATED, currentState: STATES.ASSIGNED,
+      targets: [{ actorId: "claude-1", kind: "agent" }],
+      fileOwnership: [{
+        leaseId: lease.leaseId,
+        scope: lease.scope,
+        owner: lease.owner,
+        fencingToken: lease.fencingToken,
+        expiresAt: lease.expiresAt,
+      }],
+    }));
+    app.submit(event({
+      eventId: "CE-accept", sequence: 1, eventType: "task.accepted",
+      previousState: STATES.ASSIGNED, currentState: STATES.ACCEPTED,
+      producer: { actorId: "claude-1", kind: "agent" },
+    }), { actorId: "claude-1", kind: "agent", sessionId: "session-1" });
+    clock.advance(101);
+    assert.throws(() => app.submit(event({
+      eventId: "CE-progress", sequence: 2, eventType: "task.progress",
+      previousState: STATES.ACCEPTED, currentState: STATES.EXECUTING,
+      producer: { actorId: "claude-1", kind: "agent" },
+    }), { actorId: "claude-1", kind: "agent", sessionId: "session-1" }), {
+      key: "ERR_LEASE_CONFLICT",
+    });
+    assert.equal(app.listEvents().some((entry) => entry.eventId === "CE-progress"), false);
+  } finally {
+    app.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });

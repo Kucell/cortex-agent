@@ -85,6 +85,40 @@ test("public task CLI opens the real Application Service for writes", () => {
   fs.rmSync(project, { recursive: true, force: true });
 });
 
+test("public event ACK opens a durable consumer store", () => {
+  const project = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-coordination-ack-"));
+  const event = createEvent({
+    eventId: "CE-cli-ack",
+    projectId: "project",
+    taskId: "T-ACK",
+    correlationId: "CORR-ACK",
+    producer: { actorId: "coordinator", kind: "coordinator" },
+    targets: [{ actorId: "codex", kind: "coordinator" }],
+    eventType: "task.created",
+    previousState: null,
+    currentState: STATES.CREATED,
+    timestamp: "2026-07-28T00:00:00.000Z",
+    sequence: 1,
+    repository: { repositoryId: "repo" },
+    notification: { policy: "coordinator_notify", dedupeKey: "ack", ackRequired: true },
+  });
+  const create = spawnSync(process.execPath, [
+    path.join(ROOT, "bin/cli.js"), "task", "create", "--project", project,
+    "--event-json", JSON.stringify(event),
+  ], { cwd: ROOT, encoding: "utf8" });
+  assert.equal(create.status, 0, create.stderr);
+  const ack = spawnSync(process.execPath, [
+    path.join(ROOT, "bin/cli.js"), "event", "ack", "--project", project,
+    "--event", event.eventId, "--consumer", "codex",
+  ], { cwd: ROOT, encoding: "utf8" });
+  assert.equal(ack.status, 0, ack.stderr);
+  assert.equal(JSON.parse(ack.stdout).acknowledgement.acknowledged, true);
+  assert.equal(fs.readdirSync(
+    path.join(project, ".agent-runtime/coordination/consumers")
+  ).filter((name) => name.endsWith(".json")).length, 1);
+  fs.rmSync(project, { recursive: true, force: true });
+});
+
 test("CLI and MCP contracts expose read-only coordination capabilities", () => {
   assert.ok(cliContract.commands.some((entry) => entry.name === "task"));
   assert.ok(cliContract.commands.some((entry) => entry.name === "event"));
@@ -106,11 +140,26 @@ test("focused Management API projections read runtime state without writing", ()
   fs.mkdirSync(path.join(runtime, "tasks"), { recursive: true });
   fs.mkdirSync(path.join(runtime, "journal"), { recursive: true });
   fs.mkdirSync(path.join(runtime, "consumers"), { recursive: true });
-  fs.writeFileSync(path.join(runtime, "tasks/T-1.json"), JSON.stringify({ taskId: "T-1", state: "EXECUTING" }));
+  fs.mkdirSync(path.join(runtime, "leases"), { recursive: true });
+  fs.writeFileSync(path.join(runtime, "tasks/T-1.json"), JSON.stringify({
+    schemaVersion: "1.0",
+    payload: { taskId: "T-1", state: "EXECUTING" },
+  }));
   fs.writeFileSync(path.join(runtime, "journal/events-000001.jsonl"), `${JSON.stringify({
-    eventId: "CE-1", taskId: "T-1", eventType: "task.progress",
-    producer: { actorId: "claude" },
+    v: 1,
+    event: {
+      eventId: "CE-1", taskId: "T-1", eventType: "task.progress",
+      producer: { actorId: "claude" },
+    },
+    prevHash: "0".repeat(64),
+    hash: "1".repeat(64),
   })}\n`);
+  fs.writeFileSync(path.join(runtime, "leases/state.json"), JSON.stringify({
+    version: 1,
+    leases: [{ leaseId: "LEASE-1", scope: "src/**", owner: "claude", taskId: "T-1" }],
+    takeovers: [],
+    audit: [],
+  }));
   fs.writeFileSync(path.join(runtime, "consumers/consumer.json"), JSON.stringify({
     consumerId: "codex", pending: { delivery: { eventId: "CE-1", taskId: "T-1" } },
   }));
@@ -119,9 +168,11 @@ test("focused Management API projections read runtime state without writing", ()
   const tasks = queryCoordination({ root: project, args: ["--state", "EXECUTING"], projection: "coordination-tasks" });
   const events = queryCoordination({ root: project, args: ["--producer", "claude"], projection: "coordination-events" });
   const notifications = queryCoordination({ root: project, args: ["--task", "T-1"], projection: "coordination-notifications" });
+  const ownership = queryCoordination({ root: project, args: ["--task", "T-1"], projection: "coordination-ownership" });
   assert.equal(tasks.tasks.length, 1);
   assert.equal(events.events.length, 1);
   assert.equal(notifications.notifications.length, 1);
+  assert.equal(ownership.ownership.length, 1);
   assert.equal(fs.statSync(path.join(runtime, "tasks/T-1.json")).mtimeMs, before);
   fs.rmSync(project, { recursive: true, force: true });
 });

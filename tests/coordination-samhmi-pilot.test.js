@@ -19,6 +19,19 @@ const { NotificationPump } = require("../lib/coordination/notification-pump");
 const COORDINATOR = { actorId: "codex-coordinator", kind: "coordinator" };
 const CLAUDE = { actorId: "claude-worker", kind: "agent" };
 const SUCCESSOR = { actorId: "codex-recovery", kind: "agent" };
+const COORDINATOR_AUTH = {
+  ...COORDINATOR,
+  sessionId: "session-coordinator",
+  workflowGate: "M-008",
+};
+const CLAUDE_AUTH = {
+  ...CLAUDE,
+  sessionId: "session-claude",
+};
+const SUCCESSOR_AUTH = {
+  ...SUCCESSOR,
+  sessionId: "session-recovery",
+};
 const REPOSITORY = {
   repositoryId: "samhmi-pilot",
   worktreeId: "coordination-pilot",
@@ -64,7 +77,7 @@ function submitLifecycle(app, taskId = "TASK-SAMHMI-PILOT") {
     eventType: "task.created",
     previousState: null,
     currentState: STATES.CREATED,
-  }));
+  }), COORDINATOR_AUTH);
   app.submit(event({
     taskId,
     eventId: `${taskId}-ASSIGNED`,
@@ -72,8 +85,7 @@ function submitLifecycle(app, taskId = "TASK-SAMHMI-PILOT") {
     previousState: STATES.CREATED,
     currentState: STATES.ASSIGNED,
     targets: [CLAUDE],
-    fileOwnership: ["src/coordination-pilot/**"],
-  }));
+  }), COORDINATOR_AUTH);
   app.submit(event({
     taskId,
     eventId: `${taskId}-ACCEPTED`,
@@ -81,8 +93,7 @@ function submitLifecycle(app, taskId = "TASK-SAMHMI-PILOT") {
     eventType: "task.accepted",
     previousState: STATES.ASSIGNED,
     currentState: STATES.ACCEPTED,
-    fileOwnership: ["src/coordination-pilot/**"],
-  }));
+  }), CLAUDE_AUTH);
   app.submit(event({
     taskId,
     eventId: `${taskId}-EXECUTING`,
@@ -91,7 +102,7 @@ function submitLifecycle(app, taskId = "TASK-SAMHMI-PILOT") {
     previousState: STATES.ACCEPTED,
     currentState: STATES.EXECUTING,
     progress: { phase: "implementation", percent: 30 },
-  }));
+  }), CLAUDE_AUTH);
 }
 
 function notificationAdapter(codex, acknowledge) {
@@ -125,8 +136,13 @@ test("SamHMI pilot completes Codex to Claude to Codex input, restart, unacked an
   const claude = createClaudeAdapter({ hooks: true, explicitCli: true });
   assert.equal(launch.repository.repositoryId, "samhmi-pilot");
   assert.equal(claude.buildReport("task.testing", {
-    taskId: launch.taskId,
-    actorId: CLAUDE.actorId,
+    event: event({
+      eventId: "CE-FALLBACK-TESTING",
+      producer: CLAUDE,
+      eventType: "task.testing",
+      previousState: STATES.EXECUTING,
+      currentState: STATES.TESTING,
+    }),
   }).hookName, "TestStart");
 
   let app = CoordinationApplicationService.open(root, { journal: { lock: false } });
@@ -149,7 +165,7 @@ test("SamHMI pilot completes Codex to Claude to Codex input, restart, unacked an
       dedupeKey: "pilot-input",
       ackRequired: true,
     },
-  }));
+  }), CLAUDE_AUTH);
 
   const wakeups = [];
   const codex = createCodexAdapter({
@@ -189,14 +205,14 @@ test("SamHMI pilot completes Codex to Claude to Codex input, restart, unacked an
     previousState: STATES.WAITING_FOR_INPUT,
     currentState: STATES.EXECUTING,
     progress: { phase: "implementation", percent: 60 },
-  }));
+  }), CLAUDE_AUTH);
   app.submit(event({
     eventId: "CE-TESTING",
     producer: CLAUDE,
     eventType: "task.testing",
     previousState: STATES.EXECUTING,
     currentState: STATES.TESTING,
-  }));
+  }), CLAUDE_AUTH);
   app.submit(event({
     eventId: "CE-READY",
     producer: CLAUDE,
@@ -211,7 +227,7 @@ test("SamHMI pilot completes Codex to Claude to Codex input, restart, unacked an
       dedupeKey: "pilot-ready",
       ackRequired: true,
     },
-  }));
+  }), CLAUDE_AUTH);
 
   assert.equal((await pump.runOnce()).acknowledged, 1);
   assert.equal(wakeups.at(-1).eventId, "CE-READY");
@@ -223,7 +239,7 @@ test("SamHMI pilot completes Codex to Claude to Codex input, restart, unacked an
     previousState: STATES.READY_FOR_REVIEW,
     currentState: STATES.COMPLETED,
     evidence: [{ kind: "validation", ref: "reports/independent-review" }],
-  }));
+  }), COORDINATOR_AUTH);
   assert.equal(app.getTask("TASK-SAMHMI-PILOT").state, STATES.COMPLETED);
 
   const durableText = fs.readFileSync(
@@ -273,7 +289,7 @@ test("SamHMI pilot fails closed before a fenced takeover and completes with reco
     previousState: STATES.EXECUTING,
     currentState: STATES.STALE,
     message: "Lease expired and continuity could not be proven",
-  }));
+  }), COORDINATOR_AUTH);
 
   const requested = app.requestOwnershipTakeover(scope, SUCCESSOR.actorId, {
     actorId: COORDINATOR.actorId,
@@ -287,7 +303,7 @@ test("SamHMI pilot fails closed before a fenced takeover and completes with reco
     currentState: STATES.TAKEOVER_REQUESTED,
     requestedAction: { kind: "takeover" },
     evidence: [{ kind: "operation", ref: "operation/stop-observed" }],
-  }));
+  }), COORDINATOR_AUTH);
   assert.throws(
     () => app.completeOwnershipTakeover(requested.requestId, {
       actorId: COORDINATOR.actorId,
@@ -308,9 +324,15 @@ test("SamHMI pilot fails closed before a fenced takeover and completes with reco
     eventType: "task.taken_over",
     previousState: STATES.TAKEOVER_REQUESTED,
     currentState: STATES.TAKEN_OVER,
-    fileOwnership: [scope],
+    fileOwnership: [{
+      leaseId: takeover.lease.leaseId,
+      scope,
+      owner: takeover.lease.owner,
+      fencingToken: takeover.lease.fencingToken,
+      expiresAt: takeover.lease.expiresAt,
+    }],
     evidence: [{ kind: "operation", ref: "operation/worktree-reconciled" }],
-  }));
+  }), SUCCESSOR_AUTH);
   app.submit(event({
     taskId,
     eventId: "CE-RECOVERY-EXECUTING",
@@ -319,7 +341,7 @@ test("SamHMI pilot fails closed before a fenced takeover and completes with reco
     previousState: STATES.TAKEN_OVER,
     currentState: STATES.EXECUTING,
     progress: { phase: "recovery", percent: 80 },
-  }));
+  }), SUCCESSOR_AUTH);
   app.submit(event({
     taskId,
     eventId: "CE-RECOVERY-TESTING",
@@ -327,7 +349,7 @@ test("SamHMI pilot fails closed before a fenced takeover and completes with reco
     eventType: "task.testing",
     previousState: STATES.EXECUTING,
     currentState: STATES.TESTING,
-  }));
+  }), SUCCESSOR_AUTH);
   app.submit(event({
     taskId,
     eventId: "CE-RECOVERY-READY",
@@ -342,17 +364,19 @@ test("SamHMI pilot fails closed before a fenced takeover and completes with reco
       dedupeKey: "takeover-ready",
       ackRequired: true,
     },
-  }));
+  }), SUCCESSOR_AUTH);
   app.submit(event({
     taskId,
     eventId: "CE-RECOVERY-COMPLETED",
     eventType: "task.completed",
     previousState: STATES.READY_FOR_REVIEW,
     currentState: STATES.COMPLETED,
-  }));
+  }), COORDINATOR_AUTH);
 
   const task = app.getTask(taskId);
   assert.equal(task.state, STATES.COMPLETED);
   assert.equal(task.assignee, SUCCESSOR.actorId);
-  assert.deepEqual(task.ownership, [scope]);
+  assert.equal(task.ownership.length, 1);
+  assert.equal(task.ownership[0].scope, scope);
+  assert.equal(task.ownership[0].fencingToken, takeover.lease.fencingToken);
 });
