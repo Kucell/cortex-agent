@@ -266,13 +266,13 @@ test("sequence is tracked per (taskId, producer.actorId) stream", () => {
   const dir = freshDir();
   const j = Journal.open(dir, { lock: false });
   // Two producers each start at sequence 1 for the same task.
-  j.append(makeEvent({ eventId: "A-1", producer: makeProducer({ actorId: "A" }), sequence: 1 }));
-  j.append(makeEvent({ eventId: "B-1", producer: makeProducer({ actorId: "B" }), sequence: 1 }));
-  j.append(makeEvent({ eventId: "A-2", producer: makeProducer({ actorId: "A" }), sequence: 2, eventType: "task.assigned", previousState: STATES.CREATED, currentState: STATES.ASSIGNED }));
+  j.append(makeEvent({ eventId: "CE-A-1", producer: makeProducer({ actorId: "A" }), sequence: 1 }));
+  j.append(makeEvent({ eventId: "CE-B-1", producer: makeProducer({ actorId: "B" }), sequence: 1 }));
+  j.append(makeEvent({ eventId: "CE-A-2", producer: makeProducer({ actorId: "A" }), sequence: 2, eventType: "task.assigned", previousState: STATES.CREATED, currentState: STATES.ASSIGNED }));
   assert.equal(j.getLastSequence("TASK-001", "A"), 2);
   assert.equal(j.getLastSequence("TASK-001", "B"), 1);
   // Different task for the same actor is a separate stream.
-  j.append(makeEvent({ eventId: "A-T2-1", taskId: "TASK-002", producer: makeProducer({ actorId: "A" }), sequence: 1 }));
+  j.append(makeEvent({ eventId: "CE-A-T2-1", taskId: "TASK-002", producer: makeProducer({ actorId: "A" }), sequence: 1 }));
   assert.equal(j.getLastSequence("TASK-002", "A"), 1);
   assert.equal(j.getLastSequence("TASK-001", "A"), 2);
   j.close();
@@ -655,7 +655,7 @@ test("readAll with filter narrows by task / actor / sequence range", () => {
   const j = Journal.open(dir, { lock: false });
   for (const ev of lifecycleEvents()) j.append(ev);
   // Different task / producer stream.
-  for (const ev of lifecycleEvents("CEB", "TASK-002", "agent-b")) j.append(ev);
+  for (const ev of lifecycleEvents("CE-B", "TASK-002", "agent-b")) j.append(ev);
 
   assert.equal(j.readAll({ taskId: "TASK-001" }).length, 7);
   assert.equal(j.readAll({ taskId: "TASK-002" }).length, 7);
