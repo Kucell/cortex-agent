@@ -6,6 +6,13 @@ const path = require("path");
 const { execSync } = require("child_process");
 const { normalizeTokenUsage } = require("./normalize-token-usage.js");
 const { queryActivity } = require("./query-activity.js");
+let queryCoordination = null;
+try {
+  ({ queryCoordination } = require("./query-coordination.js"));
+} catch (_) {
+  // Additive upgrades can briefly have the registry before this optional
+  // projection helper. Capability discovery must omit unavailable handlers.
+}
 const projectionRegistryPath = path.join(__dirname, "projection-registry.json");
 
 const root = process.cwd();
@@ -1560,6 +1567,10 @@ function queryActivityProjection() {
   }
 }
 
+function coordinationProjection(name) {
+  return queryCoordination ? () => queryCoordination({ root, args, projection: name }) : null;
+}
+
 const QUERY_HANDLERS = Object.freeze({
   "dashboard-state": queryDashboardState,
   runs: queryRuns,
@@ -1569,6 +1580,10 @@ const QUERY_HANDLERS = Object.freeze({
   decisions: queryDecisions,
   waitpoints: queryWaitpoints,
   activity: queryActivityProjection,
+  "coordination-tasks": coordinationProjection("coordination-tasks"),
+  "coordination-events": coordinationProjection("coordination-events"),
+  "coordination-ownership": coordinationProjection("coordination-ownership"),
+  "coordination-notifications": coordinationProjection("coordination-notifications"),
 });
 
 function availableProjections() {

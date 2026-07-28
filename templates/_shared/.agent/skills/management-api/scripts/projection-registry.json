@@ -56,6 +56,34 @@
       "exact_lookup": false,
       "data_field": null,
       "filters": ["since", "until"]
+    },
+    {
+      "name": "coordination-tasks",
+      "kind": "collection",
+      "exact_lookup": true,
+      "data_field": "tasks",
+      "filters": ["task", "state"]
+    },
+    {
+      "name": "coordination-events",
+      "kind": "collection",
+      "exact_lookup": false,
+      "data_field": "events",
+      "filters": ["task", "event-type", "producer"]
+    },
+    {
+      "name": "coordination-ownership",
+      "kind": "collection",
+      "exact_lookup": false,
+      "data_field": "ownership",
+      "filters": ["task"]
+    },
+    {
+      "name": "coordination-notifications",
+      "kind": "collection",
+      "exact_lookup": false,
+      "data_field": "notifications",
+      "filters": ["task"]
     }
   ]
 }
