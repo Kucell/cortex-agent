@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "default": "journal_only",
+  "policies": {
+    "task.heartbeat": "journal_only",
+    "task.progress": "journal_only",
+    "task.testing": "coordinator_notify",
+    "artifact.ready": "coordinator_notify",
+    "task.ready_for_review": "coordinator_notify",
+    "task.input_required": "user_attention",
+    "task.blocked": "coordinator_notify",
+    "task.failed": "coordinator_notify",
+    "ownership.conflict": "urgent"
+  }
+}

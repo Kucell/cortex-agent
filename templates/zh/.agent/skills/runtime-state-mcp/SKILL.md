@@ -21,6 +21,7 @@ cortex-agent mcp serve --project /path/to/project
 - Resource URI 使用 `cortex://management/<projection>`，列表由真实 Management API capability registry 动态生成。
 - `resources/list` 中每个 resource 都能通过 `resources/read` 读取，并与直接 Management API projection 语义一致。
 - 唯一 Tool 是只读 `cortex.query`，projection filter 继续由同一 registry 校验。
+- Coordination task、event、ownership 与 notification projection 由该 registry 动态发现；默认不启用任何 coordination writer tool。
 - `initialize` 阶段协商支持的 protocol version；未知版本 fail closed。
 
 ## 边界
