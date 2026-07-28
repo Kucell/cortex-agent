@@ -1,0 +1,4 @@
+{
+  "trustModel": "local_same_user",
+  "workflowGates": []
+}
