@@ -16,7 +16,7 @@ test("management CLI exposes only explicit projections and writer actions", () =
     const result = spawnSync(process.execPath, [CLI, forbidden, "anything"], { cwd: ROOT, encoding: "utf8" });
     assert.equal(result.status, 2);
   }
-  for (const name of ["dispatch", "daemon", "trigger"]) {
+  for (const name of ["daemon", "trigger"]) {
     const entry = contract.commands.find((item) => item.name === name);
     assert.equal(entry.mode, "phase0_stub");
     assert.equal(entry.implemented, false);
@@ -27,6 +27,11 @@ test("management CLI exposes only explicit projections and writer actions", () =
     assert.equal(payload.error.code, "PHASE_ZERO_STUB");
     assert.equal(payload.side_effects, false);
   }
+  const dispatch = contract.commands.find((entry) => entry.name === "dispatch");
+  assert.equal(dispatch.mode, "governed_manual");
+  assert.equal(dispatch.implemented, true);
+  assert.equal(dispatch.automatic_dispatch_enabled, false);
+  assert.equal(Object.prototype.hasOwnProperty.call(contract.management.writers, "dispatch"), false);
   const result = spawnSync(process.execPath, [CLI, "runs", "arbitrary", "--project", ROOT], { cwd: ROOT, encoding: "utf8" });
   assert.equal(result.status, 2);
 });
