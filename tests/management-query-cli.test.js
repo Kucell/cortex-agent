@@ -73,6 +73,70 @@ test("generic query delegates every registered core projection", (t) => {
   }
 });
 
+test("operation lifecycle projections filter through the public CLI and redact private fields", (t) => {
+  const project = createProject();
+  t.after(() => fs.rmSync(project, { recursive: true, force: true }));
+  const operations = path.join(project, ".agent", "operations");
+  fs.mkdirSync(operations, { recursive: true });
+  fs.writeFileSync(path.join(operations, "OP-QUERY-1.json"), JSON.stringify({
+    schema_version: "1.0",
+    operation_id: "OP-QUERY-1",
+    status: "authorized",
+    relations: { task_id: "T-QUERY-1", run_id: "R-QUERY-1", session_id: "S-QUERY-1" },
+    input_summary: { redacted: true, prompt: "must-not-leak" },
+  }));
+  fs.writeFileSync(path.join(operations, "OP-QUERY-2.json"), JSON.stringify({
+    schema_version: "1.0",
+    operation_id: "OP-QUERY-2",
+    status: "failed",
+    relations: { task_id: "T-QUERY-2", run_id: "R-QUERY-2", session_id: "S-QUERY-2" },
+  }));
+
+  const result = run(project, [
+    "query", "operations", "--project", project,
+    "--task", "T-QUERY-1", "--status", "authorized",
+  ]);
+  assert.equal(result.status, 0, result.stderr);
+  const payload = JSON.parse(result.stdout);
+  assert.equal(payload.data.length, 1);
+  assert.equal(payload.data[0].operation_id, "OP-QUERY-1");
+  assert.equal(payload.data[0].input_summary.prompt, "[REDACTED]");
+  assert.doesNotMatch(result.stdout, /must-not-leak/);
+
+  const fixtures = {
+    readiness: {
+      file: "RD-QUERY-1.json",
+      value: { readiness_id: "RD-QUERY-1", revision: "REV-1", verdict: "ready" },
+      args: ["--status", "ready"],
+    },
+    authorizations: {
+      file: "AUTH-QUERY-1.json",
+      value: {
+        authorization_id: "AUTH-QUERY-1",
+        revision: "AUTH-REV-1",
+        consumed_operation_ids: ["OP-QUERY-1"],
+        reason: "-----BEGIN PRIVATE KEY----- fake",
+      },
+      args: ["--operation", "OP-QUERY-1"],
+    },
+    checkpoints: {
+      file: "CHK-QUERY-1.json",
+      value: { checkpoint_id: "CHK-QUERY-1", operation_id: "OP-QUERY-1", task_id: "T-QUERY-1" },
+      args: ["--operation", "OP-QUERY-1"],
+    },
+  };
+  for (const [projection, fixture] of Object.entries(fixtures)) {
+    const directory = path.join(project, ".agent", projection);
+    fs.mkdirSync(directory, { recursive: true });
+    fs.writeFileSync(path.join(directory, fixture.file), JSON.stringify(fixture.value));
+    const queried = run(project, ["query", projection, "--project", project, ...fixture.args]);
+    assert.equal(queried.status, 0, queried.stderr);
+    const projected = JSON.parse(queried.stdout);
+    assert.equal(projected.data.length, 1, projection);
+    assert.doesNotMatch(queried.stdout, /BEGIN PRIVATE KEY/, projection);
+  }
+});
+
 test("generic query rejects projections outside target capabilities", (t) => {
   const project = createProject();
   t.after(() => fs.rmSync(project, { recursive: true, force: true }));
