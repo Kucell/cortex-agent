@@ -10,6 +10,7 @@ const { createEvent, STATES } = require("../lib/coordination/contract");
 const { CoordinationApplicationService } = require("../lib/coordination/application-service");
 const {
   createAgentReporter,
+  createAgentReporterFromContext,
   AGENT_SCOPED_EVENT_TYPES,
   AGENT_SCOPED_EVENT_SET,
   AGENT_TRANSITIONS,
@@ -18,6 +19,8 @@ const {
   sanitizeAgentInput,
   scanAgentInput,
   buildRedactedReceipt,
+  buildRetryDedupKey,
+  readLaunchContext,
 } = require("../lib/agent-reporter");
 
 function runtimeDir() {
@@ -722,7 +725,7 @@ test("report truncates evidence refs that are too long", () => {
 
 // ─── P-003 CP-11: Redacted receipt ──────────────────────────────────────────
 
-test("report returns a redacted receipt", () => {
+test("report returns a redacted receipt with clean message", () => {
   const dir = runtimeDir();
   const service = createService(dir);
   try {
@@ -747,7 +750,38 @@ test("report returns a redacted receipt", () => {
     assert.ok(result.receipt.timestamp);
     assert.equal(result.receipt.state, "ACCEPTED");
     assert.equal(result.receipt.ok, true);
+    // Clean message is included in the receipt
     assert.equal(result.receipt.message, "Working on task");
+  } finally {
+    service.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("report receipt redacts sensitive message content", () => {
+  const dir = runtimeDir();
+  const service = createService(dir);
+  try {
+    const taskId = setupCoordinatorTask(service);
+    const reporter = createAgentReporter(service, {
+      actorId: "test-agent",
+      kind: "agent",
+      sessionId: "agent-session",
+      projectId: "test-project",
+    });
+
+    // Message with API key pattern should be redacted in receipt
+    const result = reporter.report("task.accepted", {
+      taskId,
+      message: "Using API key sk-proj-abc123def456xyz789abcdef",
+    });
+    // The report may be rejected by the service due to the secret scan
+    // Either way, the receipt should not contain the raw message
+    if (result.ok) {
+      assert.equal(result.receipt.message, undefined);
+      assert.ok(result.receipt.redactedFields === undefined ||
+                result.receipt.redactedFields.includes("message"));
+    }
   } finally {
     service.close();
     fs.rmSync(dir, { recursive: true, force: true });
@@ -854,9 +888,226 @@ test("exit 0 does not auto-transition to completed or ready_for_review", () => {
 
 // ─── P-003 CP-11: E2E lifecycle: governed launch → agent report → ready ──────
 
+test("createAgentReporterFromContext fails closed without CORTEX_LAUNCH_CONTEXT", () => {
+  // Ensure no context in environment
+  const prev = process.env.CORTEX_LAUNCH_CONTEXT;
+  delete process.env.CORTEX_LAUNCH_CONTEXT;
+  try {
+    assert.throws(() => createAgentReporterFromContext(null), /ERR_NO_GOVERNED_CONTEXT/);
+  } finally {
+    if (prev) process.env.CORTEX_LAUNCH_CONTEXT = prev;
+  }
+});
+
+test("createAgentReporterFromContext reads identity from launch context", () => {
+  const prev = process.env.CORTEX_LAUNCH_CONTEXT;
+  delete process.env.CORTEX_LAUNCH_CONTEXT;
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-test-ctx-"));
+  const ctxFile = path.join(dir, "context.json");
+  try {
+    const context = {
+      taskId: "TASK-CTX-001",
+      projectId: "test-project",
+      coordinatorId: "coordinator-1",
+      launchId: "LAUNCH-CTX-001",
+      repository: { repositoryId: "test-project" },
+      ownershipScopes: [],
+      acceptanceCriteria: [],
+      forbiddenActions: [],
+      allowedTools: [],
+      heartbeatIntervalMs: 30000,
+      terminalTimeoutMs: 300000,
+      notificationPolicy: "journal_only",
+      launchedAt: new Date().toISOString(),
+      schemaVersion: "1.0",
+    };
+    fs.writeFileSync(ctxFile, JSON.stringify(context), { encoding: "utf8", mode: 0o600 });
+    process.env.CORTEX_LAUNCH_CONTEXT = ctxFile;
+
+    const reporter = createAgentReporterFromContext(null);
+    assert.equal(reporter.actorId, "coordinator-1");
+    assert.equal(reporter.kind, "agent");
+    assert.equal(reporter.contextTaskId, "TASK-CTX-001");
+    assert.equal(reporter.projectId, "test-project");
+    assert.equal(reporter.launchId, "LAUNCH-CTX-001");
+    assert.equal(reporter.schemaVersion, "1.0");
+
+    // Report without service should return SERVICE_UNAVAILABLE (not throw)
+    const result = reporter.report("task.progress", { taskId: "TASK-CTX-001" });
+    assert.equal(result.ok, false);
+    assert.equal(result.code, "SERVICE_UNAVAILABLE");
+  } finally {
+    if (prev) process.env.CORTEX_LAUNCH_CONTEXT = prev;
+    else delete process.env.CORTEX_LAUNCH_CONTEXT;
+    try { fs.unlinkSync(ctxFile); } catch (_) {}
+    try { fs.rmdirSync(dir); } catch (_) {}
+  }
+});
+
+test("createAgentReporterFromContext enforces idempotency on retry", () => {
+  const prev = process.env.CORTEX_LAUNCH_CONTEXT;
+  delete process.env.CORTEX_LAUNCH_CONTEXT;
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-test-dedup-"));
+  const ctxFile = path.join(dir, "context.json");
+  try {
+    const context = {
+      taskId: "TASK-DEDUP-001",
+      projectId: "test-project",
+      coordinatorId: "coordinator-1",
+      launchId: "LAUNCH-DEDUP-001",
+    };
+    fs.writeFileSync(ctxFile, JSON.stringify(context), { encoding: "utf8", mode: 0o600 });
+    process.env.CORTEX_LAUNCH_CONTEXT = ctxFile;
+
+    const reporter = createAgentReporterFromContext(null);
+
+    // First submission returns SERVICE_UNAVAILABLE (no service)
+    const first = reporter.report("task.progress", {
+      taskId: "TASK-DEDUP-001",
+      deliveryId: "delivery-001",
+    });
+    assert.equal(first.ok, false);
+    assert.equal(first.code, "SERVICE_UNAVAILABLE");
+
+    // Second submission with same launchId+eventType+deliveryId should be deduped
+    const second = reporter.report("task.progress", {
+      taskId: "TASK-DEDUP-001",
+      deliveryId: "delivery-001",
+    });
+    // Actually, without a service, the dedup check happens before the
+    // service check, so it should return ERR_DUPLICATE_DELIVERY
+    assert.equal(second.ok, false);
+    assert.equal(second.code, "ERR_DUPLICATE_DELIVERY");
+  } finally {
+    if (prev) process.env.CORTEX_LAUNCH_CONTEXT = prev;
+    else delete process.env.CORTEX_LAUNCH_CONTEXT;
+    try { fs.unlinkSync(ctxFile); } catch (_) {}
+    try { fs.rmdirSync(dir); } catch (_) {}
+  }
+});
+
+test("buildRetryDedupKey produces stable key", () => {
+  const key = buildRetryDedupKey("LAUNCH-001", "task.progress", "delivery-001");
+  assert.equal(key, "LAUNCH-001:task.progress:delivery-001");
+  assert.equal(buildRetryDedupKey(null, "task.progress"), null);
+  assert.equal(buildRetryDedupKey("LAUNCH-001", null), null);
+});
+
+test("buildRedactedReceipt redacts sensitive message content", () => {
+  const event = {
+    eventId: "EVT-001",
+    eventType: "task.progress",
+    taskId: "TASK-001",
+    projectId: "test-project",
+    timestamp: "2026-01-01T00:00:00Z",
+    message: "API key sk-proj-abc123def456xyz789abcdef",
+  };
+  const result = { event, task: { state: "EXECUTING" } };
+
+  const receipt = buildRedactedReceipt(event, result);
+  assert.equal(receipt.ok, true);
+  // Message should be redacted (not included) since it contains sensitive pattern
+  assert.equal(receipt.message, undefined);
+  assert.deepEqual(receipt.redactedFields, ["message"]);
+});
+
+test("buildRedactedReceipt includes clean message", () => {
+  const event = {
+    eventId: "EVT-002",
+    eventType: "task.progress",
+    taskId: "TASK-001",
+    projectId: "test-project",
+    timestamp: "2026-01-01T00:00:00Z",
+    message: "Working on implementation phase 2",
+  };
+  const result = { event, task: { state: "EXECUTING" } };
+
+  const receipt = buildRedactedReceipt(event, result);
+  assert.equal(receipt.ok, true);
+  assert.equal(receipt.message, "Working on implementation phase 2");
+  assert.equal(receipt.redactedFields, undefined);
+});
+
+test("buildRedactedReceipt redacts evidence with sensitive refs", () => {
+  const event = {
+    eventId: "EVT-003",
+    eventType: "task.progress",
+    taskId: "TASK-001",
+    projectId: "test-project",
+    timestamp: "2026-01-01T00:00:00Z",
+    message: "Progress update",
+    evidence: [
+      { kind: "artifact", ref: "VALID-REF-001" },
+      { kind: "secret", ref: "sk-proj-abc123def456xyz789abcdef" },
+    ],
+  };
+  const result = { event, task: { state: "EXECUTING" } };
+
+  const receipt = buildRedactedReceipt(event, result);
+  assert.equal(receipt.ok, true);
+  assert.equal(receipt.message, "Progress update");
+  // Evidence should be filtered to only clean refs
+  assert.equal(receipt.evidence.length, 1);
+  assert.equal(receipt.evidence[0].ref, "VALID-REF-001");
+});
+
+test("buildRedactedReceipt redacts all evidence when all are sensitive", () => {
+  const event = {
+    eventId: "EVT-004",
+    eventType: "task.progress",
+    taskId: "TASK-001",
+    projectId: "test-project",
+    timestamp: "2026-01-01T00:00:00Z",
+    evidence: [
+      { kind: "secret", ref: "sk-proj-abc123def456xyz789abcdef" },
+    ],
+  };
+  const result = { event, task: { state: "EXECUTING" } };
+
+  const receipt = buildRedactedReceipt(event, result);
+  assert.equal(receipt.ok, true);
+  assert.equal(receipt.evidence, undefined);
+  assert.deepEqual(receipt.redactedFields, ["evidence"]);
+});
+
+test("readLaunchContext returns null when env var is not set", () => {
+  const prev = process.env.CORTEX_LAUNCH_CONTEXT;
+  delete process.env.CORTEX_LAUNCH_CONTEXT;
+  try {
+    assert.equal(readLaunchContext(), null);
+  } finally {
+    if (prev) process.env.CORTEX_LAUNCH_CONTEXT = prev;
+  }
+});
+
+test("readLaunchContext returns null for non-0600 file", () => {
+  const prev = process.env.CORTEX_LAUNCH_CONTEXT;
+  delete process.env.CORTEX_LAUNCH_CONTEXT;
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-test-mode-"));
+  const ctxFile = path.join(dir, "context.json");
+  try {
+    // Write with 0644 mode (not 0600)
+    fs.writeFileSync(ctxFile, JSON.stringify({ taskId: "T-1", projectId: "p", coordinatorId: "c" }), { encoding: "utf8", mode: 0o644 });
+    process.env.CORTEX_LAUNCH_CONTEXT = ctxFile;
+    assert.equal(readLaunchContext(), null);
+  } finally {
+    if (prev) process.env.CORTEX_LAUNCH_CONTEXT = prev;
+    else delete process.env.CORTEX_LAUNCH_CONTEXT;
+    try { fs.unlinkSync(ctxFile); } catch (_) {}
+    try { fs.rmdirSync(dir); } catch (_) {}
+  }
+});
+
 test("E2E lifecycle: governed launch, agent report, ready with evidence", () => {
   const dir = runtimeDir();
   const service = createService(dir);
+
+  // Set up a CORTEX_LAUNCH_CONTEXT for the bridge call
+  const prevCtx = process.env.CORTEX_LAUNCH_CONTEXT;
+  delete process.env.CORTEX_LAUNCH_CONTEXT;
+  const ctxDir = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-e2e-ctx-"));
+  const ctxFile = path.join(ctxDir, "context.json");
+
   try {
     // Step 1: Governed Launcher creates the task
     const { createGovernedLauncher } = require("../lib/governed-launcher");
@@ -864,6 +1115,7 @@ test("E2E lifecycle: governed launch, agent report, ready with evidence", () => 
       coordinatorId: "coordinator-1",
       projectId: "test-project",
       sessionId: "e2e-session",
+      executor: () => ({ pid: 99999, launchedAt: new Date().toISOString() }),
     });
 
     const launchResult = launcher.launch({
@@ -872,6 +1124,9 @@ test("E2E lifecycle: governed launch, agent report, ready with evidence", () => 
       ownershipScopes: [],
     });
     assert.equal(launchResult.ok, true);
+    // With executor, the launcher attempts task.accepted; contract may keep
+    // ASSIGNED since coordinator-submitted accepted is not always valid
+    assert.ok(launchResult.taskState);
     assert.equal(launchResult.taskState.state, STATES.ASSIGNED);
 
     // Step 2: Agent Reporter accepts the task
@@ -925,16 +1180,20 @@ test("E2E lifecycle: governed launch, agent report, ready with evidence", () => 
     assert.equal(readyResult.ok, true);
     assert.equal(readyResult.task.state, STATES.READY_FOR_REVIEW);
 
-    // Step 8: Host Event Bridge can also report events
+    // Step 8: Host Event Bridge reports heartbeat via governed context
+    const context = {
+      taskId: "TASK-E2E-001",
+      projectId: "test-project",
+      coordinatorId: "test-agent",
+      launchId: "LAUNCH-E2E-001",
+    };
+    fs.writeFileSync(ctxFile, JSON.stringify(context), { encoding: "utf8", mode: 0o600 });
+    process.env.CORTEX_LAUNCH_CONTEXT = ctxFile;
+
     const { executeBridgeCommand } = require("../lib/host-event-bridge");
     const heartbeatResult = executeBridgeCommand([
       "agent", "report",
       "--event-type", "task.heartbeat",
-      "--task-id", "TASK-E2E-001",
-      "--actor-id", "test-agent",
-      "--kind", "agent",
-      "--session-id", "bridge-session",
-      "--project-id", "test-project",
     ], { service });
     assert.equal(heartbeatResult.ok, true);
     assert.equal(heartbeatResult.eventType, "task.heartbeat");
@@ -944,6 +1203,10 @@ test("E2E lifecycle: governed launch, agent report, ready with evidence", () => 
     assert.equal(finalTask.state, STATES.READY_FOR_REVIEW);
     assert.equal(finalTask.assignee, "test-agent");
   } finally {
+    if (prevCtx) process.env.CORTEX_LAUNCH_CONTEXT = prevCtx;
+    else delete process.env.CORTEX_LAUNCH_CONTEXT;
+    try { fs.unlinkSync(ctxFile); } catch (_) {}
+    try { fs.rmdirSync(ctxDir); } catch (_) {}
     service.close();
     fs.rmSync(dir, { recursive: true, force: true });
   }
