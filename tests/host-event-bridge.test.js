@@ -56,6 +56,30 @@ function setupCoordinatorTask(service, taskId) {
   service.submit(assigned, { actorId: "coordinator", kind: "coordinator", sessionId: "sess" });
 }
 
+// Helper: set up a CORTEX_LAUNCH_CONTEXT file for bridge tests
+function setupContext(taskId, projectId, coordinatorId) {
+  const prev = process.env.CORTEX_LAUNCH_CONTEXT;
+  delete process.env.CORTEX_LAUNCH_CONTEXT;
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-bridge-ctx-"));
+  const ctxFile = path.join(dir, "context.json");
+  const context = {
+    taskId: taskId || "TASK-HB-001",
+    projectId: projectId || "test-project",
+    coordinatorId: coordinatorId || "test-agent",
+    launchId: "LAUNCH-HB-001",
+  };
+  fs.writeFileSync(ctxFile, JSON.stringify(context), { encoding: "utf8", mode: 0o600 });
+  process.env.CORTEX_LAUNCH_CONTEXT = ctxFile;
+  return { prev, dir, ctxFile };
+}
+
+function cleanupContext(prev, dir, ctxFile) {
+  if (prev) process.env.CORTEX_LAUNCH_CONTEXT = prev;
+  else delete process.env.CORTEX_LAUNCH_CONTEXT;
+  try { fs.unlinkSync(ctxFile); } catch (_) {}
+  try { fs.rmdirSync(dir); } catch (_) {}
+}
+
 // ─── CLI argument parsing ────────────────────────────────────────────────────
 
 test("parseBridgeArgs rejects invalid usage", () => {
@@ -64,7 +88,7 @@ test("parseBridgeArgs rejects invalid usage", () => {
   assert.equal(result.error.code, "INVALID_USAGE");
 });
 
-test("parseBridgeArgs requires --event-type and --task-id", () => {
+test("parseBridgeArgs requires --event-type or --action", () => {
   const result = parseBridgeArgs(["agent", "report"]);
   assert.equal(result.ok, false);
   assert.equal(result.error.code, "INVALID_USAGE");
@@ -74,7 +98,6 @@ test("parseBridgeArgs rejects non-agent-scoped event types", () => {
   const result = parseBridgeArgs([
     "agent", "report",
     "--event-type", "task.created",
-    "--task-id", "TASK-001",
   ]);
   assert.equal(result.ok, false);
   assert.equal(result.error.code, "EVENT_TYPE_NOT_AGENT_SCOPED");
@@ -84,47 +107,124 @@ test("parseBridgeArgs accepts a valid agent-scoped report", () => {
   const result = parseBridgeArgs([
     "agent", "report",
     "--event-type", "task.progress",
-    "--task-id", "TASK-001",
-    "--actor-id", "bridge-agent",
-    "--kind", "agent",
-    "--session-id", "bridge-session",
-    "--project-id", "test-project",
     "--message", "Processing",
   ]);
   assert.equal(result.ok, true);
   assert.equal(result.eventType, "task.progress");
-  assert.equal(result.taskId, "TASK-001");
-  assert.equal(result.actorId, "bridge-agent");
-  assert.equal(result.kind, "agent");
-  assert.equal(result.sessionId, "bridge-session");
-  assert.equal(result.projectId, "test-project");
   assert.equal(result.reportInput.message, "Processing");
 });
 
-test("parseBridgeArgs uses defaults for optional actor fields", () => {
+test("parseBridgeArgs accepts --action as alias for --event-type", () => {
   const result = parseBridgeArgs([
     "agent", "report",
-    "--event-type", "task.heartbeat",
-    "--task-id", "TASK-001",
+    "--action", "task.heartbeat",
   ]);
   assert.equal(result.ok, true);
-  assert.equal(result.actorId, "bridge-agent");
-  assert.equal(result.kind, "agent");
-  assert.equal(result.sessionId, "bridge-session");
-  assert.equal(result.projectId, "default");
+  assert.equal(result.eventType, "task.heartbeat");
 });
 
-test("parseBridgeArgs accepts optional --correlation-id and --notification-policy", () => {
+test("parseBridgeArgs accepts --evidence-ref", () => {
+  const result = parseBridgeArgs([
+    "agent", "report",
+    "--event-type", "task.progress",
+    "--evidence-ref", "VC-001",
+  ]);
+  assert.equal(result.ok, true);
+  assert.equal(result.reportInput.evidence.length, 1);
+  assert.equal(result.reportInput.evidence[0].ref, "VC-001");
+});
+
+test("parseBridgeArgs accepts --notification-policy", () => {
   const result = parseBridgeArgs([
     "agent", "report",
     "--event-type", "task.failed",
-    "--task-id", "TASK-001",
-    "--correlation-id", "CORR-HB-001",
     "--notification-policy", "coordinator_notify",
   ]);
   assert.equal(result.ok, true);
-  assert.equal(result.reportInput.correlationId, "CORR-HB-001");
   assert.equal(result.reportInput.notificationPolicy, "coordinator_notify");
+});
+
+// ─── Governance parameter rejection ──────────────────────────────────────────
+
+test("parseBridgeArgs rejects --actor-id as unknown option", () => {
+  const result = parseBridgeArgs([
+    "agent", "report",
+    "--event-type", "task.progress",
+    "--actor-id", "evil",
+  ]);
+  assert.equal(result.ok, false);
+  assert.equal(result.error.code, "UNKNOWN_OPTIONS_REJECTED");
+  assert.ok(result.error.message.includes("actor-id"));
+});
+
+test("parseBridgeArgs rejects --project-id as unknown option", () => {
+  const result = parseBridgeArgs([
+    "agent", "report",
+    "--event-type", "task.progress",
+    "--project-id", "evil",
+  ]);
+  assert.equal(result.ok, false);
+  assert.equal(result.error.code, "UNKNOWN_OPTIONS_REJECTED");
+});
+
+test("parseBridgeArgs rejects --task-id as unknown option", () => {
+  const result = parseBridgeArgs([
+    "agent", "report",
+    "--event-type", "task.progress",
+    "--task-id", "evil",
+  ]);
+  assert.equal(result.ok, false);
+  assert.equal(result.error.code, "UNKNOWN_OPTIONS_REJECTED");
+});
+
+test("parseBridgeArgs rejects --kind as unknown option", () => {
+  const result = parseBridgeArgs([
+    "agent", "report",
+    "--event-type", "task.progress",
+    "--kind", "evil",
+  ]);
+  assert.equal(result.ok, false);
+  assert.equal(result.error.code, "UNKNOWN_OPTIONS_REJECTED");
+});
+
+test("parseBridgeArgs rejects --session-id as unknown option", () => {
+  const result = parseBridgeArgs([
+    "agent", "report",
+    "--event-type", "task.progress",
+    "--session-id", "evil",
+  ]);
+  assert.equal(result.ok, false);
+  assert.equal(result.error.code, "UNKNOWN_OPTIONS_REJECTED");
+});
+
+test("parseBridgeArgs rejects --correlation-id as unknown option", () => {
+  const result = parseBridgeArgs([
+    "agent", "report",
+    "--event-type", "task.progress",
+    "--correlation-id", "evil",
+  ]);
+  assert.equal(result.ok, false);
+  assert.equal(result.error.code, "UNKNOWN_OPTIONS_REJECTED");
+});
+
+test("parseBridgeArgs rejects --targets as unknown option", () => {
+  const result = parseBridgeArgs([
+    "agent", "report",
+    "--event-type", "task.progress",
+    "--targets", "evil",
+  ]);
+  assert.equal(result.ok, false);
+  assert.equal(result.error.code, "UNKNOWN_OPTIONS_REJECTED");
+});
+
+test("parseBridgeArgs rejects --repository as unknown option", () => {
+  const result = parseBridgeArgs([
+    "agent", "report",
+    "--event-type", "task.progress",
+    "--repository", "evil",
+  ]);
+  assert.equal(result.ok, false);
+  assert.equal(result.error.code, "UNKNOWN_OPTIONS_REJECTED");
 });
 
 // ─── Bridge execution ────────────────────────────────────────────────────────
@@ -133,25 +233,43 @@ test("executeBridgeCommand without service returns SERVICE_UNAVAILABLE", () => {
   const result = executeBridgeCommand([
     "agent", "report",
     "--event-type", "task.progress",
-    "--task-id", "TASK-001",
   ], {});
   assert.equal(result.ok, false);
   assert.equal(result.error.code, "SERVICE_UNAVAILABLE");
 });
 
-test("executeBridgeCommand submits a valid agent-scoped event", () => {
+test("executeBridgeCommand fails closed without CORTEX_LAUNCH_CONTEXT", () => {
+  const prev = process.env.CORTEX_LAUNCH_CONTEXT;
+  delete process.env.CORTEX_LAUNCH_CONTEXT;
   const dir = runtimeDir();
   const service = createService(dir);
+  try {
+    setupCoordinatorTask(service, "TASK-HB-NOCTX-001");
+    const result = executeBridgeCommand([
+      "agent", "report",
+      "--event-type", "task.accepted",
+    ], { service });
+
+    assert.equal(result.ok, false);
+    assert.equal(result.error.code, "ERR_NO_GOVERNED_CONTEXT");
+  } finally {
+    if (prev) process.env.CORTEX_LAUNCH_CONTEXT = prev;
+    service.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("executeBridgeCommand submits a valid agent-scoped event", () => {
+  const prev = process.env.CORTEX_LAUNCH_CONTEXT;
+  delete process.env.CORTEX_LAUNCH_CONTEXT;
+  const dir = runtimeDir();
+  const service = createService(dir);
+  const ctx = setupContext("TASK-HB-001", "test-project", "bridge-agent");
   try {
     setupCoordinatorTask(service, "TASK-HB-001");
     const result = executeBridgeCommand([
       "agent", "report",
       "--event-type", "task.accepted",
-      "--task-id", "TASK-HB-001",
-      "--actor-id", "bridge-agent",
-      "--kind", "agent",
-      "--session-id", "bridge-session",
-      "--project-id", "test-project",
     ], { service });
 
     assert.equal(result.ok, true);
@@ -161,36 +279,30 @@ test("executeBridgeCommand submits a valid agent-scoped event", () => {
     assert.ok(result.event);
     assert.ok(result.task);
   } finally {
+    cleanupContext(ctx.prev, ctx.dir, ctx.ctxFile);
     service.close();
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
 
 test("executeBridgeCommand submits progress and heartbeat through the bridge", () => {
+  const prev = process.env.CORTEX_LAUNCH_CONTEXT;
+  delete process.env.CORTEX_LAUNCH_CONTEXT;
   const dir = runtimeDir();
   const service = createService(dir);
+  const ctx = setupContext("TASK-HB-002", "test-project", "bridge-agent");
   try {
     setupCoordinatorTask(service, "TASK-HB-002");
 
     const accepted = executeBridgeCommand([
       "agent", "report",
       "--event-type", "task.accepted",
-      "--task-id", "TASK-HB-002",
-      "--actor-id", "bridge-agent",
-      "--kind", "agent",
-      "--session-id", "bridge-session",
-      "--project-id", "test-project",
     ], { service });
     assert.equal(accepted.ok, true);
 
     const progress = executeBridgeCommand([
       "agent", "report",
       "--event-type", "task.progress",
-      "--task-id", "TASK-HB-002",
-      "--actor-id", "bridge-agent",
-      "--kind", "agent",
-      "--session-id", "bridge-session",
-      "--project-id", "test-project",
       "--message", "Working through bridge",
     ], { service });
     assert.equal(progress.ok, true);
@@ -199,41 +311,34 @@ test("executeBridgeCommand submits progress and heartbeat through the bridge", (
     const heartbeat = executeBridgeCommand([
       "agent", "report",
       "--event-type", "task.heartbeat",
-      "--task-id", "TASK-HB-002",
-      "--actor-id", "bridge-agent",
-      "--kind", "agent",
-      "--session-id", "bridge-session",
-      "--project-id", "test-project",
     ], { service });
     assert.equal(heartbeat.ok, true);
     assert.equal(heartbeat.eventType, "task.heartbeat");
   } finally {
+    cleanupContext(ctx.prev, ctx.dir, ctx.ctxFile);
     service.close();
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
 
 test("executeBridgeCommand rejects events whose state machine transition is invalid", () => {
+  const prev = process.env.CORTEX_LAUNCH_CONTEXT;
+  delete process.env.CORTEX_LAUNCH_CONTEXT;
   const dir = runtimeDir();
   const service = createService(dir);
+  const ctx = setupContext("TASK-HB-003", "test-project", "bridge-agent");
   try {
     setupCoordinatorTask(service, "TASK-HB-003");
 
     // Try to report ready_for_review when task is still in ASSIGNED
-    // (not EXECUTING/TESTING)
     const result = executeBridgeCommand([
       "agent", "report",
       "--event-type", "task.ready_for_review",
-      "--task-id", "TASK-HB-003",
-      "--actor-id", "bridge-agent",
-      "--kind", "agent",
-      "--session-id", "bridge-session",
-      "--project-id", "test-project",
     ], { service });
     // The bridge passes through the service result; the service may reject
-    // based on the state machine. The bridge does not validate transitions.
     assert.equal(result.ok, false);
   } finally {
+    cleanupContext(ctx.prev, ctx.dir, ctx.ctxFile);
     service.close();
     fs.rmSync(dir, { recursive: true, force: true });
   }
@@ -245,7 +350,6 @@ test("bridge rejects --event-json with invalid JSON", () => {
   const result = parseBridgeArgs([
     "agent", "report",
     "--event-type", "task.progress",
-    "--task-id", "TASK-001",
     "--event-json", "not-json",
   ]);
   assert.equal(result.ok, false);
@@ -256,7 +360,6 @@ test("bridge rejects --event-json even with valid JSON", () => {
   const result = parseBridgeArgs([
     "agent", "report",
     "--event-type", "task.progress",
-    "--task-id", "TASK-001",
     "--event-json", JSON.stringify({ message: "Custom progress update" }),
   ]);
   assert.equal(result.ok, false);
@@ -267,44 +370,104 @@ test("bridge rejects --event-json with empty object", () => {
   const result = parseBridgeArgs([
     "agent", "report",
     "--event-type", "task.progress",
-    "--task-id", "TASK-001",
     "--event-json", "{}",
   ]);
   assert.equal(result.ok, false);
   assert.equal(result.error.code, "EVENT_JSON_REJECTED");
 });
 
-test("bridge rejects unknown options that are not in the restricted allowlist", () => {
+// ─── Negative constraints: governance params from CLI are rejected ──────────
+
+test("bridge rejects all unknown governance options", () => {
   const result = parseBridgeArgs([
     "agent", "report",
     "--event-type", "task.progress",
-    "--task-id", "TASK-001",
-    "--targets", '[{"actorId":"evil","kind":"agent"}]',
-    "--repository", '{"repositoryId":"evil-repo"}',
-    "--sequence", "99",
-  ]);
-  // Unknown options are silently ignored by the bridge (they are not parsed)
-  // but should not affect the valid result
-  assert.equal(result.ok, true);
-  // The bridge should not forward these fields
-  assert.equal(result.reportInput.targets, undefined);
-  assert.equal(result.reportInput.repository, undefined);
-  assert.equal(result.reportInput.sequence, undefined);
-});
-
-// ─── Bridge must not forward raw event envelope ─────────────────────────────
-
-test("bridge does not accept targets or repository from CLI", () => {
-  const result = parseBridgeArgs([
-    "agent", "report",
-    "--event-type", "task.progress",
-    "--task-id", "TASK-001",
-    // These are not recognized options and will be silently ignored
     "--targets", "evil",
     "--repository", "evil",
+    "--sequence", "99",
   ]);
-  assert.equal(result.ok, true);
-  // The bridge only maps restricted fields
-  assert.equal(result.reportInput.targets, undefined);
-  assert.equal(result.reportInput.repository, undefined);
+  assert.equal(result.ok, false);
+  assert.equal(result.error.code, "UNKNOWN_OPTIONS_REJECTED");
+});
+
+// ─── Sensitive content rejection ─────────────────────────────────────────────
+
+test("bridge rejects report with sensitive message content", () => {
+  const prev = process.env.CORTEX_LAUNCH_CONTEXT;
+  delete process.env.CORTEX_LAUNCH_CONTEXT;
+  const dir = runtimeDir();
+  const service = createService(dir);
+  const ctx = setupContext("TASK-HB-SENS-001", "test-project", "bridge-agent");
+  try {
+    setupCoordinatorTask(service, "TASK-HB-SENS-001");
+
+    const result = executeBridgeCommand([
+      "agent", "report",
+      "--event-type", "task.progress",
+      "--message", "Using API key sk-proj-abc123def456xyz789abcdef",
+    ], { service });
+
+    // The reporter rejects sensitive data
+    assert.equal(result.ok, false);
+    assert.equal(result.error.code, "ERR_SENSITIVE_DATA_REJECTED");
+  } finally {
+    cleanupContext(ctx.prev, ctx.dir, ctx.ctxFile);
+    service.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// ─── Early exit and spawn failure ────────────────────────────────────────────
+
+test("bridge fails closed when context points to invalid file", () => {
+  const prev = process.env.CORTEX_LAUNCH_CONTEXT;
+  delete process.env.CORTEX_LAUNCH_CONTEXT;
+  const dir = runtimeDir();
+  const service = createService(dir);
+  try {
+    // Set CORTEX_LAUNCH_CONTEXT to a non-existent file
+    process.env.CORTEX_LAUNCH_CONTEXT = "/nonexistent/path/context.json";
+
+    const result = executeBridgeCommand([
+      "agent", "report",
+      "--event-type", "task.progress",
+    ], { service });
+
+    assert.equal(result.ok, false);
+    assert.equal(result.error.code, "ERR_NO_GOVERNED_CONTEXT");
+  } finally {
+    if (prev) process.env.CORTEX_LAUNCH_CONTEXT = prev;
+    else delete process.env.CORTEX_LAUNCH_CONTEXT;
+    service.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("bridge fails closed when context file has wrong permissions", () => {
+  const prev = process.env.CORTEX_LAUNCH_CONTEXT;
+  delete process.env.CORTEX_LAUNCH_CONTEXT;
+  const dir = runtimeDir();
+  const service = createService(dir);
+  const ctxDir = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-bridge-mode-"));
+  const ctxFile = path.join(ctxDir, "context.json");
+  try {
+    // Write with 0644 (not 0600)
+    fs.writeFileSync(ctxFile, JSON.stringify({ taskId: "T-1", projectId: "p", coordinatorId: "c" }), { encoding: "utf8", mode: 0o644 });
+    process.env.CORTEX_LAUNCH_CONTEXT = ctxFile;
+
+    const result = executeBridgeCommand([
+      "agent", "report",
+      "--event-type", "task.progress",
+    ], { service });
+
+    assert.equal(result.ok, false);
+    assert.equal(result.error.code, "ERR_NO_GOVERNED_CONTEXT");
+  } finally {
+    if (prev) process.env.CORTEX_LAUNCH_CONTEXT = prev;
+    else delete process.env.CORTEX_LAUNCH_CONTEXT;
+    try { fs.unlinkSync(ctxFile); } catch (_) {}
+    try { fs.rmdirSync(ctxDir); } catch (_) {}
+    service.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
