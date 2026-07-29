@@ -30,6 +30,7 @@ const {
   cliHelp,
   printHelp,
   teamPack,
+  secrets,
 } = require("../lib/commands");
 
 // ─── Context ──────────────────────────────────────────────────────────────────
@@ -170,6 +171,7 @@ const l1Ctx = options.project
     case "daemon":
     case "trigger":     phaseZeroAutomation(ctx); break;
     case "team":        await teamPack(ctx); break;
+    case "secrets":     secrets(l1Ctx); break;
     case "help":        args.includes("--json") ? cliHelp(ctx) : printHelp(); break;
     case "dev":         await dev(ctx); break;
     case undefined:

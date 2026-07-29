@@ -244,6 +244,27 @@ Proposal / Mission / validation contract
 因此，关闭当前 Codex 对话不会丢失已落盘状态；恢复后应先读取 pending
 critical events、Operation journal、receipt 和 checkpoint，再继续推进。
 
+### 本机密钥管理
+
+公共 CLI 通过项目的 Secrets skill 把凭证保存到 macOS Keychain、Linux
+Secret Service 或其他已配置后端。命令不会输出明文，也不接受容易进入
+shell history 的 `--value`：
+
+```bash
+read -s "NPM_TOKEN?请输入 npm access token: "
+echo
+export NPM_TOKEN
+
+cortex-agent secrets store --ref npm-publish --from-env NPM_TOKEN
+cortex-agent secrets verify --ref npm-publish --provider npm
+cortex-agent secrets list
+
+unset NPM_TOKEN
+```
+
+`verify` 从 `secret://npm-publish` 解析凭证并执行 provider 身份检查，只返回
+身份和验证状态。它不绕过 npm 2FA；发布策略要求 OTP 时仍需显式提供。
+
 ### 上手流程一览
 
 <p align="center">
