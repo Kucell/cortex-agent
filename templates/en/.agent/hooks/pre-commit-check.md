@@ -46,3 +46,16 @@ The Claude Code Hook Adapter bridges Claude Code hooks to the Coordination Machi
 
 ## Integration
 The adapter is available at `lib/coordination/claude-hook-adapter.js`. Create an instance with `createClaudeHookAdapter({ rateLimitMs })` and dispatch hook payloads via `adapter.dispatch(hookName, payload)`. Each handler returns a structured result with `ok`, `code`, and `eventType` fields.
+
+## Hook Executable
+The governed hook executable is at `bin/cortex-claude-hook`. It accepts a hook name as the first argument and bounded JSON from stdin. Identity is derived exclusively from `CORTEX_LAUNCH_CONTEXT`. Governance fields in stdin are rejected.
+
+### Claude Code Settings
+To wire the governed hooks into Claude Code, add the hooks from `.agent/hooks/claude-governed-hooks.json` to your `~/.claude/settings.json` or project `.claude/settings.json`:
+
+```bash
+# Install the hook executable (or link locally)
+cortex-agent bin/cortex-claude-hook is available in the package bin directory.
+```
+
+The settings use `npx --yes cortex-claude-hook` to invoke the executable without hard-coded absolute paths. Each hook is routed to the corresponding handler, with identity derived from `CORTEX_LAUNCH_CONTEXT`.
