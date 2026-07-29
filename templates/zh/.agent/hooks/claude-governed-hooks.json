@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "npx --yes cortex-claude-hook SessionStart",
+            "timeout": 10
+          }
+        ],
+        "description": "受治理的 SessionStart：验证 CORTEX_LAUNCH_CONTEXT 并通过 Agent Reporter 路由（幂等——启动器已处理 task.accepted）"
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit|MultiEdit|Bash|Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "npx --yes cortex-claude-hook PostToolUse",
+            "timeout": 10
+          }
+        ],
+        "description": "受治理的 PostToolUse：限速、脱敏，映射到 task.progress / task.testing"
+      }
+    ],
+    "Notification": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "npx --yes cortex-claude-hook Notification",
+            "timeout": 10
+          }
+        ],
+        "description": "受治理的 Notification：仅保留 requestedAction，不转发原始负载"
+      }
+    ],
+    "Permission": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "npx --yes cortex-claude-hook Permission",
+            "timeout": 10
+          }
+        ],
+        "description": "受治理的 Permission：仅保留 requestedAction，不转发原始负载"
+      }
+    ],
+    "ReadyForReview": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "npx --yes cortex-claude-hook ReadyForReview",
+            "timeout": 10
+          }
+        ],
+        "description": "受治理的 ReadyForReview：仅转发允许的证据引用，不转发原始负载"
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "npx --yes cortex-claude-hook Stop",
+            "timeout": 10
+          }
+        ],
+        "description": "受治理的 Stop：永不推断完成——协调器决定终止状态"
+      }
+    ]
+  }
+}

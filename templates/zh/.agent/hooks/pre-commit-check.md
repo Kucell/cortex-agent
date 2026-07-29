@@ -46,3 +46,16 @@ Claude Code 钩子适配器将 Claude Code 钩子桥接到协调机器，对代�
 
 ## 集成
 适配器位于 `lib/coordination/claude-hook-adapter.js`。使用 `createClaudeHookAdapter({ rateLimitMs })` 创建实例，并通过 `adapter.dispatch(hookName, payload)` 分发钩子负载。每个处理程序返回一个包含 `ok`、`code` 和 `eventType` 字段的结构化结果。
+
+## 钩子可执行文件
+受治理的钩子可执行文件位于 `bin/cortex-claude-hook`。它接受钩子名称作为第一个参数，并从 stdin 读取有界 JSON。身份完全从 `CORTEX_LAUNCH_CONTEXT` 派生。stdin 中的治理字段将被拒绝。
+
+### Claude Code 配置
+要将受治理的钩子接入 Claude Code，请将 `.agent/hooks/claude-governed-hooks.json` 中的钩子配置添加到 `~/.claude/settings.json` 或项目 `.claude/settings.json`：
+
+```bash
+# 安装钩子可执行文件（或本地链接）
+cortex-agent bin/cortex-claude-hook 在包的 bin 目录中可用。
+```
+
+配置使用 `npx --yes cortex-claude-hook` 调用可执行文件，无需硬编码绝对路径。每个钩子路由到相应的处理程序，身份从 `CORTEX_LAUNCH_CONTEXT` 派生。
