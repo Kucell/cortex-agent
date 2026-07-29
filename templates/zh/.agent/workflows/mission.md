@@ -32,6 +32,7 @@ SCOPE -> PLAN -> CONTRACT -> EXECUTE_FEATURE -> HANDOFF -> RESUME -> VALIDATE_MI
 - Worker output is not proof. Validators must rely on the contract, diff, command output, runtime evidence, and necessary source files.
 - Failed validation creates a follow-up fix task or returns to planning; do not let a Worker self-repair indefinitely.
 - Record key commands with exit codes in `command-log.md`.
+- At mission create/resume/run boundaries, call `cortex-agent dashboard ensure --project . --reason mission`; it is a no-op unless the project explicitly enabled automation.
 - Handoff uses the T-C06 dual-artifact protocol: Markdown for humans, JSON for `AGENT_RESUME`, and Artifact Bus `kind: handoff` when available.
 - **Commits must follow the `/commit` workflow**: every commit made during a mission (per milestone or at completion) must go through Steps 1–5 of the commit workflow defined in `.agent/workflows/commit.md` — load context, analyze staged changes, generate a Conventional Commits message, get user confirmation, then execute.
 - A user choice is durable only when recorded as a resource-bound Decision. `--gate approve`, Dashboard input, prior approval, or silence is not authorization.

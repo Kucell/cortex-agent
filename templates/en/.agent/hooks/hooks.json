@@ -49,6 +49,18 @@
           }
         ],
         "description": "On session start, launch or renew the single runtime-continuity guard: catch up stale archives, archive every 2 hours, and exit after the 5-hour window"
+      },
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cortex-agent dashboard ensure --project \"$PWD\" --reason session-start >/dev/null 2>&1; exit 0",
+            "async": true,
+            "timeout": 5
+          }
+        ],
+        "description": "Ensure the singleton Dashboard Supervisor only when the project explicitly enabled automation; disabled projects perform zero writes and start no process"
       }
     ]
   }

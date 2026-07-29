@@ -19,6 +19,7 @@ description: 开始新开发任务的工作流
 1. **环境准备与上下文同步**:
     - 查阅任务进度文档（如 `.agent/plans/task-progress.md`）了解当前项目的开发状态。
     - 确保工作空间是最新的，并运行必要的环境检查。
+    - 调用 `cortex-agent dashboard ensure --project . --reason start-task`；默认关闭时该命令必须零写入、零进程并返回成功。
     - 若 `cortex-agent help --json` 可用，为本次任务创建或更新 Run journal：
       ```bash
       cortex-agent runs checkpoint --project . \
