@@ -1220,7 +1220,10 @@ test("E2E lifecycle: governed launch, agent report, ready with evidence", async 
   const ctxFile = path.join(ctxDir, "context.json");
 
   try {
-    // Step 1: Governed Launcher creates the task
+    // ─── Create a temp executable fixture for agentCommand ─────────────────
+    const fixtureDir = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-e2e-fixture-"));
+    const fixtureExec = path.join(fixtureDir, "test-agent.sh");
+    fs.writeFileSync(fixtureExec, "#!/bin/sh\necho 'agent'", { mode: 0o755 });
     const { createGovernedLauncher } = require("../lib/governed-launcher");
     const launcher = createGovernedLauncher(service, {
       coordinatorId: "coordinator-1",
@@ -1232,7 +1235,7 @@ test("E2E lifecycle: governed launch, agent report, ready with evidence", async 
     const launchResult = await launcher.launch({
       taskId: "TASK-E2E-001",
       targetAgentId: "test-agent",
-      agentCommand: "/usr/bin/node",
+      agentCommand: fixtureExec,
       ownershipScopes: [],
     });
     assert.equal(launchResult.ok, true);
@@ -1317,6 +1320,7 @@ test("E2E lifecycle: governed launch, agent report, ready with evidence", async 
     else delete process.env.CORTEX_LAUNCH_CONTEXT;
     try { fs.unlinkSync(ctxFile); } catch (_) {}
     try { fs.rmdirSync(ctxDir); } catch (_) {}
+    try { fs.rmSync(fixtureDir, { recursive: true, force: true }); } catch (_) {}
     service.close();
     fs.rmSync(dir, { recursive: true, force: true });
   }

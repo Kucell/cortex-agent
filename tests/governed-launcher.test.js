@@ -16,6 +16,8 @@ const {
   defaultExecutor,
   validateWorktree,
   validateOwnership,
+  validateAgentCommand,
+  validateAgentArgs,
 } = require("../lib/governed-launcher");
 
 function mockExecutor() {
@@ -30,6 +32,22 @@ function createService(dir) {
   return CoordinationApplicationService.open(dir, { journal: { lock: false } });
 }
 
+// ─── Test fixture: create a temporary executable file ─────────────────────────
+function createTempExecutable(dir, content) {
+  const execPath = path.join(dir, "test-agent.sh");
+  fs.writeFileSync(execPath, content || "#!/bin/sh\necho 'test-agent'", { mode: 0o755 });
+  return execPath;
+}
+
+// ─── Global test fixture executable ───────────────────────────────────────────
+// A single temp executable shared across all tests that need a valid agentCommand.
+const FIXTURE_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-global-fixture-"));
+const FIXTURE_EXEC = createTempExecutable(FIXTURE_DIR);
+
+test.after(() => {
+  try { fs.rmSync(FIXTURE_DIR, { recursive: true, force: true }); } catch (_) {}
+});
+
 // ─── Private Launch Context ──────────────────────────────────────────────────
 
 test("createPrivateLaunchContext returns a frozen context with stable identity", () => {
@@ -37,7 +55,7 @@ test("createPrivateLaunchContext returns a frozen context with stable identity",
     taskId: "TASK-001",
     projectId: "test-project",
     targetAgentId: "claude-agent",
-    agentCommand: "/usr/bin/node",
+    agentCommand: FIXTURE_EXEC,
     coordinatorId: "coordinator-1",
     repository: { repositoryId: "test-repo", branch: "main" },
     ownershipScopes: ["src/lib"],
@@ -52,7 +70,7 @@ test("createPrivateLaunchContext returns a frozen context with stable identity",
   assert.equal(context.taskId, "TASK-001");
   assert.equal(context.projectId, "test-project");
   assert.equal(context.targetAgentId, "claude-agent");
-  assert.equal(context.agentCommand, "/usr/bin/node");
+  assert.equal(context.agentCommand, FIXTURE_EXEC);
   assert.equal(context.coordinatorId, "coordinator-1");
   assert.equal(context.repository.repositoryId, "test-repo");
   assert.equal(context.repository.branch, "main");
@@ -71,7 +89,7 @@ test("createPrivateLaunchContext applies defaults for optional fields", () => {
     taskId: "TASK-001",
     projectId: "test-project",
     targetAgentId: "claude-agent",
-    agentCommand: "/usr/bin/node",
+    agentCommand: FIXTURE_EXEC,
     coordinatorId: "coordinator-1",
   });
   assert.equal(context.heartbeatIntervalMs, 30000);
@@ -102,7 +120,7 @@ test("createPrivateLaunchContext requires targetAgentId", () => {
   assert.throws(() => createPrivateLaunchContext({
     taskId: "T-1",
     projectId: "p",
-    agentCommand: "/usr/bin/node",
+    agentCommand: FIXTURE_EXEC,
     coordinatorId: "c",
     // no targetAgentId
   }), /ERR_FIELD_INVALID/);
@@ -151,7 +169,7 @@ test("launch creates task and assigns it to target agent (with mock executor)", 
     const result = await launcher.launch({
       taskId: "TASK-LAUNCH-001",
       targetAgentId: "claude-agent",
-      agentCommand: "/usr/bin/node",
+      agentCommand: FIXTURE_EXEC,
       acceptanceCriteria: ["focused tests pass"],
       forbiddenActions: ["do not push"],
       ownershipScopes: ["lib/agent-reporter"],
@@ -208,7 +226,7 @@ test("launch result does NOT expose private context or public context", async ()
     const result = await launcher.launch({
       taskId: "TASK-PRIVATE-001",
       targetAgentId: "claude-agent",
-      agentCommand: "/usr/bin/node",
+      agentCommand: FIXTURE_EXEC,
     });
 
     // Private context must NOT be in the public result
@@ -244,14 +262,14 @@ test("multiple launches create independent tasks", async () => {
     const first = await launcher.launch({
       taskId: "TASK-MULTI-001",
       targetAgentId: "agent-1",
-      agentCommand: "/usr/bin/node",
+      agentCommand: FIXTURE_EXEC,
     });
     assert.equal(first.ok, true);
 
     const second = await launcher.launch({
       taskId: "TASK-MULTI-002",
       targetAgentId: "agent-2",
-      agentCommand: "/usr/bin/node",
+      agentCommand: FIXTURE_EXEC,
     });
     assert.equal(second.ok, true);
 
@@ -282,7 +300,7 @@ test("launch with injectable executor reports accepted on success", async () => 
     const result = await launcher.launch({
       taskId: "TASK-EXEC-OK-001",
       targetAgentId: "claude-agent",
-      agentCommand: "/usr/bin/node",
+      agentCommand: FIXTURE_EXEC,
     });
 
     assert.equal(result.ok, true);
@@ -316,7 +334,7 @@ test("launch with injectable executor reports failed on spawn failure", async ()
     const result = await launcher.launch({
       taskId: "TASK-EXEC-FAIL-001",
       targetAgentId: "claude-agent",
-      agentCommand: "/usr/bin/node",
+      agentCommand: FIXTURE_EXEC,
     });
 
     assert.equal(result.ok, false);
@@ -352,7 +370,7 @@ test("launch with executor must not leak private context in result", async () =>
     const result = await launcher.launch({
       taskId: "TASK-EXEC-LEAK-001",
       targetAgentId: "claude-agent",
-      agentCommand: "/usr/bin/node",
+      agentCommand: FIXTURE_EXEC,
     });
 
     assert.equal(result.ok, true);
@@ -380,11 +398,11 @@ test("launch requires agentCommand — no empty/process.execPath fallback", asyn
       executor: mockExecutor,
     });
 
-    // Missing agentCommand should throw synchronously (field validation)
+    // Missing agentCommand should throw ERR_AGENT_COMMAND_EMPTY
     await assert.rejects(() => launcher.launch({
       taskId: "TASK-NO-CMD-001",
       targetAgentId: "claude-agent",
-    }), /ERR_FIELD_INVALID/);
+    }), /ERR_AGENT_COMMAND_EMPTY/);
   } finally {
     service.close();
     fs.rmSync(dir, { recursive: true, force: true });
@@ -396,6 +414,8 @@ test("launch requires agentCommand — no empty/process.execPath fallback", asyn
 test("launch with real subprocess executor — accepted after child alive", async () => {
   const dir = runtimeDir();
   const service = createService(dir);
+  const fixtureDir = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-launch-fixture-"));
+  const agentPath = createTempExecutable(fixtureDir);
   try {
     const launcher = createGovernedLauncher(service, {
       coordinatorId: "coordinator-1",
@@ -429,8 +449,8 @@ test("launch with real subprocess executor — accepted after child alive", asyn
     const result = await launcher.launch({
       taskId: "TASK-ASYNC-ALIVE-001",
       targetAgentId: "claude-agent",
-      agentCommand: process.execPath,
-      agentArgs: ["-e", "setTimeout(() => process.exit(0), 500)"],
+      agentCommand: agentPath,
+      agentArgs: [],
     });
 
     const elapsed = Date.now() - startTime;
@@ -447,12 +467,15 @@ test("launch with real subprocess executor — accepted after child alive", asyn
   } finally {
     service.close();
     fs.rmSync(dir, { recursive: true, force: true });
+    fs.rmSync(fixtureDir, { recursive: true, force: true });
   }
 });
 
 test("launch with real executor — spawn failure produces task.failed", async () => {
   const dir = runtimeDir();
   const service = createService(dir);
+  const fixtureDir = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-launch-fixture-"));
+  const agentPath = createTempExecutable(fixtureDir);
   try {
     const launcher = createGovernedLauncher(service, {
       coordinatorId: "coordinator-1",
@@ -475,7 +498,7 @@ test("launch with real executor — spawn failure produces task.failed", async (
     const result = await launcher.launch({
       taskId: "TASK-ASYNC-FAIL-001",
       targetAgentId: "claude-agent",
-      agentCommand: "/nonexistent/binary",
+      agentCommand: agentPath,
     });
 
     assert.equal(result.ok, false);
@@ -487,20 +510,23 @@ test("launch with real executor — spawn failure produces task.failed", async (
     assert.equal(result.events[1].eventType, "task.assigned");
     assert.equal(result.events[2].eventType, "task.failed");
 
-    // The contract may reject task.failed from coordinator producer,
-    // but the task was created and assigned.
+    // Task should be in FAILED state
     const task = service.getTask("TASK-ASYNC-FAIL-001");
     assert.ok(task);
     assert.equal(task.assignee, "claude-agent");
+    assert.equal(task.state, STATES.FAILED);
   } finally {
     service.close();
     fs.rmSync(dir, { recursive: true, force: true });
+    fs.rmSync(fixtureDir, { recursive: true, force: true });
   }
 });
 
 test("launch with real executor — early exit produces task.failed", async () => {
   const dir = runtimeDir();
   const service = createService(dir);
+  const fixtureDir = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-launch-fixture-"));
+  const agentPath = createTempExecutable(fixtureDir);
   try {
     const launcher = createGovernedLauncher(service, {
       coordinatorId: "coordinator-1",
@@ -524,8 +550,8 @@ test("launch with real executor — early exit produces task.failed", async () =
     const result = await launcher.launch({
       taskId: "TASK-ASYNC-EARLY-001",
       targetAgentId: "claude-agent",
-      agentCommand: process.execPath,
-      agentArgs: ["-e", "process.exit(1)"],
+      agentCommand: agentPath,
+      agentArgs: [],
     });
 
     assert.equal(result.ok, false);
@@ -536,14 +562,15 @@ test("launch with real executor — early exit produces task.failed", async () =
     assert.equal(result.events[1].eventType, "task.assigned");
     assert.equal(result.events[2].eventType, "task.failed");
 
-    // The contract may reject task.failed from coordinator producer,
-    // but the task was created and assigned.
+    // Task should be in FAILED state
     const task = service.getTask("TASK-ASYNC-EARLY-001");
     assert.ok(task);
     assert.equal(task.assignee, "claude-agent");
+    assert.equal(task.state, STATES.FAILED);
   } finally {
     service.close();
     fs.rmSync(dir, { recursive: true, force: true });
+    fs.rmSync(fixtureDir, { recursive: true, force: true });
   }
 });
 
@@ -552,6 +579,8 @@ test("launch with real executor — early exit produces task.failed", async () =
 test("agentCommand and agentArgs are passed to executor", async () => {
   const dir = runtimeDir();
   const service = createService(dir);
+  const fixtureDir = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-launch-fixture-"));
+  const agentPath = createTempExecutable(fixtureDir);
   let receivedCommand = null;
   let receivedArgs = null;
 
@@ -569,16 +598,18 @@ test("agentCommand and agentArgs are passed to executor", async () => {
     const result = await launcher.launch({
       taskId: "TASK-EXEC-CMD-001",
       targetAgentId: "claude-agent",
-      agentCommand: "/custom/path/agent",
+      agentCommand: agentPath,
       agentArgs: ["--verbose", "--project", "/tmp/test"],
     });
 
     assert.equal(result.ok, true);
-    assert.equal(receivedCommand, "/custom/path/agent");
+    // The received command should be the resolved canonical path
+    assert.equal(receivedCommand, fs.realpathSync(agentPath));
     assert.deepEqual(receivedArgs, ["--verbose", "--project", "/tmp/test"]);
   } finally {
     service.close();
     fs.rmSync(dir, { recursive: true, force: true });
+    fs.rmSync(fixtureDir, { recursive: true, force: true });
   }
 });
 
@@ -621,5 +652,284 @@ test("validateOwnership throws for missing scopes", () => {
     );
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+// ─── validateAgentCommand tests ───────────────────────────────────────────────
+
+test("validateAgentCommand rejects empty/null", () => {
+  assert.throws(() => validateAgentCommand(""), /ERR_AGENT_COMMAND_EMPTY/);
+  assert.throws(() => validateAgentCommand(null), /ERR_AGENT_COMMAND_EMPTY/);
+  assert.throws(() => validateAgentCommand(undefined), /ERR_AGENT_COMMAND_EMPTY/);
+});
+
+test("validateAgentCommand rejects relative paths", () => {
+  assert.throws(() => validateAgentCommand("relative/path"), /ERR_AGENT_COMMAND_RELATIVE_PATH/);
+  assert.throws(() => validateAgentCommand("./agent.sh"), /ERR_AGENT_COMMAND_RELATIVE_PATH/);
+  assert.throws(() => validateAgentCommand("agent"), /ERR_AGENT_COMMAND_RELATIVE_PATH/);
+});
+
+test("validateAgentCommand rejects process.execPath fallback", () => {
+  assert.throws(() => validateAgentCommand(process.execPath), /ERR_AGENT_COMMAND_FALLBACK/);
+});
+
+test("validateAgentCommand rejects non-existent path", () => {
+  assert.throws(() => validateAgentCommand("/nonexistent/binary"), /ERR_AGENT_COMMAND_NOT_RESOLVABLE/);
+});
+
+test("validateAgentCommand rejects non-executable file", () => {
+  const dir = runtimeDir();
+  try {
+    const nonExec = path.join(dir, "non-exec.js");
+    fs.writeFileSync(nonExec, "console.log('test')", { mode: 0o644 });
+    assert.throws(() => validateAgentCommand(nonExec), /ERR_AGENT_COMMAND_NOT_EXECUTABLE/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("validateAgentCommand rejects command injection characters", () => {
+  const dir = runtimeDir();
+  try {
+    const execPath = createTempExecutable(dir);
+    assert.throws(() => validateAgentCommand(`${execPath}; rm -rf /`), /ERR_AGENT_COMMAND_INJECTION_CHARS/);
+    assert.throws(() => validateAgentCommand(`${execPath}|cat /etc/passwd`), /ERR_AGENT_COMMAND_INJECTION_CHARS/);
+    assert.throws(() => validateAgentCommand(`${execPath}&exit`), /ERR_AGENT_COMMAND_INJECTION_CHARS/);
+    assert.throws(() => validateAgentCommand(`${execPath}$(id)`), /ERR_AGENT_COMMAND_INJECTION_CHARS/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("validateAgentCommand accepts valid executable", () => {
+  const dir = runtimeDir();
+  try {
+    const execPath = createTempExecutable(dir);
+    const resolved = validateAgentCommand(execPath);
+    assert.equal(resolved, fs.realpathSync(execPath));
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("validateAgentCommand rejects non-whitelisted command", () => {
+  const dir = runtimeDir();
+  try {
+    const execPath = createTempExecutable(dir);
+    const otherDir = runtimeDir();
+    const otherExec = createTempExecutable(otherDir);
+    try {
+      assert.throws(
+        () => validateAgentCommand(execPath, { allowedAgentCommands: [otherExec] }),
+        /ERR_AGENT_COMMAND_NOT_ALLOWED/,
+      );
+    } finally {
+      fs.rmSync(otherDir, { recursive: true, force: true });
+    }
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("validateAgentCommand accepts whitelisted command", () => {
+  const dir = runtimeDir();
+  try {
+    const execPath = createTempExecutable(dir);
+    const resolved = validateAgentCommand(execPath, { allowedAgentCommands: [execPath] });
+    assert.equal(resolved, fs.realpathSync(execPath));
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// ─── validateAgentArgs tests ──────────────────────────────────────────────────
+
+test("validateAgentArgs rejects non-array", () => {
+  assert.throws(() => validateAgentArgs("not-an-array"), /ERR_AGENT_ARGS_NOT_ARRAY/);
+  assert.throws(() => validateAgentArgs(42), /ERR_AGENT_ARGS_NOT_ARRAY/);
+  assert.throws(() => validateAgentArgs({}), /ERR_AGENT_ARGS_NOT_ARRAY/);
+});
+
+test("validateAgentArgs rejects too many args", () => {
+  const manyArgs = Array.from({ length: 65 }, (_, i) => `arg-${i}`);
+  assert.throws(() => validateAgentArgs(manyArgs), /ERR_AGENT_ARGS_TOO_MANY/);
+});
+
+test("validateAgentArgs rejects NUL character in args", () => {
+  assert.throws(() => validateAgentArgs(["--path", "bad\0arg"]), /ERR_AGENT_ARGS_NUL/);
+  assert.throws(() => validateAgentArgs(["\0start"]), /ERR_AGENT_ARGS_NUL/);
+  assert.throws(() => validateAgentArgs(["end\0"]), /ERR_AGENT_ARGS_NUL/);
+});
+
+test("validateAgentArgs rejects non-string args", () => {
+  assert.throws(() => validateAgentArgs([42]), /ERR_AGENT_ARGS_NOT_STRING/);
+  assert.throws(() => validateAgentArgs([true]), /ERR_AGENT_ARGS_NOT_STRING/);
+  assert.throws(() => validateAgentArgs([null]), /ERR_AGENT_ARGS_NOT_STRING/);
+});
+
+test("validateAgentArgs accepts null/undefined as empty", () => {
+  assert.deepEqual(validateAgentArgs(null), []);
+  assert.deepEqual(validateAgentArgs(undefined), []);
+});
+
+test("validateAgentArgs accepts valid args", () => {
+  const result = validateAgentArgs(["--verbose", "--project", "/tmp/test"]);
+  assert.deepEqual(result, ["--verbose", "--project", "/tmp/test"]);
+});
+
+test("validateAgentArgs accepts up to 64 args", () => {
+  const sixtyFour = Array.from({ length: 64 }, (_, i) => `arg-${i}`);
+  assert.doesNotThrow(() => validateAgentArgs(sixtyFour));
+});
+
+// ─── Launch failure auditability: task.failed after create/assign ─────────────
+
+test("launch worktree failure emits task.failed event and task.state=FAILED", async () => {
+  const dir = runtimeDir();
+  const service = createService(dir);
+  try {
+    const launcher = createGovernedLauncher(service, {
+      coordinatorId: "coordinator-1",
+      projectId: "test-project",
+      executor: mockExecutor,
+    });
+
+    const result = await launcher.launch({
+      taskId: "TASK-WT-FAIL-001",
+      targetAgentId: "claude-agent",
+      agentCommand: FIXTURE_EXEC,
+      repository: { worktreeId: "/nonexistent/worktree/path" },
+    });
+
+    assert.equal(result.ok, false);
+    assert.equal(result.code, "ERR_WORKTREE_NOT_FOUND");
+    assert.equal(result.events.length, 3);
+    assert.equal(result.events[0].eventType, "task.created");
+    assert.equal(result.events[1].eventType, "task.assigned");
+    assert.equal(result.events[2].eventType, "task.failed");
+
+    // Task was created, assigned, then failed
+    const task = service.getTask("TASK-WT-FAIL-001");
+    assert.ok(task);
+    assert.equal(task.assignee, "claude-agent");
+    assert.equal(task.state, STATES.FAILED);
+  } finally {
+    service.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("launch ownership failure emits task.failed event and task.state=FAILED", async () => {
+  const dir = runtimeDir();
+  const service = createService(dir);
+  try {
+    const launcher = createGovernedLauncher(service, {
+      coordinatorId: "coordinator-1",
+      projectId: "test-project",
+      projectRoot: dir,
+      executor: mockExecutor,
+    });
+
+    const result = await launcher.launch({
+      taskId: "TASK-OWN-FAIL-001",
+      targetAgentId: "claude-agent",
+      agentCommand: FIXTURE_EXEC,
+      ownershipScopes: ["nonexistent-scope"],
+    });
+
+    assert.equal(result.ok, false);
+    assert.equal(result.code, "ERR_OWNERSHIP_VALIDATION_FAILED");
+    assert.equal(result.events.length, 3);
+    assert.equal(result.events[0].eventType, "task.created");
+    assert.equal(result.events[1].eventType, "task.assigned");
+    assert.equal(result.events[2].eventType, "task.failed");
+
+    // Task was created, assigned, then failed
+    const task = service.getTask("TASK-OWN-FAIL-001");
+    assert.ok(task);
+    assert.equal(task.assignee, "claude-agent");
+    assert.equal(task.state, STATES.FAILED);
+  } finally {
+    service.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("launch with allowedAgentCommands rejects non-whitelisted command", async () => {
+  const dir = runtimeDir();
+  const service = createService(dir);
+  const fixtureDir2 = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-launch-fixture-"));
+  const otherExec = createTempExecutable(fixtureDir2);
+  try {
+    const launcher = createGovernedLauncher(service, {
+      coordinatorId: "coordinator-1",
+      projectId: "test-project",
+      executor: mockExecutor,
+      allowedAgentCommands: [FIXTURE_EXEC],
+    });
+
+    await assert.rejects(() => launcher.launch({
+      taskId: "TASK-ALLOW-001",
+      targetAgentId: "claude-agent",
+      agentCommand: otherExec,
+    }), /ERR_AGENT_COMMAND_NOT_ALLOWED/);
+  } finally {
+    service.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+    fs.rmSync(fixtureDir2, { recursive: true, force: true });
+  }
+});
+
+// ─── Temp executable fixture test ─────────────────────────────────────────────
+
+test("temp executable fixture can be launched", async () => {
+  const dir = runtimeDir();
+  const service = createService(dir);
+  const fixtureDir2 = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-launch-fixture-"));
+  const agentPath = createTempExecutable(fixtureDir2, "#!/bin/sh\necho 'agent-alive'");
+  try {
+    const launcher = createGovernedLauncher(service, {
+      coordinatorId: "coordinator-1",
+      projectId: "test-project",
+      executor: (ctxFile, privateCtx) => {
+        // Use the validated agent command from private context
+        const { spawn } = require("node:child_process");
+        return new Promise((resolve, reject) => {
+          const child = spawn(privateCtx.agentCommand, [], {
+            stdio: "ignore",
+            env: { CORTEX_LAUNCH_CONTEXT: ctxFile },
+          });
+          const timeout = setTimeout(() => {
+            resolve({ pid: child.pid, launchedAt: new Date().toISOString() });
+          }, 500);
+          child.once("error", (err) => {
+            clearTimeout(timeout);
+            reject(err);
+          });
+          child.once("exit", () => {
+            clearTimeout(timeout);
+            resolve({ pid: child.pid, launchedAt: new Date().toISOString() });
+          });
+          child.unref();
+        });
+      },
+    });
+
+    const result = await launcher.launch({
+      taskId: "TASK-FIXTURE-ALIVE-001",
+      targetAgentId: "claude-agent",
+      agentCommand: agentPath,
+      agentArgs: [],
+    });
+
+    assert.equal(result.ok, true);
+    assert.equal(result.spawnStatus, "accepted");
+    assert.ok(result.pid, "Should have a child PID");
+    // Verify the task was created and the executor ran
+    const task = service.getTask("TASK-FIXTURE-ALIVE-001");
+    assert.ok(task);
+  } finally {
+    service.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+    fs.rmSync(fixtureDir2, { recursive: true, force: true });
   }
 });
