@@ -13,5 +13,6 @@
 list、watch、Management API 与 MCP 查询不得修改 stale 状态、lease、
 Decision 或 Waitpoint。
 
-宿主唤醒 capability 未验证时，状态保持
-`CORTEX_READY_HOST_ADAPTER_PENDING`，继续以 journal 恢复为可靠路径。
+Codex 宿主唤醒通过官方 App Server 的 `thread/resume` + `turn/start` 完成。
+缺少 `CODEX_THREAD_ID` / `CORTEX_CODEX_THREAD_ID` 或宿主不可用时，继续以
+journal 恢复为可靠路径并保留 pending。

@@ -39,8 +39,10 @@ cortex-agent notification pump --project . --consumer coordinator \
 ```
 
 `watch` 是单 consumer 前台常驻进程，使用文件事件加有界退避；`status`
-只读，`stop` 幂等。宿主 capability 未验证时必须保留 pending 并报告
-`CORTEX_READY_HOST_ADAPTER_PENDING`，不得伪造投递或 ACK。
+只读，`stop` 幂等。Codex 任务内使用宿主提供的 `CODEX_THREAD_ID`；外部终端
+必须显式设置 `CORTEX_CODEX_THREAD_ID`。Adapter 通过官方 Codex App Server
+执行 `thread/resume` 与 `turn/start`。线程或宿主不可用时必须保留 pending，
+不得伪造投递或 ACK。
 
 运行态只保存在已 Git ignore 的 `.agent-runtime/coordination/`。Team Pack
 只能分发 `.agent/coordination/README.md`、`notification-policy.json` 与
