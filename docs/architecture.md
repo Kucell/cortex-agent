@@ -480,7 +480,27 @@ flowchart LR
 | Host Adapter | 探测能力、翻译 context package、调用宿主并返回 receipt/boundary event | 不选择任务、不批准自己 |
 | Management API / Audit | 统一投影 capability、plan、event、checkpoint 与 evidence | 查询不修复或推进状态 |
 
-当前核心契约、matcher、dry-run、manual dispatch 委托、tool gate、handoff 与 Pi/Cursor 可选 adapter 已实现。自动 dispatch 与 daemon 默认关闭；在 P-006 Operation/Readiness owner 落地并完成真实宿主 receipt pilot 前，本能力的生产状态保持 `pilot-ready`，不得宣称为无人值守的开箱即用调度器。
+当前核心契约、matcher、dry-run、manual dispatch、tool gate、handoff、
+Pi/Cursor adapter 和 P-006 Operation/Authorization/Readiness owner 已实现。
+Mission M-010 已使用真实一次性 Pi 进程完成 receipt、checkpoint 与 handoff
+验证；Codex 第二宿主仅记录安全可达探测，不伪造 authenticated execution
+receipt。
+
+Operation journal 是权威历史，资源文件是可恢复投影。创建 Operation 使用
+原子 create-if-absent；相同 ID 绑定不同 plan、actor、target 或 revision
+时必须 fail closed。Authorization 消费通过 revision-bound durable ledger
+与独占锁防止重复使用，Management API 只暴露 allowlist 投影并执行字段和
+值级脱敏。
+
+Notification Pump 把关键边界事件投递给宿主 adapter。Codex App Server
+adapter 可执行 `initialize → thread/resume → turn/start` 实现真实 Desktop
+任务唤醒；Claude Code 可通过 hook 或显式 CLI 汇报；不支持主动唤醒的宿主
+可由定时检查读取同一 journal。投递成功不等于 ACK，ACK 不等于授权或任务
+完成。
+
+当前成熟度是“受治理的手工 production pilot 已通过”。自动 dispatch 与
+常驻 daemon 仍默认关闭；启用它们必须另行完成 ADR、Decision、故障恢复与
+安全门禁验证，不得把当前能力描述为无人值守调度器。
 
 ---
 

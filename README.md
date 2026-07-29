@@ -213,6 +213,37 @@ Codex Desktop/CLI 宿主通过官方 Codex App Server 接入：在 Codex 任务�
 自动 ACK。未提供线程 ID 或 App Server 不可用时保持 deferred 和 journal
 恢复，不得用 mock 投递替代真实宿主验收。
 
+### 多宿主开发任务与监督推进
+
+Cortex Agent 可以把冻结后的开发任务交给 Claude Code、Pi、Codex 或其他
+实现标准 Adapter 的宿主，并由 Codex 持续监督 Proposal、Mission 和 Plan：
+
+```text
+Proposal / Mission / validation contract
+  → Decision + Waitpoint + coordination lease
+  → capability-aware manual dispatch
+  → Claude Code / Pi / Codex / third-party adapter
+  → boundary event + receipt + checkpoint + handoff
+  → Notification Pump 唤醒 Codex
+  → 独立验证并推进 milestone / task-progress
+```
+
+当前生产边界：
+
+- Pi 已通过真实一次性进程验证，receipt 仅保存标识、摘要、退出状态和
+  SHA-256，不保存 prompt、response、工具负载、凭证或私有 session。
+- Claude Code 支持 hook 与显式 CLI 上报；Codex Desktop 通过 App Server
+  接收关键事件唤醒，并可从 journal 恢复未确认通知。
+- Operation、Authorization、Readiness、checkpoint 和 handoff 都是持久、
+  可回放且可独立查询的事实；同一 Operation ID 的并发冲突会 fail closed。
+- Codex 可以根据真实事件推进 Mission milestone、验证契约和计划记录，
+  但不会从进程退出或普通进度推断“已完成”，也不会自动批准权限。
+- 自动 dispatch 与常驻 daemon 默认关闭。当前推荐显式启动
+  `notification pump --watch`，或在不支持主动唤醒的宿主上使用定时检查。
+
+因此，关闭当前 Codex 对话不会丢失已落盘状态；恢复后应先读取 pending
+critical events、Operation journal、receipt 和 checkpoint，再继续推进。
+
 ### 上手流程一览
 
 <p align="center">
