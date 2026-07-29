@@ -72,6 +72,18 @@ test("update --verify --report json runs smoke checks without upgrade writes", (
   assert.equal(fs.existsSync(path.join(project, ".agent", "updates", "latest.json")), false);
 });
 
+test("update --verify supports an explicit project path", (t) => {
+  const project = createProject();
+  t.after(() => fs.rmSync(project, { recursive: true, force: true }));
+
+  const result = runCli(ROOT, ["update", "--verify", "--report", "json", "--project", project]);
+  assert.equal(result.status, 0, `stderr: ${result.stderr}\nstdout: ${result.stdout}`);
+  const payload = JSON.parse(result.stdout);
+  assert.equal(payload.ok, true);
+  assert.equal(payload.summary.failed, 0);
+  assert.ok(payload.verification.some((check) => check.name === "query capabilities" && check.status === "passed"));
+});
+
 test("update --verify reports invalid JSON configuration as failed", (t) => {
   const project = createProject();
   t.after(() => fs.rmSync(project, { recursive: true, force: true }));
