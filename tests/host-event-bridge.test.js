@@ -239,9 +239,9 @@ test("executeBridgeCommand rejects events whose state machine transition is inva
   }
 });
 
-// ─── Edge cases ──────────────────────────────────────────────────────────────
+// ─── Negative constraints: --event-json is rejected ─────────────────────────
 
-test("bridge rejects invalid event-json", () => {
+test("bridge rejects --event-json with invalid JSON", () => {
   const result = parseBridgeArgs([
     "agent", "report",
     "--event-type", "task.progress",
@@ -249,16 +249,62 @@ test("bridge rejects invalid event-json", () => {
     "--event-json", "not-json",
   ]);
   assert.equal(result.ok, false);
-  assert.equal(result.error.code, "INVALID_EVENT_JSON");
+  assert.equal(result.error.code, "EVENT_JSON_REJECTED");
 });
 
-test("bridge accepts valid event-json envelope", () => {
+test("bridge rejects --event-json even with valid JSON", () => {
   const result = parseBridgeArgs([
     "agent", "report",
     "--event-type", "task.progress",
     "--task-id", "TASK-001",
     "--event-json", JSON.stringify({ message: "Custom progress update" }),
   ]);
+  assert.equal(result.ok, false);
+  assert.equal(result.error.code, "EVENT_JSON_REJECTED");
+});
+
+test("bridge rejects --event-json with empty object", () => {
+  const result = parseBridgeArgs([
+    "agent", "report",
+    "--event-type", "task.progress",
+    "--task-id", "TASK-001",
+    "--event-json", "{}",
+  ]);
+  assert.equal(result.ok, false);
+  assert.equal(result.error.code, "EVENT_JSON_REJECTED");
+});
+
+test("bridge rejects unknown options that are not in the restricted allowlist", () => {
+  const result = parseBridgeArgs([
+    "agent", "report",
+    "--event-type", "task.progress",
+    "--task-id", "TASK-001",
+    "--targets", '[{"actorId":"evil","kind":"agent"}]',
+    "--repository", '{"repositoryId":"evil-repo"}',
+    "--sequence", "99",
+  ]);
+  // Unknown options are silently ignored by the bridge (they are not parsed)
+  // but should not affect the valid result
   assert.equal(result.ok, true);
-  assert.equal(result.reportInput.message, "Custom progress update");
+  // The bridge should not forward these fields
+  assert.equal(result.reportInput.targets, undefined);
+  assert.equal(result.reportInput.repository, undefined);
+  assert.equal(result.reportInput.sequence, undefined);
+});
+
+// ─── Bridge must not forward raw event envelope ─────────────────────────────
+
+test("bridge does not accept targets or repository from CLI", () => {
+  const result = parseBridgeArgs([
+    "agent", "report",
+    "--event-type", "task.progress",
+    "--task-id", "TASK-001",
+    // These are not recognized options and will be silently ignored
+    "--targets", "evil",
+    "--repository", "evil",
+  ]);
+  assert.equal(result.ok, true);
+  // The bridge only maps restricted fields
+  assert.equal(result.reportInput.targets, undefined);
+  assert.equal(result.reportInput.repository, undefined);
 });
