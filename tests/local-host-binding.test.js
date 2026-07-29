@@ -211,6 +211,42 @@ test("CP-9: symlinked runtime root segment is refused", () => {
   );
 });
 
+test("CP-9: symlinked ancestor above the runtime root is refused", () => {
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), "binding-ancestor-"));
+  const real = path.join(base, "real");
+  fs.mkdirSync(path.join(real, ".agent-runtime"), { recursive: true });
+  const linked = path.join(base, "linked");
+  fs.symlinkSync(real, linked, "dir");
+  assert.throws(
+    () => new LocalHostBindingStore(path.join(linked, ".agent-runtime"), "project-a"),
+    (error) => error.code === "ERR_BINDING_SCOPE" && error.details.reason === "symlink_in_path",
+  );
+});
+
+test("CP-9: load refuses a binding record replaced by a symlink", () => {
+  const root = freshRoot("symlinked-record");
+  const store = new LocalHostBindingStore(root, "project-a");
+  store.save(baseBinding({ consumerId: "consumer-a" }));
+  const file = safeResolve(root, "consumer-a").file;
+  const outside = path.join(path.dirname(root), "outside-binding.json");
+  fs.writeFileSync(outside, JSON.stringify({ private: "content" }));
+  fs.unlinkSync(file);
+  fs.symlinkSync(outside, file);
+  assert.throws(
+    () => store.load("consumer-a"),
+    (error) => error.code === "ERR_BINDING_SCOPE" && error.details.reason === "unsafe_binding_file",
+  );
+});
+
+test("CP-9: scrubReceipt detects a nested object cycle", () => {
+  const root = { child: {} };
+  root.child.parent = root;
+  assert.throws(
+    () => scrubReceipt(root),
+    (error) => error.code === "ERR_BINDING_RECEIPT" && error.details.reason === "cycle",
+  );
+});
+
 test("CP-9: safeResolve refuses consumer ids that would traverse", () => {
   // fileNameForConsumer hashes the consumer id, so traversal via the id
   // is structurally impossible. We additionally guard assertConsumerId.
