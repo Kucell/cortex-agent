@@ -1,0 +1,173 @@
+#!/usr/bin/env node
+"use strict";
+
+// ─── Cortex Claude Code Hook Executable (T-ACN-017) ──────────────────────────
+//
+// Standalone entrypoint for Claude Code hooks. Accepts a hook name as the
+// first argument and bounded JSON from stdin. Derives identity exclusively
+// from CORTEX_LAUNCH_CONTEXT. Routes through the existing Agent Reporter
+// and Host Event Bridge.
+//
+// CLI grammar:
+//   cortex-claude-hook <hook-name>  < bounded-stdin.json
+//
+// Hook names:
+//   SessionStart, PostToolUse, TestStart, Notification, Permission,
+//   ReadyForReview, Stop, SubagentStop
+//
+// Stdin: bounded at 64 KiB JSON object. Governance fields (taskId, projectId,
+//   actorId, kind, sessionId) are NEVER read from stdin — only from the
+//   governed CORTEX_LAUNCH_CONTEXT. Unknown fields are rejected.
+//
+// Exit codes:
+//   0 — hook processed successfully (or silently ignored per fail-closed)
+//   1 — hook processing error (invalid input, no governed context)
+//   2 — internal error (unexpected failure)
+//
+// Safety contract:
+//   - Derives identity exclusively from CORTEX_LAUNCH_CONTEXT
+//   - Stdin JSON is bounded at 64 KiB
+//   - Only known hook names are accepted; unknown hooks are silently ignored
+//   - Governance fields in stdin are rejected
+//   - SessionStart does NOT create "task.accepted" independently
+//   - Stop/SubagentStop never emit terminal events
+//   - Receipt never leaks prompt, session, path, command, payload, token, or credentials
+//
+// Zero external dependencies beyond the project modules.
+
+const fs = require("node:fs");
+const path = require("node:path");
+
+// ─── Constants ───────────────────────────────────────────────────────────────
+
+const MAX_STDIN_BYTES = 64 * 1024; // 64 KiB
+const HOOK_EXECUTABLE_VERSION = "1.0";
+
+const GOVERNANCE_FIELDS = new Set([
+  "taskId", "projectId", "actorId", "kind", "sessionId",
+  "correlationId", "coordinatorId", "launchId",
+  "targets", "repository", "sequence", "workflowGate",
+  "notificationPolicy", "producer",
+]);
+
+// ─── Stdin reader ────────────────────────────────────────────────────────────
+
+function readStdin() {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let total = 0;
+
+    process.stdin.on("data", (chunk) => {
+      total += chunk.length;
+      if (total > MAX_STDIN_BYTES) {
+        reject(new Error(`Stdin exceeds maximum size of ${MAX_STDIN_BYTES} bytes`));
+        process.stdin.destroy();
+        return;
+      }
+      chunks.push(chunk);
+    });
+
+    process.stdin.on("end", () => {
+      resolve(Buffer.concat(chunks).toString("utf8"));
+    });
+
+    process.stdin.on("error", (err) => {
+      reject(err);
+    });
+  });
+}
+
+// ─── Governance field rejector ───────────────────────────────────────────────
+
+function rejectGovernanceFields(payload) {
+  if (!payload || typeof payload !== "object") return payload;
+  const rejected = [];
+  const safe = {};
+  for (const [key, value] of Object.entries(payload)) {
+    if (GOVERNANCE_FIELDS.has(key)) {
+      rejected.push(key);
+    } else {
+      safe[key] = value;
+    }
+  }
+  return { safe, rejected };
+}
+
+// ─── Build redacted receipt ─────────────────────────────────────────────────
+//
+// Per P-003 §11.1 / §13.5: receipt contains ONLY eventId, eventType, taskId,
+// projectId, timestamp, state, ok. NEVER prompt, session, path, command,
+// payload, token, or credentials.
+
+function buildRedactedReceipt(result, identity) {
+  const receipt = {
+    ok: result.ok,
+    eventType: result.eventType || null,
+    emitted: result.emitted !== undefined ? result.emitted : null,
+    code: result.code || null,
+    timestamp: new Date().toISOString(),
+  };
+  if (identity) {
+    receipt.taskId = identity.taskId;
+    receipt.projectId = identity.projectId;
+  }
+  return receipt;
+}
+
+// ─── Main ────────────────────────────────────────────────────────────────────
+
+async function main() {
+  // Parse hook name from argv
+  const hookName = process.argv[2];
+  if (!hookName || typeof hookName !== "string") {
+    const receipt = { ok: false, emitted: false, code: "ERR_HOOK_NAME_REQUIRED", message: "Hook name is required as first argument." };
+    process.stdout.write(JSON.stringify(receipt) + "\n");
+    process.exit(1);
+  }
+
+  // Read bounded stdin
+  let rawPayload = {};
+  try {
+    const stdinText = await readStdin();
+    if (stdinText.trim().length > 0) {
+      rawPayload = JSON.parse(stdinText);
+    }
+  } catch (err) {
+    const receipt = { ok: false, emitted: false, code: "ERR_STDIN_INVALID", message: err.message || "Invalid stdin input." };
+    process.stdout.write(JSON.stringify(receipt) + "\n");
+    process.exit(1);
+  }
+
+  // Reject governance fields in stdin
+  const { safe, rejected } = rejectGovernanceFields(rawPayload);
+  if (rejected.length > 0) {
+    const receipt = {
+      ok: false, emitted: false, code: "ERR_GOVERNANCE_FIELD_REJECTED",
+      message: `Governance fields are not accepted from stdin: ${rejected.join(", ")}. Identity is derived exclusively from CORTEX_LAUNCH_CONTEXT.`,
+    };
+    process.stdout.write(JSON.stringify(receipt) + "\n");
+    process.exit(1);
+  }
+
+  // Load the adapter
+  const { createClaudeHookAdapter } = require("../lib/coordination/claude-hook-adapter");
+  const adapter = createClaudeHookAdapter();
+
+  // Dispatch the hook
+  const result = adapter.dispatch(hookName, safe);
+
+  // Build and emit the redacted receipt
+  const receipt = buildRedactedReceipt(result, null);
+  process.stdout.write(JSON.stringify(receipt) + "\n");
+
+  if (!result.ok) {
+    process.exit(1);
+  }
+  process.exit(0);
+}
+
+main().catch((err) => {
+  const receipt = { ok: false, emitted: false, code: "ERR_INTERNAL", message: "Internal error: " + (err.message || "unknown") };
+  process.stdout.write(JSON.stringify(receipt) + "\n");
+  process.exit(2);
+});
