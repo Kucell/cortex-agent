@@ -1230,6 +1230,7 @@ test("E2E lifecycle: governed launch, agent report, ready with evidence", async 
       projectId: "test-project",
       sessionId: "e2e-session",
       executor: () => ({ pid: 99999, launchedAt: new Date().toISOString() }),
+      testMode: true,
     });
 
     const launchResult = await launcher.launch({
