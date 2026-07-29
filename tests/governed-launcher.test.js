@@ -143,6 +143,7 @@ test("createGovernedLauncher returns a frozen launcher with stable identity", ()
       projectId: "test-project",
       sessionId: "coordinator-session",
       executor: mockExecutor,
+      testMode: true,
     });
 
     assert.equal(launcher.coordinatorId, "coordinator-1");
@@ -164,6 +165,7 @@ test("launch creates task and assigns it to target agent (with mock executor)", 
       projectId: "test-project",
       sessionId: "coordinator-session",
       executor: mockExecutor,
+      testMode: true,
     });
 
     const result = await launcher.launch({
@@ -200,6 +202,7 @@ test("launch rejects missing required fields", async () => {
       coordinatorId: "coordinator-1",
       projectId: "test-project",
       executor: mockExecutor,
+      testMode: true,
     });
 
     await assert.rejects(() => launcher.launch({}), /ERR_FIELD_INVALID/);
@@ -221,6 +224,7 @@ test("launch result does NOT expose private context or public context", async ()
       coordinatorId: "coordinator-1",
       projectId: "test-project",
       executor: mockExecutor,
+      testMode: true,
     });
 
     const result = await launcher.launch({
@@ -257,6 +261,7 @@ test("multiple launches create independent tasks", async () => {
       coordinatorId: "coordinator-1",
       projectId: "test-project",
       executor: mockExecutor,
+      testMode: true,
     });
 
     const first = await launcher.launch({
@@ -295,6 +300,7 @@ test("launch with injectable executor reports accepted on success", async () => 
       coordinatorId: "coordinator-1",
       projectId: "test-project",
       executor: () => ({ pid: 12345, launchedAt: new Date().toISOString() }),
+      testMode: true,
     });
 
     const result = await launcher.launch({
@@ -329,6 +335,7 @@ test("launch with injectable executor reports failed on spawn failure", async ()
       executor: () => {
         throw new Error("Executor binary not found");
       },
+      testMode: true,
     });
 
     const result = await launcher.launch({
@@ -365,6 +372,7 @@ test("launch with executor must not leak private context in result", async () =>
       coordinatorId: "coordinator-1",
       projectId: "test-project",
       executor: () => ({ pid: 12345, launchedAt: new Date().toISOString() }),
+      testMode: true,
     });
 
     const result = await launcher.launch({
@@ -396,6 +404,7 @@ test("launch requires agentCommand — no empty/process.execPath fallback", asyn
       coordinatorId: "coordinator-1",
       projectId: "test-project",
       executor: mockExecutor,
+      testMode: true,
     });
 
     // Missing agentCommand should throw ERR_AGENT_COMMAND_EMPTY
@@ -443,6 +452,7 @@ test("launch with real subprocess executor — accepted after child alive", asyn
           child.unref();
         });
       },
+      testMode: true,
     });
 
     const startTime = Date.now();
@@ -493,6 +503,7 @@ test("launch with real executor — spawn failure produces task.failed", async (
           child.unref();
         });
       },
+      testMode: true,
     });
 
     const result = await launcher.launch({
@@ -545,6 +556,7 @@ test("launch with real executor — early exit produces task.failed", async () =
           child.unref();
         });
       },
+      testMode: true,
     });
 
     const result = await launcher.launch({
@@ -593,6 +605,7 @@ test("agentCommand and agentArgs are passed to executor", async () => {
         receivedArgs = privateCtx.agentArgs;
         return { pid: 12345, launchedAt: new Date().toISOString() };
       },
+      testMode: true,
     });
 
     const result = await launcher.launch({
@@ -791,6 +804,7 @@ test("launch worktree failure emits task.failed event and task.state=FAILED", as
       coordinatorId: "coordinator-1",
       projectId: "test-project",
       executor: mockExecutor,
+      testMode: true,
     });
 
     const result = await launcher.launch({
@@ -827,6 +841,7 @@ test("launch ownership failure emits task.failed event and task.state=FAILED", a
       projectId: "test-project",
       projectRoot: dir,
       executor: mockExecutor,
+      testMode: true,
     });
 
     const result = await launcher.launch({
@@ -912,6 +927,7 @@ test("temp executable fixture can be launched", async () => {
           child.unref();
         });
       },
+      testMode: true,
     });
 
     const result = await launcher.launch({
@@ -927,6 +943,194 @@ test("temp executable fixture can be launched", async () => {
     // Verify the task was created and the executor ran
     const task = service.getTask("TASK-FIXTURE-ALIVE-001");
     assert.ok(task);
+  } finally {
+    service.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+    fs.rmSync(fixtureDir2, { recursive: true, force: true });
+  }
+});
+
+// ─── ASSIGNED→FAILED authorization tightening ─────────────────────────────
+// Only the coordinator who created the task may fail it while in ASSIGNED.
+
+test("second coordinator cannot fail an assigned task (ASSIGNED→FAILED rejected)", async () => {
+  const dir = runtimeDir();
+  const service = createService(dir);
+  try {
+    // Create and assign task with coordinator-1
+    const launcher = createGovernedLauncher(service, {
+      coordinatorId: "coordinator-1",
+      projectId: "test-project",
+      executor: mockExecutor,
+      testMode: true,
+    });
+
+    const launchResult = await launcher.launch({
+      taskId: "TASK-AUTH-001",
+      targetAgentId: "test-agent",
+      agentCommand: FIXTURE_EXEC,
+    });
+    assert.equal(launchResult.ok, true);
+
+    // Now try to fail the assigned task with coordinator-2
+    const { createEvent, STATES } = require("../lib/coordination/contract");
+    const failEvent = createEvent({
+      eventId: "CE-coord2-fail-TASK-AUTH-001",
+      projectId: "test-project",
+      taskId: "TASK-AUTH-001",
+      correlationId: "CORR-AUTH-001",
+      producer: { actorId: "coordinator-2", kind: "coordinator" },
+      targets: [],
+      eventType: "task.failed",
+      previousState: STATES.ASSIGNED,
+      currentState: STATES.FAILED,
+      sequence: 4,
+      repository: { repositoryId: "test-project" },
+      notification: { policy: "journal_only", dedupeKey: "test" },
+    });
+
+    assert.throws(
+      () => service.submit(failEvent, { actorId: "coordinator-2", kind: "coordinator", sessionId: "sess" }),
+      (err) => err.key === "ERR_ACTOR_MISMATCH",
+    );
+
+    // Verify task is still in ASSIGNED state
+    const task = service.getTask("TASK-AUTH-001");
+    assert.equal(task.state, STATES.ASSIGNED);
+    assert.equal(task.createdBy, "coordinator-1");
+  } finally {
+    service.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("original coordinator can fail assigned task (spawn/validation failure → FAILED)", async () => {
+  const dir = runtimeDir();
+  const service = createService(dir);
+  try {
+    const launcher = createGovernedLauncher(service, {
+      coordinatorId: "coordinator-1",
+      projectId: "test-project",
+      executor: () => {
+        throw new Error("Simulated launch failure");
+      },
+      testMode: true,
+    });
+
+    const result = await launcher.launch({
+      taskId: "TASK-AUTH-002",
+      targetAgentId: "test-agent",
+      agentCommand: FIXTURE_EXEC,
+    });
+
+    assert.equal(result.ok, false);
+    assert.equal(result.code, "ERR_LAUNCH_FAILED");
+    assert.equal(result.events.length, 3);
+    assert.equal(result.events[0].eventType, "task.created");
+    assert.equal(result.events[1].eventType, "task.assigned");
+    assert.equal(result.events[2].eventType, "task.failed");
+
+    const task = service.getTask("TASK-AUTH-002");
+    assert.ok(task);
+    assert.equal(task.state, STATES.FAILED);
+    assert.equal(task.createdBy, "coordinator-1");
+  } finally {
+    service.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// ─── Command whitelist enforcement (fail closed) ─────────────────────────
+
+test("launch fails closed when allowedAgentCommands is not provided and testMode is not set", async () => {
+  const dir = runtimeDir();
+  const service = createService(dir);
+  try {
+    const launcher = createGovernedLauncher(service, {
+      coordinatorId: "coordinator-1",
+      projectId: "test-project",
+      executor: mockExecutor,
+      // testMode not set — allowedAgentCommands defaults to [] (fail closed)
+    });
+
+    await assert.rejects(() => launcher.launch({
+      taskId: "TASK-ALLOW-MISSING-001",
+      targetAgentId: "claude-agent",
+      agentCommand: FIXTURE_EXEC,
+    }), /ERR_AGENT_COMMAND_NOT_ALLOWED/);
+  } finally {
+    service.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("launch fails closed when allowedAgentCommands is empty array", async () => {
+  const dir = runtimeDir();
+  const service = createService(dir);
+  try {
+    const launcher = createGovernedLauncher(service, {
+      coordinatorId: "coordinator-1",
+      projectId: "test-project",
+      executor: mockExecutor,
+      allowedAgentCommands: [],
+    });
+
+    await assert.rejects(() => launcher.launch({
+      taskId: "TASK-ALLOW-EMPTY-001",
+      targetAgentId: "claude-agent",
+      agentCommand: FIXTURE_EXEC,
+    }), /ERR_AGENT_COMMAND_NOT_ALLOWED/);
+  } finally {
+    service.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("launch accepts whitelisted valid executable command", async () => {
+  const dir = runtimeDir();
+  const service = createService(dir);
+  try {
+    const launcher = createGovernedLauncher(service, {
+      coordinatorId: "coordinator-1",
+      projectId: "test-project",
+      executor: mockExecutor,
+      allowedAgentCommands: [FIXTURE_EXEC],
+    });
+
+    const result = await launcher.launch({
+      taskId: "TASK-ALLOW-VALID-001",
+      targetAgentId: "claude-agent",
+      agentCommand: FIXTURE_EXEC,
+    });
+
+    assert.equal(result.ok, true);
+    assert.equal(result.spawnStatus, "accepted");
+    const task = service.getTask("TASK-ALLOW-VALID-001");
+    assert.ok(task);
+  } finally {
+    service.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("launch rejects non-whitelisted command despite valid executable", async () => {
+  const dir = runtimeDir();
+  const service = createService(dir);
+  const fixtureDir2 = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-launch-fixture-"));
+  const otherExec = createTempExecutable(fixtureDir2);
+  try {
+    const launcher = createGovernedLauncher(service, {
+      coordinatorId: "coordinator-1",
+      projectId: "test-project",
+      executor: mockExecutor,
+      allowedAgentCommands: [FIXTURE_EXEC],
+    });
+
+    await assert.rejects(() => launcher.launch({
+      taskId: "TASK-ALLOW-REJECT-001",
+      targetAgentId: "claude-agent",
+      agentCommand: otherExec,
+    }), /ERR_AGENT_COMMAND_NOT_ALLOWED/);
   } finally {
     service.close();
     fs.rmSync(dir, { recursive: true, force: true });
