@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cortex-agent.local/schemas/dispatch/dispatch-plan.schema.json",
+  "title": "Cortex Agent Dispatch Plan (Read-Only)",
+  "description": "Read-only Management API projection for `query dispatch-plan <task-id>`. Resolves idempotency key, concurrency key, lock and worktree plans, the next planned run event, and any required gates. Returned by both `query dispatch-plan <task-id>` and `cortex-agent dispatch dry-run <task-id> --output json`.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "_meta",
+    "task_id",
+    "would_proceed",
+    "idempotency",
+    "concurrency",
+    "locks",
+    "worktree",
+    "next_run_event",
+    "required_gates",
+    "warnings",
+    "errors"
+  ],
+  "properties": {
+    "_meta": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["generated_at", "schema_version"],
+      "properties": {
+        "generated_at": { "type": "string", "format": "date-time" },
+        "schema_version": { "const": 1 }
+      }
+    },
+    "task_id": { "type": "string", "minLength": 1 },
+    "would_proceed": { "type": "boolean" },
+    "idempotency": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["key", "existing_run_id", "would_duplicate"],
+      "properties": {
+        "key": { "type": "string", "minLength": 1 },
+        "existing_run_id": { "anyOf": [{ "type": "null" }, { "type": "string" }] },
+        "would_duplicate": { "type": "boolean" }
+      }
+    },
+    "concurrency": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["key", "current_active", "limit", "would_exceed"],
+      "properties": {
+        "key": { "type": "string", "minLength": 1 },
+        "current_active": { "type": "integer", "minimum": 0 },
+        "limit": { "anyOf": [{ "type": "null" }, { "type": "integer", "minimum": 1 }] },
+        "would_exceed": { "type": "boolean" }
+      }
+    },
+    "locks": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["would_acquire", "would_conflict_with"],
+      "properties": {
+        "would_acquire": { "type": "array", "items": { "type": "string" } },
+        "would_conflict_with": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "worktree": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["would_create", "branch"],
+      "properties": {
+        "would_create": { "type": "string", "minLength": 1 },
+        "branch": { "type": "string", "minLength": 1 },
+        "base_commit": { "type": "string", "pattern": "^[0-9a-f]{7,64}$" }
+      }
+    },
+    "next_run_event": {
+      "anyOf": [
+        { "type": "null" },
+        { "type": "object", "additionalProperties": false, "required": ["run_id", "phase", "activity"], "properties": { "run_id": { "type": "string" }, "phase": { "type": "string" }, "activity": { "type": "string" } } }
+      ]
+    },
+    "required_gates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["gate", "reason"],
+        "properties": { "gate": { "type": "string" }, "reason": { "type": "string" } }
+      }
+    },
+    "warnings": { "type": "array", "items": { "type": "string" } },
+    "errors": { "type": "array", "items": { "type": "string" } }
+  }
+}

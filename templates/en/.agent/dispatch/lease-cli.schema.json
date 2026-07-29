@@ -1,0 +1,119 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cortex-agent.local/schemas/dispatch/lease-cli.schema.json",
+  "title": "Cortex Agent Public Lease CLI Envelope",
+  "description": "Read-only schema for the JSON envelope returned by `cortex-agent lease <acquire|renew|release|status|recover> --json`. Stable across FAE-007 / M-013. Sensitive evidence strings are rejected at the CLI boundary before any audit row is written.",
+  "type": "object",
+  "oneOf": [
+    {
+      "title": "acquire / renew / release / status envelope",
+      "type": "object",
+      "required": ["ok", "action"],
+      "properties": {
+        "ok": { "type": "boolean" },
+        "action": { "enum": ["lease_acquire", "lease_renew", "lease_release", "lease_status"] },
+        "idempotent": { "type": "boolean" },
+        "lease": {
+          "type": "object",
+          "required": ["leaseId", "scope", "owner", "actorId", "fencingToken", "acquiredAt", "expiresAt", "releasedAt", "staleAt", "takeover", "recoveredFrom"],
+          "properties": {
+            "leaseId": { "type": "string", "pattern": "^LEASE-[0-9]+$" },
+            "scope": { "type": "string", "minLength": 1 },
+            "owner": { "type": "string", "minLength": 1 },
+            "actorId": { "type": "string", "minLength": 1 },
+            "fencingToken": { "type": "integer", "minimum": 1 },
+            "acquiredAt": { "type": "string", "format": "date-time" },
+            "expiresAt": { "type": "string", "format": "date-time" },
+            "releasedAt": { "anyOf": [{ "type": "null" }, { "type": "string", "format": "date-time" }] },
+            "staleAt": { "anyOf": [{ "type": "null" }, { "type": "string", "format": "date-time" }] },
+            "takeover": { "type": "boolean" },
+            "recoveredFrom": { "anyOf": [{ "type": "null" }, { "type": "string" }] },
+            "idempotencyKey": { "anyOf": [{ "type": "null" }, { "type": "string" }] },
+            "status": { "enum": ["active", "expired", "released", "stale"] },
+            "remaining_ms": { "type": "integer", "minimum": 0 }
+          },
+          "additionalProperties": false
+        },
+        "found": { "type": "boolean" },
+        "lease_id": { "type": "string" },
+        "scope": { "type": "string" },
+        "leases": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/leaseEntry" }
+        }
+      }
+    },
+    {
+      "title": "recover envelope",
+      "type": "object",
+      "required": ["ok", "action", "request", "takeover"],
+      "properties": {
+        "ok": { "type": "boolean" },
+        "action": { "const": "lease_recover" },
+        "request": {
+          "type": "object",
+          "required": ["requestId", "status", "expiresAt"],
+          "properties": {
+            "requestId": { "type": "string", "pattern": "^TKO-[0-9]+$" },
+            "status": { "enum": ["pending", "completed", "expired", "canceled"] },
+            "expiresAt": { "type": "string", "format": "date-time" }
+          },
+          "additionalProperties": false
+        },
+        "takeover": {
+          "type": "object",
+          "required": ["lease"],
+          "properties": {
+            "lease": { "$ref": "#/$defs/leaseEntry" },
+            "audit": { "type": "array" }
+          },
+          "additionalProperties": false
+        }
+      }
+    },
+    {
+      "title": "error envelope",
+      "type": "object",
+      "required": ["ok", "action", "code", "error"],
+      "properties": {
+        "ok": { "const": false },
+        "action": { "enum": ["lease_acquire", "lease_renew", "lease_release", "lease_status", "lease_recover"] },
+        "code": {
+          "enum": [
+            "ERR_LEASE_CONFLICT",
+            "ERR_LEASE_NOT_FOUND",
+            "ERR_LEASE_EXPIRED",
+            "ERR_LEASE_OWNER_MISMATCH",
+            "ERR_LEASE_IDEMPOTENCY_MISMATCH",
+            "ERR_LEASE_EVIDENCE_TAINTED",
+            "ERR_TAKEOVER_REQUEST_TIMEOUT"
+          ]
+        },
+        "error": { "type": "object" }
+      }
+    }
+  ],
+  "$defs": {
+    "leaseEntry": {
+      "type": "object",
+      "required": ["leaseId", "scope", "owner", "actorId", "fencingToken", "acquiredAt", "expiresAt", "releasedAt", "staleAt", "takeover", "recoveredFrom", "status", "remaining_ms"],
+      "properties": {
+        "leaseId": { "type": "string", "pattern": "^LEASE-[0-9]+$" },
+        "scope": { "type": "string", "minLength": 1 },
+        "owner": { "type": "string", "minLength": 1 },
+        "actorId": { "type": "string", "minLength": 1 },
+        "fencingToken": { "type": "integer", "minimum": 1 },
+        "acquiredAt": { "type": "string", "format": "date-time" },
+        "expiresAt": { "type": "string", "format": "date-time" },
+        "releasedAt": { "anyOf": [{ "type": "null" }, { "type": "string", "format": "date-time" }] },
+        "staleAt": { "anyOf": [{ "type": "null" }, { "type": "string", "format": "date-time" }] },
+        "takeover": { "type": "boolean" },
+        "recoveredFrom": { "anyOf": [{ "type": "null" }, { "type": "string" }] },
+        "idempotencyKey": { "anyOf": [{ "type": "null" }, { "type": "string" }] },
+        "status": { "enum": ["active", "expired", "released", "stale"] },
+        "remaining_ms": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    }
+  }
+}

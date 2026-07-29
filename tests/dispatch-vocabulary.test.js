@@ -12,7 +12,7 @@ const ROOT = path.resolve(__dirname, "..");
 const CLI = path.join(ROOT, "bin", "cli.js");
 const SHARED = path.join(ROOT, "templates", "_shared", ".agent", "dispatch");
 const contract = require("../lib/cli-contract");
-const COMMANDS = ["dispatch", "daemon", "trigger"];
+const COMMANDS = ["daemon", "trigger"];
 const SCHEMAS = ["trigger.schema.json", "daemon-state.schema.json", "idempotency.schema.json"];
 
 function run(cwd, args) {
@@ -33,7 +33,7 @@ function snapshot(dir) {
   return result;
 }
 
-test("Phase 0 automation commands are discoverable fail-closed stubs", () => {
+test("remaining Phase 0 automation commands are discoverable fail-closed stubs", () => {
   for (const name of COMMANDS) {
     const entry = contract.commands.find((item) => item.name === name);
     assert.ok(entry, `${name} must be discoverable`);
@@ -57,7 +57,22 @@ test("Phase 0 automation commands are discoverable fail-closed stubs", () => {
   }
 });
 
-test("Phase 0 stubs do not write project runtime state", (t) => {
+test("dispatch contract advertises governed manual dispatch rather than a stale Phase 0 stub", () => {
+  const entry = contract.commands.find((item) => item.name === "dispatch");
+  assert.ok(entry, "dispatch must be discoverable");
+  assert.equal(entry.mode, "governed_manual");
+  assert.equal(entry.implemented, true);
+  assert.equal(entry.automatic_dispatch_enabled, false);
+  assert.deepEqual(entry.requires, ["approved_task", "ownership_lease", "idempotency_key", "host", "gate"]);
+
+  const help = run(ROOT, ["help", "dispatch", "--json"]);
+  assert.equal(help.status, 0, help.stderr);
+  const payload = JSON.parse(help.stdout);
+  assert.equal(payload.contract.commands[0].mode, "governed_manual");
+  assert.equal(payload.contract.commands[0].implemented, true);
+});
+
+test("remaining Phase 0 stubs do not write project runtime state", (t) => {
   const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-fae-phase0-"));
   t.after(() => fs.rmSync(cwd, { recursive: true, force: true }));
   fs.mkdirSync(path.join(cwd, ".agent", "runs"), { recursive: true });
@@ -95,7 +110,7 @@ test("Phase 0 dispatch schemas are strict shared contracts", () => {
   assert.equal(idempotency.properties.request_digest.pattern, "^[a-f0-9]{64}$");
 });
 
-test("localized docs and rules retain the Phase 0 safety boundaries", () => {
+test("localized docs and rules retain explicit manual-dispatch and Phase 0 safety boundaries", () => {
   const files = [
     path.join(ROOT, "templates", "en", ".agent", "dispatch", "README.md"),
     path.join(ROOT, "templates", "zh", ".agent", "dispatch", "README.md"),
@@ -104,10 +119,12 @@ test("localized docs and rules retain the Phase 0 safety boundaries", () => {
   ];
   for (const file of files) {
     const content = fs.readFileSync(file, "utf8");
-    for (const marker of ["Dispatch", "Daemon", "Trigger", "Phase 0", "Management API"]) {
+    for (const marker of ["Dispatch", "Phase 0", "Management API"]) {
       assert.ok(content.includes(marker), `${path.relative(ROOT, file)} is missing ${marker}`);
     }
   }
-  assert.match(fs.readFileSync(files[0], "utf8"), /disabled by default/);
-  assert.match(fs.readFileSync(files[1], "utf8"), /默认关闭/);
+  assert.match(fs.readFileSync(files[0], "utf8"), /Governed explicit manual dispatch/);
+  assert.match(fs.readFileSync(files[1], "utf8"), /Governed explicit manual dispatch/);
+  assert.match(fs.readFileSync(files[0], "utf8"), /automatic dispatch is disabled/);
+  assert.match(fs.readFileSync(files[1], "utf8"), /automatic dispatch is disabled/);
 });
