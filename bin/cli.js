@@ -24,6 +24,7 @@ const {
   coordination,
   notification,
   mcp,
+  agent,
   managementQuery,
   phaseZeroAutomation,
   dashboard,
@@ -174,6 +175,7 @@ const l1Ctx = options.project
     case "dashboard":   dashboard(ctx); break;
     case "team":        await teamPack(ctx); break;
     case "secrets":     secrets(l1Ctx); break;
+    case "agent":       agent(ctx); break;
     case "help":        args.includes("--json") ? cliHelp(ctx) : printHelp(); break;
     case "dev":         await dev(ctx); break;
     case undefined:
