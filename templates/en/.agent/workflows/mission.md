@@ -21,6 +21,7 @@ Mission state lives under `.agent/missions/<mission-id>/` and includes `mission-
 
 ## Operating Rules
 
+- At mission create/resume/run boundaries, call `cortex-agent dashboard ensure --project . --reason mission`; it is a no-op unless the project explicitly enabled automation.
 - Every milestone has explicit acceptance criteria, validation evidence, dependencies, and an owner.
 - Read-only research, validation, and documentation may run in parallel. Mutating work requires non-overlapping ownership, locks, Queue/Run/Session state, and a handoff plan.
 - A user choice is durable only as a resource-bound Decision. `--gate approve`, Dashboard input, prior approval, or silence is not authorization.

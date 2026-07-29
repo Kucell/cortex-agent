@@ -19,6 +19,8 @@ Use worktrees to isolate parallel implementation while sharing the project's can
 
 ## Planning and Creation
 
+After creating or entering a worktree, call `cortex-agent dashboard ensure --project . --reason worktree`; a shared `.agent` must reuse the owner-bound Supervisor.
+
 1. Read the task plan, dependencies, file scopes, locks, repository policy, and active worktrees.
 2. Parallelize only independent tasks with non-overlapping write scopes. Shared files require explicit sequencing or ownership.
 3. Record the branch, worktree path, task ID, agent/session owner, expected files, validation command, and handoff target.

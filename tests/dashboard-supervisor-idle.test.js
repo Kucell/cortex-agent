@@ -1,190 +1,317 @@
 "use strict";
 
-/**
- * Dashboard Supervisor — idle grace and recovery tests for M-004.
- *
- * Contract:
- *  - Dashboard Session must NOT keep itself alive — when the only
- *    "active" source is the dashboard-manager session, the supervisor
- *    must still allow stop
- *  - `stop --if-idle` succeeds when state is `idle`
- *  - Stale PID: if state.dashboard.pid points at a dead process,
- *    `ensure` must transition cleanly without spurious refused status
- *  - PID reuse: a different process holding the recorded pid must NOT
- *    be killed by the supervisor
- *  - Idle deadline is cancellable: a subsequent ensure cancels any
- *    pending stop
- *  - The supervisor never schedules a stop by itself (no self-sustaining
- *    timer) — idle shutdown must come from an explicit user command
- */
-
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
-const os = require("node:os");
 const path = require("node:path");
-const { execFileSync } = require("node:child_process");
+const { spawn } = require("node:child_process");
+const {
+  callSupervisor,
+  cleanupFixture,
+  createFixture,
+  readState,
+  setWorkloads,
+  waitFor,
+} = require("./helpers/dashboard-supervisor-fixture.js");
 
-const ROOT = path.resolve(__dirname, "..");
-const SUPERVISOR = path.join(ROOT, ".agent", "skills", "dashboard-supervisor", "scripts", "supervisor.js");
-
-function makeFixture(opts = {}) {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "dash-idle-"));
-  fs.mkdirSync(path.join(root, ".agent", "config"), { recursive: true });
-  fs.mkdirSync(path.join(root, ".agent", "runtime-evidence", "dashboard-supervisor"), { recursive: true });
-  fs.writeFileSync(
-    path.join(root, ".agent", "config", "dashboard-automation.json"),
-    JSON.stringify({
-      schema_version: 1,
-      enabled: opts.enabled !== false,
-      mode: "active-workload",
-      dashboard_root: null,
-      requested_port: 8787,
-      refresh_interval_ms: 3000,
-      poll_interval_ms: 5000,
-      idle_shutdown_ms: opts.idleShutdownMs ?? 900000,
-      start_on: ["session_running", "run_running", "task_active"],
-      exclude_roles: ["dashboard-manager", "runtime-continuity"],
-      localhost_only: true,
-    }, null, 2),
-    "utf8",
-  );
-  return root;
+function activeSession(role = "developer") {
+  return {
+    session_id: `S-${role}`,
+    agent_id: role,
+    role,
+    status: "running",
+    last_heartbeat_at: new Date().toISOString(),
+  };
 }
 
-function callSupervisor(root, args) {
+test("dashboard-manager does not self-sustain and idle deadline stops Dashboard", async () => {
+  const fixture = createFixture({ idleShutdownMs: 100 });
+  setWorkloads(fixture, { sessions: [activeSession()] });
   try {
-    const stdout = execFileSync("node", [SUPERVISOR, ...args], { cwd: root, encoding: "utf8" });
-    return { ok: true, status: 0, stdout };
-  } catch (error) {
-    return { ok: false, status: error.status || 1, stdout: String(error.stdout || ""), stderr: String(error.stderr || "") };
+    callSupervisor(fixture.root, ["auto", "enable"]);
+    await waitFor(() => readState(fixture).status === "running");
+    setWorkloads(fixture, { sessions: [activeSession("dashboard-manager")] });
+    await waitFor(() => readState(fixture).status === "idle_grace");
+    const stopped = await waitFor(() => {
+      const state = readState(fixture);
+      return state.status === "enabled_idle" && state.dashboard_pid === null ? state : null;
+    }, 5000);
+    assert.equal(stopped.url, null);
+  } finally {
+    await cleanupFixture(fixture);
   }
-}
+});
 
-function seedState(root, statePatch) {
-  const stateFile = path.join(root, ".agent", "runtime-evidence", "dashboard-supervisor", "state.json");
-  fs.writeFileSync(stateFile, JSON.stringify({
-    schema_version: 1,
-    state: "stopped",
-    dashboard: null,
-    updated_at: new Date().toISOString(),
-    start_token: null,
-    command_root: "CMD-test",
-    ...statePatch,
-  }, null, 2));
-}
+test("stop --if-idle refuses active Dashboard and succeeds after idle", async () => {
+  const fixture = createFixture({ idleShutdownMs: 5000 });
+  setWorkloads(fixture, { sessions: [activeSession()] });
+  try {
+    callSupervisor(fixture.root, ["auto", "enable"]);
+    await waitFor(() => readState(fixture).status === "running");
+    const refused = callSupervisor(fixture.root, ["stop", "--if-idle"]);
+    assert.equal(refused.status, 1);
+    assert.equal(refused.payload.refused, true);
+    setWorkloads(fixture, { sessions: [] });
+    await waitFor(() => readState(fixture).status === "idle_grace");
+    const stopped = callSupervisor(fixture.root, ["stop", "--if-idle"]);
+    assert.equal(stopped.status, 0, stopped.stderr);
+  } finally {
+    await cleanupFixture(fixture);
+  }
+});
 
-test("dashboard-manager session alone does not keep the supervisor alive", () => {
-  const root = makeFixture();
-  // Seed state with a dashboard-manager session as the only recorded
-  // workload. The supervisor's "active" filter must exclude
-  // dashboard-manager and runtime-continuity.
-  seedState(root, {
-    state: "running",
-    dashboard: {
+test("shared .agent worktrees reuse the configured owner daemon", async () => {
+  const fixture = createFixture();
+  const sibling = fs.mkdtempSync(path.join(path.dirname(fixture.root), "dashboard-shared-"));
+  fs.symlinkSync(fixture.agentRoot, path.join(sibling, ".agent"), "dir");
+  try {
+    const enabled = callSupervisor(fixture.root, ["auto", "enable"]);
+    assert.equal(enabled.status, 0, enabled.stderr);
+    const sharedEnsure = callSupervisor(sibling, ["ensure"]);
+    assert.equal(sharedEnsure.status, 0, sharedEnsure.stderr);
+    assert.equal(sharedEnsure.payload.supervisor_pid, enabled.payload.state.supervisor_pid);
+    assert.equal(sharedEnsure.payload.dashboard_root, fs.realpathSync(fixture.root));
+  } finally {
+    await cleanupFixture(fixture);
+    fs.rmSync(sibling, { recursive: true, force: true });
+  }
+});
+
+test("non-trigger active Queue keeps an already running Dashboard alive", async () => {
+  const fixture = createFixture({ idleShutdownMs: 100 });
+  setWorkloads(fixture, { sessions: [activeSession()] });
+  try {
+    callSupervisor(fixture.root, ["auto", "enable"]);
+    await waitFor(() => readState(fixture).status === "running");
+    setWorkloads(fixture, {
+      queues: [{ queue_id: "Q-1", items: [{ state: "running" }] }],
+    });
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    assert.equal(readState(fixture).status, "running");
+  } finally {
+    await cleanupFixture(fixture);
+  }
+});
+
+test("daemon recovery safely replaces an owned orphan Dashboard", async () => {
+  const fixture = createFixture();
+  setWorkloads(fixture, { sessions: [activeSession()] });
+  try {
+    callSupervisor(fixture.root, ["auto", "enable"]);
+    const first = await waitFor(() => {
+      const state = readState(fixture);
+      return state.status === "running" ? state : null;
+    });
+    process.kill(first.supervisor_pid, "SIGKILL");
+    await waitFor(() => {
+      try {
+        process.kill(first.supervisor_pid, 0);
+        return false;
+      } catch (_) {
+        return true;
+      }
+    });
+    const ensured = callSupervisor(fixture.root, ["ensure"]);
+    assert.equal(ensured.status, 0, ensured.stderr);
+    assert.notEqual(ensured.payload.supervisor_pid, first.supervisor_pid);
+    const recovered = await waitFor(() => {
+      const state = readState(fixture);
+      return state.status === "running"
+        && state.supervisor_pid !== first.supervisor_pid
+        && state.dashboard_pid !== first.dashboard_pid
+        ? state
+        : null;
+    }, 8000);
+    assert.ok(recovered.url);
+    assert.throws(() => process.kill(first.dashboard_pid, 0));
+  } finally {
+    await cleanupFixture(fixture);
+  }
+});
+
+test("forged foreign supervisor PID is never signaled", async () => {
+  const owner = createFixture();
+  const foreign = createFixture();
+  try {
+    const foreignEnabled = callSupervisor(foreign.root, ["auto", "enable"]);
+    assert.equal(foreignEnabled.status, 0, foreignEnabled.stderr);
+    const foreignPid = foreignEnabled.payload.state.supervisor_pid;
+    const configPath = path.join(owner.agentRoot, "config", "dashboard-automation.json");
+    const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
+    fs.writeFileSync(configPath, `${JSON.stringify({
+      ...config,
+      enabled: true,
+      dashboard_root: fs.realpathSync(owner.root),
+    }, null, 2)}\n`);
+    const runtime = path.join(owner.agentRoot, "runtime-evidence", "dashboard-supervisor");
+    fs.mkdirSync(runtime, { recursive: true });
+    fs.writeFileSync(path.join(runtime, "state.json"), `${JSON.stringify({
+      schema_version: 1,
+      status: "enabled_idle",
+      agent_root: fs.realpathSync(owner.agentRoot),
+      dashboard_root: fs.realpathSync(owner.root),
+      supervisor_pid: foreignPid,
+      dashboard_pid: null,
+      url: null,
+      started_at: new Date().toISOString(),
+      last_heartbeat_at: new Date().toISOString(),
+      last_active_at: null,
+      idle_deadline_at: null,
+      last_reason: "forged",
+      last_error: null,
+    }, null, 2)}\n`);
+    const stopped = callSupervisor(owner.root, ["stop"]);
+    assert.equal(stopped.status, 0, stopped.stderr);
+    assert.doesNotThrow(() => process.kill(foreignPid, 0));
+  } finally {
+    await cleanupFixture(owner);
+    await cleanupFixture(foreign);
+  }
+});
+
+test("stale Dashboard owner cannot kill a same-root process without the token", async () => {
+  const fixture = createFixture();
+  const configPath = path.join(fixture.agentRoot, "config", "dashboard-automation.json");
+  const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
+  fs.writeFileSync(configPath, `${JSON.stringify({
+    ...config,
+    enabled: true,
+    dashboard_root: fs.realpathSync(fixture.root),
+  }, null, 2)}\n`);
+  const dashboardScript = path.join(fixture.agentRoot, "skills", "agent-dashboard", "scripts", "serve.js");
+  const manual = spawn(process.execPath, [dashboardScript, "--port", String(config.requested_port)], {
+    cwd: fixture.root,
+    stdio: "ignore",
+  });
+  try {
+    await waitFor(() => {
+      try {
+        process.kill(manual.pid, 0);
+        return true;
+      } catch (_) {
+        return false;
+      }
+    });
+    const runtime = path.join(fixture.agentRoot, "runtime-evidence", "dashboard-supervisor");
+    fs.mkdirSync(runtime, { recursive: true });
+    fs.writeFileSync(path.join(runtime, "dashboard-owner.json"), `${JSON.stringify({
+      schema_version: 1,
+      pid: manual.pid,
+      supervisor_pid: 999999,
+      supervisor_token: "forged-token-1234567890",
+      agent_root: fs.realpathSync(fixture.agentRoot),
+      dashboard_root: fs.realpathSync(fixture.root),
+      started_at: new Date().toISOString(),
+    }, null, 2)}\n`);
+    const ensured = callSupervisor(fixture.root, ["ensure"]);
+    assert.equal(ensured.status, 0, ensured.stderr);
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    assert.doesNotThrow(() => process.kill(manual.pid, 0));
+  } finally {
+    try {
+      process.kill(manual.pid, "SIGTERM");
+    } catch (_) {
+      // Already stopped.
+    }
+    await cleanupFixture(fixture);
+  }
+});
+
+test("ownership-lost daemon cannot overwrite successor state", async () => {
+  const fixture = createFixture();
+  try {
+    const enabled = callSupervisor(fixture.root, ["auto", "enable"]);
+    assert.equal(enabled.status, 0, enabled.stderr);
+    const oldPid = enabled.payload.state.supervisor_pid;
+    const runtime = path.join(fixture.agentRoot, "runtime-evidence", "dashboard-supervisor");
+    const successorToken = "successor-token-1234567890";
+    fs.writeFileSync(path.join(runtime, "owner.json"), `${JSON.stringify({
+      schema_version: 1,
       pid: process.pid,
-      port: 8787,
+      token: successorToken,
+      agent_root: fs.realpathSync(fixture.agentRoot),
+      dashboard_root: fs.realpathSync(fixture.root),
       started_at: new Date().toISOString(),
-      session_id: "dashboard-manager",
-    },
-  });
-  const result = callSupervisor(root, ["stop", "--if-idle"]);
-  // The supervisor's contract: dashboard-manager Session alone does
-  // NOT count as active. The stop must succeed (no workload to
-  // protect).
-  assert.strictEqual(result.ok, true, `stop --if-idle failed; stderr=${result.stderr}`);
-  const payload = JSON.parse(result.stdout);
-  assert.ok(["stopped", "idle"].includes(payload.state));
+    }, null, 2)}\n`);
+    const successorState = {
+      ...readState(fixture),
+      status: "enabled_idle",
+      supervisor_pid: process.pid,
+      dashboard_pid: null,
+      url: null,
+      last_heartbeat_at: new Date().toISOString(),
+      last_reason: "successor_started",
+    };
+    fs.writeFileSync(path.join(runtime, "state.json"), `${JSON.stringify(successorState, null, 2)}\n`);
+    process.kill(oldPid, "SIGUSR1");
+    await waitFor(() => {
+      try {
+        process.kill(oldPid, 0);
+        return false;
+      } catch (_) {
+        return true;
+      }
+    });
+    const after = readState(fixture);
+    assert.equal(after.supervisor_pid, process.pid);
+    assert.equal(after.last_reason, "successor_started");
+    assert.equal(JSON.parse(fs.readFileSync(path.join(runtime, "owner.json"), "utf8")).token, successorToken);
+  } finally {
+    await cleanupFixture(fixture);
+  }
 });
 
-test("stale PID: ensure clears dead PID and transitions cleanly", () => {
-  const root = makeFixture();
-  // Seed state with a PID that is almost certainly dead (very high
-  // number). Ensure must transition the state instead of returning the
-  // stale entry unchanged.
-  seedState(root, {
-    state: "running",
-    dashboard: {
-      pid: 999999, // dead in normal CI
-      port: 8787,
-      started_at: new Date().toISOString(),
-    },
-  });
-  const result = callSupervisor(root, ["ensure"]);
-  assert.strictEqual(result.ok, true, `ensure failed; stderr=${result.stderr}`);
-  const payload = JSON.parse(result.stdout);
-  // After ensure, the state should reflect a fresh transition
-  // (start_token preserved from before, dashboard.pid updated).
-  assert.ok(payload.start_token, "ensure must preserve the identity across stale PID recovery");
-});
-
-test("PID reuse safety: supervisor must not assume PID ownership", () => {
-  const root = makeFixture();
-  // Seed state with a wildly large PID. A subsequent ensure must NOT
-  // try to kill the recorded PID; the supervisor only writes state.
-  seedState(root, {
-    state: "running",
-    dashboard: {
-      pid: 9999998,
-      port: 8787,
-      started_at: new Date().toISOString(),
-    },
-  });
-  const result = callSupervisor(root, ["ensure"]);
-  assert.strictEqual(result.ok, true);
-  // The supervisor must not error out on a missing PID; it must simply
-  // transition state.
-  const payload = JSON.parse(result.stdout);
-  assert.strictEqual(payload.state, "starting");
-});
-
-test("idle state allows --if-idle stop without refusal", () => {
-  const root = makeFixture();
-  seedState(root, { state: "idle" });
-  const result = callSupervisor(root, ["stop", "--if-idle"]);
-  assert.strictEqual(result.ok, true);
-  const payload = JSON.parse(result.stdout);
-  assert.strictEqual(payload.state, "stopped");
-});
-
-test("non-idle state refuses --if-idle stop", () => {
-  const root = makeFixture();
-  seedState(root, {
-    state: "running",
-    dashboard: {
+test("ownership-lost daemon stops its local Dashboard after successor overwrites shared owners", async () => {
+  const fixture = createFixture();
+  setWorkloads(fixture, { sessions: [activeSession()] });
+  try {
+    callSupervisor(fixture.root, ["auto", "enable"]);
+    const old = await waitFor(() => {
+      const state = readState(fixture);
+      return state.status === "running" ? state : null;
+    });
+    const runtime = path.join(fixture.agentRoot, "runtime-evidence", "dashboard-supervisor");
+    const successorToken = "successor-dashboard-token-1234567890";
+    const successorOwner = {
+      schema_version: 1,
       pid: process.pid,
-      port: 8787,
+      token: successorToken,
+      agent_root: fs.realpathSync(fixture.agentRoot),
+      dashboard_root: fs.realpathSync(fixture.root),
       started_at: new Date().toISOString(),
-      session_id: "real-workload",
-    },
-  });
-  const result = callSupervisor(root, ["stop", "--if-idle"]);
-  assert.strictEqual(result.ok, false, "stop --if-idle must refuse a non-idle state");
-  const payload = JSON.parse(result.stdout || "{}");
-  assert.strictEqual(payload.refused, true);
-});
-
-test("subsequent ensure cancels pending idle shutdown (idempotent recovery)", () => {
-  const root = makeFixture();
-  // Seed state with a dead PID and idle state. Ensure should clear
-  // the dead PID and put us back to starting, not stuck on idle.
-  seedState(root, {
-    state: "idle",
-    dashboard: { pid: 9999997, port: 8787, started_at: new Date().toISOString() },
-  });
-  const result = callSupervisor(root, ["ensure"]);
-  assert.strictEqual(result.ok, true);
-  const payload = JSON.parse(result.stdout);
-  assert.strictEqual(payload.state, "starting");
-});
-
-test("supervisor never schedules its own idle shutdown (no self-sustaining timer)", () => {
-  const root = makeFixture({ idleShutdownMs: 1000 });
-  // Ensure twice in quick succession; the supervisor must not write a
-  // timer or schedule field that would imply background self-shutdown.
-  callSupervisor(root, ["ensure"]);
-  const stateFile = path.join(root, ".agent", "runtime-evidence", "dashboard-supervisor", "state.json");
-  const state = JSON.parse(fs.readFileSync(stateFile, "utf8"));
-  assert.ok(!("scheduled_stop" in state), "supervisor must not schedule its own stop");
-  assert.ok(!("idle_timer" in state), "supervisor must not embed an idle timer");
+    };
+    const successorDashboardOwner = {
+      schema_version: 1,
+      pid: process.pid,
+      supervisor_pid: process.pid,
+      supervisor_token: successorToken,
+      agent_root: fs.realpathSync(fixture.agentRoot),
+      dashboard_root: fs.realpathSync(fixture.root),
+      started_at: new Date().toISOString(),
+    };
+    fs.writeFileSync(path.join(runtime, "owner.json"), `${JSON.stringify(successorOwner, null, 2)}\n`);
+    fs.writeFileSync(path.join(runtime, "dashboard-owner.json"), `${JSON.stringify(successorDashboardOwner, null, 2)}\n`);
+    fs.writeFileSync(path.join(runtime, "state.json"), `${JSON.stringify({
+      ...old,
+      status: "enabled_idle",
+      supervisor_pid: process.pid,
+      dashboard_pid: null,
+      url: null,
+      last_reason: "successor_started",
+    }, null, 2)}\n`);
+    process.kill(old.supervisor_pid, "SIGUSR1");
+    await waitFor(() => {
+      try {
+        process.kill(old.dashboard_pid, 0);
+        return false;
+      } catch (_) {
+        return true;
+      }
+    });
+    assert.equal(JSON.parse(fs.readFileSync(path.join(runtime, "owner.json"), "utf8")).token, successorToken);
+    assert.equal(JSON.parse(fs.readFileSync(path.join(runtime, "dashboard-owner.json"), "utf8")).supervisor_token, successorToken);
+    assert.equal(readState(fixture).last_reason, "successor_started");
+  } finally {
+    await cleanupFixture(fixture);
+  }
 });
