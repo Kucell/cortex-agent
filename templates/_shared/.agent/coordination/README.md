@@ -22,9 +22,12 @@ cortex-agent notification pump --project . --consumer coordinator \
 ```
 
 `watch` is a foreground, single-consumer process driven by filesystem events
-with bounded backoff. `status` is read-only and `stop` is idempotent. Adapters
-without a verified host capability return `deferred`, retain pending delivery,
-and must report `CORTEX_READY_HOST_ADAPTER_PENDING`; they never simulate ACK.
+with bounded backoff. `status` is read-only and `stop` is idempotent. The Codex
+adapter uses the official Codex App Server with `CODEX_THREAD_ID`, or an
+explicit `CORTEX_CODEX_THREAD_ID` outside a Codex task. It performs
+`initialize`, `thread/resume`, and `turn/start`; a missing thread or unavailable
+host returns `deferred` and retains pending delivery. Delivery never simulates
+ACK.
 
 `authorization-policy.json` is a project-controlled allowlist for workflow
 gates that are not already registered as `.agent/missions/M-*/mission-plan.md`.
