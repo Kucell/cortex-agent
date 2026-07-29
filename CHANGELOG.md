@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.8.0] - 2026-07-29
+
+### Added
+
+- **Agent Coordination and Notification**：新增持久 JSONL journal、Task
+  状态与 snapshot、ownership lease、安全 takeover、ACK/cursor、Notification
+  Pump/watch，以及 Claude Code、通用 Agent 和真实 Codex App Server wakeup
+  adapter。
+- **Agent Runtime Interoperability**：新增 capability descriptor、context
+  trajectory、Pi/Cursor adapter、tool-before gate、确定性 execution-surface
+  matcher、dry-run、人工 dispatch、跨宿主 handoff 与可审计 dispatch policy。
+- **P-006 Operation Lifecycle**：新增持久 Operation、Authorization、
+  Readiness、checkpoint、事件回放与恢复，以及 Management API 的只读投影。
+- **真实 Pi production pilot**：一次性 Pi 进程产生可验证 receipt，使用
+  SHA-256 绑定 challenge/output；不持久化 prompt、response、stderr、凭证、
+  私有 session 或精确 token。
+
+### Changed
+
+- Codex 可由关键协调事件主动唤醒，恢复后读取 pending journal、receipt 与
+  checkpoint，并基于真实证据推进 Proposal、Mission milestone 和 Plan。
+- README 与架构文档补充 Claude Code、Pi、Codex 和第三方 Adapter 的任务
+  委托、监控、恢复及安全边界。
+
+### Security
+
+- Operation 创建采用原子 create-if-absent，同一 ID 的并发不同 plan 写入
+  fail closed；Authorization 使用持久单次消费 ledger 与活进程锁保护。
+- Notification delivery 不自动 ACK，ACK 不授予权限或推断任务完成；自动
+  dispatch 与常驻 daemon 继续默认关闭。
+- Management API 对运行态投影执行字段和值级脱敏，拒绝 prompt、工具负载、
+  凭证、私有路径和私有 transcript。
+
 ## [1.7.0] - 2026-07-27
 
 ### Added
@@ -107,7 +140,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 语言规则模板：TypeScript / Python / Go / Java / Swift。
 - `bin/cli.js` 拆分为 5 个 lib 模块（registry / platform / setup / git / commands）。
 
-[Unreleased]: https://github.com/Kucell/cortex-agent/compare/v1.5.0...HEAD
+[Unreleased]: https://github.com/Kucell/cortex-agent/compare/v1.8.0...HEAD
+[1.8.0]: https://github.com/Kucell/cortex-agent/compare/v1.7.0...v1.8.0
+[1.7.0]: https://github.com/Kucell/cortex-agent/compare/v1.5.0...v1.7.0
 [1.5.0]: https://github.com/Kucell/cortex-agent/compare/v1.4.1...v1.5.0
 [1.4.1]: https://github.com/Kucell/cortex-agent/compare/v1.1.0...v1.4.1
 [1.1.0]: https://github.com/Kucell/cortex-agent/compare/v1.0.0...v1.1.0
