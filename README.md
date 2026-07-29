@@ -206,9 +206,12 @@ cortex-agent notification pump --project /path/to/project \
 `watch` 是显式启动的前台单实例进程，使用文件事件与有界退避；状态、锁、
 cursor 和重试记录仅写入 Git ignored 的 `.agent-runtime/coordination/`。
 `status` 只读，`stop` 幂等，通知 ACK 不会批准任何操作或改变任务状态。
-当前 Cortex 侧 transport 已就绪，但在 Codex Desktop 提供并验证真实 thread
-wakeup capability 前，状态保持 `CORTEX_READY_HOST_ADAPTER_PENDING`，不得用
-mock 投递替代真实宿主验收或删除既有兜底监控。
+Codex Desktop/CLI 宿主通过官方 Codex App Server 接入：在 Codex 任务内
+自动使用 `CODEX_THREAD_ID`；从外部终端启动时，显式设置
+`CORTEX_CODEX_THREAD_ID=<thread-id>`。Adapter 依次执行 `initialize`、
+`thread/resume` 和 `turn/start`，只在真实 turn 完成后报告 delivered；仍不
+自动 ACK。未提供线程 ID 或 App Server 不可用时保持 deferred 和 journal
+恢复，不得用 mock 投递替代真实宿主验收。
 
 ### 上手流程一览
 

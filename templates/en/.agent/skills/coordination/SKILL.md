@@ -39,9 +39,11 @@ cortex-agent notification pump --project . --consumer coordinator \
 ```
 
 `watch` is a foreground single-consumer process using filesystem events and
-bounded backoff; `status` is read-only and `stop` is idempotent. Until the host
-capability is verified, retain pending delivery and report
-`CORTEX_READY_HOST_ADAPTER_PENDING`; never simulate delivery or ACK.
+bounded backoff; `status` is read-only and `stop` is idempotent. Inside a Codex
+task, use the host-provided `CODEX_THREAD_ID`; from an external terminal, set
+`CORTEX_CODEX_THREAD_ID` explicitly. The adapter uses the official Codex App
+Server `thread/resume` and `turn/start` methods. Retain pending delivery when
+the thread or host is unavailable; never simulate delivery or ACK.
 
 Runtime data stays under `.agent-runtime/coordination/` and is Git ignored.
 Team Packs may distribute only `.agent/coordination/README.md`,

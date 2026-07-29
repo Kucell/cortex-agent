@@ -15,6 +15,7 @@ Never infer completion from process exit or terminal silence. Never treat ACK as
 authorization. Read-only status, list, watch, Management API, and MCP queries
 must not mutate stale state, leases, Decisions, or Waitpoints.
 
-Until the host wakeup capability is verified, keep the status at
-`CORTEX_READY_HOST_ADAPTER_PENDING` and retain journal recovery as the reliable
+Codex host wakeup uses the official App Server `thread/resume` + `turn/start`
+flow. When `CODEX_THREAD_ID` / `CORTEX_CODEX_THREAD_ID` or the host is
+unavailable, retain pending delivery and use journal recovery as the reliable
 path.
