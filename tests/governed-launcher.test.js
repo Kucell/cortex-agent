@@ -13,6 +13,9 @@ const {
   createPrivateLaunchContext,
   GovernedLauncherError,
   GOVERNED_LAUNCHER_SCHEMA_VERSION,
+  defaultExecutor,
+  validateWorktree,
+  validateOwnership,
 } = require("../lib/governed-launcher");
 
 function runtimeDir() {
@@ -71,11 +74,10 @@ test("createPrivateLaunchContext rejects missing required fields", () => {
   assert.throws(() => createPrivateLaunchContext(null), /ERR_INPUT_REQUIRED/);
 });
 
-// ─── Governed Launcher ───────────────────────────────────────────────────────
+// ─── Governed Launcher (no executor) ─────────────────────────────────────────
 
 test("createGovernedLauncher requires valid options", () => {
   assert.throws(() => createGovernedLauncher(null, null), /ERR_OPTIONS_REQUIRED/);
-  // Empty options object fails on missing coordinatorId, not on service check
   assert.throws(() => createGovernedLauncher({ submit() {} }, {}), /ERR_FIELD_INVALID/);
   assert.throws(() => createGovernedLauncher({ notSubmit: true }, { coordinatorId: "c", projectId: "p" }), /ERR_SERVICE_REQUIRED/);
 });
@@ -100,7 +102,7 @@ test("createGovernedLauncher returns a frozen launcher with stable identity", ()
   }
 });
 
-test("launch creates task and assigns it to target agent", () => {
+test("launch creates task and assigns it to target agent (no executor)", () => {
   const dir = runtimeDir();
   const service = createService(dir);
   try {
@@ -121,6 +123,7 @@ test("launch creates task and assigns it to target agent", () => {
     assert.equal(result.ok, true);
     assert.equal(result.taskId, "TASK-LAUNCH-001");
     assert.equal(result.targetAgentId, "claude-agent");
+    assert.equal(result.spawnStatus, "no_spawn");
     assert.equal(result.events.length, 2);
     assert.equal(result.events[0].eventType, "task.created");
     assert.equal(result.events[1].eventType, "task.assigned");
@@ -154,7 +157,9 @@ test("launch rejects missing required fields", () => {
   }
 });
 
-test("launch creates a private context that is never shared with the agent", () => {
+// ─── Private context isolation ────────────────────────────────────────────────
+
+test("launch result does NOT expose private context or public context", () => {
   const dir = runtimeDir();
   const service = createService(dir);
   try {
@@ -168,18 +173,22 @@ test("launch creates a private context that is never shared with the agent", () 
       targetAgentId: "claude-agent",
     });
 
-    // Private context has the launchId
-    assert.ok(result.privateContext);
-    assert.equal(result.privateContext.taskId, "TASK-PRIVATE-001");
-    assert.equal(result.privateContext.coordinatorId, "coordinator-1");
-
-    // Public context has the slimmed-down version (no coordinatorId)
-    assert.ok(result.publicContext);
-    assert.equal(result.publicContext.taskId, "TASK-PRIVATE-001");
-    // The public context should NOT contain private fields
-    // (coordinatorId is in the public context for the agent to know who
-    // assigned the task, but the full private context has more details)
-    assert.ok(result.publicContext.coordinatorId);
+    // Private context must NOT be in the public result
+    assert.equal(result.privateContext, undefined);
+    // Public context must NOT be in the public result
+    assert.equal(result.publicContext, undefined);
+    // No private fields leaked
+    assert.equal(result.coordinatorId, undefined);
+    assert.equal(result.launchedAt, undefined);
+    assert.equal(result.repository, undefined);
+    assert.equal(result.ownershipScopes, undefined);
+    assert.equal(result.allowedTools, undefined);
+    assert.equal(result.forbiddenActions, undefined);
+    assert.equal(result.acceptanceCriteria, undefined);
+    // Only public fields should be present
+    assert.equal(result.ok, true);
+    assert.equal(result.taskId, "TASK-PRIVATE-001");
+    assert.equal(result.launchId, "LAUNCH-TASK-PRIVATE-001-" + result.launchId.split("-").pop());
   } finally {
     service.close();
     fs.rmSync(dir, { recursive: true, force: true });
@@ -215,6 +224,148 @@ test("multiple launches create independent tasks", () => {
     assert.notEqual(task1.taskId, task2.taskId);
   } finally {
     service.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// ─── Executor integration (injectable via constructor option) ─────────────────
+
+test("launch with injectable executor reports accepted on success", () => {
+  const dir = runtimeDir();
+  const service = createService(dir);
+  try {
+    const launcher = createGovernedLauncher(service, {
+      coordinatorId: "coordinator-1",
+      projectId: "test-project",
+      executor: () => ({ pid: 12345, launchedAt: new Date().toISOString() }),
+    });
+
+    const result = launcher.launch({
+      taskId: "TASK-EXEC-OK-001",
+      targetAgentId: "claude-agent",
+    });
+
+    assert.equal(result.ok, true);
+    assert.equal(result.spawnStatus, "accepted");
+    assert.equal(result.pid, 12345);
+    // Should have 2 events: created, assigned (accepted is submitted by the agent)
+    assert.equal(result.events.length, 2);
+    assert.equal(result.events[0].eventType, "task.created");
+    assert.equal(result.events[1].eventType, "task.assigned");
+    // Task stays in ASSIGNED state — the agent reports accepted via reporter
+    assert.equal(result.taskState.state, STATES.ASSIGNED);
+    const task = service.getTask("TASK-EXEC-OK-001");
+    assert.equal(task.state, STATES.ASSIGNED);
+  } finally {
+    service.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("launch with injectable executor reports failed on spawn failure", () => {
+  const dir = runtimeDir();
+  const service = createService(dir);
+  try {
+    const launcher = createGovernedLauncher(service, {
+      coordinatorId: "coordinator-1",
+      projectId: "test-project",
+      executor: () => {
+        throw new Error("Executor binary not found");
+      },
+    });
+
+    const result = launcher.launch({
+      taskId: "TASK-EXEC-FAIL-001",
+      targetAgentId: "claude-agent",
+    });
+
+    assert.equal(result.ok, false);
+    assert.equal(result.spawnStatus, "failed");
+    assert.equal(result.code, "ERR_LAUNCH_FAILED");
+    // Should have 2 events: created, assigned (failed is not submitted by the coordinator)
+    assert.equal(result.events.length, 2);
+    assert.equal(result.events[0].eventType, "task.created");
+    assert.equal(result.events[1].eventType, "task.assigned");
+    // Task stays in ASSIGNED state — the launcher cannot submit task.failed
+    // (owner-scoped events are restricted to the assignee)
+    const task = service.getTask("TASK-EXEC-FAIL-001");
+    assert.equal(task.state, STATES.ASSIGNED);
+  } finally {
+    service.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("launch with executor must not leak private context in result", () => {
+  const dir = runtimeDir();
+  const service = createService(dir);
+  try {
+    const launcher = createGovernedLauncher(service, {
+      coordinatorId: "coordinator-1",
+      projectId: "test-project",
+      executor: () => ({ pid: 12345, launchedAt: new Date().toISOString() }),
+    });
+
+    const result = launcher.launch({
+      taskId: "TASK-EXEC-LEAK-001",
+      targetAgentId: "claude-agent",
+    });
+
+    assert.equal(result.ok, true);
+    // Private context must not be in the result
+    assert.equal(result.privateContext, undefined);
+    assert.equal(result.publicContext, undefined);
+    // No command, session, token, or absolute path leaked
+    assert.equal(result.coordinatorId, undefined);
+    // Only public fields from the executor result
+    assert.equal(result.taskId, "TASK-EXEC-LEAK-001");
+    assert.equal(result.pid, 12345);
+    assert.ok(result.launchedAt);
+  } finally {
+    service.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// ─── Worktree validation ─────────────────────────────────────────────────────
+
+test("validateWorktree returns true for empty worktreeId", () => {
+  assert.equal(validateWorktree(null), true);
+  assert.equal(validateWorktree(undefined), true);
+  assert.equal(validateWorktree(""), true);
+});
+
+test("validateWorktree returns true for existing paths", () => {
+  // Current directory always exists
+  assert.equal(validateWorktree(process.cwd()), true);
+});
+
+// ─── Ownership validation ────────────────────────────────────────────────────
+
+test("validateOwnership returns true for empty scopes", () => {
+  assert.equal(validateOwnership([], "/tmp"), true);
+  assert.equal(validateOwnership(null, "/tmp"), true);
+  assert.equal(validateOwnership(undefined, "/tmp"), true);
+});
+
+test("validateOwnership returns true for existing scopes", () => {
+  const dir = runtimeDir();
+  try {
+    fs.mkdirSync(path.join(dir, "test-scope"), { recursive: true });
+    assert.equal(validateOwnership(["test-scope"], dir), true);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("validateOwnership throws for missing scopes", () => {
+  const dir = runtimeDir();
+  try {
+    assert.throws(
+      () => validateOwnership(["nonexistent-scope"], dir),
+      /ERR_OWNERSHIP_SCOPE_MISSING/,
+    );
+  } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
