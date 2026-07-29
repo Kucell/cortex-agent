@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cortex-agent.local/schemas/readiness-projection.schema.json",
+  "title": "Cortex Agent Readiness Projection",
+  "type": "object",
+  "required": ["schema_version", "readiness_id", "revision", "verdict", "operation", "resolved", "decisions_required", "warnings", "blocked_by", "next_actions", "inspected_at"],
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "readiness_id": { "type": "string", "pattern": "^RD-[A-Za-z0-9][A-Za-z0-9._-]*$" },
+    "revision": { "type": "string", "minLength": 1 },
+    "verdict": { "enum": ["ready", "warning", "blocked"] },
+    "operation": { "type": "object" },
+    "resolved": { "type": "object" },
+    "decisions_required": { "type": "array" },
+    "warnings": { "type": "array" },
+    "blocked_by": { "type": "array" },
+    "next_actions": { "type": "array" },
+    "inspected_at": { "type": "string", "format": "date-time" }
+  },
+  "additionalProperties": false
+}

@@ -58,6 +58,41 @@
       "filters": ["since", "until"]
     },
     {
+      "name": "context-trajectories",
+      "kind": "collection",
+      "exact_lookup": false,
+      "data_field": "context_trajectories",
+      "filters": ["task", "run", "session", "host"]
+    },
+    {
+      "name": "operations",
+      "kind": "collection",
+      "exact_lookup": false,
+      "data_field": "resources",
+      "filters": ["operation", "task", "run", "session", "status"]
+    },
+    {
+      "name": "readiness",
+      "kind": "collection",
+      "exact_lookup": false,
+      "data_field": "resources",
+      "filters": ["status", "revision"]
+    },
+    {
+      "name": "authorizations",
+      "kind": "collection",
+      "exact_lookup": false,
+      "data_field": "resources",
+      "filters": ["operation", "revision"]
+    },
+    {
+      "name": "checkpoints",
+      "kind": "collection",
+      "exact_lookup": false,
+      "data_field": "resources",
+      "filters": ["operation", "task"]
+    },
+    {
       "name": "coordination-tasks",
       "kind": "collection",
       "exact_lookup": true,

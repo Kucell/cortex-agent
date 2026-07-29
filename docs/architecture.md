@@ -450,7 +450,41 @@ T-C01A -> T-C02 -> T-C03/T-C04 -> T-C05/T-C06 -> T-C07/T-C08 -> T-C09/T-C10
 
 ---
 
-## 十、Hooks 触发机制
+## 十、Agent Runtime Interoperability 执行面治理
+
+Agent Runtime Interoperability 把 Codex、Claude Code、Cursor 与 Pi 作为能力不同的执行宿主接入同一套 Cortex 治理控制面。任务描述仍是事实来源；调度只消费版本化的执行需求、宿主能力快照、治理决策、Readiness 与 ownership/lease，不按产品名称猜测能力。
+
+详细设计见 [Agent Runtime Interoperability 提案](../.agent/plans/proposals/projects/agent-runtime-interoperability/index.md)。
+
+```mermaid
+flowchart LR
+    T["开发任务"] --> D["任务需求描述"]
+    D --> S["Cortex 调度器"]
+    C["宿主能力目录"] --> S
+    P["治理策略与审批门禁"] --> S
+    S --> A["Codex Adapter"]
+    S --> B["Claude Code Adapter"]
+    S --> E["Cursor Adapter"]
+    S --> F["Pi Adapter"]
+    A & B & E & F --> R["统一边界事件与审计日志"]
+    R --> S
+```
+
+这里的“Cortex 调度器”是现有组件的组合，不是新的第二套状态机：
+
+| 层级 | 负责 | 不负责 |
+| :--- | :--- | :--- |
+| Execution Requirement / Matcher | 把任务需求与 capability snapshot 做确定性匹配，输出可解释计划 | 不启动宿主、不取得授权 |
+| Decision / Waitpoint / Readiness | 验证冻结 revision、风险门禁和可执行性 | 不替代 Task 或 Operation |
+| Dispatch / Operation owner | 取得 lease、创建 attempt、记录 Run/Operation 事件并委托 adapter | 不绕过 workflow gate |
+| Host Adapter | 探测能力、翻译 context package、调用宿主并返回 receipt/boundary event | 不选择任务、不批准自己 |
+| Management API / Audit | 统一投影 capability、plan、event、checkpoint 与 evidence | 查询不修复或推进状态 |
+
+当前核心契约、matcher、dry-run、manual dispatch 委托、tool gate、handoff 与 Pi/Cursor 可选 adapter 已实现。自动 dispatch 与 daemon 默认关闭；在 P-006 Operation/Readiness owner 落地并完成真实宿主 receipt pilot 前，本能力的生产状态保持 `pilot-ready`，不得宣称为无人值守的开箱即用调度器。
+
+---
+
+## 十一、Hooks 触发机制
 
 ```mermaid
 sequenceDiagram
@@ -471,7 +505,7 @@ sequenceDiagram
 
 ---
 
-## 十一、版本与演进
+## 十二、版本与演进
 
 架构变更时，请至少同步以下资产：
 

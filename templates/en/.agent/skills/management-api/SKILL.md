@@ -24,6 +24,11 @@ cortex-agent query inbox --project .
 cortex-agent query decisions --project .
 cortex-agent query waitpoints --project .
 cortex-agent query activity --project . --since 2026-07-13 --until 2026-07-19
+cortex-agent query context-trajectories --project . --task T-001 --run R-001
+cortex-agent query operations --project . --task T-001 --status authorized
+cortex-agent query readiness --project . --operation OP-001
+cortex-agent query authorizations --project . --operation OP-001
+cortex-agent query checkpoints --project . --operation OP-001
 cortex-agent query coordination-tasks --project . --state READY_FOR_REVIEW
 cortex-agent query coordination-events --project . --task T-001
 cortex-agent runs checkpoint --project . --run-id R-T005 --task-id T-005 --type validation_started --phase validating --activity "Running focused tests"

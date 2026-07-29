@@ -25,11 +25,16 @@
 
 const fs = require("fs");
 const path = require("path");
+const {
+  digestMetadata,
+  validateContextTrajectory,
+} = require("../../../../lib/runtime-adapters/context-trajectory");
 
 const ROOT = process.cwd();
 const INDEX_FILE = path.join(ROOT, ".agent", "context-index.json");
 const MANIFEST_PATH = path.join(ROOT, ".agent", "plans", "context-manifest.json");
 const TRAJECTORY_DIR = path.join(ROOT, ".agent", "runtime-evidence", "trajectory");
+const CONTEXT_TRAJECTORY_DIR = path.join(ROOT, ".agent", "runtime-evidence", "context-trajectories");
 
 function parseArgs() {
   const args = {};
@@ -105,7 +110,7 @@ const STOPWORDS = new Set([
   "你", "我们", "他们", "请", "一下", "需要", "应该", "这个", "那个", "然后",
 ]);
 
-function pick(modules, scored, budget, trajectory) {
+function pick(scored, budget, trajectory) {
   const tiers = { tier1: [], tier2: [], tier3_summaries: [] };
   let remaining = budget;
   const used = { tier1: 0, tier2: 0, tier3_summaries: 0 };
@@ -199,6 +204,53 @@ function writeTrajectory(taskId, trajectory, meta) {
   return file;
 }
 
+function contextItem(module, tier) {
+  const rawPath = String(module.module_path || module.module_name || "unknown");
+  const safePath = rawPath.split("/").filter((segment) => segment && segment !== "." && segment !== "..")
+    .map((segment) => encodeURIComponent(segment)).join("/") || "unknown";
+  const item = {
+    uri: `cortex://references/${safePath}`,
+  };
+  if (tier) item.tier = tier;
+  if (module.matched && module.matched.length) item.reason_codes = ["selector-match"];
+  if (Number.isSafeInteger(module.tokens) && tier) item.estimated_tokens = module.tokens;
+  return item;
+}
+
+function writeContextTrajectory(args, scored, picked, manifest) {
+  ensureDir(CONTEXT_TRAJECTORY_DIR);
+  const createdAt = new Date().toISOString();
+  const selectedItems = [
+    ...picked.tiers.tier1.map((item) => contextItem(item, "L2")),
+    ...picked.tiers.tier2.map((item) => contextItem(item, "L2")),
+    ...scored.filter((item) => picked.tiers.tier3_summaries.includes(item.module_name))
+      .map((item) => ({ ...contextItem(item, "L0"), estimated_tokens: Math.min(80, item.l0_tokens || 100) })),
+  ];
+  const discoveredItems = scored.slice(0, 256).map((item) => contextItem(item));
+  const trajectory = validateContextTrajectory({
+    schema_version: "2.0",
+    trajectory_id: `CTX-${args["task-id"] || "ad-hoc"}-${Date.now()}`,
+    task_id: args["task-id"] || "ad-hoc",
+    created_at: createdAt,
+    stages: [
+      { type: "discovered", status: "confirmed", source: "context-index", digest: digestMetadata(discoveredItems), items: discoveredItems },
+      { type: "selected", status: "confirmed", source: "selector", digest: digestMetadata(selectedItems), items: selectedItems },
+      { type: "rendered", status: "unavailable", source: "not-exposed", items: [] },
+      { type: "confirmed-consumed", status: "unavailable", source: "not-exposed", items: [] },
+    ],
+    usage: {
+      estimated_selected_tokens: manifest.budget.used,
+      host_reported_input_tokens: "unknown",
+      host_reported_cache_tokens: "unknown",
+      measurement_source: "unavailable",
+    },
+    outcome_refs: [],
+  });
+  const file = path.join(CONTEXT_TRAJECTORY_DIR, `${args["task-id"] || "ad-hoc"}_${createdAt.replace(/[:.]/g, "-")}.json`);
+  fs.writeFileSync(file, `${JSON.stringify(trajectory, null, 2)}\n`);
+  return file;
+}
+
 function main() {
   const args = parseArgs();
   const task = args.task || "";
@@ -245,15 +297,16 @@ function main() {
   fs.writeFileSync(MANIFEST_PATH, JSON.stringify(manifest, null, 2) + "\n");
 
   const trajFile = writeTrajectory(args["task-id"], trajectory, {
-    task: task.slice(0, 200),
     scoring_strategy: "l0+l1+keyword",
     l0_l1_available: scored.filter((s) => s.has_l0 || s.has_l1).length,
   });
+  const contextTrajectoryFile = writeContextTrajectory(args, scored, picked, manifest);
 
   console.log(JSON.stringify({
     ok: true,
     manifest_path: MANIFEST_PATH,
     trajectory_path: trajFile,
+    context_trajectory_path: contextTrajectoryFile,
     budget: manifest.budget,
     tier1_count: picked.tiers.tier1.length,
     tier2_count: picked.tiers.tier2.length,

@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cortex-agent.local/schemas/operation.schema.json",
+  "title": "Cortex Agent Operation Attempt",
+  "type": "object",
+  "required": ["schema_version", "operation_id", "attempt", "kind", "status", "relations", "actor", "owner", "workflow", "action", "input_summary", "target", "target_revision", "authorization_ref", "readiness_ref", "usage", "evidence_refs", "log_cursor_refs", "latest_event_id", "created_at", "updated_at"],
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "operation_id": { "type": "string", "pattern": "^OP-[A-Za-z0-9][A-Za-z0-9._-]*$" },
+    "attempt": { "type": "integer", "minimum": 1 },
+    "kind": { "type": "string", "minLength": 1 },
+    "status": { "enum": ["planned", "inspected", "awaiting_authorization", "authorized", "executing", "succeeded", "failed", "denied", "canceled", "timed_out", "blocked"] },
+    "relations": { "type": "object", "required": ["task_id", "run_id", "session_id", "workspace_id", "parent_operation_id", "retry_of_operation_id", "compensation_for_operation_id"], "additionalProperties": false },
+    "actor": { "type": "object" },
+    "owner": { "type": "string" },
+    "workflow": { "type": "string" },
+    "action": { "type": "object" },
+    "input_summary": { "type": "object" },
+    "target": { "type": "object" },
+    "target_revision": { "type": "string" },
+    "authorization_ref": { "type": ["string", "null"] },
+    "readiness_ref": { "type": ["string", "null"] },
+    "usage": { "type": "object", "required": ["quality"], "properties": { "quality": { "enum": ["measured", "estimated", "unavailable"] } } },
+    "evidence_refs": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+    "log_cursor_refs": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+    "latest_event_id": { "type": ["string", "null"] },
+    "created_at": { "type": "string", "format": "date-time" },
+    "updated_at": { "type": "string", "format": "date-time" }
+  },
+  "additionalProperties": false
+}
