@@ -199,7 +199,7 @@ test("state transition table allows only frozen transitions", () => {
   assert.equal(invalid.diagnostics[0].code, contracts.DIAGNOSTIC_CODES.STATE_TRANSITION_CONFLICT);
 });
 
-test("shared schemas are byte-identical and language overlays contain no supervisor copy", () => {
+test("shared schemas are byte-identical and language templates ship the supervisor", () => {
   for (const file of ["dashboard-automation.schema.json", "supervisor-state.schema.json"]) {
     assert.equal(
       fs.readFileSync(path.join(LOCAL_SKILL, "schemas", file), "utf8"),
@@ -207,8 +207,8 @@ test("shared schemas are byte-identical and language overlays contain no supervi
     );
   }
   for (const language of ["en", "zh"]) {
-    assert.equal(fs.existsSync(path.join(ROOT, "templates", language, ".agent", "skills", "dashboard-supervisor")), false);
-    assert.equal(fs.existsSync(path.join(ROOT, "templates", language, ".agent", "config", "dashboard-automation.json")), false);
+    assert.equal(fs.existsSync(path.join(ROOT, "templates", language, ".agent", "skills", "dashboard-supervisor")), true);
+    assert.equal(fs.existsSync(path.join(ROOT, "templates", language, ".agent", "config", "dashboard-automation.json")), true);
   }
 });
 

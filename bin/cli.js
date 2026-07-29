@@ -26,6 +26,7 @@ const {
   mcp,
   managementQuery,
   phaseZeroAutomation,
+  dashboard,
   dev,
   cliHelp,
   printHelp,
@@ -170,6 +171,7 @@ const l1Ctx = options.project
     case "dispatch":
     case "daemon":
     case "trigger":     phaseZeroAutomation(ctx); break;
+    case "dashboard":   dashboard(ctx); break;
     case "team":        await teamPack(ctx); break;
     case "secrets":     secrets(l1Ctx); break;
     case "help":        args.includes("--json") ? cliHelp(ctx) : printHelp(); break;

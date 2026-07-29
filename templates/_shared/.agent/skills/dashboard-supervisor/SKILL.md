@@ -10,32 +10,34 @@ The supervisor decides whether a project has a live Cortex Agent Dashboard. It i
 ## Manual commands
 
 ```bash
-node .agent/skills/dashboard-supervisor/scripts/supervisor.js status              # report current supervisor state
-node .agent/skills/dashboard-supervisor/scripts/supervisor.js ensure              # start the dashboard if not already running
-node .agent/skills/dashboard-supervisor/scripts/supervisor.js stop [--if-idle]    # stop the dashboard; --if-idle refuses when an active workload is recorded
-node .agent/skills/dashboard-supervisor/scripts/supervisor.js --help
+cortex-agent dashboard status --project <path>
+cortex-agent dashboard ensure --project <path>
+cortex-agent dashboard stop --project <path> [--if-idle]
+cortex-agent dashboard --help --project <path>
 ```
 
 ## Opt-in auto trigger
 
 ```bash
-node .agent/skills/dashboard-supervisor/scripts/supervisor.js auto status        # report enabled flag
-node .agent/skills/dashboard-supervisor/scripts/supervisor.js auto enable        # atomic flip to enabled=true
-node .agent/skills/dashboard-supervisor/scripts/supervisor.js auto disable       # atomic flip to enabled=false
+cortex-agent dashboard auto status --project <path>
+cortex-agent dashboard auto enable --project <path>
+cortex-agent dashboard auto disable --project <path>
 ```
 
-`auto enable` records `transitioned_at` and `trigger_source`. It never impersonates runtime-continuity and never claims `automatic` mode by default.
+`auto enable` fixes the owner project root, starts one detached Supervisor daemon, and records `transitioned_at` plus `trigger_source`. The daemon polls the read-only Management API projection, starts the existing Dashboard server for real workloads, and stops it after the configured idle grace.
+
+The public CLI owns the runtime implementation. The project Skill contains policy, contracts, classifiers, and a compatibility entry that delegates back to `cortex-agent dashboard`.
 
 ## What the supervisor never does
 
-- Schedules a self-sustaining background shutdown timer.
-- Kills or signals the recorded dashboard PID.
+- Starts when `enabled=false`; disabled `ensure` exits `0` with zero writes and zero processes.
+- Signals an unverified recorded PID; the daemon owns and signals only its own Dashboard child.
 - Impersonates the runtime-continuity `warm --auto` mode.
-- Writes when the supervisor is disabled (except `auto enable` itself, which only writes the config flag).
+- Exposes a Dashboard lifecycle writer over MCP.
 
 ## Excluded roles
 
-`stop --if-idle` recognizes `dashboard-manager`, `dashboard-supervisor`, and `runtime-continuity` session IDs and never blocks on those alone.
+`stop --if-idle` re-queries Management API before signaling the daemon. `dashboard-manager`, `dashboard-supervisor`, and `runtime-continuity` never count as real work.
 
 ## State files
 

@@ -34,6 +34,7 @@ description: 使用 Git worktree 隔离多个 Agent 的并行开发，并通过 
 - 合并前必须确认 registry、locks、artifacts、handoff 和 git 状态一致。
 - 合并后必须在目标主线 worktree 重新验证功能。
 - 若 Management API 存在，worktree 创建、锁获取、提交、合并、验证都必须写入 Run journal。
+- worktree 创建或进入后调用 `cortex-agent dashboard ensure --project . --reason worktree`；shared `.agent` 必须复用已绑定 owner 的同一 Supervisor。
 
 ## PLAN
 

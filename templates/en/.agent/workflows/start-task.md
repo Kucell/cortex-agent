@@ -19,6 +19,7 @@ When `.agent/tasks/<task-id>.json` exists, `/start-task` is the only workflow al
 1. **环境准备与上下文同步**:
     - 查阅任务进度文档（如 `.agent/plans/task-progress.md`）了解当前项目的开发状态。
     - 确保工作空间是最新的，并运行必要的环境检查。
+    - Run `cortex-agent dashboard ensure --project . --reason start-task`; when automation is disabled it must succeed with zero writes and zero processes.
     - If `cortex-agent help --json` is available, create or update the Run journal for this task:
       ```bash
       cortex-agent runs checkpoint --project . \

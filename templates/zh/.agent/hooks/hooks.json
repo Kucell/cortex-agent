@@ -49,6 +49,18 @@
           }
         ],
         "description": "会话启动时启动或续期唯一的 runtime-continuity 守护进程：补齐陈旧归档、每 2 小时自动归档并在 5 小时窗口结束后退出"
+      },
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cortex-agent dashboard ensure --project \"$PWD\" --reason session-start >/dev/null 2>&1; exit 0",
+            "async": true,
+            "timeout": 5
+          }
+        ],
+        "description": "仅当项目显式启用 Dashboard 自动化时，确保唯一 Supervisor 已运行；默认关闭时零写入、零进程"
       }
     ]
   }
