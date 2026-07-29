@@ -1,0 +1,119 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cortex-agent.local/schemas/dispatch/dispatch-state.schema.json",
+  "title": "Cortex Agent Dispatch State (Read-Only)",
+  "description": "Read-only Management API projection for `query dispatch-state`. Aggregates currently active dispatches, queued tasks, blocked decisions/waitpoints, stale sessions, recent history, and a deterministic next-action hint. Empty and populated states share the same shape. No mutation primitives (runs upsert, queues upsert, decisions resolve) appear in this schema.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "_meta",
+    "summary",
+    "active",
+    "queued",
+    "blocked",
+    "stale_sessions",
+    "recent_history",
+    "next_action"
+  ],
+  "properties": {
+    "_meta": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["generated_at", "schema_version"],
+      "properties": {
+        "generated_at": { "type": "string", "format": "date-time" },
+        "schema_version": { "const": 1 }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "dispatch_status",
+        "active_dispatches",
+        "queued_tasks",
+        "blocked_by_decision",
+        "blocked_by_waitpoint",
+        "stale_sessions",
+        "last_error"
+      ],
+      "properties": {
+        "dispatch_status": { "enum": ["not_started", "active", "paused"] },
+        "active_dispatches": { "type": "integer", "minimum": 0 },
+        "queued_tasks": { "type": "integer", "minimum": 0 },
+        "blocked_by_decision": { "type": "integer", "minimum": 0 },
+        "blocked_by_waitpoint": { "type": "integer", "minimum": 0 },
+        "stale_sessions": { "type": "integer", "minimum": 0 },
+        "last_error": { "anyOf": [{ "type": "null" }, { "type": "string" }] }
+      }
+    },
+    "active": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["task_id", "run_id", "phase", "started_at"],
+        "properties": {
+          "task_id": { "type": "string", "minLength": 1 },
+          "run_id": { "type": "string", "minLength": 1 },
+          "phase": { "type": "string", "minLength": 1 },
+          "started_at": { "type": "string", "format": "date-time" }
+        }
+      }
+    },
+    "queued": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["task_id", "queue_id"],
+        "properties": {
+          "task_id": { "type": "string", "minLength": 1 },
+          "queue_id": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "blocked": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["by_decision", "by_waitpoint"],
+      "properties": {
+        "by_decision": {
+          "type": "array",
+          "items": { "type": "object", "additionalProperties": false, "required": ["decision_id", "task_id"], "properties": { "decision_id": { "type": "string" }, "task_id": { "type": "string" } } }
+        },
+        "by_waitpoint": {
+          "type": "array",
+          "items": { "type": "object", "additionalProperties": false, "required": ["waitpoint_id", "task_id"], "properties": { "waitpoint_id": { "type": "string" }, "task_id": { "type": "string" } } }
+        }
+      }
+    },
+    "stale_sessions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["session_id"],
+        "properties": {
+          "session_id": { "type": "string", "minLength": 1 },
+          "last_heartbeat_at": { "type": "string", "format": "date-time" }
+        }
+      }
+    },
+    "recent_history": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["run_id", "task_id", "phase", "completed_at"],
+        "properties": {
+          "run_id": { "type": "string" },
+          "task_id": { "type": "string" },
+          "phase": { "type": "string" },
+          "completed_at": { "type": "string", "format": "date-time" }
+        }
+      }
+    },
+    "next_action": { "type": "string", "minLength": 1 }
+  }
+}

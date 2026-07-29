@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cortex-agent.local/schemas/dispatch/trigger.schema.json",
+  "title": "Cortex Agent Trigger Request",
+  "description": "A declarative request for a future Dispatch evaluation. A Trigger is never authorization to execute.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "trigger_id",
+    "type",
+    "status",
+    "task_id",
+    "condition",
+    "opt_in",
+    "created_at",
+    "updated_at"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "trigger_id": { "type": "string", "pattern": "^TR-[A-Za-z0-9][A-Za-z0-9._-]*$" },
+    "type": { "enum": ["manual", "queue_item", "schedule", "file_change", "post_commit"] },
+    "status": { "enum": ["active", "disabled", "consumed", "rejected"] },
+    "task_id": { "type": "string", "minLength": 1 },
+    "condition": {
+      "anyOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["expression"],
+          "properties": {
+            "expression": { "type": "string", "minLength": 1 },
+            "source_ref": { "type": ["string", "null"] }
+          }
+        }
+      ]
+    },
+    "opt_in": { "type": "boolean" },
+    "requested_by": { "type": ["string", "null"] },
+    "decision_id": { "type": ["string", "null"], "pattern": "^D-[A-Za-z0-9][A-Za-z0-9._-]*$" },
+    "created_at": { "type": "string", "format": "date-time" },
+    "updated_at": { "type": "string", "format": "date-time" }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "type": { "enum": ["schedule", "file_change", "post_commit"] } }, "required": ["type"] },
+      "then": {
+        "properties": { "opt_in": { "const": true } },
+        "required": ["decision_id"]
+      }
+    }
+  ]
+}

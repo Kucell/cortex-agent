@@ -12,6 +12,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 新增 `cortex-agent secrets <store|verify|list|audit>` 公共命令，通过项目
   Secrets skill 使用 macOS Keychain 等后端；`store` 仅接受
   `--from-env`，`verify --provider npm` 只返回认证身份，不输出凭证。
+- **M-013 / FAE-002～FAE-004、FAE-007**：新增公共 ownership lease
+  `acquire|renew|release|status|recover`、只读 dispatch-state/plan 查询、
+  零写入 dispatch dry-run，以及显式受治理的人工 dispatch；自动 dispatch、
+  daemon 和 trigger 仍保持关闭。
 
 ## [1.8.0] - 2026-07-29
 

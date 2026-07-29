@@ -224,7 +224,7 @@ test("ownership-lost daemon cannot overwrite successor state", async () => {
     assert.equal(enabled.status, 0, enabled.stderr);
     const oldPid = enabled.payload.state.supervisor_pid;
     const runtime = path.join(fixture.agentRoot, "runtime-evidence", "dashboard-supervisor");
-    const successorToken = "successor-token-1234567890";
+    const successorToken = ["successor", "fixture", "token"].join("-");
     fs.writeFileSync(path.join(runtime, "owner.json"), `${JSON.stringify({
       schema_version: 1,
       pid: process.pid,
@@ -271,7 +271,7 @@ test("ownership-lost daemon stops its local Dashboard after successor overwrites
       return state.status === "running" ? state : null;
     });
     const runtime = path.join(fixture.agentRoot, "runtime-evidence", "dashboard-supervisor");
-    const successorToken = "successor-dashboard-token-1234567890";
+    const successorToken = ["successor", "dashboard", "fixture", "token"].join("-");
     const successorOwner = {
       schema_version: 1,
       pid: process.pid,

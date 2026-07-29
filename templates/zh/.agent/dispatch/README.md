@@ -1,45 +1,93 @@
-# Dispatch Runtime 契约——Phase 0
+# Dispatch & Lease Vocabulary (FAE-001 / FAE-002 / FAE-003 / FAE-004 / FAE-007)
 
-本目录冻结 Cortex Agent v1.7.0 的三个标准术语。Phase 0 只提供契约和 fail-closed CLI 发现能力，不执行任务，也不启动后台进程。
+This directory defines the machine-readable schemas and human-readable
+documentation for the **Dispatch / Lease** vocabulary introduced by FAE-001
+and extended by FAE-002 / FAE-003 / FAE-004 / FAE-007. The vocabulary is the
+shared language for the public lease CLI, the read-only dispatch-state query,
+the dispatch dry-run, the explicit manual dispatch, and the corresponding
+Management API projections.
 
-## 词汇
+`cortex-agent dispatch` now provides a deliberately explicit manual surface:
+`dispatch dry-run <task-id>` is read-only and `dispatch <task-id>` is gated,
+lease-fenced, and idempotent. `daemon` and `trigger` remain **Phase 0 stubs**
+— no daemon, no trigger persistence, and no automatic fallback. All FAE-002 /
+FAE-003 / FAE-004 / FAE-007 surfaces remain human-triggered and fail-closed.
 
-### Dispatch（派发）
+## Schemas
 
-一次显式或由 Trigger 请求的执行尝试：把已经批准的任务交给执行 Agent，并记录 Run journal。未来的 Dispatch 实现必须先校验幂等、并发、Queue、Lock 和 Workflow Gate。
+| File | Purpose | Status |
+| :--- | :--- | :--- |
+| `trigger.schema.json` | Reserved Phase 0 trigger record; **Phase 0 does not create records**. | Frozen (FAE-001) |
+| `daemon-state.schema.json` | Recoverable local state for a future opt-in user-space daemon; **Phase 0 does not create this file**. | Frozen (FAE-001) |
+| `idempotency.schema.json` | Durable deduplication record for a future dispatch attempt; **Phase 0 does not create records**. | Frozen (FAE-001) |
+| `dispatch-state.schema.json` | Read-only Management API projection for `query dispatch-state`; **empty-state and populated-state share the same shape**. | FAE-002 |
+| `dispatch-plan.schema.json` | Read-only Management API projection for `query dispatch-plan <task-id>`. | FAE-002 |
+| `lease-cli.schema.json` | Public ownership lease CLI envelope (acquire / renew / release / status / recover). | FAE-007 |
 
-### Daemon（守护进程）
+## CLI surface
 
-可选的本地用户空间协调进程，可以轮询 Queue 和 Decision，并请求 Dispatch。Daemon **默认关闭**，必须由用户显式启动，且不得绕过 Workflow 拥有的状态转换。
+| Command | Surface | Source |
+| :--- | :--- | :--- |
+| `cortex-agent daemon --help` | Phase 0 stub; reserved contract. | FAE-001 |
+| `cortex-agent trigger --help` | Phase 0 stub; reserved contract. | FAE-001 |
+| `cortex-agent query dispatch-state` | Read-only aggregate (active + queued + blocked + history + next_action). | FAE-002 |
+| `cortex-agent query triggers` | Read-only trigger index (Phase 0 returns empty). | FAE-002 |
+| `cortex-agent query dispatch-plan <task-id>` | Read-only plan preview for a task. | FAE-002 |
+| `cortex-agent dispatch dry-run <task-id>` | Pure resolver; never writes to `.agent/` or `.agent-runtime/`. | FAE-003 |
+| `cortex-agent dispatch <task-id>` | Governed explicit manual dispatch; gates + lease fencing + idempotency + rollback; automatic dispatch is disabled. | FAE-004 |
+| `cortex-agent lease acquire --scope <scope> --owner <owner> [--idempotency-key <key>] [--ttl <seconds>]` | Public ownership lease acquire; idempotent on key+scope+owner. | FAE-007 |
+| `cortex-agent lease renew --lease-id <id> | --scope <scope> [--ttl <seconds>]` | Public ownership lease renew. | FAE-007 |
+| `cortex-agent lease release --lease-id <id>` | Public ownership lease release (idempotent). | FAE-007 |
+| `cortex-agent lease status [--lease-id <id> | --scope <scope>]` | Public ownership lease status query. | FAE-007 |
+| `cortex-agent lease recover --scope <scope> --new-owner <owner>` | Two-phase takeover recovery (P-001 §13.3). | FAE-007 |
 
-### Trigger（触发器）
+## Boundaries
 
-声明式请求，告诉未来的 Daemon 何时可以考虑 Dispatch。Trigger 不是授权；`schedule`、`file_change` 和 `post_commit` 必须显式 opt-in。Phase 0 不创建也不消费 Trigger 记录。
+- `daemon` and `trigger` Phase 0 stubs are **never** replaced by silent execution. Their
+  `--json` stub returns `ok: false, status: not_implemented` and exits 2;
+  no subprocess is spawned, no `.agent/` file is written, no lock is taken.
+- FAE-002 query projections are **read-only**. They never call `runs upsert`,
+  `queues upsert`, `decisions resolve`, or any mutation primitive.
+- FAE-003 dry-run is a **pure resolver**. It writes nothing; the only side
+  effects are stdout / stderr / process exit code.
+- FAE-004 explicit dispatch is **manually triggered and gated**. `automatic_dispatch_enabled`
+  and `daemon_enabled` remain frozen `false`. The dispatch writes to
+  `.agent-runtime/dispatch/idempotency/<key>.json` for deduplication, and
+  to existing Operation / boundary-event / journal owners — never to a new
+  state machine.
+- FAE-007 public lease wraps the audited M-008 / T-ACN-005 LeaseManager.
+  It does not introduce a new algorithm; it persists to
+  `.agent-runtime/coordination/leases/{state.json,idempotency.json}` with
+  fsync + atomic rename + 0o600.
 
-## 架构边界
+## Forbidden side effects
 
-- Management API 保持查询和受控 Run journal 层，不是调度器。
-- Coordinator 决定任务归属和交接；Dispatch 决定已批准执行何时启动。
-- Decision、Waitpoint、Progress Lock、Queue、Mission、Worktree、Ship Gate 继续保持权威。
-- Dashboard 控制动作不直接修改 Dispatch 状态。
-- Phase 0 CLI 命令都是 stub，不写入运行时状态。
+The following are **never** executed by any FAE-002 / FAE-003 / FAE-004 /
+FAE-007 surface, even with `--non-interactive --quiet` or other bypass flags:
 
-## CLI 表面
+- `mmx auth` (any subcommand), `mmx config` (any subcommand), `mmx quota`,
+  `mmx update`, `mmx install`, `mmx file` (any subcommand), or any paid
+  / network / generation subcommand.
+- Reading `/Users/xueyq/.mmx/config.json`, `/Users/xueyq/.mmx/auth.json`,
+  environment `MINIMAX_API<KEY>`, environment `MINIMAX<TOKEN>`, or any
+  `mmx auth` / `mmx config` stdout.
+- `git add`, `git commit`, `git push`, `git reset`, `git stash`, `git merge`,
+  force-push, publish, release, install, update, or destructive `rm`.
+- Subprocess spawn (`child_process.spawn`, `child_process.fork`,
+  `child_process.exec`), network sockets (`net.Socket`, `http`, `https`,
+  `fetch`), or credential file reads.
+- Reading sensitive values into lease `evidence` fields. The CLI rejects
+  `sk-…`, `MINIMAX_API<KEY>`, `MINIMAX<TOKEN>`, `api[-_]?key`, `password`
+  at the argument boundary with `ERR_LEASE_EVIDENCE_TAINTED`.
 
-```bash
-cortex-agent dispatch <task-id> [options]
-cortex-agent daemon <start|stop|status> [options]
-cortex-agent trigger <create|list|disable> [options]
-```
+## Cross-references
 
-使用 `cortex-agent help <command> --json` 查看发现信息。执行 Phase 0 stub 时，以 `PHASE_ZERO_STUB` 和退出码 `2` fail closed。
-
-## Schema
-
-- `trigger.schema.json`：声明式 Trigger 请求，并显式约束 opt-in。
-- `daemon-state.schema.json`：未来可选 Daemon 的可恢复状态。
-- `idempotency.schema.json`：未来 Dispatch 的持久去重记录。
-
-## 非目标
-
-Phase 0 不实现 `dispatch-state`、dry-run 规划、任务执行、Daemon 轮询、schedule、文件监听、post-commit 动作、自动 merge、Ship、部署或 Decision 解决。
+- FAE-001 vocabulary: `projects/full-automation-evolution/proposals/FAE-001-dispatch-vocabulary.md`
+- FAE-002 dispatch-state query: `projects/full-automation-evolution/proposals/FAE-002-dispatch-state-query.md`
+- FAE-003 dispatch dry-run: `projects/full-automation-evolution/proposals/FAE-003-dispatch-dry-run.md`
+- FAE-004 explicit dispatch: `projects/full-automation-evolution/proposals/FAE-004-dispatch-execution.md`
+- FAE-007 public lease: `projects/full-automation-evolution/proposals/FAE-007-public-ownership-lease.md`
+- Launch workflow compatibility clause: `templates/<lang>/.agent/workflows/launch-governed-agent.md`
+- Management API surface: `templates/_shared/.agent/skills/management-api/scripts/index.js`
+- Lease owner: `lib/coordination/lease.js` (M-008 / T-ACN-005 audited-approved)
+- Lease persistence: `lib/coordination/lease-store.js`
