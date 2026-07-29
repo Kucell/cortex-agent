@@ -14,6 +14,9 @@ const SCHEMAS = [
   "log-cursor.schema.json",
   "evidence-ref.schema.json",
   "runtime-state-projection.schema.json",
+  "operation.schema.json",
+  "authorization.schema.json",
+  "readiness-projection.schema.json",
 ];
 
 function read(root, file) {

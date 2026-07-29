@@ -391,6 +391,155 @@ function parseSessions() {
     .sort((a, b) => String(b.last_heartbeat_at || b.started_at || "").localeCompare(String(a.last_heartbeat_at || a.started_at || "")));
 }
 
+function parseContextTrajectories() {
+  const taskId = option("--task");
+  const runId = option("--run");
+  const sessionId = option("--session");
+  const hostRef = option("--host");
+  return listJsonObjects(path.join(agentRoot, "runtime-evidence", "context-trajectories"), { skip: [] })
+    .map(({ file, data }) => projectContextTrajectory(data, rel(file)))
+    .filter(Boolean)
+    .filter((item) => !taskId || item.task_id === taskId)
+    .filter((item) => !runId || item.run_id === runId)
+    .filter((item) => !sessionId || item.session_id === sessionId)
+    .filter((item) => !hostRef || item.host_profile_ref === hostRef)
+    .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))
+    .slice(0, 100);
+}
+
+// Projection is deliberately allowlist-only: context bodies, prompts, outputs,
+// and vendor payloads can never pass through merely because a writer added them.
+function projectContextTrajectory(data, file) {
+  if (!data || data.schema_version !== "2.0" || !Array.isArray(data.stages)) return null;
+  const stages = data.stages.map((stage) => ({
+    type: stage.type,
+    status: stage.status,
+    source: stage.source,
+    ...(stage.revision ? { revision: stage.revision } : {}),
+    ...(stage.digest ? { digest: stage.digest } : {}),
+    ...(stage.observed_at ? { observed_at: stage.observed_at } : {}),
+    items: Array.isArray(stage.items) ? stage.items.slice(0, 256).map((item) => ({
+      uri: item.uri,
+      ...(item.revision ? { revision: item.revision } : {}),
+      ...(item.digest ? { digest: item.digest } : {}),
+      ...(item.tier ? { tier: item.tier } : {}),
+      ...(Array.isArray(item.reason_codes) ? { reason_codes: item.reason_codes.slice(0, 16) } : {}),
+      ...(Number.isSafeInteger(item.estimated_tokens) ? { estimated_tokens: item.estimated_tokens } : {}),
+    })) : [],
+  }));
+  const usage = data.usage && typeof data.usage === "object" ? data.usage : {};
+  return {
+    schema_version: "2.0",
+    trajectory_id: data.trajectory_id,
+    task_id: data.task_id,
+    ...(data.run_id ? { run_id: data.run_id } : {}),
+    ...(data.session_id ? { session_id: data.session_id } : {}),
+    ...(data.operation_id ? { operation_id: data.operation_id } : {}),
+    ...(data.host_profile_ref ? { host_profile_ref: data.host_profile_ref } : {}),
+    created_at: data.created_at,
+    stages,
+    usage: {
+      estimated_selected_tokens: usage.estimated_selected_tokens ?? "unknown",
+      host_reported_input_tokens: usage.host_reported_input_tokens ?? "unknown",
+      host_reported_cache_tokens: usage.host_reported_cache_tokens ?? "unknown",
+      measurement_source: usage.measurement_source || "unavailable",
+    },
+    outcome_refs: Array.isArray(data.outcome_refs) ? data.outcome_refs.slice(0, 32) : [],
+    path: file,
+  };
+}
+
+function queryContextTrajectories() {
+  const trajectories = parseContextTrajectories();
+  return {
+    ok: true,
+    query: "context-trajectories",
+    generated_at: nowIso(),
+    filters: {
+      ...(option("--task") ? { task: option("--task") } : {}),
+      ...(option("--run") ? { run: option("--run") } : {}),
+      ...(option("--session") ? { session: option("--session") } : {}),
+      ...(option("--host") ? { host: option("--host") } : {}),
+    },
+    context_trajectories: trajectories,
+    summary: {
+      total: trajectories.length,
+      rendered_confirmed: trajectories.filter((item) => item.stages.some((stage) => stage.type === "rendered" && stage.status === "confirmed")).length,
+      consumed_confirmed: trajectories.filter((item) => item.stages.some((stage) => stage.type === "confirmed-consumed" && stage.status === "confirmed")).length,
+    },
+  };
+}
+
+const OPERATION_QUERY_DIRECTORIES = Object.freeze({
+  operations: "operations",
+  readiness: "readiness",
+  authorizations: "authorizations",
+  checkpoints: "checkpoints",
+});
+const OPERATION_PRIVATE_FIELDS = new Set([
+  "prompt", "system_prompt", "completion", "response", "messages",
+  "tool_args", "tool_arguments", "tool_input", "tool_output",
+  "stdout", "stderr", "transcript", "file_body", "file_content", "body",
+  "exact_tokens", "exact_usage", "private_transcript",
+]);
+const OPERATION_SENSITIVE_VALUE_RULES = [
+  /-----BEGIN (?:RSA |EC |DSA |OPENSSH |PGP |ENCRYPTED )?PRIVATE KEY-----/,
+  /AKIA[0-9A-Z]{16}/,
+  /ghp_[A-Za-z0-9]{20,}/,
+  /gho_[A-Za-z0-9]{20,}/,
+  /sk-proj-[A-Za-z0-9_-]{20,}/,
+  /sk-ant-[A-Za-z0-9_-]{20,}/,
+  /sk-[A-Za-z0-9]{20,}/,
+  /xox[abprs]-[A-Za-z0-9-]{10,}/,
+  /\b[a-z][a-z0-9+.-]*:\/\/[^/\s:@]+:[^/\s@]+@/i,
+  /(api[_-]?key|secret[_-]?key|password|access[_-]?token|auth[_-]?token|private[_-]?token)\s*[:=]\s*['"][^'"\s]{8,}['"]/i,
+  /(^|[^A-Za-z0-9_])(\/(?:Users|home)\/[A-Za-z0-9._-]+)/,
+];
+
+function sanitizeOperationProjection(value) {
+  if (Array.isArray(value)) return value.map(sanitizeOperationProjection);
+  if (typeof value === "string"
+    && OPERATION_SENSITIVE_VALUE_RULES.some((rule) => rule.test(value))) return "[REDACTED]";
+  if (!value || typeof value !== "object") return value;
+  const projected = {};
+  for (const [key, nested] of Object.entries(value)) {
+    projected[key] = OPERATION_PRIVATE_FIELDS.has(key.toLowerCase())
+      ? "[REDACTED]"
+      : sanitizeOperationProjection(nested);
+  }
+  return projected;
+}
+
+function queryOperationLifecycle(query) {
+  const directory = path.join(agentRoot, OPERATION_QUERY_DIRECTORIES[query]);
+  const operationId = option("--operation");
+  const taskId = option("--task");
+  const runId = option("--run");
+  const sessionId = option("--session");
+  const status = option("--status");
+  const revision = option("--revision");
+  const resources = listJsonObjects(directory, { skip: [] })
+    .map(({ data }) => sanitizeOperationProjection(data))
+    .filter((item) => query !== "operations" || !operationId || item.operation_id === operationId)
+    .filter((item) => query !== "operations" || !taskId || (item.relations && item.relations.task_id === taskId))
+    .filter((item) => query !== "operations" || !runId || (item.relations && item.relations.run_id === runId))
+    .filter((item) => query !== "operations" || !sessionId || (item.relations && item.relations.session_id === sessionId))
+    .filter((item) => query !== "operations" || !status || item.status === status)
+    .filter((item) => query !== "readiness" || !status || item.verdict === status)
+    .filter((item) => query !== "readiness" || !revision || item.revision === revision)
+    .filter((item) => query !== "authorizations" || !operationId || (Array.isArray(item.consumed_operation_ids) && item.consumed_operation_ids.includes(operationId)))
+    .filter((item) => query !== "authorizations" || !revision || item.revision === revision)
+    .filter((item) => query !== "checkpoints" || !operationId || item.operation_id === operationId)
+    .filter((item) => query !== "checkpoints" || !taskId || item.task_id === taskId);
+  return {
+    ok: true,
+    query,
+    generated_at: nowIso(),
+    resources,
+    summary: { total: resources.length },
+  };
+}
+
 function deriveState({ worktrees, locks, handoffs, tasks, agents, runs, sessions, approvals }) {
   const nonMainWorktrees = worktrees.filter((w) => !w.isMain);
   const dirty = worktrees.some((w) => w.dirty);
@@ -1580,6 +1729,11 @@ const QUERY_HANDLERS = Object.freeze({
   decisions: queryDecisions,
   waitpoints: queryWaitpoints,
   activity: queryActivityProjection,
+  "context-trajectories": queryContextTrajectories,
+  operations: () => queryOperationLifecycle("operations"),
+  readiness: () => queryOperationLifecycle("readiness"),
+  authorizations: () => queryOperationLifecycle("authorizations"),
+  checkpoints: () => queryOperationLifecycle("checkpoints"),
   "coordination-tasks": coordinationProjection("coordination-tasks"),
   "coordination-events": coordinationProjection("coordination-events"),
   "coordination-ownership": coordinationProjection("coordination-ownership"),
@@ -1700,7 +1854,7 @@ function main() {
   printJson({
     ok: false,
     error: "unsupported_command",
-    usage: "node .agent/skills/management-api/scripts/index.js query capabilities|dashboard-state|runs|queues|sessions|inbox|decisions|waitpoints|activity | runs upsert|event|checkpoint|tokens | queues upsert|item | sessions open|heartbeat|pause|close | decisions request|resolve|supersede | inbox send|transition | waitpoints create|release|cancel",
+    usage: "node .agent/skills/management-api/scripts/index.js query capabilities|dashboard-state|runs|queues|sessions|inbox|decisions|waitpoints|activity|context-trajectories|operations|readiness|authorizations|checkpoints | runs upsert|event|checkpoint|tokens | queues upsert|item | sessions open|heartbeat|pause|close | decisions request|resolve|supersede | inbox send|transition | waitpoints create|release|cancel",
   });
   process.exitCode = 2;
 }
