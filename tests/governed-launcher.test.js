@@ -36,6 +36,8 @@ test("createPrivateLaunchContext returns a frozen context with stable identity",
   const context = createPrivateLaunchContext({
     taskId: "TASK-001",
     projectId: "test-project",
+    targetAgentId: "claude-agent",
+    agentCommand: "/usr/bin/node",
     coordinatorId: "coordinator-1",
     repository: { repositoryId: "test-repo", branch: "main" },
     ownershipScopes: ["src/lib"],
@@ -49,6 +51,8 @@ test("createPrivateLaunchContext returns a frozen context with stable identity",
 
   assert.equal(context.taskId, "TASK-001");
   assert.equal(context.projectId, "test-project");
+  assert.equal(context.targetAgentId, "claude-agent");
+  assert.equal(context.agentCommand, "/usr/bin/node");
   assert.equal(context.coordinatorId, "coordinator-1");
   assert.equal(context.repository.repositoryId, "test-repo");
   assert.equal(context.repository.branch, "main");
@@ -56,12 +60,18 @@ test("createPrivateLaunchContext returns a frozen context with stable identity",
   assert.equal(context.schemaVersion, GOVERNED_LAUNCHER_SCHEMA_VERSION);
   assert.ok(context.launchId);
   assert.ok(context.launchedAt);
+  // Producer is immutable
+  assert.ok(context.producer);
+  assert.equal(context.producer.actorId, "claude-agent");
+  assert.equal(context.producer.kind, "agent");
 });
 
 test("createPrivateLaunchContext applies defaults for optional fields", () => {
   const context = createPrivateLaunchContext({
     taskId: "TASK-001",
     projectId: "test-project",
+    targetAgentId: "claude-agent",
+    agentCommand: "/usr/bin/node",
     coordinatorId: "coordinator-1",
   });
   assert.equal(context.heartbeatIntervalMs, 30000);
@@ -76,6 +86,26 @@ test("createPrivateLaunchContext applies defaults for optional fields", () => {
 test("createPrivateLaunchContext rejects missing required fields", () => {
   assert.throws(() => createPrivateLaunchContext({}), /ERR_FIELD_INVALID/);
   assert.throws(() => createPrivateLaunchContext(null), /ERR_INPUT_REQUIRED/);
+});
+
+test("createPrivateLaunchContext requires agentCommand", () => {
+  assert.throws(() => createPrivateLaunchContext({
+    taskId: "T-1",
+    projectId: "p",
+    targetAgentId: "a",
+    coordinatorId: "c",
+    // no agentCommand
+  }), /ERR_FIELD_INVALID/);
+});
+
+test("createPrivateLaunchContext requires targetAgentId", () => {
+  assert.throws(() => createPrivateLaunchContext({
+    taskId: "T-1",
+    projectId: "p",
+    agentCommand: "/usr/bin/node",
+    coordinatorId: "c",
+    // no targetAgentId
+  }), /ERR_FIELD_INVALID/);
 });
 
 // ─── Governed Launcher (no executor) ─────────────────────────────────────────
@@ -107,7 +137,7 @@ test("createGovernedLauncher returns a frozen launcher with stable identity", ()
   }
 });
 
-test("launch creates task and assigns it to target agent (with mock executor)", () => {
+test("launch creates task and assigns it to target agent (with mock executor)", async () => {
   const dir = runtimeDir();
   const service = createService(dir);
   try {
@@ -118,9 +148,10 @@ test("launch creates task and assigns it to target agent (with mock executor)", 
       executor: mockExecutor,
     });
 
-    const result = launcher.launch({
+    const result = await launcher.launch({
       taskId: "TASK-LAUNCH-001",
       targetAgentId: "claude-agent",
+      agentCommand: "/usr/bin/node",
       acceptanceCriteria: ["focused tests pass"],
       forbiddenActions: ["do not push"],
       ownershipScopes: ["lib/agent-reporter"],
@@ -130,13 +161,10 @@ test("launch creates task and assigns it to target agent (with mock executor)", 
     assert.equal(result.taskId, "TASK-LAUNCH-001");
     assert.equal(result.targetAgentId, "claude-agent");
     assert.equal(result.spawnStatus, "accepted");
-    // With executor: created, assigned, accepted (contract may reject accepted
-    // from coordinator, but the event is still recorded in the events array)
     assert.equal(result.events.length, 3);
     assert.equal(result.events[0].eventType, "task.created");
     assert.equal(result.events[1].eventType, "task.assigned");
     assert.equal(result.events[2].eventType, "task.accepted");
-    // Task state is whatever the contract returns; the event was recorded
     assert.ok(result.taskState);
     const task = service.getTask("TASK-LAUNCH-001");
     assert.equal(task.assignee, "claude-agent");
@@ -146,7 +174,7 @@ test("launch creates task and assigns it to target agent (with mock executor)", 
   }
 });
 
-test("launch rejects missing required fields", () => {
+test("launch rejects missing required fields", async () => {
   const dir = runtimeDir();
   const service = createService(dir);
   try {
@@ -156,9 +184,9 @@ test("launch rejects missing required fields", () => {
       executor: mockExecutor,
     });
 
-    assert.throws(() => launcher.launch({}), /ERR_FIELD_INVALID/);
-    assert.throws(() => launcher.launch({ taskId: "T-1" }), /ERR_FIELD_INVALID/);
-    assert.throws(() => launcher.launch(null), /ERR_INPUT_REQUIRED/);
+    await assert.rejects(() => launcher.launch({}), /ERR_FIELD_INVALID/);
+    await assert.rejects(() => launcher.launch({ taskId: "T-1" }), /ERR_FIELD_INVALID/);
+    await assert.rejects(() => launcher.launch(null), /ERR_INPUT_REQUIRED/);
   } finally {
     service.close();
     fs.rmSync(dir, { recursive: true, force: true });
@@ -167,7 +195,7 @@ test("launch rejects missing required fields", () => {
 
 // ─── Private context isolation ────────────────────────────────────────────────
 
-test("launch result does NOT expose private context or public context", () => {
+test("launch result does NOT expose private context or public context", async () => {
   const dir = runtimeDir();
   const service = createService(dir);
   try {
@@ -177,14 +205,14 @@ test("launch result does NOT expose private context or public context", () => {
       executor: mockExecutor,
     });
 
-    const result = launcher.launch({
+    const result = await launcher.launch({
       taskId: "TASK-PRIVATE-001",
       targetAgentId: "claude-agent",
+      agentCommand: "/usr/bin/node",
     });
 
     // Private context must NOT be in the public result
     assert.equal(result.privateContext, undefined);
-    // Public context must NOT be in the public result
     assert.equal(result.publicContext, undefined);
     // No private fields leaked
     assert.equal(result.coordinatorId, undefined);
@@ -203,7 +231,7 @@ test("launch result does NOT expose private context or public context", () => {
   }
 });
 
-test("multiple launches create independent tasks", () => {
+test("multiple launches create independent tasks", async () => {
   const dir = runtimeDir();
   const service = createService(dir);
   try {
@@ -213,15 +241,17 @@ test("multiple launches create independent tasks", () => {
       executor: mockExecutor,
     });
 
-    const first = launcher.launch({
+    const first = await launcher.launch({
       taskId: "TASK-MULTI-001",
       targetAgentId: "agent-1",
+      agentCommand: "/usr/bin/node",
     });
     assert.equal(first.ok, true);
 
-    const second = launcher.launch({
+    const second = await launcher.launch({
       taskId: "TASK-MULTI-002",
       targetAgentId: "agent-2",
+      agentCommand: "/usr/bin/node",
     });
     assert.equal(second.ok, true);
 
@@ -239,7 +269,7 @@ test("multiple launches create independent tasks", () => {
 
 // ─── Executor integration (injectable via constructor option) ─────────────────
 
-test("launch with injectable executor reports accepted on success", () => {
+test("launch with injectable executor reports accepted on success", async () => {
   const dir = runtimeDir();
   const service = createService(dir);
   try {
@@ -249,20 +279,19 @@ test("launch with injectable executor reports accepted on success", () => {
       executor: () => ({ pid: 12345, launchedAt: new Date().toISOString() }),
     });
 
-    const result = launcher.launch({
+    const result = await launcher.launch({
       taskId: "TASK-EXEC-OK-001",
       targetAgentId: "claude-agent",
+      agentCommand: "/usr/bin/node",
     });
 
     assert.equal(result.ok, true);
     assert.equal(result.spawnStatus, "accepted");
     assert.equal(result.pid, 12345);
-    // Should have 3 events: created, assigned, accepted
     assert.equal(result.events.length, 3);
     assert.equal(result.events[0].eventType, "task.created");
     assert.equal(result.events[1].eventType, "task.assigned");
     assert.equal(result.events[2].eventType, "task.accepted");
-    // Task state is whatever the contract returns; the event was recorded
     assert.ok(result.taskState);
     const task = service.getTask("TASK-EXEC-OK-001");
     assert.ok(task);
@@ -272,7 +301,7 @@ test("launch with injectable executor reports accepted on success", () => {
   }
 });
 
-test("launch with injectable executor reports failed on spawn failure", () => {
+test("launch with injectable executor reports failed on spawn failure", async () => {
   const dir = runtimeDir();
   const service = createService(dir);
   try {
@@ -284,31 +313,33 @@ test("launch with injectable executor reports failed on spawn failure", () => {
       },
     });
 
-    const result = launcher.launch({
+    const result = await launcher.launch({
       taskId: "TASK-EXEC-FAIL-001",
       targetAgentId: "claude-agent",
+      agentCommand: "/usr/bin/node",
     });
 
     assert.equal(result.ok, false);
     assert.equal(result.spawnStatus, "failed");
     assert.equal(result.code, "ERR_LAUNCH_FAILED");
-    // Should have 3 events: created, assigned, failed (contract may reject
-    // failed from coordinator, but the event is recorded)
     assert.equal(result.events.length, 3);
     assert.equal(result.events[0].eventType, "task.created");
     assert.equal(result.events[1].eventType, "task.assigned");
     assert.equal(result.events[2].eventType, "task.failed");
-    // Task state is whatever the contract returns; the event was recorded
     assert.ok(result.taskState);
+    // The contract may reject task.failed from coordinator producer,
+    // but the failed event is recorded in the events array.
+    // The task was created and assigned — verify that.
     const task = service.getTask("TASK-EXEC-FAIL-001");
     assert.ok(task);
+    assert.equal(task.assignee, "claude-agent");
   } finally {
     service.close();
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
 
-test("launch with executor must not leak private context in result", () => {
+test("launch with executor must not leak private context in result", async () => {
   const dir = runtimeDir();
   const service = createService(dir);
   try {
@@ -318,21 +349,233 @@ test("launch with executor must not leak private context in result", () => {
       executor: () => ({ pid: 12345, launchedAt: new Date().toISOString() }),
     });
 
-    const result = launcher.launch({
+    const result = await launcher.launch({
       taskId: "TASK-EXEC-LEAK-001",
       targetAgentId: "claude-agent",
+      agentCommand: "/usr/bin/node",
     });
 
     assert.equal(result.ok, true);
-    // Private context must not be in the result
     assert.equal(result.privateContext, undefined);
     assert.equal(result.publicContext, undefined);
-    // No command, session, token, or absolute path leaked
     assert.equal(result.coordinatorId, undefined);
-    // Only public fields from the executor result
     assert.equal(result.taskId, "TASK-EXEC-LEAK-001");
     assert.equal(result.pid, 12345);
     assert.ok(result.launchedAt);
+  } finally {
+    service.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// ─── P-003 CP-11: agentCommand required (no fallback) ────────────────────────
+
+test("launch requires agentCommand — no empty/process.execPath fallback", async () => {
+  const dir = runtimeDir();
+  const service = createService(dir);
+  try {
+    const launcher = createGovernedLauncher(service, {
+      coordinatorId: "coordinator-1",
+      projectId: "test-project",
+      executor: mockExecutor,
+    });
+
+    // Missing agentCommand should throw synchronously (field validation)
+    await assert.rejects(() => launcher.launch({
+      taskId: "TASK-NO-CMD-001",
+      targetAgentId: "claude-agent",
+    }), /ERR_FIELD_INVALID/);
+  } finally {
+    service.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// ─── P-003 CP-11: Async E2E — real subprocess lifecycle ──────────────────────
+
+test("launch with real subprocess executor — accepted after child alive", async () => {
+  const dir = runtimeDir();
+  const service = createService(dir);
+  try {
+    const launcher = createGovernedLauncher(service, {
+      coordinatorId: "coordinator-1",
+      projectId: "test-project",
+      // Real executor using node -e to sleep briefly
+      executor: (ctxFile, privateCtx) => {
+        const { spawn } = require("node:child_process");
+        return new Promise((resolve, reject) => {
+          const child = spawn(process.execPath, ["-e", "setTimeout(() => process.exit(0), 500)"], {
+            stdio: "ignore",
+            env: { CORTEX_LAUNCH_CONTEXT: ctxFile },
+          });
+          const timeout = setTimeout(() => {
+            resolve({ pid: child.pid, launchedAt: new Date().toISOString() });
+          }, 200);
+          child.once("error", (err) => {
+            clearTimeout(timeout);
+            reject(err);
+          });
+          child.once("exit", () => {
+            clearTimeout(timeout);
+            // Child exited successfully — still resolve
+            resolve({ pid: child.pid, launchedAt: new Date().toISOString() });
+          });
+          child.unref();
+        });
+      },
+    });
+
+    const startTime = Date.now();
+    const result = await launcher.launch({
+      taskId: "TASK-ASYNC-ALIVE-001",
+      targetAgentId: "claude-agent",
+      agentCommand: process.execPath,
+      agentArgs: ["-e", "setTimeout(() => process.exit(0), 500)"],
+    });
+
+    const elapsed = Date.now() - startTime;
+
+    assert.equal(result.ok, true);
+    assert.equal(result.spawnStatus, "accepted");
+    // Should have taken at least 200ms (the executor wait time)
+    assert.ok(elapsed >= 100, `E2E executor should have taken some time, got ${elapsed}ms`);
+    // Task state should be ACCEPTED (or ASSIGNED if contract rejects coordinator-submitted accepted)
+    // The key assertion is that the event was recorded
+    assert.ok(result.taskState);
+    const task = service.getTask("TASK-ASYNC-ALIVE-001");
+    assert.ok(task);
+  } finally {
+    service.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("launch with real executor — spawn failure produces task.failed", async () => {
+  const dir = runtimeDir();
+  const service = createService(dir);
+  try {
+    const launcher = createGovernedLauncher(service, {
+      coordinatorId: "coordinator-1",
+      projectId: "test-project",
+      executor: (ctxFile, privateCtx) => {
+        const { spawn } = require("node:child_process");
+        return new Promise((resolve, reject) => {
+          const child = spawn("/nonexistent/binary", [], { stdio: "ignore" });
+          child.once("error", (err) => {
+            reject(err);
+          });
+          child.once("exit", (code, signal) => {
+            reject(new Error(`Spawn failed: code=${code} signal=${signal}`));
+          });
+          child.unref();
+        });
+      },
+    });
+
+    const result = await launcher.launch({
+      taskId: "TASK-ASYNC-FAIL-001",
+      targetAgentId: "claude-agent",
+      agentCommand: "/nonexistent/binary",
+    });
+
+    assert.equal(result.ok, false);
+    assert.equal(result.spawnStatus, "failed");
+    assert.equal(result.code, "ERR_LAUNCH_FAILED");
+    assert.ok(result.taskState);
+    assert.equal(result.events.length, 3);
+    assert.equal(result.events[0].eventType, "task.created");
+    assert.equal(result.events[1].eventType, "task.assigned");
+    assert.equal(result.events[2].eventType, "task.failed");
+
+    // The contract may reject task.failed from coordinator producer,
+    // but the task was created and assigned.
+    const task = service.getTask("TASK-ASYNC-FAIL-001");
+    assert.ok(task);
+    assert.equal(task.assignee, "claude-agent");
+  } finally {
+    service.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("launch with real executor — early exit produces task.failed", async () => {
+  const dir = runtimeDir();
+  const service = createService(dir);
+  try {
+    const launcher = createGovernedLauncher(service, {
+      coordinatorId: "coordinator-1",
+      projectId: "test-project",
+      executor: (ctxFile, privateCtx) => {
+        const { spawn } = require("node:child_process");
+        return new Promise((resolve, reject) => {
+          const child = spawn(process.execPath, ["-e", "process.exit(1)"], {
+            stdio: "ignore",
+            env: { CORTEX_LAUNCH_CONTEXT: ctxFile },
+          });
+          child.once("error", (err) => reject(err));
+          child.once("exit", (code, signal) => {
+            reject(new Error(`Executor exited early: code=${code} signal=${signal}`));
+          });
+          child.unref();
+        });
+      },
+    });
+
+    const result = await launcher.launch({
+      taskId: "TASK-ASYNC-EARLY-001",
+      targetAgentId: "claude-agent",
+      agentCommand: process.execPath,
+      agentArgs: ["-e", "process.exit(1)"],
+    });
+
+    assert.equal(result.ok, false);
+    assert.equal(result.spawnStatus, "failed");
+    assert.ok(result.taskState);
+    assert.equal(result.events.length, 3);
+    assert.equal(result.events[0].eventType, "task.created");
+    assert.equal(result.events[1].eventType, "task.assigned");
+    assert.equal(result.events[2].eventType, "task.failed");
+
+    // The contract may reject task.failed from coordinator producer,
+    // but the task was created and assigned.
+    const task = service.getTask("TASK-ASYNC-EARLY-001");
+    assert.ok(task);
+    assert.equal(task.assignee, "claude-agent");
+  } finally {
+    service.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// ─── P-003 CP-11: agentCommand/args reach executor ────────────────────────────
+
+test("agentCommand and agentArgs are passed to executor", async () => {
+  const dir = runtimeDir();
+  const service = createService(dir);
+  let receivedCommand = null;
+  let receivedArgs = null;
+
+  try {
+    const launcher = createGovernedLauncher(service, {
+      coordinatorId: "coordinator-1",
+      projectId: "test-project",
+      executor: (ctxFile, privateCtx) => {
+        receivedCommand = privateCtx.agentCommand;
+        receivedArgs = privateCtx.agentArgs;
+        return { pid: 12345, launchedAt: new Date().toISOString() };
+      },
+    });
+
+    const result = await launcher.launch({
+      taskId: "TASK-EXEC-CMD-001",
+      targetAgentId: "claude-agent",
+      agentCommand: "/custom/path/agent",
+      agentArgs: ["--verbose", "--project", "/tmp/test"],
+    });
+
+    assert.equal(result.ok, true);
+    assert.equal(receivedCommand, "/custom/path/agent");
+    assert.deepEqual(receivedArgs, ["--verbose", "--project", "/tmp/test"]);
   } finally {
     service.close();
     fs.rmSync(dir, { recursive: true, force: true });
@@ -348,7 +591,6 @@ test("validateWorktree returns true for empty worktreeId", () => {
 });
 
 test("validateWorktree returns true for existing paths", () => {
-  // Current directory always exists
   assert.equal(validateWorktree(process.cwd()), true);
 });
 

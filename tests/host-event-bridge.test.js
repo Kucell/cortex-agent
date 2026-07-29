@@ -57,7 +57,7 @@ function setupCoordinatorTask(service, taskId) {
 }
 
 // Helper: set up a CORTEX_LAUNCH_CONTEXT file for bridge tests
-function setupContext(taskId, projectId, coordinatorId) {
+function setupContext(taskId, projectId, targetAgentId, coordinatorId) {
   const prev = process.env.CORTEX_LAUNCH_CONTEXT;
   delete process.env.CORTEX_LAUNCH_CONTEXT;
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-bridge-ctx-"));
@@ -65,6 +65,7 @@ function setupContext(taskId, projectId, coordinatorId) {
   const context = {
     taskId: taskId || "TASK-HB-001",
     projectId: projectId || "test-project",
+    targetAgentId: targetAgentId || "bridge-agent",
     coordinatorId: coordinatorId || "test-agent",
     launchId: "LAUNCH-HB-001",
   };
@@ -142,6 +143,16 @@ test("parseBridgeArgs accepts --notification-policy", () => {
   ]);
   assert.equal(result.ok, true);
   assert.equal(result.reportInput.notificationPolicy, "coordinator_notify");
+});
+
+test("parseBridgeArgs accepts --delivery-id", () => {
+  const result = parseBridgeArgs([
+    "agent", "report",
+    "--event-type", "task.progress",
+    "--delivery-id", "stable-delivery-001",
+  ]);
+  assert.equal(result.ok, true);
+  assert.equal(result.reportInput.deliveryId, "stable-delivery-001");
 });
 
 // ─── Governance parameter rejection ──────────────────────────────────────────
@@ -264,7 +275,7 @@ test("executeBridgeCommand submits a valid agent-scoped event", () => {
   delete process.env.CORTEX_LAUNCH_CONTEXT;
   const dir = runtimeDir();
   const service = createService(dir);
-  const ctx = setupContext("TASK-HB-001", "test-project", "bridge-agent");
+  const ctx = setupContext("TASK-HB-001", "test-project", "bridge-agent", "bridge-agent");
   try {
     setupCoordinatorTask(service, "TASK-HB-001");
     const result = executeBridgeCommand([
@@ -290,7 +301,7 @@ test("executeBridgeCommand submits progress and heartbeat through the bridge", (
   delete process.env.CORTEX_LAUNCH_CONTEXT;
   const dir = runtimeDir();
   const service = createService(dir);
-  const ctx = setupContext("TASK-HB-002", "test-project", "bridge-agent");
+  const ctx = setupContext("TASK-HB-002", "test-project", "bridge-agent", "bridge-agent");
   try {
     setupCoordinatorTask(service, "TASK-HB-002");
 
@@ -326,16 +337,14 @@ test("executeBridgeCommand rejects events whose state machine transition is inva
   delete process.env.CORTEX_LAUNCH_CONTEXT;
   const dir = runtimeDir();
   const service = createService(dir);
-  const ctx = setupContext("TASK-HB-003", "test-project", "bridge-agent");
+  const ctx = setupContext("TASK-HB-003", "test-project", "bridge-agent", "bridge-agent");
   try {
     setupCoordinatorTask(service, "TASK-HB-003");
 
-    // Try to report ready_for_review when task is still in ASSIGNED
     const result = executeBridgeCommand([
       "agent", "report",
       "--event-type", "task.ready_for_review",
     ], { service });
-    // The bridge passes through the service result; the service may reject
     assert.equal(result.ok, false);
   } finally {
     cleanupContext(ctx.prev, ctx.dir, ctx.ctxFile);
@@ -397,7 +406,7 @@ test("bridge rejects report with sensitive message content", () => {
   delete process.env.CORTEX_LAUNCH_CONTEXT;
   const dir = runtimeDir();
   const service = createService(dir);
-  const ctx = setupContext("TASK-HB-SENS-001", "test-project", "bridge-agent");
+  const ctx = setupContext("TASK-HB-SENS-001", "test-project", "bridge-agent", "bridge-agent");
   try {
     setupCoordinatorTask(service, "TASK-HB-SENS-001");
 
@@ -407,7 +416,6 @@ test("bridge rejects report with sensitive message content", () => {
       "--message", "Using API key sk-proj-abc123def456xyz789abcdef",
     ], { service });
 
-    // The reporter rejects sensitive data
     assert.equal(result.ok, false);
     assert.equal(result.error.code, "ERR_SENSITIVE_DATA_REJECTED");
   } finally {
@@ -425,7 +433,6 @@ test("bridge fails closed when context points to invalid file", () => {
   const dir = runtimeDir();
   const service = createService(dir);
   try {
-    // Set CORTEX_LAUNCH_CONTEXT to a non-existent file
     process.env.CORTEX_LAUNCH_CONTEXT = "/nonexistent/path/context.json";
 
     const result = executeBridgeCommand([
@@ -451,7 +458,6 @@ test("bridge fails closed when context file has wrong permissions", () => {
   const ctxDir = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-bridge-mode-"));
   const ctxFile = path.join(ctxDir, "context.json");
   try {
-    // Write with 0644 (not 0600)
     fs.writeFileSync(ctxFile, JSON.stringify({ taskId: "T-1", projectId: "p", coordinatorId: "c" }), { encoding: "utf8", mode: 0o644 });
     process.env.CORTEX_LAUNCH_CONTEXT = ctxFile;
 
