@@ -366,6 +366,25 @@ test("CP-9: two projectIds persist to two independent files", () => {
   assert.deepEqual(projects, ["project-alpha", "project-bravo"]);
 });
 
+test("CP-9: two long-lived registry instances do not lose updates", () => {
+  const runtimeRoot = freshRoot("multi-instance");
+  const first = new ConsumerRegistry(runtimeRoot, "project-alpha");
+  const second = new ConsumerRegistry(runtimeRoot, "project-alpha");
+  first.register({
+    consumerId: "developer-a",
+    target: { kind: "coordinator", actorId: "project-owner" },
+  });
+  second.register({
+    consumerId: "developer-b",
+    target: { kind: "coordinator", actorId: "project-owner" },
+  });
+  const recovered = new ConsumerRegistry(runtimeRoot, "project-alpha");
+  assert.deepEqual(
+    recovered.list().map((entry) => entry.consumerId).sort(),
+    ["developer-a", "developer-b"],
+  );
+});
+
 test("CP-9: writes use atomic rename and refuse to traverse outside the root", () => {
   const runtimeRoot = freshRoot("atomic");
   const reg = new ConsumerRegistry(runtimeRoot, "project-alpha", { clock: () => 0 });
@@ -380,6 +399,32 @@ test("CP-9: writes use atomic rename and refuse to traverse outside the root", (
   // Verify nothing escaped by listing the runtime root.
   const outside = fs.readdirSync(path.dirname(runtimeRoot));
   assert.ok(!outside.some((name) => name.includes("escape")), "traversal must not escape runtime root");
+});
+
+test("CP-9: registry refuses a symlinked ancestor above the runtime root", () => {
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), "registry-ancestor-"));
+  const real = path.join(base, "real");
+  fs.mkdirSync(path.join(real, ".agent-runtime"), { recursive: true });
+  const linked = path.join(base, "linked");
+  fs.symlinkSync(real, linked, "dir");
+  assert.throws(
+    () => new ConsumerRegistry(path.join(linked, ".agent-runtime"), "project-a"),
+    (error) => error.code === "ERR_REGISTRY_SCOPE" && error.details.reason === "symlink_in_path",
+  );
+});
+
+test("CP-9: registry refuses a persisted record replaced by a symlink", () => {
+  const root = freshRoot("symlinked-record");
+  const first = new ConsumerRegistry(root, "project-a");
+  const file = first._filePath;
+  const outside = path.join(path.dirname(root), "outside-registry.json");
+  fs.writeFileSync(outside, JSON.stringify({ private: "content" }));
+  fs.unlinkSync(file);
+  fs.symlinkSync(outside, file);
+  assert.throws(
+    () => new ConsumerRegistry(root, "project-a"),
+    (error) => error.code === "ERR_REGISTRY_SCOPE" && error.details.reason === "unsafe_registry_file",
+  );
 });
 
 // ─── 6. buildReceipt + helpers (unit) ──────────────────────────────────────
