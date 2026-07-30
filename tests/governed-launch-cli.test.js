@@ -26,12 +26,19 @@ function args(ctx) {
 
 function close(ctx) { ctx.service.close(); fs.rmSync(ctx.root, { recursive: true, force: true }); }
 
+function wait(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); }
+
 test("governed launch requires an assigned task and matching active fenced lease", async () => {
   const ctx = setup();
   try {
-    const result = await executeGovernedLaunch(args(ctx), { service: ctx.service, projectRoot: ctx.root, executor: async () => ({ pid: 42, launchedAt: "2026-07-30T00:00:00.000Z" }) });
+    let privateContext;
+    const result = await executeGovernedLaunch(args(ctx), { service: ctx.service, projectRoot: ctx.root, executor: async (_contextFile, context) => {
+      privateContext = context;
+      return { pid: 42, launchedAt: "2026-07-30T00:00:00.000Z" };
+    } });
     assert.equal(result.ok, true);
     assert.equal(result.spawnStatus, "accepted");
+    assert.deepEqual(privateContext.agentArgs, []);
     assert.equal(ctx.service.getTask(ctx.taskId).state, STATES.ACCEPTED);
     assert.deepEqual(ctx.service.getTask(ctx.taskId).ownership, [{ leaseId: ctx.lease.leaseId, scope: `task:${ctx.taskId}`, owner: "claude-1", fencingToken: ctx.lease.fencingToken, expiresAt: ctx.lease.expiresAt }]);
   } finally { close(ctx); }
@@ -57,6 +64,50 @@ test("governed launch fails closed without explicit matching allow-command or le
     const badLease = args(ctx); badLease[badLease.indexOf("--fencing-token") + 1] = "99";
     const fenced = await executeGovernedLaunch(badLease, { service: ctx.service, projectRoot: ctx.root });
     assert.equal(fenced.code, "ERR_LEASE_CONFLICT");
+    assert.equal(ctx.service.listEvents({ taskId: ctx.taskId }).length, 2);
+  } finally { close(ctx); }
+});
+
+test("governed launch passes explicit safe args privately without journaling them", async () => {
+  const ctx = setup();
+  const output = path.join(ctx.root, "agent-args.txt");
+  const executable = path.join(ctx.root, "capture-args.sh");
+  const privatePrompt = "PRIVATE_ONE_SHOT_PROMPT_MUST_NOT_LEAK";
+  fs.writeFileSync(executable, "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$CORTEX_TEST_ARGS_OUTPUT\"\nsleep 2\n", { mode: 0o755 });
+  const previousOutput = process.env.CORTEX_TEST_ARGS_OUTPUT;
+  process.env.CORTEX_TEST_ARGS_OUTPUT = output;
+  try {
+    const launchArgs = args(ctx);
+    launchArgs[launchArgs.indexOf("--command") + 1] = executable;
+    launchArgs[launchArgs.indexOf("--allow-command") + 1] = executable;
+    launchArgs.push("--agent-arg", "--print", "--agent-arg", privatePrompt);
+    const result = await executeGovernedLaunch(launchArgs, { service: ctx.service, projectRoot: ctx.root });
+    assert.equal(result.ok, true);
+    await wait(1100);
+    assert.deepEqual(fs.readFileSync(output, "utf8").trim().split("\n"), ["--print", privatePrompt]);
+    assert.equal(JSON.stringify(result).includes(privatePrompt), false);
+    assert.equal(JSON.stringify(ctx.service.listEvents({ taskId: ctx.taskId })).includes(privatePrompt), false);
+  } finally {
+    if (previousOutput === undefined) delete process.env.CORTEX_TEST_ARGS_OUTPUT;
+    else process.env.CORTEX_TEST_ARGS_OUTPUT = previousOutput;
+    close(ctx);
+  }
+});
+
+test("governed launch rejects unsafe or oversized explicit args without public leakage", async () => {
+  const ctx = setup();
+  const privatePrompt = "PRIVATE_UNSAFE_PROMPT_MUST_NOT_LEAK";
+  try {
+    const nul = await executeGovernedLaunch([...args(ctx), "--agent-arg", `${privatePrompt}\0`], { service: ctx.service, projectRoot: ctx.root });
+    assert.equal(nul.ok, false);
+    assert.equal(nul.code, "ERR_AGENT_ARGS_NUL");
+    assert.equal(JSON.stringify(nul).includes(privatePrompt), false);
+    const oversized = await executeGovernedLaunch([...args(ctx), "--agent-arg", "x".repeat(4097)], { service: ctx.service, projectRoot: ctx.root });
+    assert.equal(oversized.ok, false);
+    assert.equal(oversized.code, "ERR_AGENT_ARG_TOO_LONG");
+    const tooMany = await executeGovernedLaunch([...args(ctx), ...Array.from({ length: 65 }, () => "--agent-arg=value")], { service: ctx.service, projectRoot: ctx.root });
+    assert.equal(tooMany.ok, false);
+    assert.equal(tooMany.code, "ERR_AGENT_ARGS_TOO_MANY");
     assert.equal(ctx.service.listEvents({ taskId: ctx.taskId }).length, 2);
   } finally { close(ctx); }
 });

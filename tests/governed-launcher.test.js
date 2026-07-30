@@ -767,6 +767,10 @@ test("validateAgentArgs rejects too many args", () => {
   assert.throws(() => validateAgentArgs(manyArgs), /ERR_AGENT_ARGS_TOO_MANY/);
 });
 
+test("validateAgentArgs rejects overlong args", () => {
+  assert.throws(() => validateAgentArgs(["x".repeat(4097)]), /ERR_AGENT_ARG_TOO_LONG/);
+});
+
 test("validateAgentArgs rejects NUL character in args", () => {
   assert.throws(() => validateAgentArgs(["--path", "bad\0arg"]), /ERR_AGENT_ARGS_NUL/);
   assert.throws(() => validateAgentArgs(["\0start"]), /ERR_AGENT_ARGS_NUL/);
