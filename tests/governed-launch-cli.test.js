@@ -40,6 +40,7 @@ test("governed launch requires an assigned task and matching active fenced lease
     assert.equal(result.spawnStatus, "accepted");
     assert.deepEqual(privateContext.agentArgs, []);
     assert.equal(privateContext.producer.sessionId, "session-1");
+    assert.deepEqual(privateContext.notificationTarget, { actorId: "coordinator", kind: "coordinator" });
     assert.equal(ctx.service.getTask(ctx.taskId).state, STATES.ACCEPTED);
     assert.deepEqual(ctx.service.getTask(ctx.taskId).ownership, [{ leaseId: ctx.lease.leaseId, scope: `task:${ctx.taskId}`, owner: "claude-1", fencingToken: ctx.lease.fencingToken, expiresAt: ctx.lease.expiresAt }]);
   } finally { close(ctx); }
