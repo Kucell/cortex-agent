@@ -3,6 +3,18 @@
   "hooks": {
     "PostToolUse": [
       {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cortex-agent hook claude PostToolUse >/dev/null",
+            "async": true,
+            "timeout": 10
+          }
+        ],
+        "description": "Emit a bounded Cortex progress/testing signal from a governed Claude tool completion; raw tool input/output is discarded."
+      },
+      {
         "matcher": "Write|Edit|MultiEdit",
         "hooks": [
           {
@@ -16,6 +28,16 @@
       }
     ],
     "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cortex-agent hook claude SessionStart >/dev/null",
+            "timeout": 5
+          }
+        ],
+        "description": "Validate private Cortex context for a governed Claude session; only the launcher writes task.accepted."
+      },
       {
         "matcher": "*",
         "hooks": [
@@ -61,6 +83,44 @@
           }
         ],
         "description": "Ensure the singleton Dashboard Supervisor only when the project explicitly enabled automation; disabled projects perform zero writes and start no process"
+      }
+    ],
+    "PermissionRequest": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cortex-agent hook claude Permission >/dev/null",
+            "timeout": 5
+          }
+        ],
+        "description": "Report a governed Claude permission request without approving, denying, or changing permissions."
+      }
+    ],
+    "Notification": [
+      {
+        "matcher": "permission_prompt|agent_needs_input",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cortex-agent hook claude Notification >/dev/null",
+            "timeout": 5
+          }
+        ],
+        "description": "Convert Claude waiting-for-input notifications into Cortex task.input_required without forwarding notification text."
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cortex-agent hook claude Stop >/dev/null",
+            "timeout": 5
+          }
+        ],
+        "description": "Record a non-terminal Stop; never infer completed or ready_for_review from it."
       }
     ]
   }

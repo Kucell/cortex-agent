@@ -3,6 +3,18 @@
   "hooks": {
     "PostToolUse": [
       {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cortex-agent hook claude PostToolUse >/dev/null",
+            "async": true,
+            "timeout": 10
+          }
+        ],
+        "description": "从受治理 Claude 工具完成事件写入受限 Cortex progress/testing 信号；原始工具输入和输出立即丢弃"
+      },
+      {
         "matcher": "Write|Edit|MultiEdit",
         "hooks": [
           {
@@ -16,6 +28,16 @@
       }
     ],
     "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cortex-agent hook claude SessionStart >/dev/null",
+            "timeout": 5
+          }
+        ],
+        "description": "受治理 Claude 会话启动时校验私有 Cortex 上下文；任务 accepted 仍只由 launcher 写入"
+      },
       {
         "matcher": "*",
         "hooks": [
@@ -61,6 +83,44 @@
           }
         ],
         "description": "仅当项目显式启用 Dashboard 自动化时，确保唯一 Supervisor 已运行；默认关闭时零写入、零进程"
+      }
+    ],
+    "PermissionRequest": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cortex-agent hook claude Permission >/dev/null",
+            "timeout": 5
+          }
+        ],
+        "description": "仅上报受治理 Claude 的权限请求；不批准、拒绝或修改权限"
+      }
+    ],
+    "Notification": [
+      {
+        "matcher": "permission_prompt|agent_needs_input",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cortex-agent hook claude Notification >/dev/null",
+            "timeout": 5
+          }
+        ],
+        "description": "将 Claude 的等待输入通知转换为 Cortex task.input_required；不转发通知正文"
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cortex-agent hook claude Stop >/dev/null",
+            "timeout": 5
+          }
+        ],
+        "description": "记录非终态 Stop；绝不据此推断 completed 或 ready_for_review"
       }
     ]
   }
