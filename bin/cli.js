@@ -25,6 +25,7 @@ const {
   notification,
   mcp,
   agent,
+  hook,
   managementQuery,
   phaseZeroAutomation,
   dashboard,
@@ -110,6 +111,12 @@ for (let i = 0; i < args.length; i++) {
   if (arg === "--strict") {
     options.strict = true;
   }
+  if (arg === "--stdin") {
+    const value = args[i + 1];
+    options.stdin = value && !value.startsWith("--") ? value : "";
+  } else if (arg && arg.startsWith("--stdin=")) {
+    options.stdin = arg.slice("--stdin=".length);
+  }
 }
 
 function detectLangFromProject(dir) {
@@ -176,6 +183,7 @@ const l1Ctx = options.project
     case "team":        await teamPack(ctx); break;
     case "secrets":     secrets(l1Ctx); break;
     case "agent":       agent(ctx); break;
+    case "hook":        hook(ctx); break;
     case "help":        args.includes("--json") ? cliHelp(ctx) : printHelp(); break;
     case "dev":         await dev(ctx); break;
     case undefined:

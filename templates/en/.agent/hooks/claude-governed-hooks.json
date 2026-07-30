@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node node_modules/cortex-agent/bin/cortex-claude-hook SessionStart",
+            "command": "cortex-agent hook claude SessionStart",
             "timeout": 10
           }
         ],
@@ -19,7 +19,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node node_modules/cortex-agent/bin/cortex-claude-hook PostToolUse",
+            "command": "cortex-agent hook claude PostToolUse",
             "timeout": 10
           }
         ],
@@ -31,7 +31,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node node_modules/cortex-agent/bin/cortex-claude-hook Notification",
+            "command": "cortex-agent hook claude Notification",
             "timeout": 10
           }
         ],
@@ -43,7 +43,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node node_modules/cortex-agent/bin/cortex-claude-hook Permission",
+            "command": "cortex-agent hook claude Permission",
             "timeout": 10
           }
         ],
@@ -55,7 +55,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node node_modules/cortex-agent/bin/cortex-claude-hook ReadyForReview",
+            "command": "cortex-agent hook claude ReadyForReview",
             "timeout": 10
           }
         ],
@@ -67,7 +67,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node node_modules/cortex-agent/bin/cortex-claude-hook Stop",
+            "command": "cortex-agent hook claude Stop",
             "timeout": 10
           }
         ],
