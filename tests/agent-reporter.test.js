@@ -1097,7 +1097,10 @@ test("createAgentReporterFromContext uses producer from context", () => {
     assert.equal(reporter.producer.actorId, "my-agent");
     assert.equal(reporter.producer.kind, "agent");
     assert.equal(reporter.producer.sessionId, "coordinator-1");
-    assert.equal(reporter.producer.operationId, "LAUNCH-LAUNCH-PROD-001");
+    // operationId is NOT a producer field per contract (machine-validator.js
+    // FIELDS.producer only allows actorId, kind, vendor, sessionId). It is
+    // an event-level field handled by the service internally.
+    assert.equal("operationId" in reporter.producer, false);
   } finally {
     if (prev) process.env.CORTEX_LAUNCH_CONTEXT = prev;
     else delete process.env.CORTEX_LAUNCH_CONTEXT;
