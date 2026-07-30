@@ -1,12 +1,13 @@
 #!/usr/bin/env node
 "use strict";
 
-// ─── Cortex Claude Code Hook Executable (T-ACN-017-R2) ──────────────────────
+// ─── Cortex Claude Code Hook Executable (T-ACN-017-R4) ──────────────────────
 //
 // Standalone entrypoint for Claude Code hooks. Bridges hook events to the
-// real project coordination Journal via the CoordinationApplicationService.
-// Derives identity exclusively from CORTEX_LAUNCH_CONTEXT. Stdin is rejected
-// if it contains governance or unknown fields. Receipts are redacted.
+// Coordination Application Service via the Agent Reporter (never direct
+// createEvent/submit). Derives identity exclusively from CORTEX_LAUNCH_CONTEXT.
+// Stdin governance fields and unknown fields are rejected. Receipts are
+// redacted per P-003 §11.1 / §13.5.
 //
 // CLI:  cortex-claude-hook <hook-name>  < bounded-stdin.json
 // Exit: 0 = ok, 1 = user error, 2 = internal error
@@ -16,7 +17,7 @@
 //   - Stdin ≤ 64 KiB, governance fields rejected, unknown fields rejected
 //   - SessionStart: validates context, does NOT submit event (launcher authoritative)
 //   - Stop/SubagentStop: nonterminal, never submit events
-//   - Receipt: only ok/eventType/emitted/code/timestamp; never prompt/session/path/command/credentials
+//   - Receipt: only ok/code/eventType/emitted/timestamp; never prompt/session/path/command/credentials
 //   - Zero external deps beyond Node.js built-ins and project modules
 
 const fs = require("node:fs");
@@ -114,55 +115,16 @@ function resolveCoordinationService(projectRoot) {
   return CoordinationApplicationService.open(runtimeDir, { journal: { lock: false } });
 }
 
-// ─── Load governed context ───────────────────────────────────────────────────
-
-function loadGovernedContext() {
-  const contextFile = process.env.CORTEX_LAUNCH_CONTEXT;
-  if (!contextFile || typeof contextFile !== "string" || contextFile.length === 0) {
-    return null;
-  }
-  try {
-    const stat = fs.statSync(contextFile);
-    if (stat.mode & 0o077) return null;
-    const content = fs.readFileSync(contextFile, "utf8");
-    const context = JSON.parse(content);
-    if (!context || !context.taskId || !context.projectId) return null;
-    return context;
-  } catch {
-    return null;
-  }
-}
-
-// ─── Build redacted receipt ─────────────────────────────────────────────────
-// Per P-003 §11.1 / §13.5: only ok, eventType, emitted, code, timestamp.
+// ─── Build error receipt ────────────────────────────────────────────────────
+// Per P-003 §11.1 / §13.5: only ok, eventType, code, timestamp.
 // NEVER prompt, session, path, command, payload, token, or credentials.
 
-function buildErrorReceipt(ok, code) {
-  return { ok, code, message: "[REDACTED]", timestamp: new Date().toISOString() };
-}
-
-// ─── Event submission helpers ────────────────────────────────────────────────
-
-const { createEvent, STATES } = require("../lib/coordination/contract");
-
-function submitEvent(service, event) {
-  try {
-    const result = service.submit(event);
-    return { ok: true, appended: result.appended, duplicate: result.duplicate };
-  } catch (err) {
-    return { ok: false, err };
+function buildErrorReceipt(ok, code, eventType) {
+  const receipt = { ok, code, timestamp: new Date().toISOString() };
+  if (eventType !== undefined && eventType !== null) {
+    receipt.eventType = eventType;
   }
-}
-
-// Resolve previousState from the current task state in the service.
-// Returns null if the task doesn't exist yet.
-function resolvePreviousState(service, taskId) {
-  try {
-    const task = service.getTask(taskId);
-    return task ? task.state : null;
-  } catch {
-    return null;
-  }
+  return receipt;
 }
 
 // ─── Main ────────────────────────────────────────────────────────────────────
@@ -206,58 +168,65 @@ async function main() {
     process.exit(1);
   }
 
-  const context = loadGovernedContext();
-
-  // ─── SessionStart ──────────────────────────────────────────────────────────
-  // Validates CORTEX_LAUNCH_CONTEXT. Does NOT submit task.accepted — the
-  // launcher is authoritative. The hook is a validation gate only.
-
-  if (hookName === "SessionStart") {
-    if (!context) {
-      process.stdout.write(JSON.stringify(buildErrorReceipt(false, "ERR_NO_GOVERNED_CONTEXT")) + "\n");
-      process.exit(1);
-    }
-    const contextFile = process.env.CORTEX_LAUNCH_CONTEXT;
-    let contextOk = false;
-    try {
-      const stat = fs.statSync(contextFile);
-      if (!(stat.mode & 0o077)) contextOk = true;
-    } catch { /* fail closed */ }
-    if (!contextOk) {
-      process.stdout.write(JSON.stringify(buildErrorReceipt(false, "ERR_CONTEXT_FILE_PERMISSIONS")) + "\n");
-      process.exit(1);
-    }
-    // Launcher is authoritative — no event submitted
-    const receipt = { ok: true, code: "ACCEPTED", eventType: "task.accepted", timestamp: new Date().toISOString() };
-    process.stdout.write(JSON.stringify(receipt) + "\n");
-    process.exit(0);
-  }
-
-  // ─── Stop / SubagentStop ──────────────────────────────────────────────────
+  // ─── Stop / SubagentStop — no context or service required ─────────────────
   // Nonterminal events. Never submit to the Journal.
 
   if (hookName === "Stop") {
-    const receipt = { ok: true, code: "STOP_RECORDED", eventType: null, emitted: false, timestamp: new Date().toISOString() };
-    process.stdout.write(JSON.stringify(receipt) + "\n");
+    process.stdout.write(JSON.stringify({
+      ok: true, code: "STOP_RECORDED", eventType: null, emitted: false,
+      timestamp: new Date().toISOString(),
+    }) + "\n");
     process.exit(0);
   }
 
   if (hookName === "SubagentStop") {
-    const receipt = { ok: true, code: "SUBAGENT_STOP_RECORDED", eventType: null, emitted: false, timestamp: new Date().toISOString() };
-    process.stdout.write(JSON.stringify(receipt) + "\n");
+    process.stdout.write(JSON.stringify({
+      ok: true, code: "SUBAGENT_STOP_RECORDED", eventType: null, emitted: false,
+      timestamp: new Date().toISOString(),
+    }) + "\n");
     process.exit(0);
   }
 
-  // ─── Hooks that require governed context ───────────────────────────────────
-  // PostToolUse, TestStart, Notification, Permission, ReadyForReview all need
-  // the context for identity. Without it, no event submission possible.
+  // ─── SessionStart — validate context, no event ───────────────────────────
+  // Validates CORTEX_LAUNCH_CONTEXT. Does NOT submit task.accepted — the
+  // launcher is authoritative. The hook is a validation gate only.
 
-  if (!context) {
-    process.stdout.write(JSON.stringify(buildErrorReceipt(false, "ERR_CONTEXT_REQUIRED")) + "\n");
+  if (hookName === "SessionStart") {
+    const contextFile = process.env.CORTEX_LAUNCH_CONTEXT;
+    if (!contextFile || typeof contextFile !== "string" || contextFile.length === 0) {
+      process.stdout.write(JSON.stringify(buildErrorReceipt(false, "ERR_NO_GOVERNED_CONTEXT", "task.accepted")) + "\n");
+      process.exit(1);
+    }
+    let contextOk = false;
+    try {
+      const stat = fs.statSync(contextFile);
+      if (!(stat.mode & 0o077)) {
+        const content = fs.readFileSync(contextFile, "utf8");
+        const context = JSON.parse(content);
+        if (context && context.taskId && context.projectId) contextOk = true;
+      }
+    } catch { /* fail closed */ }
+    if (!contextOk) {
+      process.stdout.write(JSON.stringify(buildErrorReceipt(false, "ERR_CONTEXT_INVALID", "task.accepted")) + "\n");
+      process.exit(1);
+    }
+    // Launcher is authoritative — no event submitted
+    process.stdout.write(JSON.stringify({
+      ok: true, code: "ACCEPTED", eventType: "task.accepted",
+      timestamp: new Date().toISOString(),
+    }) + "\n");
+    process.exit(0);
+  }
+
+  // ─── Hooks that require governed context and service ─────────────────────
+  // PostToolUse, TestStart, Notification, Permission, ReadyForReview
+
+  const contextFile = process.env.CORTEX_LAUNCH_CONTEXT;
+  if (!contextFile || typeof contextFile !== "string" || contextFile.length === 0) {
+    process.stdout.write(JSON.stringify(buildErrorReceipt(false, "ERR_CONTEXT_REQUIRED", HOOK_EVENT_MAP[hookName])) + "\n");
     process.exit(1);
   }
 
-  // Resolve project root and coordination service
   const projectRoot = findProjectRoot();
   let service;
   try {
@@ -267,218 +236,28 @@ async function main() {
     process.exit(1);
   }
 
-  // Read current task state to determine previousState
-  const currentTaskState = resolvePreviousState(service, context.taskId);
-
-  // ─── PostToolUse / TestStart ──────────────────────────────────────────────
-  // Redact payload, detect test signal, submit task.progress or task.testing
-
-  if (hookName === "PostToolUse" || hookName === "TestStart") {
-    const { redactHookPayload, hookPayloadHasSecrets, detectTestSignal } = require("../lib/coordination/claude-hook-redaction");
-    const redacted = redactHookPayload(validatedPayload);
-    if (hookPayloadHasSecrets(redacted)) {
-      service.close();
-      process.stdout.write(JSON.stringify(buildErrorReceipt(false, "ERR_SENSITIVE_DATA_REJECTED")) + "\n");
-      process.exit(1);
-    }
-    const isTest = detectTestSignal(validatedPayload);
-    const eventType = isTest ? "task.testing" : "task.progress";
-
-    // Use actual task state as previousState; target EXECUTING for progress,
-    // TESTING for test signals. Progress is a liveness event so same-state is ok.
-    const previousState = currentTaskState || STATES.ACCEPTED;
-    const currentState = isTest ? STATES.TESTING : STATES.EXECUTING;
-
-    const event = createEvent({
-      eventId: undefined,
-      projectId: context.projectId,
-      taskId: context.taskId,
-      correlationId: context.correlationId,
-      producer: context.producer || { actorId: context.targetAgentId || context.taskId, kind: "agent", sessionId: context.sessionId },
-      targets: [{ actorId: context.targetAgentId || context.taskId, kind: "agent" }],
-      eventType,
-      previousState,
-      currentState,
-      repository: context.repository || { repositoryId: context.projectId },
-      notification: { policy: "journal_only", dedupeKey: eventType },
-      message: typeof redacted.message === "string" ? redacted.message.slice(0, 4000) : (isTest ? "Running tests" : "Agent progress"),
-    });
-
-    const submitResult = submitEvent(service, event);
+  let result;
+  try {
+    const { executeClaudeHook } = require("../lib/coordination/claude-hook-cli");
+    result = executeClaudeHook(service, hookName, validatedPayload);
+  } catch (err) {
     service.close();
-
-    if (!submitResult.ok) {
-      process.stdout.write(JSON.stringify(buildErrorReceipt(false, "ERR_SUBMIT_FAILED")) + "\n");
-      process.exit(1);
-    }
-
-    const receipt = {
-      ok: true,
-      code: isTest ? "TEST_SIGNAL" : "EMITTED",
-      eventType,
-      emitted: submitResult.appended,
-      timestamp: new Date().toISOString(),
-    };
-    process.stdout.write(JSON.stringify(receipt) + "\n");
-    process.exit(0);
+    process.stdout.write(JSON.stringify(buildErrorReceipt(false, "ERR_INTERNAL")) + "\n");
+    process.exit(2);
   }
 
-  // ─── Notification ─────────────────────────────────────────────────────────
-  // Submit task.input_required
+  service.close();
 
-  if (hookName === "Notification") {
-    const { redactHookPayload, hookPayloadHasSecrets } = require("../lib/coordination/claude-hook-redaction");
-    const redacted = redactHookPayload(validatedPayload);
-    if (hookPayloadHasSecrets(redacted)) {
-      service.close();
-      process.stdout.write(JSON.stringify(buildErrorReceipt(false, "ERR_SENSITIVE_DATA_REJECTED")) + "\n");
-      process.exit(1);
-    }
-
-    const previousState = currentTaskState || STATES.ACCEPTED;
-
-    const event = createEvent({
-      eventId: undefined,
-      projectId: context.projectId,
-      taskId: context.taskId,
-      correlationId: context.correlationId,
-      producer: context.producer || { actorId: context.targetAgentId || context.taskId, kind: "agent", sessionId: context.sessionId },
-      targets: [{ actorId: context.targetAgentId || context.taskId, kind: "agent" }],
-      eventType: "task.input_required",
-      previousState,
-      currentState: STATES.WAITING_FOR_INPUT,
-      repository: context.repository || { repositoryId: context.projectId },
-      notification: { policy: "journal_only", dedupeKey: "task.input_required" },
-      message: typeof redacted.message === "string" ? redacted.message.slice(0, 4000) : "Agent requires input",
-      requestedAction: { kind: "provide_input", message: typeof redacted.reason === "string" ? redacted.reason.slice(0, 200) : "Notification received" },
-    });
-
-    const submitResult = submitEvent(service, event);
-    service.close();
-
-    if (!submitResult.ok) {
-      process.stdout.write(JSON.stringify(buildErrorReceipt(false, "ERR_SUBMIT_FAILED")) + "\n");
-      process.exit(1);
-    }
-
-    const receipt = {
-      ok: true,
-      code: "INPUT_REQUIRED",
-      eventType: "task.input_required",
-      emitted: submitResult.appended,
-      timestamp: new Date().toISOString(),
-    };
-    process.stdout.write(JSON.stringify(receipt) + "\n");
-    process.exit(0);
+  if (!result.ok) {
+    process.stdout.write(JSON.stringify(buildErrorReceipt(false, result.code, result.eventType)) + "\n");
+    process.exit(1);
   }
 
-  // ─── Permission ───────────────────────────────────────────────────────────
-  // Submit task.input_required
-
-  if (hookName === "Permission") {
-    const { redactHookPayload, hookPayloadHasSecrets } = require("../lib/coordination/claude-hook-redaction");
-    const redacted = redactHookPayload(validatedPayload);
-    if (hookPayloadHasSecrets(redacted)) {
-      service.close();
-      process.stdout.write(JSON.stringify(buildErrorReceipt(false, "ERR_SENSITIVE_DATA_REJECTED")) + "\n");
-      process.exit(1);
-    }
-
-    const previousState = currentTaskState || STATES.ACCEPTED;
-
-    const event = createEvent({
-      eventId: undefined,
-      projectId: context.projectId,
-      taskId: context.taskId,
-      correlationId: context.correlationId,
-      producer: context.producer || { actorId: context.targetAgentId || context.taskId, kind: "agent", sessionId: context.sessionId },
-      targets: [{ actorId: context.targetAgentId || context.taskId, kind: "agent" }],
-      eventType: "task.input_required",
-      previousState,
-      currentState: STATES.WAITING_FOR_INPUT,
-      repository: context.repository || { repositoryId: context.projectId },
-      notification: { policy: "journal_only", dedupeKey: "task.input_required" },
-      message: typeof redacted.message === "string" ? redacted.message.slice(0, 4000) : "Agent requires permission",
-      requestedAction: { kind: "approve", message: typeof redacted.reason === "string" ? redacted.reason.slice(0, 200) : "Permission requested" },
-    });
-
-    const submitResult = submitEvent(service, event);
-    service.close();
-
-    if (!submitResult.ok) {
-      process.stdout.write(JSON.stringify(buildErrorReceipt(false, "ERR_SUBMIT_FAILED")) + "\n");
-      process.exit(1);
-    }
-
-    const receipt = {
-      ok: true,
-      code: "PERMISSION_REQUIRED",
-      eventType: "task.input_required",
-      emitted: submitResult.appended,
-      timestamp: new Date().toISOString(),
-    };
-    process.stdout.write(JSON.stringify(receipt) + "\n");
-    process.exit(0);
-  }
-
-  // ─── ReadyForReview ───────────────────────────────────────────────────────
-  // Submit task.ready_for_review with validated evidence refs
-
-  if (hookName === "ReadyForReview") {
-    const { redactHookPayload, hookPayloadHasSecrets, validateEvidenceRefs } = require("../lib/coordination/claude-hook-redaction");
-    const redacted = redactHookPayload(validatedPayload);
-    if (hookPayloadHasSecrets(redacted)) {
-      service.close();
-      process.stdout.write(JSON.stringify(buildErrorReceipt(false, "ERR_SENSITIVE_DATA_REJECTED")) + "\n");
-      process.exit(1);
-    }
-
-    const evidenceRefs = Array.isArray(redacted.evidenceRefs || redacted.evidence)
-      ? validateEvidenceRefs(redacted.evidenceRefs || redacted.evidence)
-      : [];
-
-    const evidence = evidenceRefs.map((ref) => ({ ref, kind: "artifact" }));
-    const previousState = currentTaskState || STATES.EXECUTING;
-
-    const event = createEvent({
-      eventId: undefined,
-      projectId: context.projectId,
-      taskId: context.taskId,
-      correlationId: context.correlationId,
-      producer: context.producer || { actorId: context.targetAgentId || context.taskId, kind: "agent", sessionId: context.sessionId },
-      targets: [{ actorId: context.targetAgentId || context.taskId, kind: "agent" }],
-      eventType: "task.ready_for_review",
-      previousState,
-      currentState: STATES.READY_FOR_REVIEW,
-      repository: context.repository || { repositoryId: context.projectId },
-      notification: { policy: "journal_only", dedupeKey: "task.ready_for_review" },
-      message: typeof redacted.message === "string" ? redacted.message.slice(0, 4000) : "Agent marked work as ready for review",
-      evidence,
-    });
-
-    const submitResult = submitEvent(service, event);
-    service.close();
-
-    if (!submitResult.ok) {
-      process.stdout.write(JSON.stringify(buildErrorReceipt(false, "ERR_SUBMIT_FAILED")) + "\n");
-      process.exit(1);
-    }
-
-    const receipt = {
-      ok: true,
-      code: "READY_FOR_REVIEW",
-      eventType: "task.ready_for_review",
-      emitted: submitResult.appended,
-      timestamp: new Date().toISOString(),
-    };
-    process.stdout.write(JSON.stringify(receipt) + "\n");
-    process.exit(0);
-  }
-
-  // Fallback
-  process.stdout.write(JSON.stringify(buildErrorReceipt(false, "ERR_UNKNOWN_HOOK")) + "\n");
-  process.exit(1);
+  process.stdout.write(JSON.stringify(result) + "\n");
+  process.exit(0);
 }
+
+const { HOOK_EVENT_MAP } = require("../lib/coordination/claude-hook-handlers");
 
 main().catch((err) => {
   process.stdout.write(JSON.stringify(buildErrorReceipt(false, "ERR_INTERNAL")) + "\n");
