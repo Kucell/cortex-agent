@@ -25,7 +25,7 @@ test("session bootstrap merge is additive and idempotent", (t) => {
   assert.equal(setup.ensureSessionBootstrapEntry(ctx), true);
   const once = fs.readFileSync(agents, "utf8");
   assert.match(once, /# Existing project rules/);
-  assert.match(once, /## Cortex Session Bootstrap/);
+  assert.match(once, /## Session Bootstrap/);
   assert.equal(setup.needsSessionBootstrapMerge(ctx, agents), false);
   assert.equal(setup.ensureSessionBootstrapEntry(ctx), false);
   assert.equal(fs.readFileSync(agents, "utf8"), once);

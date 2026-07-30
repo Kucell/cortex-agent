@@ -239,6 +239,51 @@ test("R4: PostToolUse submits task.progress via Agent Reporter", () => {
   }
 });
 
+test("R5: native Claude PostToolUse envelope is reduced before reporting", () => {
+  const dir = setupProject(tmpDir());
+  try {
+    const app = setupService(dir);
+    const contextFile = createContextFile(dir);
+    const progress = runHookCli("PostToolUse", {
+      hook_event_name: "PostToolUse",
+      tool_name: "Write",
+      tool_input: { file_path: "/Users/private/project/file.txt", content: "private content" },
+    }, { CORTEX_LAUNCH_CONTEXT: contextFile }, dir);
+    assert.equal(progress.ok, true, JSON.stringify(progress));
+    const result = runHookCli("PostToolUse", {
+      session_id: "claude-session-private",
+      transcript_path: "/Users/private/transcript.jsonl",
+      cwd: "/Users/private/project",
+      hook_event_name: "PostToolUse",
+      tool_name: "Bash",
+      tool_input: { command: "node --test tests/private-test.js --token=should-not-persist" },
+      tool_response: { stdout: "private output" },
+      tool_use_id: "toolu-private",
+      duration_ms: 12,
+    }, { CORTEX_LAUNCH_CONTEXT: contextFile }, dir);
+    assert.equal(result.ok, true, JSON.stringify(result));
+    assert.equal(result.eventType, "task.testing");
+    const event = app.listEvents({ taskId: "TASK-HOOK-R4" }).find((item) => item.eventType === "task.testing");
+    const serialized = JSON.stringify({ event, receipt: result });
+    assert.doesNotMatch(serialized, /claude-session-private|private\/transcript|private output|should-not-persist|node --test/);
+    app.close();
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("R5: native Claude event name mismatch fails closed", () => {
+  const dir = tmpDir();
+  try {
+    const result = runHookCli("PostToolUse", { hook_event_name: "Notification" }, {}, dir);
+    assert.equal(result.ok, false);
+    assert.equal(result._exitCode, 1);
+    assert.match(result._stderr, /ERR_NATIVE_HOOK_EVENT_MISMATCH/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("R4: PostToolUse with long message is bounded", () => {
   const dir = setupProject(tmpDir());
   try {
