@@ -8,8 +8,7 @@
           {
             "type": "command",
             "command": "cortex-agent hook claude PostToolUse >/dev/null",
-            "async": true,
-            "timeout": 10
+            "timeout": 5
           }
         ],
         "description": "Emit a bounded Cortex progress/testing signal from a governed Claude tool completion; raw tool input/output is discarded."
