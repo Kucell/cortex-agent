@@ -8,8 +8,7 @@
           {
             "type": "command",
             "command": "cortex-agent hook claude PostToolUse >/dev/null",
-            "async": true,
-            "timeout": 10
+            "timeout": 5
           }
         ],
         "description": "从受治理 Claude 工具完成事件写入受限 Cortex progress/testing 信号；原始工具输入和输出立即丢弃"
