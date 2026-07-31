@@ -173,14 +173,19 @@ test("missing project option values fail with structured usage errors", (t) => {
   }
 });
 
-test("legacy projects without capabilities return a fallback-safe error", (t) => {
+test("legacy projects without capabilities fall through to the direct query", (t) => {
+  // Pre-1.9.0 Management APIs (1.6.0–1.8.x) do not expose a `capabilities`
+  // projection. The `query` CLI must not refuse every projection just because
+  // the registry handshake is unavailable; instead it surfaces the underlying
+  // Management API response so the user can see whether the legacy dispatcher
+  // handled the projection or rejected it.
   const project = createProject();
   t.after(() => fs.rmSync(project, { recursive: true, force: true }));
   const script = path.join(project, ".agent", "skills", "management-api", "scripts", "index.js");
   fs.writeFileSync(script, "process.stdout.write(JSON.stringify({ok:false,error:'unsupported_command'})); process.exitCode=2;\n", "utf8");
   const result = run(project, ["query", "runs"]);
-  assert.equal(result.status, 3);
-  assert.equal(JSON.parse(result.stdout).error.code, "CAPABILITY_UNAVAILABLE");
+  assert.equal(result.status, 2);
+  assert.equal(JSON.parse(result.stdout).error.code, "UNSUPPORTED_COMMAND");
 });
 
 test("existing resource aliases honor explicit projects", (t) => {
