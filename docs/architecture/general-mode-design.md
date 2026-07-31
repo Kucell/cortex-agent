@@ -440,13 +440,13 @@ cortex-agent mode --switch <m>  # 显式切换（带 backup，要求 v2.0 migrat
 
 > **本阶段属于独立项目 `.agent/plans/proposals/projects/runtime-continuity-recovery/`，是本 RFC 的硬前置**
 
-- 补 `bin/cli.js session` 子命令（5 模式：assess / archive / restore / status / warm）
-- publish `docs/architecture/agent-runtime-continuity.md` 沉淀文档
-- 修幽灵 commit 引用（4f51d9f / 08c2402 → 真实 commit）
-- 跑完现有 session-manager 模板的回归测试
+- ✅ 补 `bin/cli.js session` 子命令(10 模式,超集 SKILL.md 设计;commit `0182ea7`)
+- ✅ publish `docs/architecture/agent-runtime-continuity.md` 沉淀文档(334 行;commit `ceb1539`)
+- ✅ 修幽灵 commit 引用(`4f51d9f` / `08c2402` → 4 个真实 commit: `1513b27` / `33b1baa` / `e456181` / `6502837`;7 个文件统一替换)
+- ✅ 跑完 11 个回归测试(超 plan §5.1 要求的 7+;全绿)
 
 **估时**: 1 周
-**验收**: `cortex-agent session --help` 输出完整；host agent 可 spawn 调用 5 模式
+**验收**: `cortex-agent session --help` 输出完整 10 子命令;host agent 可 spawn 调用 10 模式;RFC §15 v1.10.0 硬前置达成。详细验收 15 条见 `.agent/plans/proposals/projects/runtime-continuity-recovery/plan.md` §8。
 
 ### Phase 1（v1.10.0）：mode 切分 + 跨 host 切换总线
 
