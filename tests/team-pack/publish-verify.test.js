@@ -155,11 +155,9 @@ check("verify-strict catches tampered manifest", () => {
   m.files[0].sha256 = "0".repeat(64);
   fs.writeFileSync(manifestPath, JSON.stringify(m, null, 2));
   const loaded = t.loadPack(root);
-  assert.strictEqual(loaded.ok, true);
-  const verifyReport = t.verifyStrict(loaded.manifest, root);
-  assert.strictEqual(verifyReport.ok, false);
-  const hashCheck = verifyReport.checks.find((c) => c.id === "file_hash");
-  assert.strictEqual(hashCheck.status, "fail");
+  assert.strictEqual(loaded.ok, false);
+  assert.strictEqual(loaded.reason, "manifest_validation_failed");
+  assert.strictEqual(loaded.errors.some((error) => error.startsWith("hash mismatch:")), true);
 });
 
 // ─── signers: git_committers mode rejects when committer not in allowlist ──
