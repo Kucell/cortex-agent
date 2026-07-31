@@ -1,6 +1,6 @@
 {
   "name": "cortex-agent",
-  "version": "1.9.0",
+  "version": "1.9.1",
   "description": "AI Agent Governance Framework for Cursor, Claude Code, Windsurf, Gemini CLI, and Antigravity",
   "bin": {
     "cortex-agent": "bin/cli.js",
@@ -19,6 +19,7 @@
   "engines": {
     "node": ">=14.0.0"
   },
+  "packageManager": "pnpm@11.13.1",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "release:patch": "npm version patch && npm publish --registry https://registry.npmjs.org/",
