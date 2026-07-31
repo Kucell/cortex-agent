@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.9.1] - 2026-07-31
+
+### Fixed
+
+- **`query` CLI against pre-1.9.0 Management APIs**: `cortex-agent query <projection>`
+  used to fail with `CAPABILITY_UNAVAILABLE` for *every* projection when the target
+  project's Management API script was older than 1.9.0 (no `capabilities` projection
+  exposed). The CLI now falls through to a direct query and surfaces the underlying
+  Management API response, so projects on 1.6.0–1.8.x can still use `query
+  dashboard-state / runs / queues / sessions / inbox / decisions / waitpoints`
+  without first upgrading their Management API. New 1.9.0 projections
+  (`activity`, `context-trajectories`, `operations`, …) still report
+  `UNSUPPORTED_COMMAND` honestly when the target Management API is too old.
+
 ## [1.9.0] - 2026-07-31
 
 ### Added
