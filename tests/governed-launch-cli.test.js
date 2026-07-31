@@ -75,7 +75,7 @@ test("governed launch passes explicit safe args privately without journaling the
   const output = path.join(ctx.root, "agent-args.txt");
   const executable = path.join(ctx.root, "capture-args.sh");
   const privatePrompt = "PRIVATE_ONE_SHOT_PROMPT_MUST_NOT_LEAK";
-  fs.writeFileSync(executable, "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$CORTEX_TEST_ARGS_OUTPUT\"\nsleep 2\n", { mode: 0o755 });
+  fs.writeFileSync(executable, "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$CORTEX_TEST_ARGS_OUTPUT\"\nsleep 0.5\n", { mode: 0o755 });
   const previousOutput = process.env.CORTEX_TEST_ARGS_OUTPUT;
   process.env.CORTEX_TEST_ARGS_OUTPUT = output;
   try {
@@ -85,7 +85,7 @@ test("governed launch passes explicit safe args privately without journaling the
     launchArgs.push("--agent-arg", "--print", "--agent-arg", privatePrompt);
     const result = await executeGovernedLaunch(launchArgs, { service: ctx.service, projectRoot: ctx.root });
     assert.equal(result.ok, true);
-    await wait(1100);
+    await wait(900);
     assert.deepEqual(fs.readFileSync(output, "utf8").trim().split("\n"), ["--print", privatePrompt]);
     assert.equal(JSON.stringify(result).includes(privatePrompt), false);
     assert.equal(JSON.stringify(ctx.service.listEvents({ taskId: ctx.taskId })).includes(privatePrompt), false);
