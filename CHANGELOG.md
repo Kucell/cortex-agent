@@ -7,8 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.9.0] - 2026-07-31
+
 ### Added
 
+- **Claude Code Release A 自动闭环**：新增 Agent Reporter、Governed Launcher、
+  Claude Hooks Adapter 与受治理 launch context。Codex 可派发一个或多个真实
+  Claude Code Agent，并通过 Coordination Journal、Notification Pump 和官方
+  Codex App Server 在原主对话接收进展、阻塞、失败和待审核事件。
+- **受治理子进程生命周期**：新增 fenced lease 周期续租、journal-only
+  heartbeat、显式 handoff 终态保护、异常/超时恢复、最终 lease release 和脱敏
+  child receipt。
+- **启动持久化握手**：Launcher 在 `task.accepted` 持久化后才允许 monitor
+  访问 Journal，避免 launcher/monitor 并发写入造成 hash-chain 竞争。
 - 新增 `cortex-agent secrets <store|verify|list|audit>` 公共命令，通过项目
   Secrets skill 使用 macOS Keychain 等后端；`store` 仅接受
   `--from-env`，`verify --provider npm` 只返回认证身份，不输出凭证。
@@ -16,6 +27,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `acquire|renew|release|status|recover`、只读 dispatch-state/plan 查询、
   零写入 dispatch dry-run，以及显式受治理的人工 dispatch；自动 dispatch、
   daemon 和 trigger 仍保持关闭。
+
+### Changed
+
+- Claude Code 项目设置可安装原生协调 Hooks；headless Hook 事件同步写入
+  Reporter，`Stop` 和进程退出码 0 不推断任务完成。
+- Agent Reporter 的 ownership、identity、project 和 notification target 只从
+  私有受治理上下文和 Task 快照取得，Agent 参数不能覆盖治理字段。
+
+### Security
+
+- Governed Launcher 只允许显式白名单中的绝对可执行 Host，拒绝相对路径、
+  隐式 Node fallback、未知参数和原始 JSON 事件。
+- Receipt 和通知不保存 prompt、command、文件正文、私有路径、session、凭据、
+  Hook payload 或精确 token；关键事件保持 pending，绝不自动 ACK。
+- Release A 聚焦回归 272/272 PASS；真实双 Claude Agent 的 Task、lease、receipt
+  与 Codex thread wakeup 均通过，独立简单对话消息已由原主对话实际接收。
 
 ## [1.8.0] - 2026-07-29
 
