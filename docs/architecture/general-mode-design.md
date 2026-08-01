@@ -563,7 +563,7 @@ Phase 5 末尾：cortex-agent 主仓库 .agent/ 切换为 v2 schema（含 mode �
 
 ## 12. 待决策（开放问题）
 
-> **v0.2 修订**：v0.1 的 10 项待决策已通过 2026-07-31 评审全部拍板。v0.2 新增的待决策见下表。
+> **v0.3 修订**(2026-08-01):新增 §17 v2.0 愿景「全自动 mission 编排」(Eric 拍板),明确平台层 vs framework 层边界、阶段拆分(Phase 1-4)与启动条件;§12 全部 10 项沿用 v0.2 拍板结论。
 
 | # | 决策点 | 默认建议 | 决策方 | 状态 |
 |---|---|---|---|---|
@@ -669,7 +669,70 @@ cortex-agent v1.x 在代码项目跨 agent 工具上已经成熟。**下一步�
 
 **这一提案不动 cortex-agent 的核心 CLI、不动 platform-integration、不动 graphify 等子项目。**所有改动都集中在 `templates/_base/` 重组、新增 9 个 data 目录、新增若干 workflow 和 skill。
 
-下一步行动：
-1. Eric 审阅 v0.2，对 §12 待决策中的 4 个新开放问题给出意见
-2. **runtime-continuity-recovery 项目**作为 v1.10.0 发布的硬前置先启动
-3. v1.10.0 release 后，AI-Brain 实战 2-3 个月，再启动 v2.0 评估
+下一步行动(更新 2026-08-01):
+1. ✅ Eric 审阅 v0.2,§12 全部 10 项已拍(详见 §12 表)
+2. ✅ **runtime-continuity-recovery 项目**作为 v1.10.0 发布的硬前置已 ship(P-001 merged `94d26f1`)
+3. 🔄 **v1.10.0 release 准备中**:M-001 mission Phase 1(MS-001/002/003 ✅ merged `660e248` / `12e3db7` / `f8a1d38`,MS-004/005 in progress),目标 v1.10.0-rc.1
+4. ⏳ v1.10.0 release 后启动 v2.0 评估:Phase 2 general 模式骨架(M-002)+ Phase 3 adapters(M-003)+ Phase 4 真事件总线(FAE-002 candidate)
+
+---
+
+## 17. v2.0 愿景:全自动 mission 编排(2026-08-01 Eric 拍板)
+
+> **Eric 原话**：「cortex agent 后续就是要完成这种全自动 Agent 的分派任务,子 Agent 执行,然后事件触发回到主 Agent,保证主 Agent 完整地完成一个 mission 任务」
+
+### 17.1 三个核心能力
+
+1. **派发**:主 agent 显式或被触发地把 mission 拆解后的子任务交给 sub-agent
+2. **执行**:sub-agent 在 sandbox / non-sandbox 跑子任务,产出可审计 trace(receipt + handoff)
+3. **回主 + 续接**:sub-agent 完成或失败时,事件触发主 agent 自动续接 mission(无需主 agent 主动 poll)
+
+### 17.2 已有能力 vs 缺口(2026-08-01 现状)
+
+| 能力 | 已有? | 来源 | 缺口 |
+| :--- | :---: | :--- | :--- |
+| sub-agent 派发(`cortex-agent dispatch`) | ✅ | FAE-001 Phase 0 词汇 + CLI stub | 无 |
+| sub-agent 执行(sandbox + adapter) | ✅ | M-009 Interoperability adapter 层 | 无 |
+| sub-agent 显式 emit 事件 | ✅ | `subagent-trace` SKILL | 显式调用,易漏 |
+| 失败自动 inbox 到父 | ✅ | `subagent-trace --notify-on-fail` | — |
+| **成功自动 inbox 到父** | ❌ | — | sub-agent 成功时仍需显式 `emit --event subagent_completed`,成功路径无 fallback |
+| **父端自动 subscribe + resume** | ⚠️ 半自动 | journal + inbox + dashboard 轮询 | 父 agent 需主动 poll,无 push 通知 |
+| **mavis 平台层真事件驱动** | ✅ | `task` tool 完成后自动 `background-task-finished` → 主 session 自动 resume | 仅 mavis 平台内 |
+| **cortex-agent framework 真事件总线** | ❌ | 只有 journal + inbox + handoff 三通道 | 缺真 event bus,framework 不能脱离 mavis 平台独立跑「派发→执行→回主」闭环 |
+
+### 17.3 关键边界:平台层 vs framework 层
+
+| 层 | 已有 | 缺 | 行动 |
+| :--- | :--- | :--- | :--- |
+| **mavis 平台层**(`task` tool) | 真事件驱动,主 session 自动 resume | 仅在 mavis 平台内有效 | 平台能力已闭环,v2.0 无需改动 |
+| **cortex-agent framework 层**(`subagent-trace` + `dispatch`) | 显式 emit + 半自动 inbox + journal 轮询 | 缺真 event bus、缺成功自动 notify、缺父端自动 subscribe | **v2.0 实质工作**:补 framework 真事件总线 + 成功自动 emit + 父端自动 subscribe & resume |
+
+**结论**:v2.0 的实质工作是把 cortex-agent framework 这一层补齐,使其**在脱离 mavis 平台时也能跑「主 agent 派发 sub-agent → 事件触发回主 agent」闭环**。mavis 平台层能力是「赠品加速器」,不替代 framework 自身的真事件总线。
+
+### 17.4 阶段拆分
+
+| Phase | 时间 | 内容 | Mission 载体 |
+| :--- | :--- | :--- | :--- |
+| **Phase 1**(进行中) | 2 周 | general-mode 骨架 + 9 data 目录 + `init --mode general` + 自动 mode 推断 + RFC 同步 | **M-001**(v1.10.0-rc.1) |
+| **Phase 2** | 3 周 | general 模式完整骨架(`templates/general/` + workflow + memory) | **M-002**(计划中) |
+| **Phase 3** | 6-7 周 | 5 adapters + 1 MCP bridge(Claude Code / Codex / PI agent / Kimi / DeepSeek + bridge 消费 Mem0 / claude-mem / CodeBuddy ACP / Cursor ACP / 通义灵码 / Trae) | **M-003**(待启动) |
+| **Phase 4** | N 周 | cortex-agent framework 真事件总线 + mission 编排引擎 | **M-004**(FAE-002 candidate) |
+
+### 17.5 v2.0 启动条件
+
+- [ ] v1.10.0 已发布到 npm registry
+- [ ] v1.11.0 在 AI-Brain 实战稳定运行 ≥ 2 个月
+- [ ] ≥ 1 个外部真实 case study 验证跨 agent 续接(AI-Brain 内部作为「外部真实」语义来源)
+- [ ] Phase 2 + Phase 3 已完成(general 模式骨架 + 5 adapters)
+- [ ] FAE-002(proposal)+ 触发条件:framework 真事件总线 spec 已批准
+
+不满足任一条件,v2.0 不强行发布;v1.11 进入 LTS 长期维护直到条件满足。
+
+### 17.6 关联文档与提案
+
+- **M-008 Agent Coordination and Notification** ✅ COMPLETE:coordination runtime / journal / state / ownership / notification / adapter / takeover 全部 ship
+- **M-009 Agent Runtime Interoperability** ✅ COMPLETE:capability/event contract + 跨宿主 handoff + Pi boundary adapter + Cursor adapter + dispatch policy
+- **FAE-001 Dispatch Vocabulary** ✅ Phase 0 done:Dispatch / Daemon / Trigger 词汇 + Schema + fail-closed CLI stub
+- **FAE-002**(candidate,v2.0 启动):framework 真事件总线 spec + 成功自动 emit + 父端自动 subscribe & resume
+- **subagent-trace SKILL**:`.agent/skills/subagent-trace/SKILL.md`,当前是显式 emit + 半自动 inbox,v2.0 升级为真事件总线
+- **mavis `task` tool 平台层**:已具备「派发 → 完成 → 主 session 自动 resume」真事件驱动,是 v2.0 framework 演进的参考实现
