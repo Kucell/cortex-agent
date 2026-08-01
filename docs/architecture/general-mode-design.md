@@ -458,7 +458,7 @@ cortex-agent mode --switch <m>  # 显式切换（带 backup，要求 v2.0 migrat
 - [x] MS-004 shadow 路径测试矩阵(13/13 pass,272+ 回归 0 新增 fail)— commit `04f7b3f`(merged `8be4e4d`)
 - 现有 v1.x 项目**无感升级**(由 MS-004 测试矩阵覆盖)
 
-> **MS-005 placeholder 说明**:以上 4 个 `[x]` 翻 ✅ 是 research-phase 占位,commit hash 待 MS-001/002/003/004 全部 merged to main 后由 Worker-E 二次 commit 替换为真实 hash。release notes 草稿见 `docs/releases/v1.10.0-rc.1.md`。
+> **MS-005 placeholder 说明**(archived 2026-08-01):4 个 `[x]` 的 commit hash 已由 Worker-E 二次 commit `1a4d458` 替换为 MS-001/002/003/004 真实 commit。release notes 草稿见 `docs/releases/v1.10.0-rc.1.md`(已 final 化)。
 > **v1.10.0-rc.1 范围提醒**:本阶段为 Pre-release(AI-Brain 内部 dogfooding 试用,**不建议生产使用**);general 模式 opt-in / 暂不推荐生产(对齐 §12 #2 拍板)。
 
 **估时**: 2 周
