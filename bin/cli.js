@@ -101,6 +101,15 @@ for (let i = 0; i < args.length; i++) {
   } else if (arg && arg.startsWith("--project=")) {
     options.project = arg.slice("--project=".length);
   }
+  // MS-002: `cortex-agent init --mode general` — picks the shared data-layer
+  // profile instead of the code-project knowledge base. Pure addition: the
+  // default `init` path (no --mode) is untouched.
+  if (arg === "--mode" || arg === "-m") {
+    const value = args[i + 1];
+    options.mode = value && !value.startsWith("--") ? value : "";
+  } else if (arg && arg.startsWith("--mode=")) {
+    options.mode = arg.slice("--mode=".length);
+  }
   if (arg === "--team") {
     options.team = true;
   }
@@ -235,7 +244,52 @@ function runSession(args) {
 
 // ─── Dispatch ─────────────────────────────────────────────────────────────────
 
+// MS-002: `cortex-agent init --mode general` lays down the shared .agent/
+// data layer (inbox, decisions, runs, sessions, missions, handoffs,
+// conversations, memory, agents, tasks, waitpoints) from templates/_base/
+// without going through the language-specific code knowledge base. Lives
+// here, not in lib/commands.js, so the existing init() function and all
+// its side effects (migrateOldConfigs, selectPlatformsInteractive,
+// scriptManifest.ensureManifestForInit, etc.) stay untouched.
+async function initModeGeneral() {
+  const { copyRecursive } = require("../lib/setup");
+  const baseSrc = path.join(__dirname, "..", "templates", "_base", ".agent");
+  if (!fs.existsSync(baseSrc)) {
+    console.error(
+      "❌ templates/_base/.agent not found. Run MS-001 first to land the shared base layer, then retry `cortex-agent init --mode general`.",
+    );
+    process.exit(1);
+  }
+  const baseDest = path.join(cwd, ".agent");
+  copyRecursive(baseSrc, baseDest);
+  console.log(
+    `✅ general mode init: copied shared data layer to ${baseDest}`,
+  );
+  if (fs.existsSync(path.join(cwd, "AGENTS.md"))) {
+    console.log("ℹ️  AGENTS.md detected; general mode is the right profile for this project.");
+  }
+}
+
 (async () => {
+  // MS-002: route `init --mode general` *before* the default `case "init"`
+  // dispatch so the existing init() never runs when the user explicitly
+  // asks for the general profile. The default `init` path (no --mode)
+  // continues to call lib/commands.js init() exactly as before.
+  if (
+    command === "init" &&
+    (options.mode === "general" ||
+      args.includes("--mode") ||
+      args.includes("-m"))
+  ) {
+    if (options.mode && options.mode !== "general") {
+      console.error(
+        `❌ Unsupported --mode value: ${options.mode}. Only 'general' is implemented in MS-002. Omit --mode to use the default code-project init.`,
+      );
+      process.exit(2);
+    }
+    await initModeGeneral();
+    return;
+  }
   switch (command) {
     case "init":        await init(ctx); break;
     case "add":         await addPlatforms(ctx); break;
