@@ -22,12 +22,12 @@
 
 ### 2.1 模式 A:任务启动评估 (`assess`)
 
-输入:用户描述的任务内容。  
+输入:用户描述的任务内容。
 输出:乐观/悲观工时区间、风险等级、按 ≤3 小时切分的阶段计划、检查点标记。
 
 CLI 入口:
 ```bash
-cortex-agent session assess \
+cortex-agent session assess
   --task-description "..." --gate user
 ```
 
@@ -45,28 +45,28 @@ cortex-agent session assess \
 
 ### 2.2 模式 B:立即存档 (`archive`)
 
-输入:项目名 + `--gate user` 强制门控 + 可选 `--note-json` 摘要。  
+输入:项目名 + `--gate user` 强制门控 + 可选 `--note-json` 摘要。
 输出:`~/.agent/contexts/<project>/ctx_<YYYYmmdd_HHMMSS>.md` 全文 + `latest.md` symlink + `.agent/runtime-continuity/archives/RC-*.json` 结构化 + `runs/<id>.json#events[]` 一条 `session_archived` 事件。
 
 ```bash
-cortex-agent session archive \
-  --project <name> --gate user \
+cortex-agent session archive
+  --project <name> --gate user
   --note-json '{"done":["X"],"in_progress":"Y","next":["Z"]}'
 ```
 
 ### 2.3 模式 C:会话恢复 (`restore`)
 
-输入:项目名 + `--list` / `--auto` / 默认(load latest 全文)。  
+输入:项目名 + `--list` / `--auto` / 默认(load latest 全文)。
 输出:存档列表 / 全文 / 路径信息。
 
 ```bash
-cortex-agent session restore --project <name> --list
+cortex-agent session restore --project <name> --lis
 cortex-agent session restore --project <name> --auto
 ```
 
 ### 2.4 模式 D:时间状态查询 (`status`)
 
-输入:项目名。  
+输入:项目名。
 输出:最近 archive 距今小时数 + stale_recommendation(`ok` / `archive_now`,>2h 触发)。
 
 ```bash
@@ -75,7 +75,7 @@ cortex-agent session status --project <name>
 
 ### 2.5 模式 E:会话预热 (`warm`)
 
-输入:无。  
+输入:无。
 输出:5 小时滚动窗口提示文本,host 把它贴到对话中即可启动计时。
 
 ```bash
@@ -90,12 +90,12 @@ P-001 把 SKILL.md 中的 **10 模式**全部交付。除上述 5 个,新增 5 �
 
 ### 3.1 `log` — transferable work log
 
-把 done / in_progress / next / blockers / refs 写为 transferable JSON,落到 `.agent/runtime-continuity/events/<stamp>-event.json`,并 append `runtime_log` 事件到 `runs/<id>.json#events[]`。  
+把 done / in_progress / next / blockers / refs 写为 transferable JSON,落到 `.agent/runtime-continuity/events/<stamp>-event.json`,并 append `runtime_log` 事件到 `runs/<id>.json#events[]`。
 设计动机:不是每次都需要完整 `archive`,但需要"做过什么 / 下一步是什么"的可机器消费结构。
 
 ### 3.2 `checkpoint` — phase boundary
 
-结构与 `log` 一致,但事件类型为 `checkpoint`,在 `runs/<id>.json#events[]` 中被映射为 `runtime_checkpoint`。  
+结构与 `log` 一致,但事件类型为 `checkpoint`,在 `runs/<id>.json#events[]` 中被映射为 `runtime_checkpoint`。
 phase 字段用于 `/handoff` 与 `resume-bundle` 时的快速过滤。
 
 ### 3.3 `resume-bundle` — 新 agent 默认入口
@@ -109,7 +109,7 @@ cortex-agent session resume-bundle --project <name>
 - `latest_archive`:`.agent/runtime-continuity/archives/latest.json` 路径
 - `latest_markdown_archive`:`~/.agent/contexts/<name>/latest.md` 路径
 - `archive`:完整 archive JSON(包含 state / refs / restore)
-- `runtime_events`:最近 12 条 runtime event
+- `runtime_events`:最近 12 条 runtime even
 - `runs` / `sessions` / `handoffs` / `artifact_states`:相关 runtime state 引用
 - `git`:`branch` / `head` / `status_short`(必须在 git repo 内)
 - `read_first`:`AGENTS.md` / `.agent/rules/*` / archive 列表
@@ -121,11 +121,11 @@ cortex-agent session resume-bundle --project <name>
 跨 host(Claude Code / Codex / Cursor / Codey)切换时,旧 host 退出前必须调用:
 
 ```bash
-cortex-agent session host-switch \
-  --project <name> \
-  --from-host claude-code --to-host codex \
-  --reason "user wants codex" \
-  --gate user \
+cortex-agent session host-switch
+  --project <name>
+  --from-host claude-code --to-host codex
+  --reason "user wants codex"
+  --gate user
   --note-json '{"done":["phase1"],"in_progress":"phase2","next":["phase3"]}'
 ```
 
@@ -156,7 +156,7 @@ cortex-agent session list-contexts --format table
 
 `cortex-agent session <subcmd>` 是一个**纯 thin wrapper**,30-50 行实现,把请求委托给 `templates/_shared/.agent/skills/runtime-continuity/scripts/index.js`:
 
-```text
+```tex
 cortex-agent session <subcmd> [args]
   └─ bin/cli.js session 解析 subcmd
       └─ spawn: node templates/_shared/.agent/skills/runtime-continuity/scripts/index.js <subcmd> [args]
@@ -221,7 +221,7 @@ RFC §6.4.1 定义的**跨 agent 续接协议**是 general 模式的核心叙事
 
 ### 6.1 总线拓扑
 
-```text
+```tex
 ┌──────────────────┐  host-switch  ┌──────────────────┐
 │  Old host        │ ────────────► │ ~/.agent/contexts/│
 │  (Claude Code)   │   writes     │   <project>/      │
@@ -260,12 +260,12 @@ RFC §6.4.1 定义的**跨 agent 续接协议**是 general 模式的核心叙事
 
 ### 7.1 archive 失败(磁盘满 / 权限 / IO)
 
-症状:`ctx_<ts>.md` 写出但 `RC-<ts>.json` 未写,或两者都失败。  
+症状:`ctx_<ts>.md` 写出但 `RC-<ts>.json` 未写,或两者都失败。
 恢复:重试 `archive`;每次 archive 生成新 `ctx_<ts>.md`,所以重试不会覆盖既有存档(只追加)。
 
 ### 7.2 restore 失败(latest.md 损坏 / 缺失)
 
-症状:`restore --auto` 返回 `ok: false, error: no_archive_for_project`。  
+症状:`restore --auto` 返回 `ok: false, error: no_archive_for_project`。
 恢复:
 1. `restore --list` 看历史 archive 列表
 2. 选最近一个 `ctx_*.md` 手工读:`cat ~/.agent/contexts/<project>/ctx_<stamp>.md`
@@ -273,7 +273,7 @@ RFC §6.4.1 定义的**跨 agent 续接协议**是 general 模式的核心叙事
 
 ### 7.3 host-switch 写一半(archive 成功 + run event 失败)
 
-症状:`~/.agent/contexts/<project>/` 有新存档,但 `runs/<id>.json` 没有 `host_switch_initiated` 事件。  
+症状:`~/.agent/contexts/<project>/` 有新存档,但 `runs/<id>.json` 没有 `host_switch_initiated` 事件。
 恢复:
 1. 新 host 仍可 read latest.md 恢复上下文
 2. 但 audit-trail 会显示 "host switched but no event recorded" — 标记为 incomplete
@@ -281,12 +281,12 @@ RFC §6.4.1 定义的**跨 agent 续接协议**是 general 模式的核心叙事
 
 ### 7.4 脚本缺失(模板损坏)
 
-症状:`bin/cli.js session <cmd>` 退出码 3 + "script not found"。  
+症状:`bin/cli.js session <cmd>` 退出码 3 + "script not found"。
 恢复:重装 cortex-agent (`pnpm i -g cortex-agent@latest`) 或 git pull 最新模板。
 
 ### 7.5 测试 fixture 残留
 
-症状:测试运行后 `~/.agent/contexts/p001-*/` 残留。  
+症状:测试运行后 `~/.agent/contexts/p001-*/` 残留。
 恢复:跑 `mavis-trash ~/.agent/contexts/p001-*`(本提案测试用 unique 名 `p001-*` 隔离)。CI 环境下 fixture 在 tmpdir 内,自动清理。
 
 ## 8. 落地与发版
@@ -301,7 +301,7 @@ RFC §6.4.1 定义的**跨 agent 续接协议**是 general 模式的核心叙事
 | `tests/runtime-continuity.test.js` | 11 个回归用例(超过 plan §5.1 要求的 7+) |
 | `docs/architecture/agent-runtime-continuity.md`(本文档) | 沉淀文档,人类可读 |
 
-### 8.2 执行载体 commit
+### 8.2 执行载体 commi
 
 按 plan §4.4 修复后的真实 commit 列表:
 - `1513b27` (Phase 1 — CLI shell for session-manager 5-mode protocol)
