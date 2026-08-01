@@ -7,6 +7,68 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.10.0-rc.1] - 2026-08-01
+
+> **Pre-release**:rc.1 给 AI-Brain 内部 dogfooding 试用,**不建议生产使用**。
+> **Mission**:M-001(Phase 1 — mode 切分 + 跨 host 切换总线)。详见 `docs/releases/v1.10.0-rc.1.md`。
+
+### Added
+
+- **P-001(Phase 0 收口)**:cortex-agent session CLI 10 子命令 + 11 回归测试(`assess` / `log` / `checkpoint` / `archive` / `restore` / `resume-bundle` / `status` / `warm` / `host-switch` / `list-contexts`)。commit `0182ea7` / `ceb1539` / `c802652`,merged `94d26f1`
+- **MS-001(Phase 1 收口,`templates/_base/`)**:共享层抽离,11 个 data 目录 schema publish(inbox / decisions / waitpoints / runs / sessions / missions / handoffs / conversations / memory / agents / tasks)。commit `c352d2b`,merged `660e248`
+- **MS-002(`cortex-agent init --mode general`)**:general 模式 init 命令,显式选择模式。commit `ae05295`,merged `12e3db7`
+- **MS-003(`cortex-agent init` 自动 mode 推断)**:无参数时根据 cwd marker(AGENTS.md / .cursorrules / .github/copilot-instructions.md / package.json)自动选择模式,空目录默认 general。`lib/mode-infer.js` 5 规则独立模块。commit `e4de8ec`,merged `f8a1d38`
+- **MS-004(shadow 路径测试矩阵)**:`tests/shadow-init.test.js` 13 个场景覆盖 v1 / v2 init 边界 + auto-infer + 显式覆盖,3 个 additivity 守卫。**关键发现**:11 个 v2 `_base/.agent/` 目录中只有 3 个(`agents/conversations/missions`)真正 v2 独有,其他 8 个在 `templates/_shared/.agent/` 中已存在。commit `04f7b3f`,merged `8be4e4d`
+- **RFC v0.3**:新增 §17 v2.0 愿景「全自动 mission 编排」,明确 mavis 平台层 vs cortex-agent framework 层边界,Phase 1-4 阶段拆分,v2.0 启动条件 5 项。commit `855e722` + `ee034ca`
+
+### Fixed
+
+- **agent-runtime-continuity 提案"假 done"问题修复**:commit `4f51d9f` / `08c2402` 幽灵 commit → 4 个真实 commit `1513b27` / `33b1baa` / `e456181` / `6502837`
+- **RFC §15 Phase 0 4 个待办**全部翻 ✅(P-001 收口)
+- **RFC §15 Phase 1 4 个待办**全部翻 ✅(commit hash 已替换为 MS-001/002/003/004 真实 commit)
+- **§15 Phase 1 footer "placeholder 说明"备注**archived(2026-08-01)
+
+### Notes
+
+- **general 模式 opt-in / 暂不推荐生产**(`§12 #2` 拍板);通过 `cortex-agent init --mode general` 显式选择,默认行为不变
+- **shadow 双跑路径**:`templates/{zh,en}/` 老项目零变化,新 `init --mode general` 走 v2 schema(由 MS-004 测试矩阵覆盖)
+- **MS-004 shadow 路径测试 13/13 pass**,确认 v1 / v2 init 边界不冲突;老 v1.x 项目走 v1 schema 零变化,新 `init --mode general` 走 v2 schema,272+ 回归 0 新增 fail
+- **跨 agent 续接协议**:runtime 层 `cortex-agent session host-switch` 已 ship(commit `0182ea7`),host 适配(Claude Code / Codex / Cursor 各自主动调用)留 v1.11.0 Phase 3
+- **零依赖**:`templates/_base/` 抽离无 npm install,hand-rolled draft-07 验证器沿用 v1.x 风格
+
+### Backward Compatibility
+
+- `cortex-agent init --mode code` 行为与 v1.9.0 完全一致
+- 现有 v1.x 项目 `cortex-agent update` 升级零影响(shadow 路径)
+- `update --mode general` 暂不允许跨模式升级(v2.0.0 引入 `cortex-agent migrate` 替代)
+- 所有 v1.x 已有子命令(`init / update / upgrade / session / task / event / lease / secrets / query / 等`)函数体零修改
+- `lib/commands.js` 零修改(M-001 MS-002/003 binding contract)
+- `templates/{zh,en}/` 零修改(M-001 MS-001 binding contract)
+
+### Known Limitations
+
+- `cortex-agent session` 子命令依赖 `lib/commands.js` 子模块,**not yet isolated**(P-002 候选,plan §6.3)
+- 跨 host 适配(host 主动调用 host-switch)未做,留 v1.11.0
+- general 模式 workflow(Phase 2)未实现 — `/conversation log` / `/memory recall` / `/agent invoke` / `/handoff` 留 v1.10.0 → v1.11.0 之间
+- memory schema(episodic + semantic)暂未 ship,procedural 推到 v1.12
+- 5 adapters + 1 MCP bridge(Claude Code / Codex / Pi / Kimi / DeepSeek + bridge 消费 Mem0 / claude-mem / CodeBuddy ACP / Cursor ACP / 通义灵码 / Trae)Phase 3 v1.11.0 实施
+- **MS-004 揭示**:11 个 v2 data 目录中只有 3 个(`agents/conversations/missions`)真正 v2 独有;其他 8 个(`runs/tasks/waitpoints/inbox/decisions/handoffs/memory/sessions`)在 `templates/_shared/.agent/` 中也存在 — 这是 v1 runtime 既有数据,shadow 路径下两层共存
+- M-001 24 个 pre-existing test failure(与 MS-002/003 auto-infer 行为相关)未修,留 v1.10.0 GA 前小 mission 处理
+
+### Upgrade Path
+
+- v1.9.0 / v1.9.1 → v1.10.0-rc.1:`npx cortex-agent update` 即可,零影响
+- v1.10.0-rc.1 → v1.10.0 GA(待发):同样 `npx cortex-agent update`
+- v1.10.0 → v2.0.0(未来):走 `cortex-agent migrate` 跨模式升级,提供 dry-run
+
+### References
+
+- RFC: `docs/architecture/general-mode-design.md` v0.3
+- Release notes 全文: `docs/releases/v1.10.0-rc.1.md`
+- P-001 归档: `AI-Brain/99-Project-Notes/cortex-bridge/2026-08-01-p001-ship-and-merge.md`
+- M-001 mission plan: `.agent/missions/M-001/mission-plan.md`
+- Bridge memos 6 份: `general-mode-rfc-discussion` / `rfc-v0.2-and-version-strategy` / `agent-adapter-market-survey` / `adapter-batch-decision` / `rfc-v12-final-decisions` / `p001-ship-and-merge` / `m001-launch` / `m001-ms-003-merge-and-ms-004-dispatch` / `rfc-v0.3-v20-vision` / `m001-ms-004-shadow-and-worker-d-fallback` / `m001-phase1-100-percent-and-v1100-rc1-prep`
+
 ## [1.9.1] - 2026-07-31
 
 ### Fixed
