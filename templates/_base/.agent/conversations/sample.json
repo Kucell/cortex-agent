@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "conversation_id": "C-M001-MS001",
+  "topic": "M-001 Phase 1 mode 切分设计 + 实施协调",
+  "outcome": "open",
+  "domain": "code",
+  "active_agent": {
+    "type": "cortex",
+    "agent_id": "Worker-A-MS001",
+    "session_id": "S-M-001-MS-001"
+  },
+  "turn_count": 12,
+  "handoffs": [
+    {
+      "handoff_id": "H-001",
+      "from_agent": "coordinator",
+      "to_agent": "Worker-A-MS001",
+      "timestamp": "2026-08-01T15:15:00.000Z",
+      "reason": "explicit",
+      "checksum": null
+    }
+  ],
+  "summary_ref": ".agent/conversations/C-M001-MS001/summary.md",
+  "decisions_refs": [],
+  "artifact_refs": [
+    "templates/_base/.agent/README.md",
+    "tests/_base-extraction.test.js"
+  ],
+  "relations": {
+    "mission_ids": ["M-001"],
+    "task_ids": ["M-001-MS-001"],
+    "conversation_ids": []
+  },
+  "state": {
+    "latest_turn": 12,
+    "active_missions": ["M-001"],
+    "pending_decisions": [],
+    "in_flight_tasks": ["M-001-MS-001"],
+    "checksum": null
+  },
+  "created_at": "2026-08-01T15:15:00.000Z",
+  "updated_at": "2026-08-01T15:30:00.000Z"
+}

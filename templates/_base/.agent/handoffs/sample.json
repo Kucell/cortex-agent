@@ -1,0 +1,84 @@
+{
+  "schema_version": 1,
+  "handoff_id": "H-20260801-153000-ms-001-done",
+  "mode": "AGENT_RESUME",
+  "from": {
+    "agent_id": "Worker-A-MS001",
+    "model": "MiniMax-M3",
+    "session_id": "S-M-001-MS-001"
+  },
+  "to": {
+    "role": "coordinator",
+    "model_pref": ["MiniMax-M3", "claude-sonnet"],
+    "required_capabilities": ["mission_orchestration", "batch_dispatch"]
+  },
+  "task_id": "M-001-MS-001",
+  "mission_id": "M-001",
+  "task_progress": {
+    "current_step": "MS-001 done; ready for batch 2 dispatch",
+    "completed_steps": [
+      "extract-templates-_base-shared-layer",
+      "publish-11-data-directory-schemas",
+      "write-top-level-readme",
+      "write-tests-_base-extraction",
+      "run-tests-all-passing",
+      "commit",
+      "write-milestone-doc",
+      "write-handoff-payload"
+    ],
+    "in_progress": "release-lock + check-out-registry",
+    "remaining_steps": [
+      "release-progress-lock",
+      "check-out-agent-registry",
+      "verify-worktree-clean",
+      "update-run-journal"
+    ]
+  },
+  "artifacts": {
+    "completed": [
+      "templates/_base/.agent/README.md",
+      "templates/_base/.agent/inbox/{inbox.schema.json,README.md,sample.json}",
+      "templates/_base/.agent/decisions/{decision.schema.json,README.md,sample.json}",
+      "templates/_base/.agent/waitpoints/{waitpoint.schema.json,README.md,sample.json}",
+      "templates/_base/.agent/runs/{run.schema.json,README.md,sample.json}",
+      "templates/_base/.agent/sessions/{session.schema.json,README.md,sample.json}",
+      "templates/_base/.agent/missions/{mission.schema.json,README.md,sample.json}",
+      "templates/_base/.agent/handoffs/{handoff.schema.json,README.md,sample.json}",
+      "templates/_base/.agent/conversations/{conversation.schema.json,README.md,sample.json}",
+      "templates/_base/.agent/memory/{memory.schema.json,README.md,sample.json}",
+      "templates/_base/.agent/agents/{agent.schema.json,README.md,sample.json}",
+      "templates/_base/.agent/tasks/{task.schema.json,README.md,sample.json}",
+      "tests/_base-extraction.test.js"
+    ],
+    "context_snapshot_ref": ".agent/missions/M-001/milestones/MS-001.md",
+    "markdown_ref": ".agent/missions/M-001/handoffs/20260801-153000-ms-001-done.md",
+    "artifact_refs": []
+  },
+  "next_action": "Coordinator: validate MS-001 evidence, then dispatch MS-002/003/005 in parallel batches",
+  "constraints": [
+    "MS-001 owned_files is templates/_base/** and tests/_base-extraction.test.js only",
+    "MS-002/003 must NOT modify templates/{zh,en}/* or bin/cli.js (additive only)",
+    "shadow path test matrix must pass before MS-004 sign-off"
+  ],
+  "verification": {
+    "commands_run": [
+      {
+        "command": "node --test tests/_base-extraction.test.js",
+        "exit_code": 0,
+        "summary": "22+ assertions passed (11 schema valid + 11 sample validate + 11 README exist + 1 top-level README + 9 directory exist)"
+      },
+      {
+        "command": "git diff --stat templates/zh templates/en bin/cli.js lib/commands.js",
+        "exit_code": 0,
+        "summary": "PASS - 0 changes (additive constraint preserved)"
+      }
+    ],
+    "commands_needed": [
+      "node .agent/missions/M-001/scripts/validate-ms-001.js"
+    ],
+    "known_failures": []
+  },
+  "graphify_context": null,
+  "context_budget_hint": null,
+  "produced_at": "2026-08-01T15:30:00.000Z"
+}

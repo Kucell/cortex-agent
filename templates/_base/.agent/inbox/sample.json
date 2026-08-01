@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "message_id": "IM-M001-MS001-decision-request",
+  "type": "decision_request",
+  "status": "unread",
+  "sender_id": "Worker-A-MS001",
+  "recipient_ids": ["coordinator"],
+  "subject": "M-001 MS-001 schemas ready for review",
+  "body": "M-001 MS-001 done. 11 data directory schemas published under templates/_base/.agent/. 22+ test assertions passing in tests/_base-extraction.test.js. Please review and approve next batch (MS-002/003/005) dispatch.",
+  "task_id": null,
+  "mission_id": "M-001",
+  "related_decision_ids": [],
+  "related_waitpoint_ids": [],
+  "related_handoff_ids": [],
+  "created_at": "2026-08-01T15:30:00.000Z",
+  "updated_at": "2026-08-01T15:30:00.000Z"
+}

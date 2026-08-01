@@ -1,0 +1,89 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/Kucell/cortex-agent/schemas/inbox.schema.json",
+  "title": "Cortex Agent Inbox Message",
+  "description": "Mode-agnostic inbox message schema. Used by both code and general mode for inter-agent communication. Reuses the v1 inbox-message schema minimal subset.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "message_id",
+    "type",
+    "status",
+    "sender_id",
+    "recipient_ids",
+    "subject",
+    "body",
+    "created_at",
+    "updated_at"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "message_id": {
+      "type": "string",
+      "pattern": "^IM-[A-Za-z0-9][A-Za-z0-9._-]*$",
+      "description": "Stable inbox message id, prefix IM-."
+    },
+    "type": {
+      "type": "string",
+      "enum": ["information", "request", "handoff", "decision_request", "alert"],
+      "description": "Message semantic type. decision_request requires a downstream decision record; handoff requires a handoff record."
+    },
+    "status": {
+      "type": "string",
+      "enum": ["unread", "read", "acknowledged", "archived"],
+      "description": "Recipient-side lifecycle."
+    },
+    "sender_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Agent or human id that created the message."
+    },
+    "recipient_ids": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1 },
+      "description": "Direct recipients. Use wildcard 'broadcast' for fan-out."
+    },
+    "subject": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200,
+      "description": "One-line summary."
+    },
+    "body": {
+      "type": "string",
+      "maxLength": 4000,
+      "description": "Concise message text. Large content belongs in artifacts and should be referenced via task_ids/artifact_refs."
+    },
+    "task_id": {
+      "type": ["string", "null"],
+      "description": "Optional primary task binding."
+    },
+    "mission_id": {
+      "type": ["string", "null"],
+      "description": "Optional primary mission binding."
+    },
+    "related_decision_ids": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "type": "string", "pattern": "^D-[A-Za-z0-9][A-Za-z0-9._-]*$" }
+    },
+    "related_waitpoint_ids": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "type": "string", "pattern": "^WP-[A-Za-z0-9][A-Za-z0-9._-]*$" }
+    },
+    "related_handoff_ids": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "created_at": { "type": "string", "format": "date-time" },
+    "updated_at": { "type": "string", "format": "date-time" },
+    "read_at": { "type": ["string", "null"], "format": "date-time" },
+    "acknowledged_at": { "type": ["string", "null"], "format": "date-time" },
+    "archived_at": { "type": ["string", "null"], "format": "date-time" }
+  }
+}
