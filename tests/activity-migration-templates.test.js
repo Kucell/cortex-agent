@@ -67,6 +67,11 @@ test("VC-014 shared templates keep generic privacy defaults (no Cortex-only fiel
 test("VC-013 init creates a default recording profile in a fresh project", () => {
   const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-ms005-init-"));
   try {
+    // M-001 MS-003 added auto-infer: empty dir -> general. These tests
+    // exercise the *code* init path (which carries the activity-recording
+    // baseline via templates/_shared/.agent/), so we plant a code-mode
+    // marker (package.json) before invoking init.
+    fs.writeFileSync(path.join(cwd, "package.json"), "{}");
     execFileSync(process.execPath, [path.join(ROOT, "bin", "cli.js"), "init", "--lang", "en", "--platforms", "codex"], {
       cwd,
       stdio: "ignore",
@@ -87,6 +92,9 @@ test("VC-013 init does NOT create Cortex self-check artifacts in a fresh project
   // without installing or running Cortex self-check.
   const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-ms005-noselfcheck-"));
   try {
+    // Plant code-mode marker so auto-infer (M-001 MS-003) routes here
+    // to the code init path, which is what these VC contracts cover.
+    fs.writeFileSync(path.join(cwd, "package.json"), "{}");
     execFileSync(process.execPath, [path.join(ROOT, "bin", "cli.js"), "init", "--lang", "en", "--platforms", "codex"], {
       cwd,
       stdio: "ignore",
@@ -111,6 +119,9 @@ test("VC-015 self-bootstrap can persist at least one activity receipt in the inn
   const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-ms005-self-"));
   try {
     // Mimic the inner .agent workspace by copying the shared baseline.
+    // Plant code-mode marker so auto-infer (M-001 MS-003) routes here
+    // to the code init path that copies templates/_shared/.agent/.
+    fs.writeFileSync(path.join(cwd, "package.json"), "{}");
     execFileSync(process.execPath, [path.join(ROOT, "bin", "cli.js"), "init", "--lang", "en", "--platforms", "codex"], {
       cwd,
       stdio: "ignore",

@@ -12,6 +12,10 @@ const root = path.resolve(__dirname, "..");
 for (const language of ["en", "zh"]) {
   test(`init installs activity recording baseline for ${language}`, () => {
     const cwd = fs.mkdtempSync(path.join(os.tmpdir(), `cortex-activity-${language}-`));
+    // Plant a code-mode marker so M-001 MS-003 auto-infer routes to
+    // the code init path (which copies templates/_shared/.agent/ and
+    // hence the activity-recording baseline).
+    fs.writeFileSync(path.join(cwd, "package.json"), "{}");
     const result = spawnSync(process.execPath, [path.join(root, "bin", "cli.js"), "init", "--lang", language, "--platforms", "codex"], {
       cwd,
       encoding: "utf8"
