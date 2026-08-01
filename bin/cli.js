@@ -271,6 +271,27 @@ async function initModeGeneral() {
 }
 
 (async () => {
+  // MS-003: auto mode inference — when the user omits `--mode` entirely,
+  // ask `lib/mode-infer` which profile fits the cwd and inject the result
+  // into `options.mode`. The MS-002 dispatch (the `if (... --mode general)`
+  // block below) already keys off `options.mode === "general"`, so by
+  // setting `options.mode` here we let the existing code pick the right
+  // path with no further wiring:
+  //
+  //   inferred === 'general'  -> falls into the MS-002 block, initModeGeneral
+  //   inferred === 'code'     -> falls through to switch / case "init", default init
+  //
+  // Pure addition. Sits ABOVE the MS-002 block; the MS-002 block and every
+  // line below stay byte-identical. `lib/commands.js` is also untouched —
+  // the inferred code path is the same default init() MS-001 ships.
+  if (command === "init") {
+    const { isInferModeEnabled, inferMode } = require("../lib/mode-infer");
+    if (isInferModeEnabled({ options, args })) {
+      const inferred = inferMode(cwd);
+      options.mode = inferred;
+    }
+  }
+
   // MS-002: route `init --mode general` *before* the default `case "init"`
   // dispatch so the existing init() never runs when the user explicitly
   // asks for the general profile. The default `init` path (no --mode)
