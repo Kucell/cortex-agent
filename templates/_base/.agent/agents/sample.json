@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "agent_id": "Worker-A-MS001",
+  "role": "implementer",
+  "model": "MiniMax-M3",
+  "task_id": "M-001-MS-001",
+  "mission_id": "M-001",
+  "session_id": "S-M-001-MS-001",
+  "started_at": "2026-08-01T15:15:06.949Z",
+  "last_heartbeat": "2026-08-01T15:30:00.000Z",
+  "status": "running",
+  "owned_files": [
+    "templates/_base/**"
+  ],
+  "pending_artifacts": [
+    ".agent/missions/M-001/handoffs/H-20260801-153000-ms-001-done.json"
+  ],
+  "capabilities": [
+    "schema_design",
+    "json_schema",
+    "markdown",
+    "nodejs_testing"
+  ],
+  "external": null
+}

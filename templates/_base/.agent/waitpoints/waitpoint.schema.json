@@ -1,0 +1,85 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/Kucell/cortex-agent/schemas/waitpoint.schema.json",
+  "title": "Cortex Agent Waitpoint",
+  "description": "Mode-agnostic waitpoint. A waitpoint is a paused-state twin of a decision: when the run reaches a destructive / merge / release / credential gate, the run parks here until a matching D-* decision is recorded and the waitpoint is released.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "waitpoint_id",
+    "status",
+    "owner_workflow",
+    "reason",
+    "gate",
+    "created_at",
+    "updated_at"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "waitpoint_id": {
+      "type": "string",
+      "pattern": "^WP-[A-Za-z0-9][A-Za-z0-9._-]*$",
+      "description": "Stable waitpoint id, prefix WP-."
+    },
+    "status": {
+      "type": "string",
+      "enum": ["pending", "blocked", "released", "canceled", "expired"],
+      "description": "pending = awaiting decision; blocked = decision rejected/revising; released = decision made & waitpoint cleared; canceled = manual abort; expired = TTL reached without action."
+    },
+    "owner_workflow": {
+      "type": "string",
+      "pattern": "^/[a-z][a-z0-9-]*$",
+      "description": "The workflow that owns this waitpoint (e.g. /ship, /approve, /mission, /handoff)."
+    },
+    "reason": { "type": "string", "minLength": 1 },
+    "gate": {
+      "type": "object",
+      "required": ["action", "resource_ref"],
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": ["architecture", "merge", "release", "destructive", "credential", "external_side_effect", "lifestyle"]
+        },
+        "resource_ref": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+    "decision_id": {
+      "type": ["string", "null"],
+      "pattern": "^D-[A-Za-z0-9][A-Za-z0-9._-]*$",
+      "description": "Filled in once the waitpoint is released. Matches decisions/D-*.json."
+    },
+    "evidence_refs": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1 },
+      "description": "Paths or refs to artifacts / logs / transcripts that support the decision."
+    },
+    "release_note": { "type": ["string", "null"] },
+    "released_by": { "type": ["string", "null"] },
+    "released_at": { "type": ["string", "null"], "format": "date-time" },
+    "expires_at": { "type": ["string", "null"], "format": "date-time" },
+    "task_id": { "type": ["string", "null"] },
+    "mission_id": { "type": ["string", "null"] },
+    "created_at": { "type": "string", "format": "date-time" },
+    "updated_at": { "type": "string", "format": "date-time" }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "status": { "const": "released" } },
+        "required": ["status"]
+      },
+      "then": {
+        "properties": {
+          "decision_id": { "type": "string", "pattern": "^D-[A-Za-z0-9][A-Za-z0-9._-]*$" },
+          "evidence_refs": { "type": "array", "minItems": 1 },
+          "released_by": { "type": "string", "minLength": 1 },
+          "released_at": { "type": "string", "format": "date-time" }
+        },
+        "required": ["decision_id", "evidence_refs", "released_by", "released_at"]
+      }
+    }
+  ]
+}
