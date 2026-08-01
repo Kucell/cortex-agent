@@ -450,12 +450,12 @@ cortex-agent mode --switch <m>  # 显式切换（带 backup，要求 v2.0 migrat
 
 ### Phase 1（v1.10.0）：mode 切分 + 跨 host 切换总线
 
-- [x] **抽 `templates/_base/` 共享层**(M-001 MS-001,commit `[待填 MS-001 commit hash]`)— 11 个 data 目录 schema publish(inbox / decisions / waitpoints / runs / sessions / missions / handoffs / conversations / memory / agents / tasks); 验收由 MS-001 validation contract 锁定
+- [x] MS-001 `templates/_base/` 抽离 9 data 目录 schema + 共享层 — commit `c352d2b`(merged `660e248`)
 - 验证 `cortex-agent init --mode code` 行为完全不变
-- [x] **`cortex-agent init --mode general`** 命令实现(M-001 MS-002,commit `[待填 MS-002 commit hash]`)— 仅 init 路径,workflow 不闭环(由 Phase 2 闭环); 验收由 MS-002 validation contract 锁定
+- [x] MS-002 `bin/cli.js init --mode general` — commit `ae05295`(merged `12e3db7`)
 - `.agent/conversations/` schema 落地 + §6.4.1 跨 agent 续接协议(由 MS-001 publish 11 schema 时一并落地)
-- [x] **`cortex-agent init` 自动 mode 推断**(M-001 MS-003,commit `[待填 MS-003 commit hash]`)— `lib/mode-infer.js` 独立模块,§6.7 规则实现
-- [x] **shadow 路径测试矩阵 + 272+ 回归测试**(M-001 MS-004,commit `[待填 MS-004 commit hash]`)— 老 v1.x 项目走 v1 schema 零变化,新 `init --mode general` 走 v2 schema
+- [x] MS-003 `bin/cli.js init` 自动 mode 推断 — commit `e4de8ec`(merged `f8a1d38`)
+- [x] MS-004 shadow 路径测试矩阵(13/13 pass,272+ 回归 0 新增 fail)— commit `04f7b3f`(merged `8be4e4d`)
 - 现有 v1.x 项目**无感升级**(由 MS-004 测试矩阵覆盖)
 
 > **MS-005 placeholder 说明**:以上 4 个 `[x]` 翻 ✅ 是 research-phase 占位,commit hash 待 MS-001/002/003/004 全部 merged to main 后由 Worker-E 二次 commit 替换为真实 hash。release notes 草稿见 `docs/releases/v1.10.0-rc.1.md`。
