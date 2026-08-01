@@ -1,0 +1,58 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/Kucell/cortex-agent/schemas/session.schema.json",
+  "title": "Cortex Agent Session",
+  "description": "Mode-agnostic session state. Sessions are short-lived runtime state (~5h cap on Claude Code). For long-term archival, use conversations/. Implements session-manager sub-agent 5-mode protocol (assess / warm / archive / restore / status).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "session_id",
+    "agent_id",
+    "role",
+    "status",
+    "started_at"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "session_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Stable session id, prefix S-."
+    },
+    "project": { "type": ["string", "null"] },
+    "agent_id": { "type": "string", "minLength": 1 },
+    "role": {
+      "type": "string",
+      "enum": ["implementer", "coordinator", "reviewer", "researcher", "documenter", "memory-curator", "conversation-curator", "user"]
+    },
+    "mode": {
+      "type": ["string", "null"],
+      "enum": [null, "code", "general"],
+      "description": "Mode the session is operating in. code = programming project; general = daily tasks / conversation management."
+    },
+    "status": {
+      "type": "string",
+      "enum": ["running", "paused", "closed", "stale", "archived"],
+      "description": "stale = last_heartbeat older than TTL; archived = preserved for replay but no longer active."
+    },
+    "phase": { "type": ["string", "null"] },
+    "activity": { "type": ["string", "null"] },
+    "current_run_id": { "type": ["string", "null"] },
+    "current_task_id": { "type": ["string", "null"] },
+    "current_mission_id": { "type": ["string", "null"] },
+    "worktree_path": { "type": ["string", "null"] },
+    "started_at": { "type": "string", "format": "date-time" },
+    "last_heartbeat_at": { "type": ["string", "null"], "format": "date-time" },
+    "updated_at": { "type": ["string", "null"], "format": "date-time" },
+    "updated_by_gate": {
+      "type": ["string", "null"],
+      "enum": [null, "owner", "handoff", "user", "mission"]
+    },
+    "closed_at": { "type": ["string", "null"], "format": "date-time" },
+    "archive_path": {
+      "type": ["string", "null"],
+      "description": "Path to .agent/runtime-continuity/archives/RC-*.json when the session was archived."
+    }
+  }
+}
