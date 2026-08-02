@@ -466,10 +466,14 @@ cortex-agent mode --switch <m>  # 显式切换（带 backup，要求 v2.0 migrat
 
 ### Phase 2（v1.10.0 → v1.11.0 之间）：general 模式骨架
 
-- `templates/general/` 目录
-- general 模式专属 workflow（`/conversation log` / `/memory recall` / `/agent invoke` / `/handoff`）
-- 4 个核心 sub-agent skill（不预装，仅当用户 opt-in 时加载）
-- self-check 在 general 模式下的覆盖验证
+- [x] **`templates/general/` 抽离**(M-002 MS-001,commit `[待填 MS-001 commit hash]`)— general 模式专属目录 + 4 模式 workflow skeleton; 验收由 MS-001 validation contract 锁定
+- [x] **Memory CLI + 3 类 schema**(M-002 MS-002,commit `[待填 MS-002 commit hash]`)— episodic / semantic 落地 + procedural 暂推 v1.12; 验收由 MS-002 validation contract 锁定
+- [x] **Agent Registry + CLI**(M-002 MS-003,commit `[待填 MS-003 commit hash]`)— `agents/registry.yaml` + `cortex-agent agent register`; 验收由 MS-003 validation contract 锁定
+- [x] **4 general workflow + E2E 矩阵**(M-002 MS-004,commit `[待填 MS-004 commit hash]`)— `/conversation log` / `/memory recall` / `/agent invoke` / `/handoff` 闭环 + E2E 矩阵覆盖; 验收由 MS-004 validation contract 锁定
+- [x] **RFC v0.4 同步 + v1.11.0-rc.1 release notes**(M-002 MS-005,commit `[待填 MS-005 commit hash]`)— §15 Phase 2 5 行 placeholder 同步 + release notes 草稿(沿用 M-001 MS-005 模式); 等所有 MS-001/002/003/004 真实 commit 后二次 commit 替换 placeholder
+
+> **MS-005 placeholder 说明**:以上 5 个 `[x]` 翻 ✅ 是 research-phase 占位,commit hash 待 MS-001/002/003/004 全部 merged to main 后由后续 worker 二次 commit 替换为真实 hash。release notes 草稿见 `docs/releases/v1.11.0-rc.1.md`(已 final 化)。
+> **v1.11.0-rc.1 范围提醒**:本阶段为 Pre-release(AI-Brain 内部 dogfooding 试用,**不建议生产使用**);general 模式 opt-in / 暂不推荐生产(对齐 §12 #2 拍板)。
 
 **估时**: 3 周
 **验收**: general 模式 init 项目可以跑 `/conversation log` + `/handoff` 闭环
