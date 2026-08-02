@@ -38,6 +38,13 @@ const {
   secrets,
 } = require("../lib/commands");
 
+// M-013 P0 C2: Governed manual dispatch CLI surface.
+// `dispatch <subcommand>` lives in lib/dispatch-cli.js and routes
+// `dry-run` → lib/dispatch-plan.resolveDispatchPlan (0 mutation),
+// `execute` / unknown / no-subcommand → lib/automation-stubs (Phase 0 stub).
+// `daemon` and `trigger` keep their current phaseZeroAutomation binding.
+const { dispatchCommand } = require("../lib/dispatch-cli");
+
 // ─── Context ──────────────────────────────────────────────────────────────────
 
 const cwd = process.cwd();
@@ -347,7 +354,7 @@ async function initModeGeneral() {
     case "notification": await notification(ctx); break;
     case "mcp":         await mcp(ctx); break;
     case "query":       managementQuery(ctx); break;
-    case "dispatch":
+    case "dispatch":    await dispatchCommand(ctx); break;
     case "daemon":
     case "trigger":     phaseZeroAutomation(ctx); break;
     case "dashboard":   dashboard(ctx); break;
