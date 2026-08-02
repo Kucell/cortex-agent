@@ -1,0 +1,176 @@
+# general-config.yaml — general 模式 default 配置(中文版注释)
+#
+# Mission: M-002 / MS-001
+# RFC: docs/architecture/general-mode-design.md §6.5 / §6.7 / §8 Phase 2
+#
+# 本文件是 `general-config.yaml`(英文 default)的中文版。
+# 内容字段与英文版完全一致,仅注释为中文;用户可在项目里覆盖。
+# init 时英文版作为种子。
+#
+# 实现:配置加载在 MS-002/003 收口(配合 system-prompt 注入)。
+
+# ─── Schema ────────────────────────────────────────────────────────
+schema_version: 1
+mode: general
+language: zh  # 标识本文件是中文版
+
+# ─── Mode 推断 fallback ──────────────────────────────────────────
+# 当 cortex-agent init 没传 --mode 时,按 lib/mode-infer.js 推断。
+# 本节配置覆盖默认推断行为(可选)。
+mode_inference:
+  # 是否启用自动推断(默认 true;false 时强制用户显式 --mode)
+  enabled: true
+  # AGENTS.md 存在时,默认 mode(M-001 §3 拍板:AGENTS.md → general)
+  agents_md_marker: general
+  # package.json 存在时,默认 mode(M-001 §4 拍板:package.json → code)
+  code_signals: [package.json, Cargo.toml, pyproject.toml, go.mod]
+  # docs 目录纯文档时,默认 mode
+  docs_only_marker: general
+
+# ─── Memory 子系统(D-002-2 拍板)─────────────────────────────────
+memory:
+  # 3 类 memory 启用状态(procedural 推 v1.12,RFC §12 #6 拍板)
+  episodic:
+    enabled: true
+    schema_ref: templates/_base/.agent/memory/memory.schema.json
+    max_records_per_distill: 20
+  semantic:
+    enabled: true
+    schema_ref: templates/_base/.agent/memory/memory.schema.json
+    max_records_per_distill: 20
+  procedural:
+    enabled: false  # RFC §12 #6 拍板:v1.12 推后
+    schema_ref: templates/_base/.agent/memory/memory.schema.json
+    note: "v1.12 推后;接口已留,实现推后"
+
+  # /memory distill 自动触发场景
+  auto_distill:
+    # session 收尾时自动跑
+    on_session_end: true
+    # 每 N 轮对话自动跑(0 = 不自动)
+    every_n_turns: 0
+    # 距离上次 distill 超过 N 小时自动跑
+    every_n_hours: 24
+
+  # /memory recall 默认行为
+  recall:
+    # 默认返回 top-K
+    default_limit: 5
+    # 默认最低相关度阈值
+    min_confidence: 0.3
+    # recall 时是否同时返回相关 episodic / semantic / procedural
+    return_mixed_types: true
+
+# ─── Agent Registry(D-002-3 拍板)─────────────────────────────────
+# 静态能力 vs 运行时实例的边界清晰:
+# - Agent Registry = 静态能力(可被 invoke)
+# - Coordination Registry = 运行时实例(可被 lease)
+agents:
+  # 默认注册哪些 agent adapter
+  default_adapters:
+    - claude-code
+    - codex
+    - codey
+    - cortex
+  # /agent discover 默认行为
+  discover:
+    default_limit: 10
+    include_external: true
+  # /agent invoke 默认行为
+  invoke:
+    default_timeout_seconds: 300
+    on_fail: rollback-and-notify  # D-002-4 拍板:失败必先 rollback
+
+# ─── Workflows(D-002-4 拍板)──────────────────────────────────────
+workflows:
+  memory-recall:
+    enabled: true
+    failure_recovery: log-and-notify
+  memory-distill:
+    enabled: true
+    failure_recovery: rollback-draft-and-notify
+  agent-invoke:
+    enabled: true
+    failure_recovery: rollback-side-effect-and-notify
+  agent-discover:
+    enabled: true
+    failure_recovery: log-and-notify
+
+# ─── System Prompt 注入(prompts/system-prompt.md)─────────────────
+system_prompt:
+  # 注入时机
+  injection_target: session_start  # session_start / per_turn / on_demand
+  # 拼上 .agent/memory/index.yaml 顶部 N 条
+  memory_top_n: 5
+  # 拼上 .agent/conversations/<latest>/summary.md(若有)
+  include_latest_conversation_summary: true
+  # 用户在项目里覆盖本字段会被合并(用户 override > 本 default)
+  overrides: {}
+
+# ─── Cross-agent 续接(§6.4.1)────────────────────────────────────
+cross_agent_handoff:
+  # 是否启用 handoff 协议
+  enabled: true
+  # handoff 文件位置(conversations/<id>/handoffs/)
+  handoff_dir: .agent/conversations/{conversation_id}/handoffs
+  # H-NNN.json 必填字段(对齐 templates/_base/.agent/handoffs/handoff.schema.json)
+  required_fields:
+    - handoff_id
+    - conversation_id
+    - timestamp
+    - from_agent
+    - to_agent
+    - reason
+    - context_pointer
+    - checksum
+  # 续接时必做:验证 checksum
+  verify_checksum_on_resume: true
+
+# ─── Privacy / Compliance(§5.8 拍板)─────────────────────────────
+# memory / conversation schema 天然支持用户级隔离、软删除、审计日志
+privacy:
+  # memory 是否用户级隔离(默认 true,per-project + per-user)
+  user_isolation: true
+  # 是否软删除(默认 true,不直接 rm)
+  soft_delete: true
+  # 审计日志路径
+  audit_log: .agent/runs/_audit/privacy.log
+  # /memory forget(本任务不实现,接口预留)
+  forget_workflow: workflows/memory-forget.md
+  forget_workflow_status: deferred_to_v2.0
+
+# ─── Domain fallback(D-002 + §6.7)─────────────────────────────────
+domains:
+  # 默认 domain(用户可在项目里覆盖)
+  default: general-purpose
+  # domain 文件位置
+  domains_dir: .agent/domains/
+
+# ─── Sub-agents(RFC §6.6 §12 #5 拍板)─────────────────────────────
+# general 模式仅 1 个 sub-agent:memory-curator
+sub_agents:
+  enabled:
+    - memory-curator
+  # 后续 v1.11+ 评估(按 RFC §6.6):dialogue-curator / knowledge-curator /
+  # content-curator / operations-curator
+  deferred:
+    - dialogue-curator
+    - knowledge-curator
+    - content-curator
+    - operations-curator
+  deferred_reason: "v1.11 阶段先稳 1 个 sub-agent;按需自加"
+
+# ─── Telemetry(可选,§5.9 拍板:自举先行)────────────────────────
+telemetry:
+  # general 模式使用统计收集到 .agent/runs/_telemetry/
+  enabled: true
+  output_dir: .agent/runs/_telemetry/
+  # 不收集 PII;只收集 workflow 触发次数 + 失败率
+  collect_pii: false
+
+# ─── 关联文档 ──────────────────────────────────────────────────
+# 英文版(默认): templates/general/.agent/config/general-config.yaml
+# RFC: docs/architecture/general-mode-design.md
+# Mission plan: .agent/missions/M-002/mission-plan.md
+# Validation contract: .agent/missions/M-002/validation-contract.json
+# Shared schema: templates/_base/.agent/memory/memory.schema.json
