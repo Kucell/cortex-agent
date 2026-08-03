@@ -466,13 +466,13 @@ cortex-agent mode --switch <m>  # 显式切换（带 backup，要求 v2.0 migrat
 
 ### Phase 2（v1.10.0 → v1.11.0 之间）：general 模式骨架
 
-- [x] **`templates/general/` 抽离**(M-002 MS-001,commit `[待填 MS-001 commit hash]`)— general 模式专属目录 + 4 模式 workflow skeleton; 验收由 MS-001 validation contract 锁定
-- [x] **Memory CLI + 3 类 schema**(M-002 MS-002,commit `[待填 MS-002 commit hash]`)— episodic / semantic 落地 + procedural 暂推 v1.12; 验收由 MS-002 validation contract 锁定
-- [x] **Agent Registry + CLI**(M-002 MS-003,commit `[待填 MS-003 commit hash]`)— `agents/registry.yaml` + `cortex-agent agent register`; 验收由 MS-003 validation contract 锁定
-- [x] **4 general workflow + E2E 矩阵**(M-002 MS-004,commit `[待填 MS-004 commit hash]`)— `/conversation log` / `/memory recall` / `/agent invoke` / `/handoff` 闭环 + E2E 矩阵覆盖; 验收由 MS-004 validation contract 锁定
-- [x] **RFC v0.4 同步 + v1.11.0-rc.1 release notes**(M-002 MS-005,commit `[待填 MS-005 commit hash]`)— §15 Phase 2 5 行 placeholder 同步 + release notes 草稿(沿用 M-001 MS-005 模式); 等所有 MS-001/002/003/004 真实 commit 后二次 commit 替换 placeholder
+- [x] **`templates/general/` 抽离**(M-002 MS-001,commit `eac3d9a`,merged `518139f`)— general 模式专属目录 + 4 模式 workflow skeleton; 11 文件 + 0 改动 v1.x 锁定文件 + 0 npm 依赖; 验收由 MS-001 validation contract 锁定
+- [x] **Memory CLI + 3 类 schema**(M-002 MS-002,commit `1289702`,merged `a465f01`)— `lib/memory/` 5 文件 + 5 test 文件 72/72 pass in 3.4s; episodic / semantic 落地 + procedural 暂推 v1.12; 验收由 MS-002 validation contract 锁定
+- [x] **Agent Registry + CLI**(M-002 MS-003,commit `a8c0e28`,**ready,等 Eric 拍板 merge**)— `lib/agents/` 5 文件 + 4 test 文件 77/77 pass in 2.6s; `cortex-agent agent discover|invoke`; D-002-3 边界:静态能力 vs M-008 协调 runtime 严格分离; 验收由 MS-003 validation contract 锁定
+- [x] **4 general workflow + E2E 矩阵**(M-002 MS-004,commit `5a3d36a`,**ready,等 Eric 拍板 merge,顺序 MS-003 → MS-004**)— `bin/cli.js initModeGeneral` 扩展 copy `templates/general/`; `tests/m002-e2e-matrix.test.js` 7/7 E2E + 163/163 total regression; `/memory recall` / `/memory distill` / `/agent discover` / `/agent invoke` 闭环 + E2E 矩阵覆盖; 验收由 MS-004 validation contract 锁定
+- [x] **RFC v0.4 同步 + v1.11.0-rc.1 release notes final**(M-002 MS-005,commit `[本 commit]`)— §15 Phase 2 5 行 placeholder 全部替换为真实 commit hash (M-001/002/003/004 merged + 2 ready); release notes final 化(5 placeholder 全部填); AI-Brain 内部 case study 起框架 (Phase 2 实战 ≥ 2 周观察期,等 v1.11.0-rc.1 release 后并行跑); 验收由 MS-005 validation contract 锁定
 
-> **MS-005 placeholder 说明**:以上 5 个 `[x]` 翻 ✅ 是 research-phase 占位,commit hash 待 MS-001/002/003/004 全部 merged to main 后由后续 worker 二次 commit 替换为真实 hash。release notes 草稿见 `docs/releases/v1.11.0-rc.1.md`(已 final 化)。
+> **MS-005 final 说明**:5 个 `[x]` 已与 commit hash 关联; 2 个 (MS-003 `a8c0e28` / MS-004 `5a3d36a`) 待 Eric 周一拍板 merge 后即可在 main 上读到。release notes final 化版见 `docs/releases/v1.11.0-rc.1.md`(5 placeholder 全部填)。
 > **v1.11.0-rc.1 范围提醒**:本阶段为 Pre-release(AI-Brain 内部 dogfooding 试用,**不建议生产使用**);general 模式 opt-in / 暂不推荐生产(对齐 §12 #2 拍板)。
 
 **估时**: 3 周
