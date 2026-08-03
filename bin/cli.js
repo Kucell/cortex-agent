@@ -52,6 +52,14 @@ const { dispatchCommand } = require("../lib/dispatch-cli");
 // Wired via direct require (per FAE-001 / M-013.P0 pattern — keeps lib/commands.js untouched).
 const { memoryCommand } = require("../lib/memory");
 
+// M-002 MS-003: Agent Registry CLI surface (static capability registry).
+// `agent <subcommand>` is split between M-002 (this) and M-008 (lib/commands.js):
+//   - `discover` / `invoke`  → M-002 scope (lib/agents/cli.js, this file)
+//   - `report`  / `launch`   → M-008 scope (lib/commands.js, untouched)
+//   - bare `agent`           → M-008 scope (legacy bridge to host-event-bridge)
+// Subcommand peek in the `case "agent":` block below keeps lib/commands.js unchanged.
+const { agentRegistryCommand } = require("../lib/agents");
+
 // ─── Context ──────────────────────────────────────────────────────────────────
 
 const cwd = process.cwd();
@@ -368,7 +376,18 @@ async function initModeGeneral() {
     case "dashboard":   dashboard(ctx); break;
     case "team":        await teamPack(ctx); break;
     case "secrets":     secrets(l1Ctx); break;
-    case "agent":       agent(ctx); break;
+    case "agent": {
+      // M-002 dispatcher is the SOLE entry point for `agent` (per D-002-3).
+      // Internally it routes:
+      //   discover / invoke → lib/agents/ (M-002 static capability registry)
+      //   report  / launch  → lib/commands.js agent() (M-008 coordination runtime)
+      //   bare / --help / unknown → M-002 friendly help/error
+      // This way `agent --help` always shows M-002 docs, and unknown subcommands
+      // get a clear "valid: discover, invoke (M-002) | report, launch (M-008)" hint.
+      // lib/commands.js stays untouched (M-001 binding contract).
+      agentRegistryCommand(ctx);
+      break;
+    }
     case "hook":        hook(ctx); break;
     case "help":        args.includes("--json") ? cliHelp(ctx) : printHelp(); break;
     case "dev":         await dev(ctx); break;
