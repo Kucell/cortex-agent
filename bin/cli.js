@@ -60,6 +60,14 @@ const { memoryCommand } = require("../lib/memory");
 // Subcommand peek in the `case "agent":` block below keeps lib/commands.js unchanged.
 const { agentRegistryCommand } = require("../lib/agents");
 
+// M-003 MS-001: Adapter framework + dispatch-execute CLI surface.
+// `agent adapter <list|health>` and `agent dispatch-execute <id> <task>` are
+// M-003 scope. The M-002 dispatcher (above) does not handle these, so the
+// `case "agent":` block peeks at args[1] and routes to the M-003 dispatcher
+// when it sees "adapter" or "dispatch-execute". Strictly additive: M-002
+// subcommand behavior is unchanged.
+const { agentM003Command } = require("../lib/agents/m003-cli");
+
 // ─── Context ──────────────────────────────────────────────────────────────────
 
 const cwd = process.cwd();
@@ -400,15 +408,24 @@ async function initModeGeneral() {
     case "team":        await teamPack(ctx); break;
     case "secrets":     secrets(l1Ctx); break;
     case "agent": {
-      // M-002 dispatcher is the SOLE entry point for `agent` (per D-002-3).
-      // Internally it routes:
-      //   discover / invoke → lib/agents/ (M-002 static capability registry)
-      //   report  / launch  → lib/commands.js agent() (M-008 coordination runtime)
-      //   bare / --help / unknown → M-002 friendly help/error
-      // This way `agent --help` always shows M-002 docs, and unknown subcommands
-      // get a clear "valid: discover, invoke (M-002) | report, launch (M-008)" hint.
-      // lib/commands.js stays untouched (M-001 binding contract).
-      agentRegistryCommand(ctx);
+      // Subcommand peek: M-002 MS-003 owns discover/invoke; M-008 owns
+      // report/launch (forwarded via lib/commands.js). M-003 MS-001 owns
+      // adapter <list|health> and dispatch-execute. Routing is strictly
+      // additive — the M-002 dispatcher body is unchanged.
+      const sub = args[1];
+      if (sub === "adapter" || sub === "dispatch-execute") {
+        agentM003Command(ctx);
+      } else {
+        // M-002 dispatcher is the SOLE entry point for `agent` (per D-002-3).
+        // Internally it routes:
+        //   discover / invoke → lib/agents/ (M-002 static capability registry)
+        //   report  / launch  → lib/commands.js agent() (M-008 coordination runtime)
+        //   bare / --help / unknown → M-002 friendly help/error
+        // This way `agent --help` always shows M-002 docs, and unknown subcommands
+        // get a clear "valid: discover, invoke (M-002) | report, launch (M-008)" hint.
+        // lib/commands.js stays untouched (M-001 binding contract).
+        agentRegistryCommand(ctx);
+      }
       break;
     }
     case "hook":        hook(ctx); break;
