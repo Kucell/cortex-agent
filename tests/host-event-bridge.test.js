@@ -332,6 +332,34 @@ test("executeBridgeCommand submits progress and heartbeat through the bridge", (
   }
 });
 
+test("executeBridgeCommand submits ready_for_review with a schema-valid artifact ref", () => {
+  const prev = process.env.CORTEX_LAUNCH_CONTEXT;
+  delete process.env.CORTEX_LAUNCH_CONTEXT;
+  const dir = runtimeDir();
+  const service = createService(dir);
+  const ctx = setupContext("TASK-HB-READY", "test-project", "bridge-agent", "bridge-agent");
+  try {
+    setupCoordinatorTask(service, "TASK-HB-READY");
+    assert.equal(executeBridgeCommand([
+      "agent", "report", "--event-type", "task.accepted",
+    ], { service }).ok, true);
+    assert.equal(executeBridgeCommand([
+      "agent", "report", "--event-type", "task.progress",
+    ], { service }).ok, true);
+    const ready = executeBridgeCommand([
+      "agent", "report", "--event-type", "task.ready_for_review",
+      "--evidence-ref", "ARTIFACT-REAL-HOST",
+    ], { service });
+    assert.equal(ready.ok, true, JSON.stringify(ready));
+    assert.equal(ready.task.state, STATES.READY_FOR_REVIEW);
+    assert.deepEqual(ready.event.evidence, [{ kind: "artifact", ref: "ARTIFACT-REAL-HOST" }]);
+  } finally {
+    cleanupContext(ctx.prev, ctx.dir, ctx.ctxFile);
+    service.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("executeBridgeCommand rejects events whose state machine transition is invalid", () => {
   const prev = process.env.CORTEX_LAUNCH_CONTEXT;
   delete process.env.CORTEX_LAUNCH_CONTEXT;

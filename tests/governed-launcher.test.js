@@ -616,8 +616,7 @@ test("agentCommand and agentArgs are passed to executor", async () => {
     });
 
     assert.equal(result.ok, true);
-    // The received command should be the resolved canonical path
-    assert.equal(receivedCommand, fs.realpathSync(agentPath));
+    assert.equal(receivedCommand, path.resolve(agentPath));
     assert.deepEqual(receivedArgs, ["--verbose", "--project", "/tmp/test"]);
   } finally {
     service.close();
@@ -718,7 +717,7 @@ test("validateAgentCommand accepts valid executable", () => {
   try {
     const execPath = createTempExecutable(dir);
     const resolved = validateAgentCommand(execPath);
-    assert.equal(resolved, fs.realpathSync(execPath));
+    assert.equal(resolved, path.resolve(execPath));
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
@@ -748,7 +747,21 @@ test("validateAgentCommand accepts whitelisted command", () => {
   try {
     const execPath = createTempExecutable(dir);
     const resolved = validateAgentCommand(execPath, { allowedAgentCommands: [execPath] });
-    assert.equal(resolved, fs.realpathSync(execPath));
+    assert.equal(resolved, path.resolve(execPath));
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("validateAgentCommand preserves an approved symlink path for argv0-sensitive shims", () => {
+  const dir = runtimeDir();
+  try {
+    const target = createTempExecutable(dir);
+    const shim = path.join(dir, "pi");
+    fs.symlinkSync(target, shim);
+    const validated = validateAgentCommand(shim, { allowedAgentCommands: [shim] });
+    assert.equal(validated, shim);
+    assert.notEqual(validated, fs.realpathSync(shim));
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
