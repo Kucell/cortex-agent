@@ -14,11 +14,22 @@ const {
   GovernedLauncherError,
   GOVERNED_LAUNCHER_SCHEMA_VERSION,
   defaultExecutor,
+  createMonitorSpawnOptions,
   validateWorktree,
   validateOwnership,
   validateAgentCommand,
   validateAgentArgs,
 } = require("../lib/governed-launcher");
+
+test("monitor runs in a detached process group after the launcher exits", () => {
+  const options = createMonitorSpawnOptions("/private/context.json", {
+    repository: { worktreeId: "/workspace/task" },
+  });
+  assert.equal(options.detached, true);
+  assert.equal(options.stdio, "ignore");
+  assert.equal(options.cwd, "/workspace/task");
+  assert.equal(options.env.CORTEX_LAUNCH_CONTEXT, "/private/context.json");
+});
 
 function mockExecutor() {
   return { pid: 12345, launchedAt: new Date().toISOString() };
