@@ -212,8 +212,14 @@ test("m003-cli: agent dispatch-execute on first-party agent (no external) return
 test("m003-cli: agent dispatch-execute on missing adapter (unregistered adapter_type) returns ERR_ADAPTER_NOT_REGISTERED", () => {
   const root = mkProject();
   try {
+    // MS-001 originally used "codex" as a forward-looking placeholder (since
+    // MS-002 was scheduled to ship codex). MS-002 now ships codex, so this
+    // test uses "cortex" — a valid VALID_ADAPTER_TYPES entry that is never
+    // registered as a concrete adapter — to keep the "unregistered adapter"
+    // path covered. Test intent (ERR_ADAPTER_NOT_REGISTERED for an unknown
+    // adapter_type) is fully preserved — see handoff §deviations.
     seedAgent(root, "Codex-1", {
-      external: { adapter_type: "codex", config_ref: "cfg", credential_ref: "sec" },
+      external: { adapter_type: "cortex", config_ref: "cfg", credential_ref: "sec" },
     });
     const r = spawnSync("node", [
       binCli, "agent", "dispatch-execute",
@@ -223,7 +229,7 @@ test("m003-cli: agent dispatch-execute on missing adapter (unregistered adapter_
     assert.equal(r.status, 3);
     const json = JSON.parse(r.stdout);
     assert.equal(json.error.code, "ERR_ADAPTER_NOT_REGISTERED");
-    assert.match(json.error.message, /codex/);
+    assert.match(json.error.message, /cortex/);
   } finally { rmProject(root); }
 });
 
