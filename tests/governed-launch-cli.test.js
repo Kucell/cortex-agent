@@ -11,6 +11,7 @@ const { executeGovernedLaunch } = require("../lib/governed-launch-cli");
 
 function setup() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-launch-cli-"));
+  fs.mkdirSync(path.join(root, ".agent"), { mode: 0o700 });
   const service = CoordinationApplicationService.open(path.join(root, ".agent-runtime", "coordination"), { journal: { lock: false } });
   const taskId = "TASK-CP11";
   const projectId = "cp11-project";
@@ -46,6 +47,29 @@ test("governed launch requires an assigned task and matching active fenced lease
   } finally { close(ctx); }
 });
 
+test("governed launch releases the CLI writer before publishing acceptance", async () => {
+  const ctx = setup();
+  let contextFile;
+  let released = false;
+  try {
+    const result = await executeGovernedLaunch(args(ctx), {
+      service: ctx.service,
+      projectRoot: ctx.root,
+      executor: async (file) => {
+        contextFile = file;
+        return { pid: 43, launchedAt: "2026-08-03T00:00:00.000Z" };
+      },
+      releaseService() {
+        assert.equal(fs.existsSync(path.join(path.dirname(contextFile), ".accepted")), false);
+        released = true;
+      },
+    });
+    assert.equal(result.ok, true);
+    assert.equal(released, true);
+    assert.equal(fs.existsSync(path.join(path.dirname(contextFile), ".accepted")), true);
+  } finally { close(ctx); }
+});
+
 test("governed launch stays failed and journals task.failed when subprocess start fails", async () => {
   const ctx = setup();
   try {
@@ -54,6 +78,24 @@ test("governed launch stays failed and journals task.failed when subprocess star
     assert.equal(result.code, "ERR_LAUNCH_FAILED");
     assert.equal(ctx.service.getTask(ctx.taskId).state, STATES.FAILED);
     assert.deepEqual(ctx.service.listEvents({ taskId: ctx.taskId }).map((event) => event.eventType), ["task.created", "task.assigned", "task.failed"]);
+  } finally { close(ctx); }
+});
+
+test("governed launch does not accept when the real agent exits inside the stability window", async () => {
+  const ctx = setup();
+  try {
+    const launchArgs = args(ctx);
+    launchArgs[launchArgs.indexOf("--command") + 1] = "/usr/bin/false";
+    launchArgs[launchArgs.indexOf("--allow-command") + 1] = "/usr/bin/false";
+    const result = await executeGovernedLaunch(launchArgs, {
+      service: ctx.service,
+      projectRoot: ctx.root,
+    });
+    assert.equal(result.ok, false);
+    assert.equal(result.code, "ERR_LAUNCH_FAILED");
+    assert.equal(ctx.service.getTask(ctx.taskId).state, STATES.FAILED);
+    assert.equal(ctx.service.listEvents({ taskId: ctx.taskId })
+      .some((event) => event.eventType === "task.accepted"), false);
   } finally { close(ctx); }
 });
 
@@ -75,7 +117,7 @@ test("governed launch passes explicit safe args privately without journaling the
   const output = path.join(ctx.root, "agent-args.txt");
   const executable = path.join(ctx.root, "capture-args.sh");
   const privatePrompt = "PRIVATE_ONE_SHOT_PROMPT_MUST_NOT_LEAK";
-  fs.writeFileSync(executable, "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$CORTEX_TEST_ARGS_OUTPUT\"\nsleep 0.5\n", { mode: 0o755 });
+  fs.writeFileSync(executable, "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$CORTEX_TEST_ARGS_OUTPUT\"\nsleep 1.5\n", { mode: 0o755 });
   const previousOutput = process.env.CORTEX_TEST_ARGS_OUTPUT;
   process.env.CORTEX_TEST_ARGS_OUTPUT = output;
   try {
@@ -112,4 +154,46 @@ test("governed launch rejects unsafe or oversized explicit args without public l
     assert.equal(tooMany.code, "ERR_AGENT_ARGS_TOO_MANY");
     assert.equal(ctx.service.listEvents({ taskId: ctx.taskId }).length, 2);
   } finally { close(ctx); }
+});
+
+test("governed launch accepts physical and symlink .agent but rejects a missing root", async () => {
+  const physical = setup();
+  try {
+    const accepted = await executeGovernedLaunch(args(physical), {
+      service: physical.service,
+      projectRoot: physical.root,
+      executor: async () => ({ pid: 45, launchedAt: "2026-08-03T00:00:00.000Z" }),
+    });
+    assert.equal(accepted.ok, true);
+  } finally { close(physical); }
+
+  const linked = setup();
+  const shared = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-shared-agent-"));
+  try {
+    fs.rmSync(path.join(linked.root, ".agent"), { recursive: true, force: true });
+    fs.symlinkSync(shared, path.join(linked.root, ".agent"));
+    const accepted = await executeGovernedLaunch(args(linked), {
+      service: linked.service,
+      projectRoot: linked.root,
+      executor: async () => ({ pid: 46, launchedAt: "2026-08-03T00:00:00.000Z" }),
+    });
+    assert.equal(accepted.ok, true);
+    assert.equal(fs.existsSync(path.join(linked.root, ".agent-runtime", "coordination")), true);
+    assert.equal(fs.existsSync(path.join(shared, ".agent-runtime")), false);
+  } finally {
+    close(linked);
+    fs.rmSync(shared, { recursive: true, force: true });
+  }
+
+  const missing = setup();
+  try {
+    fs.rmSync(path.join(missing.root, ".agent"), { recursive: true, force: true });
+    const rejected = await executeGovernedLaunch(args(missing), {
+      service: missing.service,
+      projectRoot: missing.root,
+      executor: async () => ({ pid: 47, launchedAt: "2026-08-03T00:00:00.000Z" }),
+    });
+    assert.equal(rejected.ok, false);
+    assert.equal(rejected.code, "AGENT_ROOT_INVALID");
+  } finally { close(missing); }
 });

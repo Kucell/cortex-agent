@@ -4,7 +4,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
-const { spawnSync } = require("node:child_process");
+const { spawn, spawnSync } = require("node:child_process");
 const test = require("node:test");
 const { CoordinationApplicationService } = require("../lib/coordination/application-service");
 const { createEvent, STATES } = require("../lib/coordination/contract");
@@ -70,6 +70,13 @@ function runMonitor(contextFile, receiptFile) {
 
 function readReceipt(receiptFile) {
   return JSON.parse(fs.readFileSync(receiptFile, "utf8"));
+}
+
+function waitForExit(child) {
+  return new Promise((resolve, reject) => {
+    child.once("error", reject);
+    child.once("exit", (code, signal) => resolve({ code, signal }));
+  });
 }
 
 // ─── Helper: set up a task in ACCEPTED state with optional lease ─────────────
@@ -526,4 +533,63 @@ test("governed child writes spawn_failed receipt on invalid context", (t) => {
   const receipt = readReceipt(receiptFile);
   assert.equal(receipt.phase, "spawn_failed");
   assert.equal(receipt.code, "CONTEXT_INVALID");
+});
+
+test("governed child retries a live journal writer and finalizes after release", async (t) => {
+  const root = makeRuntime();
+  const { lease, sessionId } = setupAcceptedTask(root, "T-LOCK-RETRY", "claude-lock-retry");
+  t.after(() => closeRuntime(root));
+  const runtimeCoord = path.join(root, ".agent-runtime", "coordination");
+  const writer = CoordinationApplicationService.open(runtimeCoord);
+  const { contextFile, receiptFile } = writeContext(root, {
+    taskId: "T-LOCK-RETRY",
+    targetAgentId: "claude-lock-retry",
+    sessionId,
+    leaseId: lease.leaseId,
+    fencingToken: lease.fencingToken,
+    agentCommand: "/usr/bin/false",
+    terminalTimeoutMs: 10000,
+  });
+  const child = spawn(process.execPath, [MONITOR, contextFile, receiptFile], {
+    stdio: "ignore",
+    env: { ...process.env, CORTEX_LAUNCH_CONTEXT: contextFile },
+  });
+  await new Promise((resolve) => setTimeout(resolve, 250));
+  writer.close();
+  const exited = await waitForExit(child);
+  assert.equal(exited.code, 0);
+  const service = CoordinationApplicationService.open(runtimeCoord);
+  const task = service.getTask("T-LOCK-RETRY");
+  service.close();
+  const receipt = readReceipt(receiptFile);
+  assert.equal(task.state, STATES.FAILED, JSON.stringify(receipt));
+  assert.equal(receipt.outcome, "REPORTED_FAILED");
+  assert.ok(receipt.stderrBytes >= 0);
+  assert.equal(typeof receipt.stderrSha256, "string");
+  assert.equal(receipt.stderrTruncated, false);
+});
+
+test("governed child caps private stderr and exposes only digest metadata", (t) => {
+  const root = makeRuntime();
+  const { lease, sessionId } = setupAcceptedTask(root, "T-LOG-CAP", "claude-log-cap");
+  t.after(() => closeRuntime(root));
+  const { contextFile, receiptFile, contextDir } = writeContext(root, {
+    taskId: "T-LOG-CAP",
+    targetAgentId: "claude-log-cap",
+    sessionId,
+    leaseId: lease.leaseId,
+    fencingToken: lease.fencingToken,
+    agentCommand: "/bin/sh",
+    agentArgs: ["-c", "head -c 1100000 /dev/zero >&2; exit 1"],
+    terminalTimeoutMs: 10000,
+  });
+  const result = runMonitor(contextFile, receiptFile);
+  assert.equal(result.status, 0, result.stderr);
+  const receipt = readReceipt(receiptFile);
+  const privateStderr = path.join(contextDir, "stderr.log");
+  assert.equal(fs.statSync(privateStderr).mode & 0o777, 0o600);
+  assert.equal(fs.statSync(privateStderr).size, 1024 * 1024);
+  assert.equal(receipt.stderrBytes, 1024 * 1024);
+  assert.equal(receipt.stderrTruncated, true);
+  assert.equal(JSON.stringify(receipt).includes("xxxx"), false);
 });
