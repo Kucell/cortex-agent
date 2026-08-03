@@ -273,6 +273,12 @@ function runSession(args) {
 // here, not in lib/commands.js, so the existing init() function and all
 // its side effects (migrateOldConfigs, selectPlatformsInteractive,
 // scriptManifest.ensureManifestForInit, etc.) stay untouched.
+//
+// MS-004 extension: also copy `templates/general/.agent/` (workflows /
+// skills / sub-agents / domains / prompts / config) to `<baseDest>/general/`
+// so the general-mode project gets the full 7-subdir template layer in
+// addition to the data layer. Pure addition — no changes to _base/ or
+// to the existing init() function.
 async function initModeGeneral() {
   const { copyRecursive } = require("../lib/setup");
   const baseSrc = path.join(__dirname, "..", "templates", "_base", ".agent");
@@ -289,6 +295,23 @@ async function initModeGeneral() {
   );
   if (fs.existsSync(path.join(cwd, "AGENTS.md"))) {
     console.log("ℹ️  AGENTS.md detected; general mode is the right profile for this project.");
+  }
+
+  // MS-004: copy the general template layer (workflows + skills + sub-agents +
+  // domains + prompts + config) into `<baseDest>/general/`. This sits next to
+  // the data layer copied above and is the runtime surface for the 4 general
+  // workflows (memory-recall, memory-distill, agent-discover, agent-invoke).
+  const generalSrc = path.join(__dirname, "..", "templates", "general", ".agent");
+  if (fs.existsSync(generalSrc)) {
+    const generalDest = path.join(baseDest, "general");
+    copyRecursive(generalSrc, generalDest);
+    console.log(
+      `✅ general mode init: copied template layer to ${generalDest}`,
+    );
+  } else {
+    console.warn(
+      "⚠️  templates/general/.agent not found; skipped template layer copy (general workflow contracts unavailable).",
+    );
   }
 }
 
