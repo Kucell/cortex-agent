@@ -39,3 +39,32 @@ test("reconciler idempotently finalizes a ghost accepted task and releases its l
     fs.rmSync(privateDir, { recursive: true, force: true });
   }
 });
+
+test("reconciler resumes a fenced STALE task before finalization", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-reconcile-stale-"));
+  const privateDir = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-reconcile-stale-private-"));
+  const service = CoordinationApplicationService.open(path.join(root, ".agent-runtime", "coordination"), { journal: { lock: false } });
+  const coordinator = { actorId: "coordinator", kind: "coordinator", sessionId: "root" };
+  const agent = { actorId: "pi-reconcile", kind: "agent", sessionId: "session-pi-reconcile" };
+  const taskId = "T-RECONCILE-STALE";
+  try {
+    service.submit(createEvent({ projectId: "reconcile", taskId, correlationId: "CORR-S", producer: coordinator, targets: [], eventType: "task.created", previousState: null, currentState: STATES.CREATED, repository: { repositoryId: "reconcile" } }), coordinator);
+    service.submit(createEvent({ projectId: "reconcile", taskId, correlationId: "CORR-S", producer: coordinator, targets: [{ actorId: agent.actorId, kind: "agent" }], eventType: "task.assigned", previousState: STATES.CREATED, currentState: STATES.ASSIGNED, repository: { repositoryId: "reconcile" } }), coordinator);
+    const lease = service.acquireOwnership(`task:${taskId}`, agent.actorId, { actorId: agent.sessionId, ttl: 60_000 });
+    const ownership = [{ leaseId: lease.leaseId, scope: lease.scope, owner: agent.actorId, fencingToken: lease.fencingToken, expiresAt: lease.expiresAt }];
+    service.submit(createEvent({ projectId: "reconcile", taskId, correlationId: "CORR-S", producer: agent, targets: [], eventType: "task.accepted", previousState: STATES.ASSIGNED, currentState: STATES.ACCEPTED, repository: { repositoryId: "reconcile" }, fileOwnership: ownership }), agent);
+    service.submit(createEvent({ projectId: "reconcile", taskId, correlationId: "CORR-S", producer: agent, targets: [], eventType: "task.stale", previousState: STATES.ACCEPTED, currentState: STATES.STALE, repository: { repositoryId: "reconcile" }, fileOwnership: ownership }), agent);
+    const contextFile = path.join(privateDir, "context.json");
+    const receiptFile = path.join(privateDir, "child-receipt.json");
+    fs.writeFileSync(contextFile, JSON.stringify({ taskId, projectId: "reconcile", coordinatorId: coordinator.actorId, targetAgentId: agent.actorId, launchId: "LAUNCH-RECONCILE-STALE", leaseId: lease.leaseId, fencingToken: lease.fencingToken, producer: agent, repository: { repositoryId: "reconcile", worktreeId: root } }), { mode: 0o600 });
+    fs.writeFileSync(receiptFile, JSON.stringify({ phase: "pending_finalization", code: "EXIT_ABNORMAL" }), { mode: 0o600 });
+    const result = reconcileGovernedLaunch(service, { contextFile, receiptFile });
+    assert.equal(result.ok, true, JSON.stringify(result));
+    assert.equal(service.getTask(taskId).state, STATES.FAILED);
+    assert.ok(service.leases.getLease(lease.leaseId).releasedAt);
+  } finally {
+    service.close();
+    fs.rmSync(root, { recursive: true, force: true });
+    fs.rmSync(privateDir, { recursive: true, force: true });
+  }
+});
