@@ -38,6 +38,13 @@ const {
   secrets,
 } = require("../lib/commands");
 
+// M-002 MS-002: Memory subsystem CLI surface.
+// `memory <subcommand>` lives in lib/memory/cli.js and routes
+// `recall`   → lib/memory/recall.js (read-only, 0 mutation)
+// `distill`  → lib/memory/distill.js (writes to .agent/memory/ with rollback on failure)
+// Wired via direct require (per FAE-001 / M-013.P0 pattern — keeps lib/commands.js untouched).
+const { memoryCommand } = require("../lib/memory");
+
 // ─── Context ──────────────────────────────────────────────────────────────────
 
 const cwd = process.cwd();
@@ -347,6 +354,7 @@ async function initModeGeneral() {
     case "notification": await notification(ctx); break;
     case "mcp":         await mcp(ctx); break;
     case "query":       managementQuery(ctx); break;
+    case "memory":      memoryCommand(ctx); break;
     case "dispatch":
     case "daemon":
     case "trigger":     phaseZeroAutomation(ctx); break;
