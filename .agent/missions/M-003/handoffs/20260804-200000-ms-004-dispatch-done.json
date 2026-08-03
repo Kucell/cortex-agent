@@ -1,0 +1,240 @@
+{
+  "contract_id": "HC-M-003-MS-004-dispatch-done",
+  "handoff_id": "H-M003-MS004-001",
+  "mission_id": "M-003",
+  "milestone_id": "M-003-MS-004-dispatch",
+  "title": "F-009 dispatch 三协议完整 (HTTP/CLI/file) + §6.2 fix + §6.1 doc",
+  "owner": "Worker-D (Mavis sub-session, coder)",
+  "status": "completed",
+  "date": "2026-08-04T20:00:00+08:00",
+  "branch": "agent/M-003-MS-004-dispatch",
+  "worktree_path": "/Volumes/workspace/Projects/AI-Tools/cortex-agent-worktrees/M-003-MS-004-dispatch",
+  "base_commit": "4ef762c",
+  "commits": [
+    {
+      "sha": "4a65e2b",
+      "subject": "feat(m-003-ms-004): add registry-adapter-types.js — §6.2 additive minimax fix",
+      "files_changed": 1,
+      "lines_added": 81
+    },
+    {
+      "sha": "9913e77",
+      "subject": "feat(m-003-ms-004): F-009 dispatch 三协议完整 (HTTP/CLI/file) + §6.2 import 切换",
+      "files_changed": 5,
+      "lines_added": 2234,
+      "lines_removed": 1
+    },
+    {
+      "sha": "809ea93",
+      "subject": "docs(m-003-ms-004): §6.1 register pattern for 3rd-party adapters (adapter-authoring.md §9)",
+      "files_changed": 1,
+      "lines_added": 286,
+      "lines_removed": 1
+    }
+  ],
+  "summary": {
+    "features_shipped": "3 / 3 (F-009 extension + §6.2 fix + §6.1 doc)",
+    "new_files": 3,
+    "modified_files": 3,
+    "total_lines_added": 2601,
+    "npm_deps_added": 0,
+    "package_json_modified": false,
+    "zero_modify_hard_constraint_files": "verified (registry.js, 5+ lib/agents/, bin/cli.js, lib/memory/, lib/coordination/, lib/commands.js, templates/, package.json)",
+    "estimated_hours": 2.5,
+    "target_weeks": "1-1.5"
+  },
+  "files_owned": {
+    "new": [
+      "lib/agents/registry-adapter-types.js (§6.2 fix, 81 行)",
+      "tests/agent-dispatch-execute-clifile.test.js (31 tests, ~515 行)",
+      "tests/agent-dispatch-execute-rollback.test.js (13 tests, ~518 行)"
+    ],
+    "modified": [
+      "lib/agents/dispatch-execute.js (F-009 三协议, 434 → 1125, +691)",
+      "lib/agents/m003-cli.js (--protocol flag, +201 / -1)",
+      "tests/agent-m003-cli.test.js (+7 new tests, +203 / -1)",
+      "docs/architecture/adapter-authoring.md (§6.1 doc §9, 595 → 880, +286 / -1)"
+    ]
+  },
+  "test_results": {
+    "total_tests": 357,
+    "pass": 357,
+    "fail": 0,
+    "duration_seconds": 35,
+    "new_tests": 51,
+    "by_file": {
+      "agent-adapter-base.test.js": 22,
+      "agent-adapter-claude-code.test.js": 29,
+      "agent-bridge-mcp-server.test.js": 20,
+      "agent-dispatch-execute.test.js": 21,
+      "agent-dispatch-execute-clifile.test.js": 31,
+      "agent-dispatch-execute-rollback.test.js": 13,
+      "agent-m003-cli.test.js": 25,
+      "agent-registry.test.js": 25,
+      "agent-discover.test.js": 15,
+      "agent-invoke.test.js": 15,
+      "agent-cli.test.js": 22,
+      "agent-adapter-codex.test.js": "approx 30",
+      "agent-adapter-codey.test.js": "approx 25",
+      "agent-adapter-pi.test.js": "approx 25",
+      "agent-adapter-minimax.test.js": 24,
+      "agent-bridge-mcp-bidirectional.test.js": 18
+    }
+  },
+  "decisions_applied": {
+    "D-003-3": {
+      "decision": "real dispatch 默认 3 协议完整 (HTTP + CLI + file)",
+      "implementation": "dispatchExecuteProtocol({ protocol, ... }) unified entry in lib/agents/dispatch-execute.js",
+      "verification": "31 clifile + 13 rollback + 3 e2e CLI tests + 3 protocol integration ✅"
+    },
+    "D-003-4": {
+      "decision": "adapter health check 必备 (沿用 MS-001)",
+      "implementation": "(unchanged from MS-001) base.js health() + claude-code.js + minimax.js + 5 adapters",
+      "verification": "MS-001 m003-cli AC #9 + claude-code + minimax tests ✅"
+    },
+    "D-003-7": {
+      "decision": "invoke real + --plan-only flag (沿用 MS-001)",
+      "implementation": "(unchanged from MS-001) M-002 agent invoke = plan-only; M-003 agent dispatch-execute = real",
+      "verification": "MS-001 m003-cli AC #11 e2e + MS-001 backward compat test ✅"
+    },
+    "section-6.1-Eric-8-04-18:13": {
+      "decision": "minimax 保持现状 c (3rd-party 显式 register); F-010 加 register pattern 1 节",
+      "implementation": "adapter-authoring.md §9 (286 行) + 24 minimax tests 走 explicit register pattern",
+      "verification": "doc shipped + minimax tests pass with explicit register call ✅"
+    },
+    "section-6.2-Eric-8-04-18:20": {
+      "decision": "MS-004 cleanup 加 minimax to M-002 VALID_ADAPTER_TYPES (走 additive 模式)",
+      "implementation": "registry-adapter-types.js (new, 81 行) re-export M-002 + ext + union; m003-cli.js import 切换 to validateAdapterTypeExt",
+      "verification": "1 unit test in m003-cli.test.js 验证 validateAdapterTypeExt accepts minimax ✅"
+    }
+  },
+  "acceptance_criteria_13": [
+    { "id": 1, "text": "F-009 CLI 协议 (subprocess spawn + JSON-RPC)", "status": "✅", "evidence": "cliRequest + 9 clifile tests" },
+    { "id": 2, "text": "F-009 file 协议 (read JSON config + write JSON result)", "status": "✅", "evidence": "fileRequest + 4 clifile tests" },
+    { "id": 3, "text": "F-009 完整: HTTP + CLI + file 三协议统一 API", "status": "✅", "evidence": "dispatchExecuteProtocol + 3 integration tests" },
+    { "id": 4, "text": "F-009 rollback 完整: 3 协议统一", "status": "✅", "evidence": "_writeErrorAndRollbackProtocol + 13 rollback tests" },
+    { "id": 5, "text": "§6.2 fix: registry-adapter-types.js 新 file + import 切换", "status": "✅", "evidence": "commit 1 (4a65e2b) + commit 2 (9913e77) + 1 unit test" },
+    { "id": 6, "text": "§6.1 doc: adapter-authoring.md 加 1 节 register pattern", "status": "✅", "evidence": "commit 3 (809ea93) + 286 行 §9" },
+    { "id": 7, "text": "tests/agent-dispatch-execute-clifile.test.js 10-15 tests pass", "status": "✅", "evidence": "31 tests (2x target)" },
+    { "id": 8, "text": "tests/agent-dispatch-execute-rollback.test.js 8-10 tests pass", "status": "✅", "evidence": "13 tests" },
+    { "id": 9, "text": "M-002 + M-003 既有 306 tests 零 regression", "status": "✅", "evidence": "306/306 pass" },
+    { "id": 10, "text": "M-003 MS-004 全套 tests 跑通", "status": "✅", "evidence": "357/357 pass" },
+    { "id": 11, "text": "real dispatch 端到端 demo 3 protocol", "status": "✅", "evidence": "3 e2e real-CLI tests + §6 demos" },
+    { "id": 12, "text": "zero npm dep, package.json 零修改", "status": "✅", "evidence": "OK" },
+    { "id": 13, "text": "M-002 主体严格零修改, §6.2 fix 走 additive", "status": "✅", "evidence": "git diff 验证" }
+  ],
+  "risks_mitigation_4": [
+    {
+      "risk": "CLI 协议 subprocess 兼容性 (macOS / Linux)",
+      "mitigation": "shell: true default + test override via shell: false with absolute path (parity with claude-code.js §3.1)"
+    },
+    {
+      "risk": "file 协议 atomic write",
+      "mitigation": ".tmp-<pid>-<ts> + rename (parity with M-001 registry.js#writeAgent)"
+    },
+    {
+      "risk": "rollback 失败兜底 (3 协议统一)",
+      "mitigation": "3-stage fallback (result/error → rollback → rollback-failed) with notify_parent: true (parity with existing _writeErrorAndRollback, extended to capture all error fields)"
+    },
+    {
+      "risk": "§6.2 additive 模式 (不破坏 M-002 主体)",
+      "mitigation": "New file registry-adapter-types.js (commit 1) + import switch in m003-cli.js commit 2. registry.js zero-modified."
+    }
+  ],
+  "e2e_demo_3_protocols": {
+    "cli": {
+      "command": "node bin/cli.js agent dispatch-execute Worker-A-MS004-cli \"review via cli\" --project /tmp/proj --output json --timeout 30 --protocol cli --bin /path/to/fake.js",
+      "expected_json_shape": {
+        "runId": "R-dispatch-cli-...",
+        "protocol": "cli",
+        "status": "ok",
+        "agent_id": "Worker-A-MS004-cli",
+        "adapter_type": "claude-code",
+        "result": { "text": "from CLI protocol" },
+        "latency_ms": 68,
+        "dispatcher": "m003-cli (protocol.cli)"
+      },
+      "journal_artifacts": ["request.json", "result.json", "rollback.json"]
+    },
+    "file": {
+      "command": "node bin/cli.js agent dispatch-execute Worker-A-MS004-file \"review via file\" --project /tmp/proj --output json --protocol file --config-path /tmp/proj/cfg.json --output-path /tmp/proj/out.json",
+      "expected_json_shape": {
+        "runId": "R-dispatch-file-...",
+        "protocol": "file",
+        "status": "ok",
+        "agent_id": "Worker-A-MS004-file",
+        "adapter_type": "claude-code",
+        "result": {
+          "ok": true,
+          "protocol": "file",
+          "config_path": "/tmp/proj/cfg.json",
+          "config": {},
+          "payload": {},
+          "written_at": "2026-08-04T..."
+        },
+        "latency_ms": 1,
+        "dispatcher": "m003-cli (protocol.file)"
+      }
+    },
+    "http": {
+      "command": "node bin/cli.js agent dispatch-execute Worker-A-MS004-http \"review via http\" --project /tmp/proj --output json --timeout 10 --protocol http --url http://127.0.0.1:54321/claude-code/invoke",
+      "expected_json_shape": {
+        "runId": "R-dispatch-http-...",
+        "protocol": "http",
+        "status": "ok",
+        "agent_id": "Worker-A-MS004-http",
+        "adapter_type": "claude-code",
+        "result": { "ok": true, "received": "...", "adapter": "claude-code" },
+        "latency_ms": 2,
+        "dispatcher": "m003-cli (protocol.http)"
+      }
+    }
+  },
+  "deviations": [
+    {
+      "id": "D1",
+      "subject": "§6.1 doc +286 行 (超 50-100 估 2.5x)",
+      "reason": "3 topics 都需要 depth + 4-5 code examples + 10 pitfalls; 3rd-party 一次性 onboarding, 多给 detail > 太短导致推回去返工",
+      "impact": "doc 比估 长, 但内容都有 value",
+      "ask": "Eric 可 review 后续 trim §9.1 / §9.3 (各 ~70 行), 但 §9.2 (E2E test skeleton) + §9.4 (§6.2 fix 解释) 不能省"
+    },
+    {
+      "id": "D2",
+      "subject": "m003-cli.js 加 6 个新 flag 解析",
+      "reason": "protocol-specific config (URL / bin / config path) 必须 caller supply; 加 5 个新 flag 比让 user hardcode 在 args 里更 friendly + testable",
+      "impact": "parseArgs 加 6 flag, 0 backward compat break (既有 18 tests 0 regression)",
+      "ask": "无 — 严格按 spec '真实可调' 实施, 既有 MS-001 help text additive 扩展"
+    },
+    {
+      "id": "D3",
+      "subject": "_writeErrorAndRollbackProtocol 写新 helper 不复用既有",
+      "reason": "既有 helper 只 capture {code, message, statusCode, responseBody}; CLI/file 错误需要更多 debug info (exitCode, signal, stderr, stdoutExcerpt, rpcError, path). 复用既有 helper 会丢 exitCode 等关键信息. 写新 helper duplicate 一些逻辑 but 不动 line 308-376 (硬约束)",
+      "impact": "+50 行 duplicate 逻辑, but 不动既有",
+      "ask": "无 — 硬约束决定. 如果 Eric 接受修改既有 helper (违反约束), 后续 M-004 整合 can refactor"
+    },
+    {
+      "id": "D4",
+      "subject": "§6.2 fix behavior change 实际为 0 (additive file 只 expose 不 enforce)",
+      "reason": "M-002 writeAgent validator 仍 strict (硬约束 'registry.js 零修改'). minimax entry 写只能 hand-edit 或走其他 path. dispatch 层 explicit 调用 validateAdapterTypeExt 让 minimax 跟 M-002 strict 区分开",
+      "impact": "0 实际 behavior 变化 (24 minimax tests 已经 pass). 0 既有 test break. 0 user-visible behavior 变化",
+      "ask": "Eric 接受现状 OR §6.2 fix 期望让 cortex-agent agent register --adapter-type minimax 也 work (需改 M-002 主体, 违反硬约束). 后续 M-004+ 如果接受 M-002 主体改, 可 refactor"
+    }
+  ],
+  "followups_for_main_session": [
+    "Merge to main — 主 session 拍板后 merge agent/M-003-MS-004-dispatch → main",
+    "MS-005 派发 — E2E matrix 5 adapter × 3 protocol + RFC v0.5 + v1.12.0-rc.1",
+    "MS-004 worktree cleanup — destructive, 等 Eric 拍板 (git worktree remove + git branch -D)",
+    "AI-Brain 归档 — 1 份 bridge memo 到 99-Project-Notes/cortex-bridge/2026-08-04-m003-ms004-ship.md",
+    "task-progress.md 同步 — 主 session 拍板 merge 后同步 active mission / 断点续接段"
+  ],
+  "related_artifacts": {
+    "mission_plan": ".agent/missions/M-003/mission-plan.md (228 行)",
+    "validation_contract": ".agent/missions/M-003/validation-contract-ms-004-dispatch.json (8.4 KB, 13 AC + 5 decisions + 4 risks)",
+    "spec_handoff": ".agent/missions/M-003/handoffs/20260804-183000-ms-004-spec-done.md (7.8 KB)",
+    "deviations_decided": ".agent/missions/M-003/handoffs/20260804-183000-deviations-decided.md (2.6 KB)",
+    "ms001_handoff": ".agent/missions/M-003/handoffs/20260804-153000-ms-001-adapter-claude-done.md (22 KB)",
+    "ms003_handoff": ".agent/missions/M-003/handoffs/20260804-184500-ms-003-minimax-mcp-done.md (29 KB)",
+    "adapter_authoring_guide": "docs/architecture/adapter-authoring.md (880 行, +286 §9)",
+    "fae_001_vocabulary": ".agent/plans/proposals/projects/full-automation-evolution/proposals/FAE-001-dispatch-vocabulary.md"
+  }
+}
