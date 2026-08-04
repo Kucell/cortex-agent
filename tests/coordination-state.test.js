@@ -268,9 +268,9 @@ test("same-state event for a non-liveness type fails closed", () => {
   assert.throws(() => reduce(created, bad), { key: "ERR_INVALID_TRANSITION" });
 });
 
-test("LIVENESS_EVENT_TYPES are exactly heartbeat, progress, artifact.ready", () => {
+test("same-state bookkeeping events include ownership release", () => {
   assert.deepEqual([...LIVENESS_EVENT_TYPES].sort(),
-    ["artifact.ready", "task.heartbeat", "task.progress"]);
+    ["artifact.ready", "ownership.released", "task.heartbeat", "task.progress"]);
 });
 
 test("heartbeat is a legal same-state liveness update (bumps revision/lastSequence)", () => {
