@@ -47,6 +47,7 @@ function blockTask(service, taskId, projectId, agentId, sessionId, lease) {
   const agent = { actorId: agentId, kind: "agent", sessionId };
   const ownership = [{ leaseId: lease.leaseId, scope: lease.scope, owner: agentId, fencingToken: lease.fencingToken, expiresAt: lease.expiresAt }];
   service.submit(createEvent({ projectId, taskId, correlationId: "C", producer: agent, targets: [], eventType: "task.blocked", previousState: STATES.ACCEPTED, currentState: STATES.BLOCKED, repository: { repositoryId: projectId }, fileOwnership: ownership }), agent);
+  service.submit(createEvent({ projectId, taskId, correlationId: "C", producer: agent, targets: [], eventType: "ownership.released", previousState: STATES.BLOCKED, currentState: STATES.BLOCKED, repository: { repositoryId: projectId } }), agent);
   service.releaseOwnership(lease.leaseId, { actorId: sessionId });
 }
 
@@ -392,6 +393,50 @@ test("fenced reconciler persists a redacted reconciliation receipt on success", 
       for (const forbidden of ["agentCommand", "agentArgs", "sessionId", "contextFile", "prompt"]) {
         assert.ok(!serialized.includes(forbidden), `reconciliation receipt must not include ${forbidden}: ${serialized}`);
       }
+    } finally {
+      reopened.close();
+    }
+  } finally {
+    cleanup(root, privateDir);
+  }
+});
+
+test("fenced reconciler refuses snapshot-only repair of legacy ownership", () => {
+  const root = makeRuntime();
+  const privateDir = makeRuntime();
+  const runtimeCoord = path.join(root, ".agent-runtime", "coordination");
+  const service = CoordinationApplicationService.open(runtimeCoord, { journal: { lock: false } });
+  const taskId = "T-FENCED-LEGACY-OWNER";
+  const projectId = "fenced";
+  const agentId = "pi-fenced";
+  const sessionId = "session-fenced";
+  try {
+    const { lease } = seedAcceptedTask(service, taskId, projectId, "codex-root", agentId, sessionId);
+    const agent = { actorId: agentId, kind: "agent", sessionId };
+    const ownership = [{ leaseId: lease.leaseId, scope: lease.scope, owner: agentId, fencingToken: lease.fencingToken, expiresAt: lease.expiresAt }];
+    service.submit(createEvent({ projectId, taskId, correlationId: "C", producer: agent, targets: [], eventType: "task.blocked", previousState: STATES.ACCEPTED, currentState: STATES.BLOCKED, repository: { repositoryId: projectId }, fileOwnership: ownership }), agent);
+    service.releaseOwnership(lease.leaseId, { actorId: sessionId });
+    const fresh = service.acquireOwnership(`task:${taskId}`, agentId, { actorId: sessionId, ttl: 60_000 });
+    service.close();
+
+    const reopened = CoordinationApplicationService.open(runtimeCoord);
+    try {
+      const contextFile = writeLaunchContext(privateDir, taskId, projectId, "codex-root", agentId, sessionId, fresh.leaseId, fresh.fencingToken, root);
+      const receiptFile = path.join(privateDir, "child-receipt.json");
+      fs.writeFileSync(receiptFile, JSON.stringify({ phase: "exited", code: "EXIT_ZERO" }), { mode: 0o600 });
+      const beforeEvents = reopened.listEvents({ taskId }).length;
+      const result = reconcileAttemptForReadiness(reopened, {
+        contextFile,
+        receiptFile,
+        newLeaseId: fresh.leaseId,
+        newFencingToken: fresh.fencingToken,
+        actorId: sessionId,
+        validationRefs: ["RUN-LEGACY-1"],
+      });
+      assert.equal(result.ok, false);
+      assert.equal(result.code, "ERR_OWNERSHIP_RECOVERY_REQUIRED");
+      assert.equal(reopened.getTask(taskId).state, STATES.BLOCKED);
+      assert.equal(reopened.listEvents({ taskId }).length, beforeEvents);
     } finally {
       reopened.close();
     }

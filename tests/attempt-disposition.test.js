@@ -159,6 +159,38 @@ test("buildAttemptProjection reflects BLOCKED attention_required after lease rel
   }
 });
 
+test("historical testing does not close a later BLOCKED attempt", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-attempt-"));
+  const service = CoordinationApplicationService.open(
+    path.join(root, ".agent-runtime", "coordination"),
+    { journal: { lock: false } },
+  );
+  try {
+    const coordinator = { actorId: "coordinator", kind: "coordinator", sessionId: "root" };
+    const agent = { actorId: "pi-history", kind: "agent", sessionId: "session-history" };
+    const taskId = "T-ATTEMPT-HISTORY";
+    const common = { projectId: "attempt", taskId, correlationId: "C", repository: { repositoryId: "attempt" } };
+    service.submit(createEvent({ ...common, producer: coordinator, targets: [], eventType: "task.created", previousState: null, currentState: STATES.CREATED }), coordinator);
+    service.submit(createEvent({ ...common, producer: coordinator, targets: [{ actorId: agent.actorId, kind: "agent" }], eventType: "task.assigned", previousState: STATES.CREATED, currentState: STATES.ASSIGNED }), coordinator);
+    const lease = service.acquireOwnership(`task:${taskId}`, agent.actorId, { actorId: agent.sessionId, ttl: 60_000 });
+    const ownership = [{ leaseId: lease.leaseId, scope: lease.scope, owner: agent.actorId, fencingToken: lease.fencingToken, expiresAt: lease.expiresAt }];
+    service.submit(createEvent({ ...common, producer: agent, targets: [], eventType: "task.accepted", previousState: STATES.ASSIGNED, currentState: STATES.ACCEPTED, fileOwnership: ownership }), agent);
+    service.submit(createEvent({ ...common, producer: agent, targets: [], eventType: "task.progress", previousState: STATES.ACCEPTED, currentState: STATES.EXECUTING, fileOwnership: ownership }), agent);
+    service.submit(createEvent({ ...common, producer: agent, targets: [], eventType: "task.testing", previousState: STATES.EXECUTING, currentState: STATES.TESTING, fileOwnership: ownership }), agent);
+    service.submit(createEvent({ ...common, producer: agent, targets: [], eventType: "task.blocked", previousState: STATES.TESTING, currentState: STATES.BLOCKED, fileOwnership: ownership }), agent);
+    service.submit(createEvent({ ...common, producer: agent, targets: [], eventType: "ownership.released", previousState: STATES.BLOCKED, currentState: STATES.BLOCKED }), agent);
+    service.releaseOwnership(lease.leaseId, { actorId: agent.sessionId });
+
+    const projection = buildAttemptProjection(service, taskId, { clock: () => "2026-08-04T00:00:00.000Z" });
+    assert.equal(projection.disposition, "attempt_attention_required");
+    assert.equal(projection.reconciliationRecorded, false);
+    assert.equal(projection.monitoringTerminal, true);
+  } finally {
+    service.close();
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("buildAttemptProjection returns attempt_review_ready when Task is READY_FOR_REVIEW", () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-attempt-"));
   const runtimeCoord = path.join(root, ".agent-runtime", "coordination");
