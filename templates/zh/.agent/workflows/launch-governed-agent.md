@@ -43,7 +43,15 @@ explicitly and connect it to Cortex coordination.
 7. Require public Task API events for accepted, progress, testing,
    ready-for-review, input-required, blocked, and failed states. Heartbeats and
    ordinary unchanged progress remain journal-only.
-8. Start an explicit notification pump when low-latency delivery is required:
+8. Bind the governed child monitor to a single execution attempt by passing
+   `taskId`, `operationId` and `attemptId` (or the launch identifier that
+   uniquely identifies the attempt). The monitor must project a terminal
+   `attempt_disposition` and write `monitoring_terminal=true` exactly once
+   per attempt; the heartbeat pump must stop polling on
+   `monitoring_terminal=true` and must not retry the same attempt. A new
+   attempt requires a fresh monitor binding; old pause receipts and cursors
+   must not be reused.
+9. Start an explicit notification pump when low-latency delivery is required:
 
    ```bash
    cortex-agent notification pump \
@@ -54,13 +62,28 @@ explicitly and connect it to Cortex coordination.
      --watch
    ```
 
-9. On `READY_FOR_REVIEW`, do not ACK automatically. Independently inspect the
-   diff, run the validation contract, and verify checkpoint commit, tests, and
-   receipt. Only then update the owning Mission, Plan, and `task-progress.md`.
-10. Notify the user immediately for input-required, blocked, failed, ownership
-    conflict, or authority outside the approved scope. Do not repeatedly notify
-    unchanged heartbeats.
-11. A foreground `--watch` ends with its Codex task. On resume, restart it or
+10. On `READY_FOR_REVIEW`, do not ACK automatically. Independently inspect the
+    diff, run the validation contract, and verify checkpoint commit, tests,
+    and receipt. Only then update the owning Mission, Plan, and
+    `task-progress.md`.
+11. Notify the user immediately for input-required, blocked, failed, ownership
+    conflict, or authority outside the approved scope. The notification MUST
+    be emitted at most once per terminal disposition (`attempt_review_ready`,
+    `attempt_attention_required`, `attempt_closed`, `attempt_inconsistent`)
+    and must be paired with the monitor's `monitoring_terminal=true`
+    persistence. Do not repeatedly notify unchanged heartbeats or the same
+    terminal disposition.
+12. Fenced manual reconciliation (P-005 §5): when an attempt lands in
+    `attempt_attention_required` or `attempt_inconsistent`, the coordinator
+    may publish a fenced reconciliation only after re-acquiring an
+    ownership lease on the same `task:<task-id>` scope with a fresh fencing
+    token and binding it to the actor session. The reconciliation MUST walk
+    the bounded BLOCKED -> EXECUTING -> TESTING -> READY_FOR_REVIEW
+    sequence via the public Task API, and MUST include at least one
+    `validation_refs` evidence entry. Stale leases, missing evidence, or any
+    non-BLOCKED / non-STALE Task state MUST fail closed without mutating
+    the Task or its lease.
+13. A foreground `--watch` ends with its Codex task. On resume, restart it or
     use a bounded recurring status check; journaled state remains authoritative.
 
 ## Pi receipt boundary
