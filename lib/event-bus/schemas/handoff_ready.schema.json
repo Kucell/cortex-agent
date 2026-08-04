@@ -1,0 +1,15 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://cortex-agent/schemas/event-bus/handoff_ready.json",
+  "title": "handoff_ready payload",
+  "type": "object",
+  "required": ["handoff_id", "handoff_path", "from_subagent_id", "to_subagent_id"],
+  "additionalProperties": true,
+  "properties": {
+    "handoff_id":        { "type": "string" },
+    "handoff_path":      { "type": "string" },
+    "from_subagent_id":  { "type": "string" },
+    "to_subagent_id":    { "type": "string" },
+    "handoff_kind":      { "enum": ["cross_host", "cross_session"] }
+  }
+}
