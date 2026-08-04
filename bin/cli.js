@@ -68,6 +68,13 @@ const { agentRegistryCommand } = require("../lib/agents");
 // subcommand behavior is unchanged.
 const { agentM003Command } = require("../lib/agents/m003-cli");
 
+// T-OD-001 MS-003: Open Design integration CLI surface.
+// `design <list|install|upgrade|remove|show|resolved|refresh-catalog>` is
+// owned by lib/design/cli.js (mirrors dispatch-cli.js pattern). Strictly
+// additive: no changes to lib/commands.js; the new subcommand is added
+// to the case dispatch below and registered in lib/cli-contract.js.
+const { designCommand } = require("../lib/design/cli");
+
 // ─── Context ──────────────────────────────────────────────────────────────────
 
 const cwd = process.cwd();
@@ -429,6 +436,7 @@ async function initModeGeneral() {
       break;
     }
     case "hook":        hook(ctx); break;
+    case "design":      await designCommand(ctx); break;
     case "help":        args.includes("--json") ? cliHelp(ctx) : printHelp(); break;
     case "dev":         await dev(ctx); break;
     case undefined:
