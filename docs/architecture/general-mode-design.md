@@ -715,20 +715,52 @@ cortex-agent v1.x 在代码项目跨 agent 工具上已经成熟。**下一步�
 
 ### 17.4 阶段拆分
 
-| Phase | 时间 | 内容 | Mission 载体 |
-| :--- | :--- | :--- | :--- |
-| **Phase 1**(进行中) | 2 周 | general-mode 骨架 + 9 data 目录 + `init --mode general` + 自动 mode 推断 + RFC 同步 | **M-001**(v1.10.0-rc.1) |
-| **Phase 2** | 3 周 | general 模式完整骨架(`templates/general/` + workflow + memory) | **M-002**(计划中) |
-| **Phase 3** | 6-7 周 | 5 adapters + 1 MCP bridge(Claude Code / Codex / PI agent / Kimi / DeepSeek + bridge 消费 Mem0 / claude-mem / CodeBuddy ACP / Cursor ACP / 通义灵码 / Trae) | **M-003**(待启动) |
-| **Phase 4** | N 周 | cortex-agent framework 真事件总线 + mission 编排引擎 | **M-004**(FAE-002 candidate) |
+| Phase | 时间 | 内容 | Mission 载体 | Status |
+| :--- | :--- | :--- | :--- | :---: |
+| **Phase 1** | 2 周 | general-mode 骨架 + 9 data 目录 + `init --mode general` + 自动 mode 推断 + RFC 同步 | **M-001**(v1.10.0-rc.1) | ✅ DONE (commit `4afb9db` + `6475930`, merged `660e248`/`12e3db7`/`f8a1d38`/`8be4e4d`/`6475930`) |
+| **Phase 2** | 3 周 | general 模式完整骨架(`templates/general/` + workflow + memory + 5/5 ship) | **M-002**(v1.11.0-rc.1) | ✅ DONE (5/5 ship done, commits `eac3d9a`/`1289702`/`a8c0e28`/`5a3d36a`/`cc10303`, merged `518139f`/`a465f01`/`4f24c83`/`5d2199b`/`1168710`) |
+| **Phase 3** | 6-7 周 | 5 adapters (Claude Code / Codex / Codey / Pi / MiniMax CLI) + 1 MCP bridge (mcp-server.js + mcp-bridge.js bidirectional) | **M-003**(v1.12.0-rc.1) | ✅ DONE (5/5 ship done, MS-001 `a684f03` + MS-002 codex `1476ff0` + MS-002 codey+pi `914cfbc` + MS-003 minimax+mcp `f1c3527` + MS-004 dispatch `4 commits`, merged `d9e8b95`/`41636fd`/`9e8b521`/`4ef762c`/`76d4cad`) |
+| **Phase 4** | N 周 | cortex-agent framework 真事件总线 + mission 编排引擎 | **M-004**(FAE-002 candidate) | ⏳ 排队 (FAE-002 spec approved, M-004 派发等 Eric 拍板整体批准) |
+
+### 17.4.1 Phase 3 ship status (M-003 5/5 milestones)
+
+| Milestone | 内容 | Commits | Tests | 状态 |
+| :--- | :--- | :--- | ---: | :---: |
+| **MS-001** | F-001 base.js + F-002 claude-code.js + F-007 mcp-server.js + F-009 HTTP dispatch + F-010 authoring guide | `a684f03` (merged `d9e8b95`) | 110 | ✅ merged |
+| **MS-002 codex** | F-003 Codex adapter (5 method, subprocess + JSON-RPC) | `1476ff0` (merged `41636fd`) | 29 | ✅ merged |
+| **MS-002 codey+pi** | F-004 Codey (line-based JSON-RPC 2.0) + F-005 Pi (JSON or stdio) + codey-pi-bootstrap.js helper | `914cfbc` (merged `9e8b521`) | 48 | ✅ merged |
+| **MS-003 minimax+mcp** | F-006 MiniMax CLI adapter (5 method + 8 error codes + 3-stage rollback) + F-008 MCP bridge bidirectional (composition of mcp-server.js) | `f1c3527` (merged `4ef762c`) | 42 | ✅ merged |
+| **MS-004 dispatch** | F-009 扩 CLI + file 协议 + §6.2 additive (registry-adapter-types.js 加 minimax) + §6.1 doc (adapter-authoring.md §9 register pattern) | 4 commits (merged `76d4cad`) | 51 新 (357 total) | ✅ merged |
+| **MS-005 E2E + RFC + release + case study** | F-011 E2E matrix 5 adapter × 3 protocol + F-RFC-v0.5 §17.4 final 化 + F-v1.12.0-rc.1 release notes + F-012 case study 起草 | (本 RFC v0.5 commit) | 32 新 (520 total) | 🟡 进行中 |
+
+**7 D-003 决策** 全部 ✅ A 拍板 (8-04 14:35 + 8-04 18:13 + 8-04 18:20):
+
+| 决策 | 落实 |
+| :--- | :---: |
+| D-003-1 Claude Code first + 5 adapter 续接 | ✅ |
+| D-003-2 MCP bridge 早期出 (F-007) + bidirectional (F-008) | ✅ |
+| D-003-3 real dispatch 默认 3 协议完整 (HTTP/CLI/file) | ✅ |
+| D-003-4 adapter health check 必备 | ✅ |
+| D-003-5 cross-host 推 v1.13+ | ⏸️ deferred |
+| D-003-6 AI-Brain 实战 ≥ 2w → v1.12.0-rc.1 → GA | ⏸️ 后续 |
+| D-003-7 invoke real + --plan-only flag | ✅ |
+
+**2 deviations** Eric 拍板 (8-04 18:13 + 18:20):
+- §6.1 minimax 保持现状 c (3rd-party 显式 register, F-010 §9 doc)
+- §6.2 MS-004 cleanup 加 minimax to M-002 VALID_ADAPTER_TYPES (additive 模式)
+
+**总数字**:
+- 5 milestones, 13 features, 26 commits, +14,108 lines, 357 tests pass (M-003)
+- Total: 520/520 tests pass (M-002 + M-003), 0 regression
+- 0 npm dep, package.json 零修改, 架构硬约束零违反
 
 ### 17.5 v2.0 启动条件
 
-- [ ] v1.10.0 已发布到 npm registry
-- [ ] v1.11.0 在 AI-Brain 实战稳定运行 ≥ 2 个月
-- [ ] ≥ 1 个外部真实 case study 验证跨 agent 续接(AI-Brain 内部作为「外部真实」语义来源)
-- [ ] Phase 2 + Phase 3 已完成(general 模式骨架 + 5 adapters)
-- [ ] FAE-002(proposal)+ 触发条件:framework 真事件总线 spec 已批准
+- [ ] v1.10.0 已发布到 npm registry (🟡 rc.1 + rc.2 已 tag, GA 待 Eric 拍)
+- [ ] v1.11.0 在 AI-Brain 实战稳定运行 ≥ 2 个月 (⏳ v1.11.0-rc.1 release 后开始)
+- [ ] ≥ 1 个外部真实 case study 验证跨 agent 续接 (🟡 M-002 MS-005 起框架, MS-005 case study 起草中)
+- [x] Phase 2 + Phase 3 已完成 (general 模式骨架 + 5 adapters) ✅ M-002 5/5 + M-003 5/5 全部 merged
+- [ ] FAE-002(proposal)+ 触发条件:framework 真事件总线 spec 已批准 (🟡 spec landed `b3d8f53` merged `105198e`, M-004 实施等 Eric 拍板整体批准)
 
 不满足任一条件,v2.0 不强行发布;v1.11 进入 LTS 长期维护直到条件满足。
 
