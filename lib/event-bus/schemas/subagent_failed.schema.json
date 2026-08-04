@@ -1,0 +1,16 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://cortex-agent/schemas/event-bus/subagent_failed.json",
+  "title": "subagent_failed payload",
+  "type": "object",
+  "required": ["status", "error_code", "error_message"],
+  "additionalProperties": true,
+  "properties": {
+    "status":                 { "enum": ["failed"] },
+    "error_code":             { "type": "string" },
+    "error_message":          { "type": "string" },
+    "retry_count":            { "type": "integer", "minimum": 0 },
+    "last_tool_failure":      { "type": "string" },
+    "output_partial_summary": { "type": "string" }
+  }
+}

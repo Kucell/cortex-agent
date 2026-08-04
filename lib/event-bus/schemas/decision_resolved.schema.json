@@ -1,0 +1,14 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://cortex-agent/schemas/event-bus/decision_resolved.json",
+  "title": "decision_resolved payload",
+  "type": "object",
+  "required": ["decision_id", "resolution"],
+  "additionalProperties": true,
+  "properties": {
+    "decision_id":     { "type": "string" },
+    "resolution":      { "enum": ["approved", "rejected", "deferred"] },
+    "resolved_by":     { "type": "string" },
+    "resolution_note": { "type": "string" }
+  }
+}
