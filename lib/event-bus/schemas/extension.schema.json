@@ -1,0 +1,10 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://cortex-agent/schemas/event-bus/extension.json",
+  "title": "custom:* extension event payload",
+  "description": "Template for custom extension events. Payload must be a non-empty object; no fixed required fields beyond the envelope.",
+  "type": "object",
+  "required": [],
+  "additionalProperties": true,
+  "properties": {}
+}
