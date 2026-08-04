@@ -593,3 +593,98 @@ test("governed child caps private stderr and exposes only digest metadata", (t) 
   assert.equal(receipt.stderrTruncated, true);
   assert.equal(JSON.stringify(receipt).includes("xxxx"), false);
 });
+
+// ─── T-ACN-019 / P-005: attempt disposition projection in monitor receipt ──
+
+test("governed child exit-without-handoff emits attempt_attention_required disposition", (t) => {
+  const root = makeRuntime();
+  const { lease, sessionId } = setupAcceptedTask(root, "T-ATT-DISP", "claude-att-disp");
+  t.after(() => closeRuntime(root));
+  const { contextFile, receiptFile } = writeContext(root, {
+    taskId: "T-ATT-DISP",
+    targetAgentId: "claude-att-disp",
+    sessionId,
+    leaseId: lease.leaseId,
+    fencingToken: lease.fencingToken,
+    agentCommand: "/usr/bin/true",
+    agentArgs: [],
+    terminalTimeoutMs: 10000,
+  });
+  const result = runMonitor(contextFile, receiptFile);
+  assert.equal(result.status, 0, result.stderr);
+  const receipt = readReceipt(receiptFile);
+  assert.equal(receipt.attempt_disposition, "attempt_attention_required");
+  assert.equal(receipt.monitoring_terminal, true);
+  assert.equal(receipt.reconciliation_required, true);
+  assert.ok(typeof receipt.observed_at === "string");
+  assert.ok(!isNaN(Date.parse(receipt.observed_at)));
+  const forbidden = ["agentCommand", "agentArgs", "leaseId", "fencingToken", "sessionId", "contextFile", "token", "secret"];
+  for (const field of forbidden) {
+    assert.ok(!(field in receipt), `attempt-disposition receipt must not contain '${field}': ${JSON.stringify(receipt)}`);
+  }
+});
+
+test("governed child ready-state preserves attempt_review_ready without touching the task state", (t) => {
+  const root = makeRuntime();
+  const runtimeCoord = path.join(root, ".agent-runtime", "coordination");
+  const service = CoordinationApplicationService.open(runtimeCoord, { journal: { lock: false } });
+  t.after(() => { service.close(); closeRuntime(root); });
+
+  const taskId = "T-READY-DISP";
+  const projectId = "monitor-e2e";
+  const coordinatorId = "codex-current";
+  const agentId = "claude-ready-disp";
+  const coordinator = { actorId: coordinatorId, kind: "coordinator", sessionId: "root" };
+  const agent = { actorId: agentId, kind: "agent", sessionId: `session-${agentId}` };
+
+  service.submit(createEvent({
+    projectId, taskId, correlationId: "CORR-READY-DISP",
+    producer: coordinator, targets: [{ actorId: agentId, kind: "agent" }],
+    eventType: "task.created", previousState: null, currentState: STATES.CREATED, sequence: 1,
+    repository: { repositoryId: projectId },
+  }), coordinator);
+  service.submit(createEvent({
+    projectId, taskId, correlationId: "CORR-READY-DISP",
+    producer: coordinator, targets: [{ actorId: agentId, kind: "agent" }],
+    eventType: "task.assigned", previousState: STATES.CREATED, currentState: STATES.ASSIGNED, sequence: 2,
+    repository: { repositoryId: projectId },
+  }), coordinator);
+  const lease = service.acquireOwnership(`task:${taskId}`, agentId, { actorId: agent.sessionId, ttl: 60_000 });
+  service.submit(createEvent({
+    projectId, taskId, correlationId: "CORR-READY-DISP",
+    producer: agent, targets: [],
+    eventType: "task.accepted", previousState: STATES.ASSIGNED, currentState: STATES.ACCEPTED, sequence: 1,
+    fileOwnership: [{ leaseId: lease.leaseId, scope: lease.scope, owner: agentId, fencingToken: lease.fencingToken, expiresAt: lease.expiresAt }],
+  }), agent);
+  service.submit(createEvent({
+    projectId, taskId, correlationId: "CORR-READY-DISP",
+    producer: agent, targets: [],
+    eventType: "task.progress", previousState: STATES.ACCEPTED, currentState: STATES.EXECUTING, sequence: 2,
+  }), agent);
+  service.submit(createEvent({
+    projectId, taskId, correlationId: "CORR-READY-DISP",
+    producer: agent, targets: [],
+    eventType: "task.ready_for_review", previousState: STATES.EXECUTING, currentState: STATES.READY_FOR_REVIEW, sequence: 3,
+    evidence: [{ kind: "artifact", ref: "ARTIFACT-READY-DISP" }],
+    notification: { policy: "journal_only", dedupeKey: "task.ready_for_review" },
+  }), agent);
+  service.close();
+
+  const { contextFile, receiptFile } = writeContext(root, {
+    taskId,
+    targetAgentId: agentId,
+    sessionId: agent.sessionId,
+    leaseId: lease.leaseId,
+    fencingToken: lease.fencingToken,
+    coordinatorId,
+    agentCommand: "/usr/bin/false",
+    agentArgs: [],
+    terminalTimeoutMs: 10000,
+  });
+  const result = runMonitor(contextFile, receiptFile);
+  assert.equal(result.status, 0, result.stderr);
+  const receipt = readReceipt(receiptFile);
+  assert.equal(receipt.attempt_disposition, "attempt_review_ready");
+  assert.equal(receipt.monitoring_terminal, true);
+  assert.equal(receipt.reconciliation_required, false);
+});
