@@ -87,6 +87,19 @@ test("upgrade --dry-run: prints 'Would add (N)' line and at least one path", () 
   assert.match(r.stdout, /\+ \.gitignore|\+ .+\.md|\+ .+\.js/, "stdout should list a concrete would-add path");
 });
 
+test("upgrade dry-run report excludes compatibility bootstrap semantic merge", (t) => {
+  const cwd = fixture();
+  t.after(() => fs.rmSync(cwd, { recursive: true, force: true }));
+  fs.writeFileSync(path.join(cwd, "AGENTS.md"), "# Project-owned instructions\n", "utf8");
+
+  const result = runCli(cwd, ["upgrade", "--lang", "en", "--dry-run", "--report", "json"]);
+
+  assert.equal(result.status, 0, `stderr: ${result.stderr}\nstdout: ${result.stdout}`);
+  const report = JSON.parse(result.stdout);
+  assert.equal(report.changes.merged.some((item) =>
+    item.reason === "entry_compatibility_adapter_bootstrap_stale"), false);
+});
+
 test("upgrade --dry-run: skips check-drift (does not write self-check-report.json)", () => {
   const cwd = fixture();
   const r = runCli(cwd, ["upgrade", "--lang", "en", "--dry-run"]);
@@ -117,6 +130,22 @@ test("upgrade apply followed by --dry-run reports Would add (0)", () => {
   const r2 = runCli(cwd, ["upgrade", "--lang", "en", "--dry-run"]);
   assert.equal(r2.status, 0);
   assert.match(r2.stdout, /Would add \(0\)/);
+});
+
+test("upgrade does not merge compatibility bootstrap into an existing AGENTS.md", (t) => {
+  const cwd = fixture();
+  t.after(() => fs.rmSync(cwd, { recursive: true, force: true }));
+  const agentsPath = path.join(cwd, "AGENTS.md");
+  const customAgents = "# Project-owned instructions\n\nKeep this exact content.\n";
+  fs.writeFileSync(agentsPath, customAgents, "utf8");
+
+  const result = runCli(cwd, ["upgrade", "--lang", "en"]);
+
+  assert.equal(result.status, 0, `stderr: ${result.stderr}\nstdout: ${result.stdout}`);
+  const after = fs.readFileSync(agentsPath, "utf8");
+  assert.match(after, /# Project-owned instructions/);
+  assert.match(after, /Keep this exact content\./);
+  assert.doesNotMatch(after, /cortex-agent:compatibility-adapter-bootstrap:start/);
 });
 
 // ─── help / cli-level discovery ─────────────────────────────────────────────
