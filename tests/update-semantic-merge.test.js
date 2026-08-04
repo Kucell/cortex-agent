@@ -116,6 +116,7 @@ test("update dry-run report includes entry and hook semantic merge candidates", 
   const payload = JSON.parse(result.stdout);
   const merged = payload.changes.merged.map((item) => `${item.path}:${item.reason}`);
   assert.ok(merged.includes("AGENTS.md:entry_runtime_bootstrap_stale"));
+  assert.ok(merged.includes("AGENTS.md:entry_compatibility_adapter_bootstrap_stale"));
   assert.ok(merged.includes(".agent/hooks/hooks.json:hook_runtime_continuity_stale"));
   assert.ok(merged.includes(".claude/settings.json:hook_runtime_continuity_stale"));
 });
@@ -131,6 +132,12 @@ test("update semantically upgrades AGENTS and runtime-continuity hooks", (t) => 
   assert.match(agents, /CORTEX_SESSION_START=1/);
   assert.match(agents, /do not manually fake automatic mode/);
   assert.doesNotMatch(agents, /If the hook does not fire, run manually/);
+  assert.match(agents, /cortex-agent:compatibility-adapter-bootstrap:start/);
+  assert.match(agents, /cortex-agent:compatibility-adapter-bootstrap:end/);
+  assert.match(agents, /## Compatibility Adapter Bootstrap/);
+  assert.match(agents, /source-command-/);
+  assert.match(agents, /`.agent\/workflows\/<command>\.md`/);
+  assert.match(agents, /report the adapter-vs-truth mismatch and stop/);
 
   const agentHooks = JSON.parse(fs.readFileSync(path.join(cwd, ".agent", "hooks", "hooks.json"), "utf8"));
   const agentRuntimeRules = agentHooks.hooks.SessionStart.filter((rule) => JSON.stringify(rule).includes("runtime-continuity"));
@@ -155,6 +162,31 @@ test("update semantically upgrades AGENTS and runtime-continuity hooks", (t) => 
   assert.equal(state.data.latest_update.update_id, updateReport.update_id);
   assert.equal(state.data.latest_update.status, "passed");
   assert.equal(state.summary.latest_update_status, "passed");
+});
+
+test("update inserts compatibility adapter bootstrap into legacy AGENTS.md and stays idempotent", (t) => {
+  const cwd = createLegacyProject();
+  t.after(() => fs.rmSync(cwd, { recursive: true, force: true }));
+
+  const before = fs.readFileSync(path.join(cwd, "AGENTS.md"), "utf8");
+  assert.doesNotMatch(before, /cortex-agent:compatibility-adapter-bootstrap:start/);
+
+  const first = runCli(cwd, ["update", "--lang", "en"]);
+  assert.equal(first.status, 0, `stderr: ${first.stderr}\nstdout: ${first.stdout}`);
+
+  const agentsPath = path.join(cwd, "AGENTS.md");
+  const once = fs.readFileSync(agentsPath, "utf8");
+  assert.match(once, /cortex-agent:compatibility-adapter-bootstrap:start/);
+  assert.match(once, /cortex-agent:compatibility-adapter-bootstrap:end/);
+  assert.match(once, /`.agent\/workflows\/<command>\.md`/);
+  // Pre-existing user content outside the managed block must survive.
+  assert.match(once, /## Load These Next/);
+  assert.match(once, /`.agent\/rules\/core-principles\.md`/);
+
+  // Second run must not introduce any additional diff.
+  const second = runCli(cwd, ["update", "--lang", "en"]);
+  assert.equal(second.status, 0, `stderr: ${second.stderr}\nstdout: ${second.stdout}`);
+  assert.equal(fs.readFileSync(agentsPath, "utf8"), once);
 });
 
 test("update merges projection registry by name while preserving local projections", (t) => {
