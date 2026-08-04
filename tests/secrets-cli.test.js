@@ -15,8 +15,8 @@ function project() {
   return root;
 }
 
-test("store requires an environment reference and never accepts --value", () => {
-  const response = runSecrets({
+test("store requires an environment reference and never accepts --value", async () => {
+  const response = await runSecrets({
     cwd: project(),
     args: ["secrets", "store", "--ref", "npm-publish", "--value", "forbidden"],
   });
@@ -24,11 +24,11 @@ test("store requires an environment reference and never accepts --value", () => 
   assert.equal(response.error, "secure_input_required");
 });
 
-test("store delegates the secret without returning it", () => {
+test("store delegates the secret without returning it", async () => {
   const root = project();
   process.env.CORTEX_TEST_NPM_TOKEN = "private-test-value";
   let observed;
-  const response = runSecrets({
+  const response = await runSecrets({
     cwd: root,
     args: ["secrets", "store", "--ref", "npm-publish", "--from-env", "CORTEX_TEST_NPM_TOKEN"],
   }, {
@@ -44,10 +44,10 @@ test("store delegates the secret without returning it", () => {
   assert.equal(observed.args.includes("private-test-value"), true);
 });
 
-test("npm verify injects the resolved secret and returns identity only", () => {
+test("npm verify injects the resolved secret and returns identity only", async () => {
   const root = project();
   const calls = [];
-  const response = runSecrets({
+  const response = await runSecrets({
     cwd: root,
     args: ["secrets", "verify", "--ref", "npm-publish", "--provider", "npm"],
   }, {
@@ -65,8 +65,8 @@ test("npm verify injects the resolved secret and returns identity only", () => {
   assert.equal(calls[1].options.env["npm_config_//registry.npmjs.org/:_authToken"], "private-test-value");
 });
 
-test("provider verification failure is fail-closed and redacted", () => {
-  const response = runSecrets({
+test("provider verification failure is fail-closed and redacted", async () => {
+  const response = await runSecrets({
     cwd: project(),
     args: ["secrets", "verify", "--ref", "npm-publish"],
   }, {

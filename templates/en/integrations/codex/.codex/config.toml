@@ -8,3 +8,25 @@ project_doc_max_bytes = 65536
 # Optional: extra instruction filenames Codex tries per directory (after AGENTS.override.md, AGENTS.md).
 # Uncomment if you add a companion file at the repo root.
 # project_doc_fallback_filenames = ["CORTEX.md"]
+
+# ─── MCP servers (optional) ──────────────────────────────────────────────────
+# Reference credentials indirectly via `secret://<ref>`; the real value is
+# fetched from the configured backend (keychain on macOS, secret-service on
+# Linux, gpg-encrypted file cross-platform, env on CI) by the Cortex Host
+# at Codex launch time and written to the env var named by
+# `bearer_token_env_var`.  Plaintext tokens never land in the repo or in
+# this file.
+#
+# Recommended workflow:
+#   1. Declare the ref in `.agent/config/secrets.yml`.
+#   2. `cortex-agent secrets render-bearer --server <name> --url <url> --ref <ref>`
+#      emits the [mcp_servers.<name>] block below — no hand-typing required.
+#   3. Launch Codex:
+#        cortex-agent secrets inject --ref <ref> --env <ENV> -- codex
+#
+# Uncomment and adapt the snippet below:
+#
+# [mcp_servers.pixso]
+# url = "http://127.0.0.1:3667/mcp"
+# bearer_token_env_var = "CORTEX_MCP_PIXSO_TOKEN"
+# # source: secret://pixso-mcp-auth  (resolved at launch by Cortex Host)

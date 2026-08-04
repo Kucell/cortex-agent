@@ -198,7 +198,7 @@ const l1Ctx = options.project
     case "dashboard":   dashboard(ctx); break;
     case "lease":       lease(ctx); break;
     case "team":        await teamPack(ctx); break;
-    case "secrets":     secrets(l1Ctx); break;
+    case "secrets":     await secrets(l1Ctx); break;
     case "agent":       agent(ctx); break;
     case "hook":        hook(ctx); break;
     case "help":        args.includes("--json") ? cliHelp(ctx) : printHelp(); break;

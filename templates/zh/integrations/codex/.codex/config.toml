@@ -8,3 +8,22 @@ project_doc_max_bytes = 65536
 # 可选：每层目录在 AGENTS.override.md、AGENTS.md 之后额外尝试的文件名。
 # 若在仓库根目录增加了配套说明文件，可取消注释。
 # project_doc_fallback_filenames = ["CORTEX.md"]
+
+# ─── MCP 服务器（可选）────────────────────────────────────────────────────────
+# 用 `secret://<ref>` 间接引用凭证；真实值由 Cortex Host 在 Codex 启动时
+# 从 Keychain 取出、写入 `bearer_token_env_var` 指向的 env 变量，再 exec
+# Codex。明文 token 永远不会进入仓库，也不会进入 Codex 的配置文件。
+#
+# 推荐：先在 `.agent/config/secrets.yml` 声明 ref + service，然后
+#       `cortex-agent secrets render-bearer --server <name> --url <url> --ref <ref>`
+#       直接输出下面的 [mcp_servers.<name>] 块，杜绝手抄错。
+#
+# 取消下面这段注释并改写为你自己的 server / url / env 即可：
+#
+# [mcp_servers.pixso]
+# url = "http://127.0.0.1:3667/mcp"
+# bearer_token_env_var = "CORTEX_MCP_PIXSO_TOKEN"
+# # source: secret://pixso-mcp-auth  (resolved at launch by Cortex Host)
+#
+# 启动 Codex：
+#   cortex-agent secrets inject --ref pixso-mcp-auth --env CORTEX_MCP_PIXSO_TOKEN -- codex

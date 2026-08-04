@@ -32,6 +32,82 @@ node .agent/skills/secrets/scripts/index.js list    --gate agent
 node .agent/skills/secrets/scripts/index.js audit   --gate agent
 ```
 
+Public CLI (preferred for operators):
+
+```bash
+cortex-agent secrets store  --ref npm-publish --from-env NPM_TOKEN
+cortex-agent secrets verify --ref npm-publish --provider npm
+cortex-agent secrets list
+cortex-agent secrets audit
+
+# Bridge `secret://<ref>` to arbitrary HTTP clients (Codex, custom MCP
+# servers, Claude Code, etc.).  The secret value never leaves the child
+# process environment.
+cortex-agent secrets resolve      --ref pixso-mcp-auth --server pixso
+cortex-agent secrets render-bearer --server pixso \
+                                   --url http://127.0.0.1:3667/mcp \
+                                   --ref  pixso-mcp-auth
+cortex-agent secrets inject       --ref pixso-mcp-auth \
+                                   --env CORTEX_MCP_PIXSO_TOKEN \
+                                   -- codex
+```
+
+The public `store` command intentionally rejects `--value`; use `--from-env`
+so the credential does not enter shell history.
+
+## Injecting secrets into Codex / MCP servers
+
+`secret://<ref>` alone is a *reference*; it never carries a value.  Any HTTP
+client that needs a bearer token must be told *which env-var* will hold the
+value at launch time.  Three public actions wire this end-to-end:
+
+| Action | When | What it produces |
+|---|---|---|
+| `resolve` | planning time | JSON `{ ref, secret_uri, env_var, backend }` — value never returned |
+| `render-bearer` | config-generation time | A Codex `[mcp_servers.<name>]` TOML block with `bearer_token_env_var = "<ENV>"` (no value) |
+| `inject` | launch time | Resolves the ref, sets the env var, `exec`s the child command.  Value lives only in the child's environment. |
+
+Workflow:
+
+1. Declare the ref in `.agent/config/secrets.yml`:
+
+   ```yaml
+   backend: keychain
+   secrets:
+     - ref: pixso-mcp-auth
+       service: pixso-mcp-auth
+   ```
+
+2. Store the credential once:
+
+   ```bash
+   cortex-agent secrets store --ref pixso-mcp-auth --from-env PIXSO_TOKEN
+   ```
+
+3. Generate the Codex TOML block:
+
+   ```bash
+   cortex-agent secrets render-bearer \
+     --server pixso \
+     --url   http://127.0.0.1:3667/mcp \
+     --ref   pixso-mcp-auth
+   ```
+
+4. Launch Codex with the value in its env:
+
+   ```bash
+   cortex-agent secrets inject \
+     --ref pixso-mcp-auth \
+     --env CORTEX_MCP_PIXSO_TOKEN \
+     -- codex
+   ```
+
+`inject` is fail-closed: the ref must be declared in
+`.agent/config/secrets.yml` (so a typo can't leak an unrelated keychain
+entry), the env-var name must be POSIX-portable, and the child is spawned
+with `shell: false` and `stdio: inherit` so interactive hosts like Codex
+keep their tty.
+
 `get` 默认 `--mask`(只输出 `**********(len=N)` + `secret://<ref>`)。要看值必须 `--no-mask --gate user`,且调用方应**避免**把值打印到对话(框架已用 redact.js 过滤 stdout/stderr,但只防 backend 误打,**不**防业务日志手抄)。
 
 ## Backends
