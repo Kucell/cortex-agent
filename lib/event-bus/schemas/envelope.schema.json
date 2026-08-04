@@ -1,0 +1,42 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://cortex-agent/schemas/event-bus/event-envelope.json",
+  "title": "Framework Event Bus Envelope",
+  "description": "Shared envelope for all event-bus events. The 'payload' field is extended per event type.",
+  "type": "object",
+  "required": ["event_id", "event_name", "event_version", "bus_id", "occurred_at", "producer", "correlation", "payload"],
+  "additionalProperties": false,
+  "properties": {
+    "event_id":      { "type": "string", "pattern": "^eb-evt-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" },
+    "event_name":    { "type": "string", "pattern": "^(subagent_spawned|subagent_progress|subagent_completed|subagent_failed|subagent_cancelled|handoff_ready|decision_resolved|waitpoint_released|custom:.+)$" },
+    "event_version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+$" },
+    "bus_id":        { "type": "string", "pattern": "^[a-z0-9-]+:[a-z0-9-]+$" },
+    "occurred_at":   { "type": "string", "format": "date-time" },
+    "producer":      { "$ref": "#/definitions/producer" },
+    "correlation":   { "$ref": "#/definitions/correlation" },
+    "payload":       { "type": "object" }
+  },
+  "definitions": {
+    "producer": {
+      "type": "object",
+      "required": ["producer_id", "producer_kind"],
+      "additionalProperties": false,
+      "properties": {
+        "producer_id":   { "type": "string" },
+        "producer_kind": { "enum": ["sub_agent", "parent_agent", "cli", "adapter", "scheduler"] },
+        "session_id":    { "type": ["string", "null"] }
+      }
+    },
+    "correlation": {
+      "type": "object",
+      "required": ["mission_id", "subagent_id", "parent_run_id"],
+      "additionalProperties": false,
+      "properties": {
+        "mission_id":     { "type": "string" },
+        "subagent_id":    { "type": "string" },
+        "parent_run_id":  { "type": "string" },
+        "causation_id":   { "type": ["string", "null"] }
+      }
+    }
+  }
+}
