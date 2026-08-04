@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.11.0-rc.1] - 2026-08-04
+
+> **Pre-release**:rc.1 给 AI-Brain 内部 dogfooding 试用,**不建议生产使用**。
+> **Mission**:M-002(Phase 2 - general 模式骨架,5/5 milestone done)。详见 `docs/releases/v1.11.0-rc.1.md`。
+
+### Added
+
+- **MS-001(general 模式模板抽离)**:`templates/general/.agent/` 6 子目录骨架 + 4 workflow contracts(`/memory recall` / `/memory distill` / `/agent discover` / `/agent invoke`)+ 2 skill + 1 sub-agent + 1 domain + 双语同步。commit `eac3d9a`(merged `518139f`)
+- **MS-002(`cortex-agent memory` CLI + 3 类 schema)**:`lib/memory/` 5 文件子系统,`memory recall` / `memory distill` 子命令,episodic + semantic 类型(procedural 推 v1.12)。72/72 tests pass。commit `1289702`(merged `a465f01`)
+- **MS-003(`cortex-agent agent discover|invoke` CLI + Agent Registry)**:`lib/agents/` 5 文件子系统,静态能力 registry + `agent discover` / `agent invoke`(plan-only)。77/77 tests pass。commit `a8c0e28`(merged `4f24c83`)
+- **MS-004(4 general workflow + E2E 矩阵)**:`init --mode general` 扩展 + `tests/m002-e2e-matrix.test.js` 7 tests。163/163 total regression pass。commit `5a3d36a`(merged `5d2199b`)
+- **MS-005(RFC v0.4 同步 + release notes final)**:RFC §15 Phase 2 5 行翻 ✅ + 本 release notes final 化。commit `cc10303`(merged `1168710`)
+- **M-013.P0 C2 dispatch dry-run CLI**:governed manual dispatch CLI surface,7 pre-existing fail 修通。commit `f71197f`(merged `1759597`)
+- **FAE-002 spec 阶段**:8 章节 + 16 validation assertions publish。commit `b3d8f53`(merged `105198e`)
+
+### Fixed
+
+- RFC §15 Phase 2 5 个待办全部翻 ✅(M-002 收口)
+- M-013.P0 C2 dispatch 7 个 pre-existing test fail 修通
+
+### Notes
+
+- **general 模式 opt-in / 暂不推荐生产**;通过 `cortex-agent init --mode general` 显式选择,默认行为不变
+- **shadow 双跑路径**:`templates/{zh,en}/` 老项目零变化
+- **零依赖**:`templates/general/` 抽离无 npm install
+- **Backward Compatibility**:`cortex-agent init --mode code` 行为与 v1.10.0-rc.1 完全一致;现有 v1.10.x 项目 `cortex-agent update` 升级零影响
+
+
 ## [1.10.0-rc.1] - 2026-08-01
 
 > **Pre-release**:rc.1 给 AI-Brain 内部 dogfooding 试用,**不建议生产使用**。
