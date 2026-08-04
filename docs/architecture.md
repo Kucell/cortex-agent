@@ -454,7 +454,7 @@ T-C01A -> T-C02 -> T-C03/T-C04 -> T-C05/T-C06 -> T-C07/T-C08 -> T-C09/T-C10
 
 Agent Runtime Interoperability 把 Codex、Claude Code、Cursor 与 Pi 作为能力不同的执行宿主接入同一套 Cortex 治理控制面。任务描述仍是事实来源；调度只消费版本化的执行需求、宿主能力快照、治理决策、Readiness 与 ownership/lease，不按产品名称猜测能力。
 
-详细设计见 [Agent Runtime Interoperability 提案](../.agent/plans/proposals/projects/agent-runtime-interoperability/index.md)。
+详细设计见 [Agent Runtime Interoperability 提案](../.agent/plans/proposals/projects/agent-runtime-interoperability/index.md)。ARI P-005（MiniMax CLI Governed-Tool Adapter）作为该项目的第 5 号子提案，是首个面向第三方工具能力提供者（governed-tool adapter）的实现；它复用了 P-001 capability 契约、P-006 Operation/Authorization/Readiness owner、capability-aware-dispatch + tool-gate + boundary-event + coordination lease 等既有 owner，safe-probe 白名单严格限制为 `mmx --version` / `mmx --help` / `mmx <resource> --help`，`auth_state` 固定为 `unknown`（`ready`/`blocked` 需另获授权）。
 
 ```mermaid
 flowchart LR
@@ -485,6 +485,22 @@ Pi/Cursor adapter 和 P-006 Operation/Authorization/Readiness owner 已实现。
 Mission M-010 已使用真实一次性 Pi 进程完成 receipt、checkpoint 与 handoff
 验证；Codex 第二宿主仅记录安全可达探测，不伪造 authenticated execution
 receipt。
+
+Mission M-011（ARI P-005 MiniMax CLI governed-tool adapter）已完成 frozen
+SHA `f377943b…4587d` 下的 governed-tool gateway + capability snapshot +
+Skill discovery + async job contract + sensitive-value scan；miniMax-cli
+governed-tool adapter 服从 frozen `auth_state="unknown"` 与三家族
+allow-list（`mmx --version` / `mmx --help` / `mmx <resource> --help`）。
+
+Mission M-013（FAE-002/003/004/007）交付 public ownership lease CLI/API
+（`cortex-agent lease acquire|renew|release|status|recover`）+ read-only
+dispatch-state query（`cortex-agent query dispatch-state|triggers|dispatch-plan`）
++ dispatch dry-run（`cortex-agent dispatch dry-run <task-id>`）+ explicit
+manual dispatch（`cortex-agent dispatch <task-id> --idempotency-key --host
+--gate`）。M-013 重用 M-008 LeaseManager、M-010 ARI P-006 owner、M-009
+capability-aware dispatch、boundary-event 与 notification host，不引入新
+状态机；自动 dispatch / daemon / trigger 仍默认关闭。Launch governed-agent
+workflow 的 1.8.0 兼容性 fallback（“未提供 public acquire”）已退役。
 
 Operation journal 是权威历史，资源文件是可恢复投影。创建 Operation 使用
 原子 create-if-absent；相同 ID 绑定不同 plan、actor、target 或 revision
