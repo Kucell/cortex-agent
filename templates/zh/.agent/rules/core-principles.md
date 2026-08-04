@@ -10,3 +10,4 @@
 8.  **计划驱动**: 所有任务都应以 `.agent/plans/` 中的计划为指导。
 9.  **显式维护**: 当新增指令具有通用性时，优先存入全局配置 `~/.agent/`；当涉及项目特定业务或私有逻辑时，必须存入本地 `.agent/` 目录。使用 `/agent-update` 维护这些配置。
 10. **单一真源边界**: `.agent/` 是 Cortex Agent 唯一维护源。`.agents/skills/source-command-*` 等外部兼容目录属于生成适配层，不得作为规则、工作流或技能的维护入口。
+11. **适配器真源回归**: `AGENTS.md` 中的 `## Compatibility Adapter Bootstrap` 受管块规定：当宿主从 `.agents/skills/source-command-<command>` 识别出命令后，**任何任务动作之前必须**加载 `.agent/workflows/<command>.md`。如果该真源工作流缺失，必须显式报告“适配器与真源不一致”并停止执行，不得回退到适配器副本。

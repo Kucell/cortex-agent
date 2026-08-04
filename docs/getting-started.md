@@ -87,6 +87,8 @@ npx cortex-agent init --global
 
 `.agent/` 是唯一维护源。若某些工具生成 `.agents/skills/source-command-*` 之类的兼容目录，它们只属于外部发现适配层，不应手工维护；`cortex-agent init/untrack` 会把 `.agents` 视为本地生成目录。
 
+适配器只负责发现命令；识别到 `<command>` 后，**任何任务动作之前必须**加载 `.agent/workflows/<command>.md`。若该真源缺失，必须显式报告“适配器与真源不一致”并停止，不得回退到适配器副本。这条约束由 `AGENTS.md` 中的 `## Compatibility Adapter Bootstrap` 受管块承担，并由 `templates/{zh,en}/.agent/rules/core-principles.md` 第 11 条加锁。`cortex-agent update` 会以 marker-based 语义合并方式把该块补齐或刷新；运行期诊断示例见 [platform-integration.md](./platform-integration.md#适配器与真源不一致的诊断示例)。
+
 ---
 
 ## CLI 命令参考
