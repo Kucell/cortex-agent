@@ -15,6 +15,7 @@ const {
   untrackAgent,
   linkGlobal,
   doctor,
+  minimaxCliReconcile,
   runs,
   queues,
   sessions,
@@ -30,6 +31,8 @@ const {
   managementQuery,
   phaseZeroAutomation,
   dashboard,
+  dispatchDryRun,
+  dispatchExecute,
   dev,
   cliHelp,
   printHelp,
@@ -166,6 +169,7 @@ const l1Ctx = options.project
     case "untrack":     untrackAgent(ctx); break;
     case "link-global": linkGlobal(ctx); break;
     case "doctor":      await doctor(ctx); break;
+    case "reconcile":   minimaxCliReconcile(ctx); break;
     case "runs":        runs(ctx); break;
     case "queues":      queues(ctx); break;
     case "sessions":    sessions(ctx); break;
@@ -178,10 +182,21 @@ const l1Ctx = options.project
     case "notification": await notification(ctx); break;
     case "mcp":         await mcp(ctx); break;
     case "query":       managementQuery(ctx); break;
-    case "dispatch":
+    case "dispatch": {
+      // FAE-003 dispatch dry-run is implemented (read-only);
+      // FAE-004 dispatch <task-id> ... explicit manual dispatch is implemented (composes existing owners);
+      // dispatch execute / daemon / trigger remain Phase 0 stubs.
+      if (ctx.args[1] === "dry-run") { dispatchDryRun(ctx); break; }
+      if (ctx.args[1] && ctx.args[1] !== "execute") {
+        // Treat as explicit manual dispatch: cortex-agent dispatch <task-id> --idempotency-key ... --host ... --gate ...
+        dispatchExecute(ctx); break;
+      }
+      phaseZeroAutomation(ctx); break;
+    }
     case "daemon":
     case "trigger":     phaseZeroAutomation(ctx); break;
     case "dashboard":   dashboard(ctx); break;
+    case "lease":       lease(ctx); break;
     case "team":        await teamPack(ctx); break;
     case "secrets":     secrets(l1Ctx); break;
     case "agent":       agent(ctx); break;
