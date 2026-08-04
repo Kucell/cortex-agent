@@ -7,6 +7,58 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.9.3] - 2026-08-04
+
+### Added
+
+- **`cortex-agent secrets resolve` / `render-bearer` / `inject` 公共 action**：
+  把 `secret://<ref>` 间接引用真正桥接到任意 HTTP 客户端（Codex、Claude
+  Code、自定义 MCP server），填补"有 secret 抽象但没法注入第三方"的关键
+  缺口。三个 action 各司其职：
+  - `resolve --ref <r> --server <s>`：规划期查询，返回 `{ ref, secret_uri,
+    env_var, backend }`，**不返回值**。
+  - `render-bearer --server <s> --url <u> --ref <r> [--auth bearer_secret|none]`：
+    生成 Codex `[mcp_servers.<s>]` TOML 块，只写 `bearer_token_env_var`
+    名字，**不写值**。`--auth` 只接受白名单值，未知值 fail-closed，
+    杜绝悄悄降级成无 auth。
+  - `inject --ref <r> --env <E> -- <cmd...>`：启动期执行，作为 Cortex
+    Host 入口。从 Keychain 取值 → 写入子进程 env → `child_process.spawn`
+    启动子命令（**异步**，保留 tty）。子命令收到的是 env 里的真实
+    token，CLI 的 stdout 永远不出现明文。
+- `templates/{zh,en}/integrations/codex/.codex/config.toml`：模板里补
+  注释块展示 `mcp_servers.<name>` + `bearer_token_env_var` 正确用法，
+  引导新项目直接抄。
+- `templates/{en}/.agent/skills/secrets/SKILL.md` 与项目内
+  `.agent/skills/secrets/SKILL.md`：新增 "Injecting secrets into Codex /
+  MCP servers" 章节，给出端到端 workflow（声明 ref → store →
+  render-bearer → inject）。
+- `tests/secrets-cli-mcp.test.js`：12 个新测试覆盖三 action 的全部
+  fail-closed 路径 + "响应里绝不出现明文"的硬断言。
+
+### Changed
+
+- `lib/secrets-cli.js`：`runSecrets` 与 `secretsCommand` 改为
+  **async**（`Promise`），原因是 `inject` 必须用 `child_process.spawn`
+  异步起子进程（保留 tty），不能用 `spawnSync`。`bin/cli.js` 的
+  `secrets` 分支同步加 `await`，现有 4 个 `secrets-cli.test.js` 测试
+  同步改 `async/await`。
+- `lib/cli-contract.js`：`secrets` 命令描述更新为
+  `secrets <store|verify|list|audit|resolve|render-bearer|inject>`，新增
+  `--server` / `--url` / `--auth` / `--env` 四个公共选项文档。
+
+### Security
+
+- `inject` 三道闸门：
+  1. `--ref` 必须在 `.agent/config/secrets.yml` 声明（打错 ref 不会泄露
+     无关 keychain 项）；
+  2. `--env` 必须匹配 `^[A-Z_][A-Z0-9_]{0,127}$`，杜绝 shell 元字符；
+  3. 子进程 `shell: false` + 显式 argv + `stdio: inherit`，无字符串拼接过
+     shell。
+- `render-bearer` 拒绝 `--auth` 白名单以外的值，`oauth` 现在直接报
+  `unsupported_auth` 而不允许悄悄降级成无 auth。
+- JSON 响应 envelope 永远不含明文 token（已被 12 个新测试里的
+  `JSON.stringify(response).includes(value)` 锁死）。
+
 ## [1.9.0] - 2026-07-31
 
 ### Added
