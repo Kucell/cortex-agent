@@ -80,6 +80,15 @@ function makeFakeClaude() {
   return { dir, file };
 }
 
+// M-003 MS-004: generic fake CLI binary (body is supplied by the caller).
+function makeFakeCli(body) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "m003-ms004-fake-"));
+  const file = path.join(dir, "fake-cli.js");
+  fs.writeFileSync(file, body, "utf8");
+  fs.chmodSync(file, 0o755);
+  return { dir, file };
+}
+
 // ─── AC #10: agent adapter list (real CLI) ───────────────────────────────────
 
 test("m003-cli: agent adapter list (real CLI) shows registered adapters", () => {
@@ -345,4 +354,198 @@ test("m003-cli: parseArgs extracts --timeout, --run-id, --capability", () => {
   assert.equal(r.timeout, 60);
   assert.equal(r.runId, "R-x");
   assert.equal(r._capabilityFlag, "code_review");
+});
+
+// ─── M-003 MS-004: parseArgs for 3-protocol flags ─────────────────────────
+
+test("m003-cli: parseArgs extracts --protocol http|cli|file + protocol-specific flags", () => {
+  const { parseArgs } = require("../lib/agents/m003-cli");
+  // http
+  const r1 = parseArgs([
+    "dispatch-execute", "X", "task",
+    "--protocol", "http", "--url", "http://localhost:8080/invoke",
+  ]);
+  assert.equal(r1.protocol, "http");
+  assert.equal(r1.url, "http://localhost:8080/invoke");
+  // cli
+  const r2 = parseArgs([
+    "dispatch-execute", "X", "task",
+    "--protocol=cli", "--bin", "/path/to/bin", "--arg", "--json", "--arg", "run",
+  ]);
+  assert.equal(r2.protocol, "cli");
+  assert.equal(r2.bin, "/path/to/bin");
+  assert.deepEqual(r2.args, ["--json", "run"]);
+  // file
+  const r3 = parseArgs([
+    "dispatch-execute", "X", "task",
+    "--protocol", "file", "--config-path", "cfg.json", "--output-path", "out.json",
+  ]);
+  assert.equal(r3.protocol, "file");
+  assert.equal(r3.configPath, "cfg.json");
+  assert.equal(r3.outputPath, "out.json");
+});
+
+test("m003-cli: parseArgs rejects invalid --protocol values (silently ignored)", () => {
+  const { parseArgs } = require("../lib/agents/m003-cli");
+  // Per FAE-001 permissive parsing, unknown values are silently dropped;
+  // the protocol is validated in runDispatchExecuteProtocol instead.
+  const r = parseArgs(["dispatch-execute", "X", "task", "--protocol", "websocket"]);
+  assert.equal(r.protocol, null);
+});
+
+// ─── M-003 MS-004: 3-protocol e2e (real CLI) ──────────────────────────────
+//
+// AC #11: real dispatch 端到端 demo: `cortex-agent agent dispatch-execute
+// <agent_id> --protocol {http|cli|file} --payload {...}` 真实可调
+
+test("m003-cli: agent dispatch-execute --protocol cli end-to-end (real CLI, fake binary)", () => {
+  const root = mkProject();
+  const fake = makeFakeCli(
+    `'use strict';
+process.stdin.on("data", () => {});
+process.stdin.on("end", () => {
+  process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: 1, result: { text: "from CLI protocol" } }));
+  process.exit(0);
+});`,
+  );
+  try {
+    seedAgent(root, "Worker-A-MS004-cli", {
+      external: { adapter_type: "claude-code", config_ref: "cfg", credential_ref: "sec" },
+    });
+    const r = spawnSync("node", [
+      binCli, "agent", "dispatch-execute",
+      "Worker-A-MS004-cli", "review via cli",
+      "--project", root, "--output", "json", "--timeout", "30",
+      "--protocol", "cli", "--bin", process.execPath, "--arg", fake.file,
+    ], { encoding: "utf8" });
+    assert.equal(r.status, 0, `stderr: ${r.stderr}\nstdout: ${r.stdout}`);
+    const json = JSON.parse(r.stdout);
+    assert.equal(json.status, "ok");
+    assert.equal(json.protocol, "cli");
+    assert.equal(json.adapter_type, "claude-code");
+    assert.equal(json.agent_id, "Worker-A-MS004-cli");
+    assert.equal(json.dispatcher, "m003-cli (protocol.cli)");
+    assert.match(JSON.stringify(json.result), /from CLI protocol/);
+    // Journal artifacts
+    const runDir = path.join(root, ".agent-runtime", "dispatch", json.runId);
+    assert.ok(fs.existsSync(path.join(runDir, "request.json")));
+    assert.ok(fs.existsSync(path.join(runDir, "result.json")));
+    assert.ok(fs.existsSync(path.join(runDir, "rollback.json")));
+    const req = JSON.parse(fs.readFileSync(path.join(runDir, "request.json"), "utf8"));
+    assert.equal(req.protocol, "cli");
+    assert.equal(req.cli.bin, process.execPath);
+  } finally { rmProject(root); rmProject(fake.dir); }
+});
+
+test("m003-cli: agent dispatch-execute --protocol file end-to-end (real CLI, real config)", () => {
+  const root = mkProject();
+  const cfgPath = path.join(root, "task-cfg.json");
+  const outPath = path.join(root, "task-out.json");
+  fs.writeFileSync(cfgPath, JSON.stringify({ task: "x", notes: "from file protocol" }), "utf8");
+  try {
+    seedAgent(root, "Worker-A-MS004-file", {
+      external: { adapter_type: "claude-code", config_ref: "cfg", credential_ref: "sec" },
+    });
+    const r = spawnSync("node", [
+      binCli, "agent", "dispatch-execute",
+      "Worker-A-MS004-file", "review via file",
+      "--project", root, "--output", "json", "--timeout", "30",
+      "--protocol", "file", "--config-path", cfgPath, "--output-path", outPath,
+    ], { encoding: "utf8" });
+    assert.equal(r.status, 0, `stderr: ${r.stderr}\nstdout: ${r.stdout}`);
+    const json = JSON.parse(r.stdout);
+    assert.equal(json.status, "ok");
+    assert.equal(json.protocol, "file");
+    assert.equal(json.agent_id, "Worker-A-MS004-file");
+    assert.equal(json.dispatcher, "m003-cli (protocol.file)");
+    // The output file should have been written
+    assert.ok(fs.existsSync(outPath), "file protocol output should be written");
+    const written = JSON.parse(fs.readFileSync(outPath, "utf8"));
+    assert.equal(written.ok, true);
+    assert.equal(written.protocol, "file");
+  } finally { rmProject(root); }
+});
+
+test("m003-cli: agent dispatch-execute --protocol http end-to-end (real CLI, in-process HTTP server)", () => {
+  const root = mkProject();
+  // In-process HTTP server mimicking an MCP-style endpoint.
+  const httpServer = require("node:http");
+  const server = httpServer.createServer((req, res) => {
+    let body = "";
+    req.on("data", (c) => { body += c.toString(); });
+    req.on("end", () => {
+      res.statusCode = 200;
+      res.setHeader("Content-Type", "application/json");
+      res.end(JSON.stringify({ ok: true, received: body, adapter: "claude-code" }));
+    });
+  });
+  let port = 0;
+  // Listen synchronously using a one-shot callback to capture the port.
+  const started = new Promise((resolve) => {
+    server.listen(0, "127.0.0.1", () => {
+      port = server.address().port;
+      resolve();
+    });
+  });
+  return started.then(() => new Promise((resolve) => {
+    try {
+      seedAgent(root, "Worker-A-MS004-http", {
+        external: { adapter_type: "claude-code", config_ref: "cfg", credential_ref: "sec" },
+      });
+      const r = spawnSync("node", [
+        binCli, "agent", "dispatch-execute",
+        "Worker-A-MS004-http", "review via http",
+        "--project", root, "--output", "json", "--timeout", "10",
+        "--protocol", "http", "--url", `http://127.0.0.1:${port}/claude-code/invoke`,
+      ], { encoding: "utf8" });
+      assert.equal(r.status, 0, `stderr: ${r.stderr}\nstdout: ${r.stdout}`);
+      const json = JSON.parse(r.stdout);
+      assert.equal(json.status, "ok");
+      assert.equal(json.protocol, "http");
+      assert.equal(json.agent_id, "Worker-A-MS004-http");
+      assert.equal(json.dispatcher, "m003-cli (protocol.http)");
+    } finally {
+      server.close();
+      rmProject(root);
+      resolve();
+    }
+  }));
+});
+
+test("m003-cli: agent dispatch-execute --protocol file missing --output-path returns exit 2", () => {
+  const root = mkProject();
+  const cfgPath = path.join(root, "task-cfg.json");
+  fs.writeFileSync(cfgPath, "{}", "utf8");
+  try {
+    seedAgent(root, "Worker-A-MS004-bad", {
+      external: { adapter_type: "claude-code", config_ref: "cfg", credential_ref: "sec" },
+    });
+    const r = spawnSync("node", [
+      binCli, "agent", "dispatch-execute",
+      "Worker-A-MS004-bad", "x",
+      "--project", root, "--output", "json",
+      "--protocol", "file", "--config-path", cfgPath,
+    ], { encoding: "utf8" });
+    assert.equal(r.status, 2);
+    const json = JSON.parse(r.stdout);
+    assert.equal(json.error.code, "ERR_FILE_PROTOCOL");
+  } finally { rmProject(root); }
+});
+
+// ─── M-003 MS-004: §6.2 fix — accept minimax adapter_type ─────────────────
+
+test("m003-cli: §6.2 fix — agent entry with adapter_type 'minimax' is accepted (additive)", () => {
+  // M-002's strict VALID_ADAPTER_TYPES doesn't include "minimax"; the §6.2
+  // fix adds it via registry-adapter-types.js (additive). This test verifies
+  // the additive validator accepts minimax without throwing.
+  const { validateAdapterTypeExt } = require("../lib/agents/registry-adapter-types");
+  // Should NOT throw for known types
+  assert.doesNotThrow(() => validateAdapterTypeExt("minimax"));
+  assert.doesNotThrow(() => validateAdapterTypeExt("claude-code"));
+  assert.doesNotThrow(() => validateAdapterTypeExt("custom"));
+  // Should throw for unknown types
+  assert.throws(
+    () => validateAdapterTypeExt("totally-made-up"),
+    (err) => err.code === "ERR_INVALID_ADAPTER_TYPE",
+  );
 });

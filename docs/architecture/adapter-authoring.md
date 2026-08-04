@@ -579,7 +579,292 @@ extend with:
 
 ---
 
-## 9. References
+## 9. Register pattern for 3rd-party adapters (M-003 MS-004 update, §6.1)
+
+> **Audience**: 3rd-party adapter authors integrating their runtime with
+> cortex-agent. Eric 拍板 2026-08-04 18:13 (per `.agent/missions/M-003/handoffs/
+> 20260804-183000-deviations-decided.md` §1): **3rd-party adapters MUST
+> explicitly `register()` themselves**. The framework no longer auto-registers
+> built-in adapters (e.g. `minimax`); this matches the original M-003 MS-001
+> framework philosophy (registry is dynamic, not static).
+>
+> **What this means in practice**: the moment you finish implementing your
+> 5-method adapter, you need to call `register("your-vendor", YourAdapter)`
+> somewhere in your project init code (or as a side-effect import). Until you
+> do, `cortex-agent agent adapter list` will NOT show your adapter, and any
+> `agent dispatch-execute` with `external.adapter_type = "your-vendor"` will
+> fail with `ERR_ADAPTER_NOT_REGISTERED`.
+
+### 9.1 The 3 registration patterns (recap + 3rd-party guidance)
+
+There are 3 supported patterns. Pick the one that fits your distribution model.
+
+#### 9.1.1 Side-effect import (easiest, for project-local adapters)
+
+If your adapter lives in the same project as cortex-agent (e.g. an internal
+tooling repo), the simplest is to add a side-effect `register()` call at
+the top of your project init script or in a one-line `require`:
+
+```js
+// your-project/init.js
+const { register } = require("cortex-agent/lib/agents/adapters");
+const { YourAdapter } = require("./adapters/your-vendor");
+register("your-vendor", YourAdapter);
+```
+
+Then ensure `init.js` is loaded before any `agent dispatch-execute` call
+(e.g. via a `predev` hook, a project-level `cortex.config.js`, or by
+importing it from your CI / CLI entry point).
+
+#### 9.1.2 Lazy registration via a separate npm package (most portable)
+
+If you ship your adapter as a separate npm package, expose a `register()`
+function so the user opts in:
+
+```js
+// your-vendor-cortex-adapter/index.js
+const { register } = require("cortex-agent/lib/agents/adapters");
+const { YourAdapter } = require("./your-adapter");
+module.exports = {
+  register: () => register("your-vendor", YourAdapter),
+};
+```
+
+```js
+// user's project init
+const yourAdapter = require("your-vendor-cortex-adapter");
+yourAdapter.register();
+```
+
+The explicit `register()` call is the **canonical 3rd-party pattern** — it
+makes the integration discoverable (grep for `register("your-vendor"` to find
+all consumers) and avoids hidden side-effects.
+
+#### 9.1.3 Configuration via `entry_point` (declarative, framework-friendly)
+
+For adapter packs that ship multiple adapters, accept the type list as a
+config option and register all in one call:
+
+```js
+// your-adapter-pack/index.js
+const { register } = require("cortex-agent/lib/agents/adapters");
+const { AdapterA } = require("./adapter-a");
+const { AdapterB } = require("./adapter-b");
+module.exports = function registerPack() {
+  register("your-vendor-a", AdapterA);
+  register("your-vendor-b", AdapterB);
+};
+```
+
+```js
+// user's project init
+require("your-adapter-pack")();
+```
+
+This pattern is recommended for adapter packs (3+ adapters under one namespace).
+
+### 9.2 E2E test pattern (FAE-001 + M-003 MS-001 spec)
+
+Every adapter should ship a 2-tier test suite:
+
+1. **Unit tests** — exercise the 5 methods in isolation, with mocked
+   transports. The framework helpers (`writeDispatchArtifact`,
+   `ensureDispatchDir`, `generateRunId`) all live in `lib/agents/adapters/base.js`
+   and are safe to call from tests.
+
+2. **E2E tests** — exercise the real adapter path: read an agent entry
+   from `.agent/agents/<id>.json`, resolve the adapter, call `invoke()`,
+   verify the journal at `.agent-runtime/dispatch/<runId>/`. The
+   `tests/agent-m003-cli.test.js` file is the canonical reference for
+   this pattern; see also `tests/agent-adapter-claude-code.test.js` for
+   the fake-binary injection pattern.
+
+For your E2E test, follow this skeleton:
+
+```js
+// tests/agent-adapter-your-vendor.test.js
+const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
+const test = require("node:test");
+const { spawn } = require("node:child_process");
+
+const { YourAdapter } = require("../lib/agents/adapters/your-vendor");
+const { register, reset, get } = require("../lib/agents/adapters");
+
+// 1. Install a fake binary (subprocess) that simulates your vendor's response.
+function installFakeBinary() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fake-your-vendor-"));
+  const file = path.join(dir, "fake.js");
+  fs.writeFileSync(file, `'use strict';
+// Drain stdin so the parent doesn't block.
+process.stdin.on("data", () => {});
+process.stdin.on("end", () => {
+  process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: 1, result: { text: "hello" } }));
+  process.exit(0);
+});`);
+  fs.chmodSync(file, 0o755);
+  return { dir, file };
+}
+
+test("agent-adapter-your-vendor: invoke writes journal + returns ok", async () => {
+  reset(); // start from a known seed
+  const fake = installFakeBinary();
+  try {
+    // 2. Register the adapter (3rd-party pattern).
+    register("your-vendor", YourAdapter);
+    const adapter = get("your-vendor");
+    assert.ok(adapter, "adapter should be registered");
+
+    // 3. Set up a real .agent/agents/<id>.json entry.
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "test-your-vendor-"));
+    fs.mkdirSync(path.join(root, ".agent", "agents"), { recursive: true });
+    fs.writeFileSync(
+      path.join(root, ".agent", "agents", "Test-Agent.json"),
+      JSON.stringify({
+        schema_version: 1,
+        agent_id: "Test-Agent",
+        role: "external",
+        model: "your-model",
+        started_at: "2026-08-04T00:00:00.000Z",
+        status: "running",
+        capabilities: ["text_generation"],
+        external: {
+          adapter_type: "your-vendor",
+          config_ref: "test-config",
+          credential_ref: "test-cred",
+        },
+      }),
+    );
+
+    // 4. Invoke with the fake binary injected.
+    const result = await adapter.invoke(
+      { task: "test", input: null },
+      { projectRoot: root, runId: "R-test", timeout: 5, bin: process.execPath, shell: false },
+    );
+    assert.equal(result.status, "ok");
+    assert.ok(result.result);
+
+    // 5. Verify the journal.
+    const journal = path.join(root, ".agent-runtime", "dispatch", "R-test");
+    assert.ok(fs.existsSync(path.join(journal, "request.json")));
+    assert.ok(fs.existsSync(path.join(journal, "result.json")));
+    assert.ok(fs.existsSync(path.join(journal, "rollback.json")));
+
+    // Cleanup
+    fs.rmSync(root, { recursive: true, force: true });
+  } finally {
+    fs.rmSync(fake.dir, { recursive: true, force: true });
+  }
+});
+```
+
+Two non-obvious tips:
+- **Use `process.execPath` + `shell: false`** to run the fake binary. This
+  avoids relying on a real CLI being on `PATH` and works in any Node
+  environment.
+- **Drain `process.stdin` in the fake binary** (or `end()` it after
+  reading). Otherwise the parent process's `child.stdin.end()` doesn't
+  actually close the pipe, and the fake hangs forever.
+
+### 9.3 Common pitfalls (3rd-party-specific)
+
+1. **Auto-registering via a barrel `require()`** — don't add a side-effect
+   `register()` call to `lib/agents/adapters/index.js`. M-002's strict
+   "no modifications to MS-001 ship" constraint means that file is frozen;
+   any attempt to add a `register("your-vendor", ...)` line will fail the
+   merge. Use one of the 3 patterns in §9.1 instead.
+
+2. **Forgetting to call `register()`** — your adapter won't show up in
+   `cortex-agent agent adapter list` and dispatch will fail with
+   `ERR_ADAPTER_NOT_REGISTERED`. Symptom: tests pass (they call `register`
+   directly) but the CLI fails. Always test the CLI path end-to-end, not
+   just the unit tests.
+
+3. **Subprocess `shell: true` with user input** — never pass unsanitized
+   task descriptions or input as CLI args when `shell: true` is set. The
+   reference impl serializes payloads to JSON on stdin, not argv. Mirror
+   that pattern (see §6.1 Echo + §6.2 HTTP examples for the safe shape).
+
+4. **Timeout not cleared in test** — if your invoke() uses
+   `Promise.race` for timeout, ALWAYS `clearTimeout` in both the
+   winning and losing paths. Otherwise the test runner waits for the
+   pending `setTimeout` to fire (up to `timeout` seconds) before exiting,
+   giving false-positive slowness or even hangs. The `claude-code.js`
+   reference has a worked example (see `_trackSubprocess` + the
+   `clearTimeout` calls in the `Promise.race` block).
+
+5. **Not using the journal helpers** — `writeDispatchArtifact` is atomic
+   (`.tmp-<pid>-<ts>` + `rename`). If you write journal files directly
+   without the helper, a crash mid-write leaves a partial file. The
+   framework's `BaseAdapter.report()` will then throw on the corrupt JSON,
+   masking the real error. Use the helpers.
+
+6. **Wrong journal path** — never write to `.agent/agents/`, `.agent/runs/`,
+   or `.agent-runtime/coordination/`. Those are owned by M-002 / M-008.
+   Your adapter writes to `.agent-runtime/dispatch/<runId>/` ONLY. This
+   path boundary is enforced by `_writeErrorAndRollback` in the framework
+   — if you try to write elsewhere, your tests will fail with
+   `ERR_REQUEST_WRITE_FAILED` or a journal-write error.
+
+7. **JSON-RPC parse assumption** — not every CLI emits plain JSON on
+   stdout. Some emit Content-Length framed output (LSP-style). The
+   reference impl's `_parseJsonRpc` handles 3 shapes (plain JSON + CRLF
+   frame + LF frame); copy or import it from `lib/agents/adapters/claude-code.js`
+   (it's the same function, re-exported from `lib/agents/dispatch-execute.js`
+   as of MS-004 for cross-adapter reuse).
+
+8. **Forgetting to set `process.env` for the subprocess** — when you
+   spawn the vendor CLI, pass `env: { ...process.env, YOUR_TOKEN: ... }`,
+   not just `process.env`. Otherwise the subprocess won't see the
+   credentials you set in the parent. The MS-003 `minimax` adapter
+   demonstrates this with `CORTEX_AGENT_BRIDGE=mavis`.
+
+9. **Tests that depend on a real vendor binary** — never require
+   `<your-vendor>` to be on `PATH` in tests. Use the fake-binary
+   injection pattern (see §9.2). CI environments may not have the
+   vendor installed, and tests should be deterministic.
+
+10. **Adapter state leak between tests** — adapters are singletons in
+    the registry (one instance per type). If your adapter holds per-run
+    state (e.g. a subprocess Map for `cancel()`), use the runId as the
+    key and `delete` the entry on completion. The `claude-code.js`
+    `_trackSubprocess` / `_untrackSubprocess` helpers are the reference
+    pattern.
+
+### 9.4 §6.2 fix: additive adapter types (M-003 minimax + future M-003+)
+
+As of MS-004 (per Eric 拍板 2026-08-04 18:20), the list of valid
+`external.adapter_type` values is extended **additively** via
+`lib/agents/registry-adapter-types.js`:
+
+- `VALID_ADAPTER_TYPES` (M-002 strict, unchanged) — `claude-code`, `cortex`,
+  `codex`, `codey`, `pi`, `custom`.
+- `VALID_ADAPTER_TYPES_EXT` (M-003+ additive) — `minimax`, plus future
+  M-003+ adapters as they ship.
+- `VALID_ADAPTER_TYPES_ALL` (frozen union) — the canonical list for
+  callers that need to accept all known types.
+- `validateAdapterTypeExt(t)` — accepts any union member; throws
+  `ERR_INVALID_ADAPTER_TYPE` (same code as M-002's strict validator) for
+  unknowns.
+
+What this means for 3rd-party adapters:
+- If your `external.adapter_type = "minimax"` (or any future M-003+ type),
+  the dispatch layer accepts it without throwing. (Note: M-002's
+  `writeAgent` validator still uses the strict M-002 list, so writing a
+  `minimax` entry via `cortex-agent agent register` will fail; you must
+  hand-create the entry or use a tool that goes through the additive
+  validator.)
+- The `agent dispatch-execute` CLI dispatcher uses
+  `validateAdapterTypeExt` for the additive acceptance.
+- If you ship a new adapter type, you can add it to
+  `VALID_ADAPTER_TYPES_EXT` (in a future MS-004+ commit) without touching
+  M-002's `lib/agents/registry.js`.
+
+---
+
+## 10. References
 
 - `lib/agents/adapters/base.js` — abstract base class + journal helpers
 - `lib/agents/adapters/claude-code.js` — reference implementation (~400 lines)
