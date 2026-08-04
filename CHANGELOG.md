@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.12.0-rc.1] - 2026-08-04
+
+> **Pre-release**:rc.1 给 AI-Brain 内部 dogfooding 试用,**不建议生产使用**。
+> **Mission**:M-003(Phase 3 - 5 adapters + 1 MCP bridge,5/5 milestone done)+ T-OD-001(Open Design 集成,3/3 milestone done)。详见 `docs/releases/v1.12.0-rc.1.md` 与 `.agent/tasks/T-OD-001.json`。
+> **RFC**:§17.4 Phase 3 ship 状态已 final 化(`63f2f08`)。
+
+### Added
+
+- **T-OD-001 MS-001(templates + DESIGN.md starter)**:7-section starter(`templates/{zh,en}/.agent/DESIGN.md`,byte-identical 内容)+ `templates/_shared/.agent/design-systems/README.md` + 架构文档 `docs/architecture/design-system.md`(319 lines,bilingual)。commit `97a5ff3`
+- **T-OD-001 MS-002(lib/design/* + 87 tests)**:5 lib 模块(registry / fetch / lockfile / license / resolve,782 LOC)+ 5 test 文件(1262 LOC,87 tests,0 fail)。Content-addressed SHA-256 校验防 MITM;4-level cascade 解析;license fail-closed + brand category 警示。commit `227987c`
+- **T-OD-001 MS-003(CLI + SKILL + 24 tests)**:`cortex-agent design {list,install,upgrade,remove,show,resolved,refresh-catalog}` 7 子命令(零 npm dep),exit codes 0/1/2/3/4,`--yes` 不绕过 license fail-closed(只有 `--force` 能)+ `templates/_shared/.agent/skills/design-system/SKILL.md` agent 引导 + `lib/cli-contract.js` + design entry 注入。bin/cli.js 最小改动(1 case + 1 require)。commit `ba6b1bb`
+- **M-003 5 adapters + 1 MCP bridge**(承接 v1.12.0 主体,先前 commit):Claude Code / Codex / Codey / Pi / MiniMax CLI adapters + MCP stdio bridge 双向 + dispatch 三协议(HTTP/CLI/file)+ 5-adapter × 3-protocol E2E matrix 32 tests
+- **Volta pin Node 24.19.0**:`package.json` 加 `"volta": { "node": "24.19.0" }`,便于 AI-Workbench 等下游项目通过 Volta 拉一致 Node 版本
+
+### Notes
+
+- **Open Design 集成 12/12 VCs 全 PASS**:templates byte-identical / 6 catalog/manifest/hash VCs / cascade resolved / upgrade hash delta / MITM 防护 / bin/cli.js 零 npm dep / 完整回归 125/125 / 架构审计 0 violation
+- **零 npm dep 全程维持**:lib/design/* 5 模块纯 Node.js 内置(`fs` / `path` / `https` / `crypto` / `os`);bin/cli.js 只加 1 case + 1 require
+- **纯加法升级**:`lib/commands.js` 2574 行主文件 untouched,所有新功能通过 `lib/{memory,design}/cli.js` 子模块接入
+- **Backward Compatibility**:`cortex-agent design` 是新顶层命令,不影响 `init` / `update` / `upgrade` / `agent` / `memory` / `dispatch` / `team` / `secrets` 等已有命令
+- **AI-Brain 实战路径**:`volta pin node@24.19.0` + `npm link cortex-agent` 在 AI-Workbench 等项目里使用,v1.12.0-rc.1 锁定为实战基线
+- **Phase 2 后续**(本 rc 不含):`tokens.css` 解析、MCP server 双向桥接、DESIGN.md 强校验、design fork、跟 prd-visualization OpenPencil 联动
+
 ## [1.11.0-rc.1] - 2026-08-04
 
 > **Pre-release**:rc.1 给 AI-Brain 内部 dogfooding 试用,**不建议生产使用**。
