@@ -203,8 +203,10 @@ test("close returns when the child already exited by signal", async () => {
 });
 
 test("notification host enables real Codex capabilities only with an explicit thread", async () => {
-  const deferred = resolveAdapter("codex", { threadId: null, useEnvironment: false });
-  assert.equal(deferred.descriptor.capabilities.threadWakeup, false);
+  assert.throws(
+    () => resolveAdapter("codex", { threadId: null, useEnvironment: false }),
+    { code: "ERR_CODEX_THREAD_ID_REQUIRED" },
+  );
 
   const transcript = [];
   const live = resolveAdapter("codex", {

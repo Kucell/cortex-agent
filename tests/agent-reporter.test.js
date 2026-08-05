@@ -853,6 +853,7 @@ test("ready_for_review with evidence is accepted", () => {
     });
     assert.equal(result.ok, true);
     assert.equal(result.event.eventType, "task.ready_for_review");
+    assert.equal(result.event.notification.policy, "coordinator_notify");
     assert.equal(result.task.state, STATES.READY_FOR_REVIEW);
   } finally {
     service.close();

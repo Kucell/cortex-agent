@@ -179,6 +179,8 @@ test("runtime runOnce delegates to the pump and records health without watching"
   assert.equal(status.cycles, 1);
   assert.deepEqual(status.lastReport, report);
   assert.equal(status.lastError, null);
+  assert.equal(status.health, "healthy");
+  assert.deepEqual(status.degradedReasons, []);
   fixture.journal.close();
 });
 
@@ -342,6 +344,8 @@ test("a delivery that throws does not kill the watch loop", async () => {
   await watching;
 
   assert.ok(runtime.status().cycles >= 3, "loop survives adapter failures");
+  assert.equal(runtime.status().health, "degraded");
+  assert.deepEqual(runtime.status().degradedReasons, ["ECONNREFUSED"]);
   fixture.journal.close();
 });
 
