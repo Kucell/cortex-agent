@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "session_id": "S-M-006",
+  "project": "cortex-agent",
+  "agent_id": "mission-coordinator",
+  "role": "coordinator",
+  "mode": "code",
+  "status": "running",
+  "phase": "waiting",
+  "activity": "MS-001 PASS; awaiting milestone commit confirmation",
+  "current_run_id": "R-M-006",
+  "current_task_id": null,
+  "current_mission_id": "M-006",
+  "worktree_path": "/Users/xueyq/myworks/cortex-agent",
+  "started_at": "2026-07-23T03:14:14.795Z",
+  "last_heartbeat_at": "2026-07-23T03:36:37.806Z",
+  "updated_at": "2026-07-23T03:36:37.806Z",
+  "updated_by_gate": "mission",
+  "closed_at": null,
+  "archive_path": null
+}

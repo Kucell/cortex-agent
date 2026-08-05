@@ -79,6 +79,10 @@ test("M-005: init creates the supervisor config in both languages", () => {
   for (const language of ["en", "zh"]) {
     const cwd = fs.mkdtempSync(path.join(os.tmpdir(), `cortex-dash-${language}-`));
     try {
+      // Plant a code-mode marker so M-001 MS-003 auto-infer routes to
+      // the code init path (which copies templates/_shared/.agent/config
+      // and hence the supervisor config).
+      fs.writeFileSync(path.join(cwd, "package.json"), "{}");
       execFileSync(process.execPath, [path.join(ROOT, "bin", "cli.js"), "init", "--lang", language, "--platforms", "codex"], {
         cwd,
         stdio: "ignore",
@@ -126,6 +130,9 @@ test("M-005: cortex-agent init preserves the default-disabled supervisor for dow
   // files without overwriting local policy.
   const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-dash-downstream-"));
   try {
+    // Plant a code-mode marker so M-001 MS-003 auto-infer routes to
+    // the code init path (which carries the supervisor baseline).
+    fs.writeFileSync(path.join(cwd, "package.json"), "{}");
     execFileSync(process.execPath, [path.join(ROOT, "bin", "cli.js"), "init", "--lang", "en", "--platforms", "codex"], {
       cwd,
       stdio: "ignore",

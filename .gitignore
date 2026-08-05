@@ -8,3 +8,4 @@ metrics/agent-dashboard.html
 .npmrc
 .env
 .env.local
+.agent-runtime/

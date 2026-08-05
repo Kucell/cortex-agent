@@ -1,0 +1,13 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://cortex-agent/schemas/event-bus/waitpoint_released.json",
+  "title": "waitpoint_released payload",
+  "type": "object",
+  "required": ["waitpoint_id", "release_reason"],
+  "additionalProperties": true,
+  "properties": {
+    "waitpoint_id":       { "type": "string" },
+    "release_reason":     { "type": "string" },
+    "downstream_actions": { "type": "array", "items": { "type": "string" } }
+  }
+}

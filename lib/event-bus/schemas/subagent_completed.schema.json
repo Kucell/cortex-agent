@@ -1,0 +1,15 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://cortex-agent/schemas/event-bus/subagent_completed.json",
+  "title": "subagent_completed payload",
+  "type": "object",
+  "required": ["status", "output_summary"],
+  "additionalProperties": true,
+  "properties": {
+    "status":                  { "enum": ["success", "partial"] },
+    "output_summary":          { "type": "string" },
+    "output_artifact_refs":    { "type": "array", "items": { "type": "string" } },
+    "duration_actual_seconds": { "type": "number", "minimum": 0 },
+    "transcript_ref":          { "type": "string" }
+  }
+}

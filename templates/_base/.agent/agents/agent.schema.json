@@ -1,0 +1,64 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/Kucell/cortex-agent/schemas/agent.schema.json",
+  "title": "Cortex Agent Registry Entry",
+  "description": "Mode-agnostic agent registry entry. Per general-mode-design.md §6.4: registry.yaml + capabilities/ + external/ + credentials/. This schema describes a single agent entry; project-wide registry aggregates a list of these.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "agent_id",
+    "role",
+    "model",
+    "started_at",
+    "status"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "agent_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Stable agent id, e.g. Worker-A-MS001, codex-main, claude-code-user."
+    },
+    "role": {
+      "type": "string",
+      "enum": ["implementer", "coordinator", "reviewer", "researcher", "documenter", "memory-curator", "conversation-curator", "user", "external"]
+    },
+    "model": { "type": "string", "minLength": 1 },
+    "task_id": { "type": ["string", "null"] },
+    "mission_id": { "type": ["string", "null"] },
+    "session_id": { "type": ["string", "null"] },
+    "started_at": { "type": "string", "format": "date-time" },
+    "last_heartbeat": { "type": ["string", "null"], "format": "date-time" },
+    "status": {
+      "type": "string",
+      "enum": ["running", "paused", "completed", "failed", "handed_off", "stale", "expired"]
+    },
+    "owned_files": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "pending_artifacts": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "capabilities": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Capabilities the agent self-declares (e.g. schema_design, javascript, testing, vision, code_review)."
+    },
+    "external": {
+      "type": ["object", "null"],
+      "description": "External agent adapter metadata (v1.11). null for first-party agents.",
+      "properties": {
+        "adapter_type": {
+          "type": "string",
+          "enum": ["claude-code", "cortex", "codex", "codey", "pi", "custom"]
+        },
+        "config_ref": { "type": "string" },
+        "credential_ref": { "type": "string" }
+      },
+      "additionalProperties": false
+    }
+  }
+}

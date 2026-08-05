@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://cortex-agent/schemas/event-bus/subagent_cancelled.json",
+  "title": "subagent_cancelled payload",
+  "type": "object",
+  "required": ["reason"],
+  "additionalProperties": true,
+  "properties": {
+    "reason":       { "type": "string" },
+    "cancelled_by": { "enum": ["user", "parent", "system"] }
+  }
+}
