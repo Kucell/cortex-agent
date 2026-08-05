@@ -47,6 +47,56 @@ test("governed launch requires an assigned task and matching active fenced lease
   } finally { close(ctx); }
 });
 
+test("governed launch requires a configured Codex thread when auto notification is requested", async () => {
+  const ctx = setup();
+  const previous = process.env.CORTEX_CODEX_THREAD_ID;
+  const previousFallback = process.env.CODEX_THREAD_ID;
+  delete process.env.CORTEX_CODEX_THREAD_ID;
+  delete process.env.CODEX_THREAD_ID;
+  try {
+    const result = await executeGovernedLaunch([...args(ctx), "--notify-codex"], {
+      service: ctx.service,
+      projectRoot: ctx.root,
+    });
+    assert.equal(result.ok, false);
+    assert.equal(result.code, "ERR_CODEX_THREAD_ID_REQUIRED");
+    assert.equal(result.exitCode, 4);
+  } finally {
+    if (previous === undefined) delete process.env.CORTEX_CODEX_THREAD_ID;
+    else process.env.CORTEX_CODEX_THREAD_ID = previous;
+    if (previousFallback === undefined) delete process.env.CODEX_THREAD_ID;
+    else process.env.CODEX_THREAD_ID = previousFallback;
+    close(ctx);
+  }
+});
+
+test("governed launch stores Codex notification binding only in private context", async () => {
+  const ctx = setup();
+  try {
+    let privateContext;
+    const result = await executeGovernedLaunch([
+      ...args(ctx),
+      "--notify-codex",
+      "--codex-thread-id", "thread-private-1",
+    ], {
+      service: ctx.service,
+      projectRoot: ctx.root,
+      executor: async (_file, context) => {
+        privateContext = context;
+        return { pid: 47, launchedAt: "2026-08-03T00:00:00.000Z" };
+      },
+    });
+    assert.equal(result.ok, true);
+    assert.deepEqual(privateContext.notificationDelivery, {
+      adapter: "codex",
+      consumer: "governed-coordinator",
+      threadId: "thread-private-1",
+    });
+    assert.equal(JSON.stringify(result).includes("thread-private-1"), false);
+    assert.equal(JSON.stringify(ctx.service.listEvents({ taskId: ctx.taskId })).includes("thread-private-1"), false);
+  } finally { close(ctx); }
+});
+
 test("governed launch releases the CLI writer before publishing acceptance", async () => {
   const ctx = setup();
   let contextFile;
@@ -127,7 +177,7 @@ test("governed launch passes explicit safe args privately without journaling the
     launchArgs.push("--agent-arg", "--print", "--agent-arg", privatePrompt);
     const result = await executeGovernedLaunch(launchArgs, { service: ctx.service, projectRoot: ctx.root });
     assert.equal(result.ok, true);
-    await wait(900);
+    await wait(1500);
     assert.deepEqual(fs.readFileSync(output, "utf8").trim().split("\n"), ["--print", privatePrompt]);
     assert.equal(JSON.stringify(result).includes(privatePrompt), false);
     assert.equal(JSON.stringify(ctx.service.listEvents({ taskId: ctx.taskId })).includes(privatePrompt), false);

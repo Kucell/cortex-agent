@@ -203,11 +203,18 @@ test("adapter failures stop busy-looping at max attempts and remain pending", as
     adapter: { deliver: async () => { throw Object.assign(new Error("offline"), { code: "ECONNREFUSED" }); } },
   });
 
-  assert.equal((await pump.runOnce()).failed, 1);
+  const firstFailure = await pump.runOnce();
+  assert.equal(firstFailure.failed, 1);
+  assert.equal(firstFailure.degraded, true);
+  assert.deepEqual(firstFailure.reasons, ["ECONNREFUSED"]);
   now += 10;
   assert.equal((await pump.runOnce()).failed, 1);
   now += 1000;
-  assert.equal((await pump.runOnce()).deferred, 1);
+  const exhaustedReport = await pump.runOnce();
+  assert.equal(exhaustedReport.deferred, 1);
+  assert.equal(exhaustedReport.degraded, true);
+  assert.equal(exhaustedReport.exhausted, 1);
+  assert.deepEqual(exhaustedReport.reasons, ["ECONNREFUSED"]);
   const key = deliveryKey(event.eventId, "consumer-a", coordinator);
   assert.deepEqual(
     { attempts: cursor.read().pending[key].attempts, exhausted: cursor.read().pending[key].exhausted },

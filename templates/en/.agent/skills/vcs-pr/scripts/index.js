@@ -19,7 +19,7 @@ const { spawnSync } = require("child_process");
 const AGENT_ROOT = path.join(process.cwd(), ".agent");
 
 const BACKENDS = new Set(["gitea", "github", "gitlab"]);
-const GATE_USER_ONLY = new Set(["merge"]);
+const GATE_USER_ONLY = new Set(["update", "merge"]);
 
 function flag(name, argv) {
   const i = argv.indexOf(name);
@@ -201,8 +201,8 @@ function loadBody(opts) {
 async function main() {
   const argv = process.argv.slice(2);
   const [command] = argv;
-  if (!command || !["create", "status", "merge", "list"].includes(command)) {
-    fail("unknown_command", "Usage: vcs-pr create|status|merge|list [...opts]");
+  if (!command || !["create", "update", "status", "merge", "list"].includes(command)) {
+    fail("unknown_command", "Usage: vcs-pr create|update|status|merge|list [...opts]");
   }
   const cfg = loadConfig();
   if (!cfg || !cfg.backend) {
@@ -263,6 +263,29 @@ async function main() {
   if (command === "status") {
     const result = await backend.getStatus({ ...optsBase, pr_number: Number(flag("--pr-number", argv)) });
     emit({ ok: true, action: "status", ...result });
+    return;
+  }
+  if (command === "update") {
+    const bodyFile = flag("--body-file", argv);
+    const body = bodyFile
+      ? fs.readFileSync(path.isAbsolute(bodyFile) ? bodyFile : path.join(process.cwd(), bodyFile), "utf8")
+      : null;
+    const reviewers = (flag("--reviewers", argv) || "")
+      .split(",")
+      .map((value) => value.trim().replace(/^@/, ""))
+      .filter(Boolean);
+    const result = await backend.updatePR({
+      ...optsBase,
+      pr_number: Number(flag("--pr-number", argv)),
+      title: flag("--title", argv),
+      body,
+      reviewers,
+      ready: argv.includes("--ready"),
+      close: argv.includes("--close"),
+      remove_source: argv.includes("--remove-source-branch"),
+      squash: argv.includes("--squash"),
+    });
+    emit({ ok: true, action: "update", ...result });
     return;
   }
   if (command === "merge") {

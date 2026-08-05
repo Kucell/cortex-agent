@@ -60,11 +60,11 @@ function writeContext(runtimeRoot, overrides = {}) {
   return { contextFile, receiptFile, contextDir };
 }
 
-function runMonitor(contextFile, receiptFile) {
+function runMonitor(contextFile, receiptFile, extraEnv = {}) {
   return spawnSync(process.execPath, [MONITOR, contextFile, receiptFile], {
     encoding: "utf8",
     timeout: 5000,
-    env: { ...process.env, CORTEX_LAUNCH_CONTEXT: contextFile },
+    env: { ...process.env, ...extraEnv, CORTEX_LAUNCH_CONTEXT: contextFile },
   });
 }
 
@@ -299,6 +299,80 @@ test("governed child does not overwrite terminal task state", (t) => {
   const receipt = readReceipt(receiptFile);
   assert.equal(taskState.state, STATES.READY_FOR_REVIEW, JSON.stringify(receipt));
   assert.ok(receipt.outcome === "ALREADY_HANDED_OFF", `Expected ALREADY_HANDED_OFF, got ${receipt.outcome}`);
+});
+
+test("governed child automatically wakes the configured Codex thread after ready_for_review", (t) => {
+  const root = makeRuntime();
+  const taskId = "T-AUTO-WAKE";
+  const agentId = "pi-auto-wake";
+  const coordinatorId = "codex-current";
+  const runtimeCoord = path.join(root, ".agent-runtime", "coordination");
+  const { lease, sessionId } = setupAcceptedTask(root, taskId, agentId);
+  t.after(() => closeRuntime(root));
+
+  const service = CoordinationApplicationService.open(runtimeCoord);
+  const agent = { actorId: agentId, kind: "agent", sessionId };
+  service.submit(createEvent({
+    projectId: "monitor-e2e", taskId, correlationId: "CORR-AUTO-WAKE",
+    producer: agent, targets: [{ actorId: coordinatorId, kind: "coordinator" }],
+    eventType: "task.progress", previousState: STATES.ACCEPTED, currentState: STATES.EXECUTING,
+  }), agent);
+  service.submit(createEvent({
+    projectId: "monitor-e2e", taskId, correlationId: "CORR-AUTO-WAKE",
+    producer: agent, targets: [{ actorId: coordinatorId, kind: "coordinator" }],
+    eventType: "task.ready_for_review", previousState: STATES.EXECUTING,
+    currentState: STATES.READY_FOR_REVIEW,
+    evidence: [{ kind: "artifact", ref: "ARTIFACT-AUTO-WAKE" }],
+    notification: { policy: "coordinator_notify", dedupeKey: "ready", ackRequired: true },
+  }), agent);
+  service.close();
+
+  const fakeBin = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-fake-codex-"));
+  const marker = path.join(fakeBin, "wakeup.marker");
+  const fakeCodex = path.join(fakeBin, "codex");
+  fs.writeFileSync(fakeCodex, `#!/usr/bin/env node
+const fs = require("fs");
+const readline = require("readline");
+const rl = readline.createInterface({ input: process.stdin });
+const send = (value) => process.stdout.write(JSON.stringify(value) + "\\n");
+rl.on("line", (line) => {
+  const message = JSON.parse(line);
+  if (message.method === "initialize") send({ id: message.id, result: { userAgent: "fake" } });
+  else if (message.method === "thread/resume") send({ id: message.id, result: { thread: { id: message.params.threadId } } });
+  else if (message.method === "turn/start") {
+    fs.writeFileSync(process.env.CORTEX_TEST_WAKEUP_MARKER, message.params.threadId);
+    send({ id: message.id, result: { turn: { id: "turn-auto", status: "inProgress" } } });
+    send({ method: "turn/completed", params: { threadId: message.params.threadId, turn: { id: "turn-auto", status: "completed" } } });
+  }
+});
+`, { mode: 0o755 });
+  t.after(() => fs.rmSync(fakeBin, { recursive: true, force: true }));
+
+  const { contextFile, receiptFile } = writeContext(root, {
+    taskId,
+    targetAgentId: agentId,
+    sessionId,
+    leaseId: lease.leaseId,
+    fencingToken: lease.fencingToken,
+    coordinatorId,
+    notificationDelivery: {
+      adapter: "codex",
+      consumer: "governed-codex-current",
+      threadId: "thread-auto-wake",
+    },
+    agentCommand: "/usr/bin/true",
+    agentArgs: [],
+    terminalTimeoutMs: 10000,
+  });
+  const result = runMonitor(contextFile, receiptFile, {
+    PATH: `${fakeBin}${path.delimiter}${process.env.PATH}`,
+    CORTEX_TEST_WAKEUP_MARKER: marker,
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(fs.readFileSync(marker, "utf8"), "thread-auto-wake");
+  const receipt = readReceipt(receiptFile);
+  assert.equal(receipt.notificationStatus, "delivered");
+  assert.equal(receipt.notificationDegraded, false);
 });
 
 // ─── Test 5: lease renewal happens while child is alive ───────────────────────
