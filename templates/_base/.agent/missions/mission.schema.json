@@ -1,0 +1,76 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/Kucell/cortex-agent/schemas/mission.schema.json",
+  "title": "Cortex Agent Mission State",
+  "description": "Mode-agnostic long-horizon task state. A mission groups multiple milestones with a shared validation contract. Pattern: see docs/architecture/mission-lite-design.md.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "mission_id",
+    "title",
+    "status",
+    "milestones",
+    "created_at",
+    "updated_at"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "mission_id": {
+      "type": "string",
+      "pattern": "^M-[A-Za-z0-9][A-Za-z0-9._-]*$",
+      "description": "Stable mission id, prefix M-."
+    },
+    "title": { "type": "string", "minLength": 1 },
+    "description": { "type": "string" },
+    "status": {
+      "type": "string",
+      "enum": ["draft", "active", "blocked", "completed", "canceled", "superseded"]
+    },
+    "current_milestone_id": {
+      "type": ["string", "null"],
+      "pattern": "^MS-[A-Za-z0-9][A-Za-z0-9._-]*$"
+    },
+    "milestones": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["milestone_id", "title", "status"],
+        "properties": {
+          "milestone_id": {
+            "type": "string",
+            "pattern": "^MS-[A-Za-z0-9][A-Za-z0-9._-]*$"
+          },
+          "title": { "type": "string", "minLength": 1 },
+          "description": { "type": "string" },
+          "status": {
+            "type": "string",
+            "enum": ["planned", "in_progress", "blocked", "passed", "failed", "waived"]
+          },
+          "owner": { "type": ["string", "null"] },
+          "depends_on": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": { "type": "string", "pattern": "^MS-[A-Za-z0-9][A-Za-z0-9._-]*$" }
+          },
+          "validation_contract_ref": { "type": "string", "minLength": 1 },
+          "milestone_ref": { "type": ["string", "null"] },
+          "started_at": { "type": ["string", "null"], "format": "date-time" },
+          "completed_at": { "type": ["string", "null"], "format": "date-time" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "validation_contract_ref": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Path to validation-contract.json (relative to .agent/missions/<mission_id>/)."
+    },
+    "command_log_ref": { "type": "string" },
+    "owner": { "type": ["string", "null"] },
+    "coordinator_session_id": { "type": ["string", "null"] },
+    "created_at": { "type": "string", "format": "date-time" },
+    "updated_at": { "type": "string", "format": "date-time" }
+  }
+}

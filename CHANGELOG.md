@@ -7,57 +7,132 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [1.9.4] - 2026-08-04
+## [1.12.0-rc.1] - 2026-08-04
+
+> **Pre-release**:rc.1 给 AI-Brain 内部 dogfooding 试用,**不建议生产使用**。
+> **Mission**:M-003(Phase 3 - 5 adapters + 1 MCP bridge,5/5 milestone done)+ T-OD-001(Open Design 集成,3/3 milestone done)。详见 `docs/releases/v1.12.0-rc.1.md` 与 `.agent/tasks/T-OD-001.json`。
+> **RFC**:§17.4 Phase 3 ship 状态已 final 化(`63f2f08`)。
 
 ### Added
 
-- **`cortex-agent secrets resolve` / `render-bearer` / `inject` 公共 action**：
-  把 `secret://<ref>` 间接引用真正桥接到任意 HTTP 客户端（Codex、Claude
-  Code、自定义 MCP server），填补"有 secret 抽象但没法注入第三方"的关键
-  缺口。三个 action 各司其职：
-  - `resolve --ref <r> --server <s>`：规划期查询，返回 `{ ref, secret_uri,
-    env_var, backend }`，**不返回值**。
-  - `render-bearer --server <s> --url <u> --ref <r> [--auth bearer_secret|none]`：
-    生成 Codex `[mcp_servers.<s>]` TOML 块，只写 `bearer_token_env_var`
-    名字，**不写值**。`--auth` 只接受白名单值，未知值 fail-closed，
-    杜绝悄悄降级成无 auth。
-  - `inject --ref <r> --env <E> -- <cmd...>`：启动期执行，作为 Cortex
-    Host 入口。从 Keychain 取值 → 写入子进程 env → `child_process.spawn`
-    启动子命令（**异步**，保留 tty）。子命令收到的是 env 里的真实
-    token，CLI 的 stdout 永远不出现明文。
-- `templates/{zh,en}/integrations/codex/.codex/config.toml`：模板里补
-  注释块展示 `mcp_servers.<name>` + `bearer_token_env_var` 正确用法，
-  引导新项目直接抄。
-- `templates/{en}/.agent/skills/secrets/SKILL.md` 与项目内
-  `.agent/skills/secrets/SKILL.md`：新增 "Injecting secrets into Codex /
-  MCP servers" 章节，给出端到端 workflow（声明 ref → store →
-  render-bearer → inject）。
-- `tests/secrets-cli-mcp.test.js`：12 个新测试覆盖三 action 的全部
-  fail-closed 路径 + "响应里绝不出现明文"的硬断言。
+- **T-OD-001 MS-001(templates + DESIGN.md starter)**:7-section starter(`templates/{zh,en}/.agent/DESIGN.md`,byte-identical 内容)+ `templates/_shared/.agent/design-systems/README.md` + 架构文档 `docs/architecture/design-system.md`(319 lines,bilingual)。commit `97a5ff3`
+- **T-OD-001 MS-002(lib/design/* + 87 tests)**:5 lib 模块(registry / fetch / lockfile / license / resolve,782 LOC)+ 5 test 文件(1262 LOC,87 tests,0 fail)。Content-addressed SHA-256 校验防 MITM;4-level cascade 解析;license fail-closed + brand category 警示。commit `227987c`
+- **T-OD-001 MS-003(CLI + SKILL + 24 tests)**:`cortex-agent design {list,install,upgrade,remove,show,resolved,refresh-catalog}` 7 子命令(零 npm dep),exit codes 0/1/2/3/4,`--yes` 不绕过 license fail-closed(只有 `--force` 能)+ `templates/_shared/.agent/skills/design-system/SKILL.md` agent 引导 + `lib/cli-contract.js` + design entry 注入。bin/cli.js 最小改动(1 case + 1 require)。commit `ba6b1bb`
+- **M-003 5 adapters + 1 MCP bridge**(承接 v1.12.0 主体,先前 commit):Claude Code / Codex / Codey / Pi / MiniMax CLI adapters + MCP stdio bridge 双向 + dispatch 三协议(HTTP/CLI/file)+ 5-adapter × 3-protocol E2E matrix 32 tests
+- **Volta pin Node 24.19.0**:`package.json` 加 `"volta": { "node": "24.19.0" }`,便于 AI-Workbench 等下游项目通过 Volta 拉一致 Node 版本
 
-### Changed
+### Notes
 
-- `lib/secrets-cli.js`：`runSecrets` 与 `secretsCommand` 改为
-  **async**（`Promise`），原因是 `inject` 必须用 `child_process.spawn`
-  异步起子进程（保留 tty），不能用 `spawnSync`。`bin/cli.js` 的
-  `secrets` 分支同步加 `await`，现有 4 个 `secrets-cli.test.js` 测试
-  同步改 `async/await`。
-- `lib/cli-contract.js`：`secrets` 命令描述更新为
-  `secrets <store|verify|list|audit|resolve|render-bearer|inject>`，新增
-  `--server` / `--url` / `--auth` / `--env` 四个公共选项文档。
+- **Open Design 集成 12/12 VCs 全 PASS**:templates byte-identical / 6 catalog/manifest/hash VCs / cascade resolved / upgrade hash delta / MITM 防护 / bin/cli.js 零 npm dep / 完整回归 125/125 / 架构审计 0 violation
+- **零 npm dep 全程维持**:lib/design/* 5 模块纯 Node.js 内置(`fs` / `path` / `https` / `crypto` / `os`);bin/cli.js 只加 1 case + 1 require
+- **纯加法升级**:`lib/commands.js` 2574 行主文件 untouched,所有新功能通过 `lib/{memory,design}/cli.js` 子模块接入
+- **Backward Compatibility**:`cortex-agent design` 是新顶层命令,不影响 `init` / `update` / `upgrade` / `agent` / `memory` / `dispatch` / `team` / `secrets` 等已有命令
+- **AI-Brain 实战路径**:`volta pin node@24.19.0` + `npm link cortex-agent` 在 AI-Workbench 等项目里使用,v1.12.0-rc.1 锁定为实战基线
+- **Phase 2 后续**(本 rc 不含):`tokens.css` 解析、MCP server 双向桥接、DESIGN.md 强校验、design fork、跟 prd-visualization OpenPencil 联动
 
-### Security
+## [1.11.0-rc.1] - 2026-08-04
 
-- `inject` 三道闸门：
-  1. `--ref` 必须在 `.agent/config/secrets.yml` 声明（打错 ref 不会泄露
-     无关 keychain 项）；
-  2. `--env` 必须匹配 `^[A-Z_][A-Z0-9_]{0,127}$`，杜绝 shell 元字符；
-  3. 子进程 `shell: false` + 显式 argv + `stdio: inherit`，无字符串拼接过
-     shell。
-- `render-bearer` 拒绝 `--auth` 白名单以外的值，`oauth` 现在直接报
-  `unsupported_auth` 而不允许悄悄降级成无 auth。
-- JSON 响应 envelope 永远不含明文 token（已被 12 个新测试里的
-  `JSON.stringify(response).includes(value)` 锁死）。
+> **Pre-release**:rc.1 给 AI-Brain 内部 dogfooding 试用,**不建议生产使用**。
+> **Mission**:M-002(Phase 2 - general 模式骨架,5/5 milestone done)。详见 `docs/releases/v1.11.0-rc.1.md`。
+
+### Added
+
+- **MS-001(general 模式模板抽离)**:`templates/general/.agent/` 6 子目录骨架 + 4 workflow contracts(`/memory recall` / `/memory distill` / `/agent discover` / `/agent invoke`)+ 2 skill + 1 sub-agent + 1 domain + 双语同步。commit `eac3d9a`(merged `518139f`)
+- **MS-002(`cortex-agent memory` CLI + 3 类 schema)**:`lib/memory/` 5 文件子系统,`memory recall` / `memory distill` 子命令,episodic + semantic 类型(procedural 推 v1.12)。72/72 tests pass。commit `1289702`(merged `a465f01`)
+- **MS-003(`cortex-agent agent discover|invoke` CLI + Agent Registry)**:`lib/agents/` 5 文件子系统,静态能力 registry + `agent discover` / `agent invoke`(plan-only)。77/77 tests pass。commit `a8c0e28`(merged `4f24c83`)
+- **MS-004(4 general workflow + E2E 矩阵)**:`init --mode general` 扩展 + `tests/m002-e2e-matrix.test.js` 7 tests。163/163 total regression pass。commit `5a3d36a`(merged `5d2199b`)
+- **MS-005(RFC v0.4 同步 + release notes final)**:RFC §15 Phase 2 5 行翻 ✅ + 本 release notes final 化。commit `cc10303`(merged `1168710`)
+- **M-013.P0 C2 dispatch dry-run CLI**:governed manual dispatch CLI surface,7 pre-existing fail 修通。commit `f71197f`(merged `1759597`)
+- **FAE-002 spec 阶段**:8 章节 + 16 validation assertions publish。commit `b3d8f53`(merged `105198e`)
+
+### Fixed
+
+- RFC §15 Phase 2 5 个待办全部翻 ✅(M-002 收口)
+- M-013.P0 C2 dispatch 7 个 pre-existing test fail 修通
+
+### Notes
+
+- **general 模式 opt-in / 暂不推荐生产**;通过 `cortex-agent init --mode general` 显式选择,默认行为不变
+- **shadow 双跑路径**:`templates/{zh,en}/` 老项目零变化
+- **零依赖**:`templates/general/` 抽离无 npm install
+- **Backward Compatibility**:`cortex-agent init --mode code` 行为与 v1.10.0-rc.1 完全一致;现有 v1.10.x 项目 `cortex-agent update` 升级零影响
+
+
+## [1.10.0-rc.1] - 2026-08-01
+
+> **Pre-release**:rc.1 给 AI-Brain 内部 dogfooding 试用,**不建议生产使用**。
+> **Mission**:M-001(Phase 1 — mode 切分 + 跨 host 切换总线)。详见 `docs/releases/v1.10.0-rc.1.md`。
+
+### Added
+
+- **P-001(Phase 0 收口)**:cortex-agent session CLI 10 子命令 + 11 回归测试(`assess` / `log` / `checkpoint` / `archive` / `restore` / `resume-bundle` / `status` / `warm` / `host-switch` / `list-contexts`)。commit `0182ea7` / `ceb1539` / `c802652`,merged `94d26f1`
+- **MS-001(Phase 1 收口,`templates/_base/`)**:共享层抽离,11 个 data 目录 schema publish(inbox / decisions / waitpoints / runs / sessions / missions / handoffs / conversations / memory / agents / tasks)。commit `c352d2b`,merged `660e248`
+- **MS-002(`cortex-agent init --mode general`)**:general 模式 init 命令,显式选择模式。commit `ae05295`,merged `12e3db7`
+- **MS-003(`cortex-agent init` 自动 mode 推断)**:无参数时根据 cwd marker(AGENTS.md / .cursorrules / .github/copilot-instructions.md / package.json)自动选择模式,空目录默认 general。`lib/mode-infer.js` 5 规则独立模块。commit `e4de8ec`,merged `f8a1d38`
+- **MS-004(shadow 路径测试矩阵)**:`tests/shadow-init.test.js` 13 个场景覆盖 v1 / v2 init 边界 + auto-infer + 显式覆盖,3 个 additivity 守卫。**关键发现**:11 个 v2 `_base/.agent/` 目录中只有 3 个(`agents/conversations/missions`)真正 v2 独有,其他 8 个在 `templates/_shared/.agent/` 中已存在。commit `04f7b3f`,merged `8be4e4d`
+- **RFC v0.3**:新增 §17 v2.0 愿景「全自动 mission 编排」,明确 mavis 平台层 vs cortex-agent framework 层边界,Phase 1-4 阶段拆分,v2.0 启动条件 5 项。commit `855e722` + `ee034ca`
+
+### Fixed
+
+- **agent-runtime-continuity 提案"假 done"问题修复**:commit `4f51d9f` / `08c2402` 幽灵 commit → 4 个真实 commit `1513b27` / `33b1baa` / `e456181` / `6502837`
+- **RFC §15 Phase 0 4 个待办**全部翻 ✅(P-001 收口)
+- **RFC §15 Phase 1 4 个待办**全部翻 ✅(commit hash 已替换为 MS-001/002/003/004 真实 commit)
+- **§15 Phase 1 footer "placeholder 说明"备注**archived(2026-08-01)
+
+### Notes
+
+- **general 模式 opt-in / 暂不推荐生产**(`§12 #2` 拍板);通过 `cortex-agent init --mode general` 显式选择,默认行为不变
+- **shadow 双跑路径**:`templates/{zh,en}/` 老项目零变化,新 `init --mode general` 走 v2 schema(由 MS-004 测试矩阵覆盖)
+- **MS-004 shadow 路径测试 13/13 pass**,确认 v1 / v2 init 边界不冲突;老 v1.x 项目走 v1 schema 零变化,新 `init --mode general` 走 v2 schema,272+ 回归 0 新增 fail
+- **跨 agent 续接协议**:runtime 层 `cortex-agent session host-switch` 已 ship(commit `0182ea7`),host 适配(Claude Code / Codex / Cursor 各自主动调用)留 v1.11.0 Phase 3
+- **零依赖**:`templates/_base/` 抽离无 npm install,hand-rolled draft-07 验证器沿用 v1.x 风格
+
+### Backward Compatibility
+
+- `cortex-agent init --mode code` 行为与 v1.9.0 完全一致
+- 现有 v1.x 项目 `cortex-agent update` 升级零影响(shadow 路径)
+- `update --mode general` 暂不允许跨模式升级(v2.0.0 引入 `cortex-agent migrate` 替代)
+- 所有 v1.x 已有子命令(`init / update / upgrade / session / task / event / lease / secrets / query / 等`)函数体零修改
+- `lib/commands.js` 零修改(M-001 MS-002/003 binding contract)
+- `templates/{zh,en}/` 零修改(M-001 MS-001 binding contract)
+
+### Known Limitations
+
+- `cortex-agent session` 子命令依赖 `lib/commands.js` 子模块,**not yet isolated**(P-002 候选,plan §6.3)
+- 跨 host 适配(host 主动调用 host-switch)未做,留 v1.11.0
+- general 模式 workflow(Phase 2)未实现 — `/conversation log` / `/memory recall` / `/agent invoke` / `/handoff` 留 v1.10.0 → v1.11.0 之间
+- memory schema(episodic + semantic)暂未 ship,procedural 推到 v1.12
+- 5 adapters + 1 MCP bridge(Claude Code / Codex / Pi / Kimi / DeepSeek + bridge 消费 Mem0 / claude-mem / CodeBuddy ACP / Cursor ACP / 通义灵码 / Trae)Phase 3 v1.11.0 实施
+- **MS-004 揭示**:11 个 v2 data 目录中只有 3 个(`agents/conversations/missions`)真正 v2 独有;其他 8 个(`runs/tasks/waitpoints/inbox/decisions/handoffs/memory/sessions`)在 `templates/_shared/.agent/` 中也存在 — 这是 v1 runtime 既有数据,shadow 路径下两层共存
+- M-001 24 个 pre-existing test failure(与 MS-002/003 auto-infer 行为相关)未修,留 v1.10.0 GA 前小 mission 处理
+
+### Upgrade Path
+
+- v1.9.0 / v1.9.1 → v1.10.0-rc.1:`npx cortex-agent update` 即可,零影响
+- v1.10.0-rc.1 → v1.10.0 GA(待发):同样 `npx cortex-agent update`
+- v1.10.0 → v2.0.0(未来):走 `cortex-agent migrate` 跨模式升级,提供 dry-run
+
+### References
+
+- RFC: `docs/architecture/general-mode-design.md` v0.3
+- Release notes 全文: `docs/releases/v1.10.0-rc.1.md`
+- P-001 归档: `AI-Brain/99-Project-Notes/cortex-bridge/2026-08-01-p001-ship-and-merge.md`
+- M-001 mission plan: `.agent/missions/M-001/mission-plan.md`
+- Bridge memos 6 份: `general-mode-rfc-discussion` / `rfc-v0.2-and-version-strategy` / `agent-adapter-market-survey` / `adapter-batch-decision` / `rfc-v12-final-decisions` / `p001-ship-and-merge` / `m001-launch` / `m001-ms-003-merge-and-ms-004-dispatch` / `rfc-v0.3-v20-vision` / `m001-ms-004-shadow-and-worker-d-fallback` / `m001-phase1-100-percent-and-v1100-rc1-prep`
+
+## [1.9.1] - 2026-07-31
+
+### Fixed
+
+- **`query` CLI against pre-1.9.0 Management APIs**: `cortex-agent query <projection>`
+  used to fail with `CAPABILITY_UNAVAILABLE` for *every* projection when the target
+  project's Management API script was older than 1.9.0 (no `capabilities` projection
+  exposed). The CLI now falls through to a direct query and surfaces the underlying
+  Management API response, so projects on 1.6.0–1.8.x can still use `query
+  dashboard-state / runs / queues / sessions / inbox / decisions / waitpoints`
+  without first upgrading their Management API. New 1.9.0 projections
+  (`activity`, `context-trajectories`, `operations`, …) still report
+  `UNSUPPORTED_COMMAND` honestly when the target Management API is too old.
 
 ## [1.9.0] - 2026-07-31
 

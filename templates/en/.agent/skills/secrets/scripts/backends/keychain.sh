@@ -23,24 +23,24 @@ if [ -z "$ACTION" ] || [ -z "$REF" ] || [ -z "$SERVICE" ]; then
 fi
 case "$ACTION" in
   get)
-    VALUE=$(security find-generic-password -s "$SERVICE" -w 2>/dev/null) \
+    VALUE=$(security find-generic-password -s "$SERVICE" -a "${ACCOUNT:-xueyq}" -w 2>/dev/null) \
       || { echo "{\"ok\":false,\"error\":\"not_found\",\"service\":\"$SERVICE\"}"; exit 1; }
     printf '{"ok":true,"action":"get","ref":"%s","value":"%s"}\n' "$REF" "$VALUE"
     ;;
   store)
     if [ -z "$VALUE" ]; then echo '{"ok":false,"error":"missing_value_for_store"}'; exit 1; fi
-    security delete-generic-password -s "$SERVICE" >/dev/null 2>&1 || true
+    security delete-generic-password -s "$SERVICE" -a "${ACCOUNT:-xueyq}" >/dev/null 2>&1 || true
     security add-generic-password -s "$SERVICE" -a "${ACCOUNT:-xueyq}" -w "$VALUE" \
       >/dev/null 2>&1 \
       || { echo '{"ok":false,"error":"keychain_store_failed"}'; exit 1; }
     printf '{"ok":true,"action":"store","ref":"%s","service":"%s"}\n' "$REF" "$SERVICE"
     ;;
   rotate)
-    security delete-generic-password -s "$SERVICE" >/dev/null 2>&1 || true
+    security delete-generic-password -s "$SERVICE" -a "${ACCOUNT:-xueyq}" >/dev/null 2>&1 || true
     printf '{"ok":true,"action":"rotate","ref":"%s","service":"%s"}\n' "$REF" "$SERVICE"
     ;;
   delete)
-    security delete-generic-password -s "$SERVICE" >/dev/null 2>&1 || true
+    security delete-generic-password -s "$SERVICE" -a "${ACCOUNT:-xueyq}" >/dev/null 2>&1 || true
     printf '{"ok":true,"action":"delete","ref":"%s","service":"%s"}\n' "$REF" "$SERVICE"
     ;;
   *)
