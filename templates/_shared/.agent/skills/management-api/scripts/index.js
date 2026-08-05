@@ -6,6 +6,7 @@ const path = require("path");
 const { execSync } = require("child_process");
 const { normalizeTokenUsage } = require("./normalize-token-usage.js");
 const { queryActivity } = require("./query-activity.js");
+const { queryDispatchState, queryTriggers, queryDispatchPlan } = require("./query-dispatch-state.js");
 let queryCoordination = null;
 try {
   ({ queryCoordination } = require("./query-coordination.js"));
@@ -1726,17 +1727,22 @@ function coordinationProjection(name) {
   return queryCoordination ? () => queryCoordination({ root, args, projection: name }) : null;
 }
 
-// FAE-002 dispatch-state projection (read-only). Lives outside the
-// coordination module so the audit can prove it composes existing read
-// sources and never mutates.
+// FAE-002 dispatch projections are pure, read-only views over project state.
+function dispatchEnvelope(query, data) {
+  return {
+    ok: true,
+    query,
+    generated_at: data?._meta?.generated_at || nowIso(),
+    ...data,
+  };
+}
+
 function dispatchStateProjection() {
-  const dispatchState = require("../../../../lib/coordination/dispatch-state");
-  return dispatchState.queryDispatchState(root);
+  return dispatchEnvelope("dispatch-state", queryDispatchState(root));
 }
 
 function triggersProjection() {
-  const dispatchState = require("../../../../lib/coordination/dispatch-state");
-  return dispatchState.queryTriggers(root);
+  return dispatchEnvelope("triggers", queryTriggers(root));
 }
 
 function dispatchPlanProjection() {
@@ -1744,8 +1750,7 @@ function dispatchPlanProjection() {
   if (!taskId) {
     fail("dispatch_plan_task_id_required", "`query dispatch-plan` requires --task-id <id>.", 2);
   }
-  const dispatchState = require("../../../../lib/coordination/dispatch-state");
-  return dispatchState.queryDispatchPlan(root, taskId);
+  return dispatchEnvelope("dispatch-plan", queryDispatchPlan(root, taskId));
 }
 
 const QUERY_HANDLERS = Object.freeze({
