@@ -14,6 +14,7 @@ const MANAGEMENT_FILES = [
   "normalize-token-usage.js",
   "projection-registry.json",
   "query-activity.js",
+  "query-dispatch-state.js",
 ];
 
 function copyFile(source, dest) {

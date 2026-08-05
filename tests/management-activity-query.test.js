@@ -9,7 +9,7 @@ const test = require("node:test");
 
 const ROOT = path.resolve(__dirname, "..");
 const CLI = path.join(ROOT, "bin", "cli.js");
-const FILES = ["index.js", "normalize-token-usage.js", "projection-registry.json", "query-activity.js"];
+const FILES = ["index.js", "normalize-token-usage.js", "projection-registry.json", "query-activity.js", "query-dispatch-state.js"];
 
 function writeJson(file, value) {
   fs.mkdirSync(path.dirname(file), { recursive: true });

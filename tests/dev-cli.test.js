@@ -21,6 +21,7 @@ function createProject() {
     ".agent/skills/management-api/scripts/normalize-token-usage.js",
     ".agent/skills/management-api/scripts/projection-registry.json",
     ".agent/skills/management-api/scripts/query-activity.js",
+    ".agent/skills/management-api/scripts/query-dispatch-state.js",
     ".agent/tasks/scripts/task-state.js",
   ]) {
     const target = path.join(cwd, relative);
