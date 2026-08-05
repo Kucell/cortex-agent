@@ -119,6 +119,30 @@
       "exact_lookup": false,
       "data_field": "notifications",
       "filters": ["task"]
+    },
+    {
+      "name": "dispatch-state",
+      "kind": "aggregate",
+      "exact_lookup": false,
+      "data_field": null,
+      "filters": [],
+      "read_only": true
+    },
+    {
+      "name": "dispatch-plan",
+      "kind": "singleton",
+      "exact_lookup": true,
+      "data_field": null,
+      "filters": ["task-id"],
+      "read_only": true
+    },
+    {
+      "name": "triggers",
+      "kind": "collection",
+      "exact_lookup": false,
+      "data_field": "triggers",
+      "filters": [],
+      "read_only": true
     }
   ]
 }

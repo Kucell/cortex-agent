@@ -156,6 +156,39 @@ function parseTokenUsage(runs) {
   return { reportedRuns, totalRuns: runs.length, bySource, totals, cacheHitRate, topRuns };
 }
 
+function parseRetrievalTrace() {
+  const directory = path.join(agentRoot, "runtime-evidence", "trajectory");
+  const files = listFiles(directory, (name) => name.endsWith(".jsonl"));
+  let steps = 0;
+  let promoted = 0;
+  let tokens = 0;
+  for (const file of files) {
+    for (const line of read(file).split(/\r?\n/).filter(Boolean)) {
+      let event;
+      try { event = JSON.parse(line); } catch { continue; }
+      if (event.event !== "step") continue;
+      steps += 1;
+      if (event.action === "promote" || event.action === "load") promoted += 1;
+      tokens += Math.max(0, Number(event.tokens) || 0);
+    }
+  }
+  const utilization = steps ? Math.min(100, (promoted / steps) * 100) : 0;
+  return { files: files.length, steps, promoted, tokens, utilization };
+}
+
+function renderRetrievalTraceSection(trace) {
+  const util = Number(trace.utilization.toFixed(1));
+  return `<section id="retrieval-trace" class="panel wide" data-i18n="retrievalTrace">
+    <h2 data-i18n="retrievalTrace">${I18N.zh.retrievalTrace}</h2>
+    <div class="status-strip">
+      ${metric("trajectoryFiles", trace.files, "JSONL", trace.files ? "active" : "")}
+      ${metric("retrievalSteps", trace.steps, "step(s)", trace.steps ? "active" : "")}
+      ${metric("promotedResources", trace.promoted, `${formatTokenCount(trace.tokens)} tokens`, trace.promoted ? "ready" : "")}
+      ${metric("retrievalUtilization", `${util}%`, "promoted / observed steps", util ? "ready" : "")}
+    </div>
+  </section>`;
+}
+
 function formatTokenCount(value) {
   const n = Number(value) || 0;
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(2)}M`;
@@ -313,6 +346,11 @@ const I18N = {
     openPreview: "打开预览",
     tokenUsage: "Token 用量",
     tokenUsageEmpty: "暂无 token 上报 — host 未集成 hook(参见 .agent/claude-code/README.md)",
+    retrievalTrace: "检索轨迹",
+    trajectoryFiles: "轨迹文件",
+    retrievalSteps: "检索步骤",
+    promotedResources: "提升资源",
+    retrievalUtilization: "检索利用率",
     reportedRuns: "已上报 Run",
     totalInput: "总输入 Token",
     totalOutput: "总输出 Token",
@@ -426,6 +464,11 @@ const I18N = {
     openPreview: "Open Preview",
     tokenUsage: "Token Usage",
     tokenUsageEmpty: "No token reports yet — host hook not integrated (see .agent/claude-code/README.md).",
+    retrievalTrace: "Retrieval Trace",
+    trajectoryFiles: "Trajectory Files",
+    retrievalSteps: "Retrieval Steps",
+    promotedResources: "Promoted Resources",
+    retrievalUtilization: "Retrieval Utilization",
     reportedRuns: "Reported Runs",
     totalInput: "Total Input Tokens",
     totalOutput: "Total Output Tokens",
@@ -898,6 +941,7 @@ function main() {
   const decisions = Array.isArray(managed?.decisions) ? managed.decisions : [];
   const waitpoints = Array.isArray(managed?.waitpoints) ? managed.waitpoints : [];
   const tokenUsage = parseTokenUsage(runs);
+  const retrievalTrace = parseRetrievalTrace();
   const gitStatus = typeof managed?.git_status === "string" ? managed.git_status : sh("git status --short --branch");
   const derived = deriveState({ worktrees, locks, handoffs, tasks, agents, approvals: managed?.approvals || { open_decisions: decisions.filter((d) => d.status === "open"), open_waitpoints: waitpoints.filter((w) => ["pending","blocked"].includes(w.status)), pending_inbox: inbox.filter((m) => ["unread","read"].includes(m.status)) } });
   const approvalsView = managed?.approvals || { open_decisions: decisions.filter((d) => d.status === "open"), open_waitpoints: waitpoints.filter((w) => ["pending","blocked"].includes(w.status)), pending_inbox: inbox.filter((m) => ["unread","read"].includes(m.status)) };
@@ -1071,6 +1115,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:8px 10px;border-bottom:1
         <section class="panel"><h2 data-i18n="sessions">${I18N.zh.sessions}</h2>${renderTable(["agent","role","status","phase","heartbeat"], sessions.map((s) => `<tr><td>${esc(s.agent_id || s.session_id)}</td><td>${esc(s.role || "")}</td><td>${pill(s.status)}</td><td>${s.phase ? pill(s.phase) : esc(s.activity || "")}</td><td data-volatile="heartbeat">${esc(formatDisplayTime(s.last_heartbeat_at || s.started_at))}</td></tr>`))}</section>
         <section class="panel"><h2 data-i18n="runs">${I18N.zh.runs}</h2>${renderTable(["id","kind","status","phase","message"], runs.slice(0, 8).map((r) => `<tr><td><code>${esc(r.run_id || r.path)}</code></td><td>${esc(r.kind || "")}</td><td>${pill(r.status)}</td><td>${r.phase ? pill(r.phase) : ""}</td><td>${esc(r.activity || r.last_event?.message || "")}</td></tr>`))}</section>
         ${renderTokenUsageSection(tokenUsage)}
+        ${renderRetrievalTraceSection(retrievalTrace)}
         <section class="panel wide"><h2 data-i18n="queues">${I18N.zh.queues}</h2>${renderTable(["id","status","items","currentActivity"], queues.map((q) => `<tr><td><code>${esc(q.queue_id || q.path)}</code></td><td>${pill(q.status)}</td><td>${Array.isArray(q.items) ? q.items.length : 0}</td><td>${esc((q.items || []).find((item) => item.state === "running")?.activity || "")}</td></tr>`))}</section>
         <section class="panel wide"><h2 data-i18n="worktrees">${I18N.zh.worktrees}</h2>${renderTable(["path","branch","status","head"], worktrees.map((w) => `<tr><td><code>${esc(w.path)}</code>${w.isMain ? ' <span class="mini">main</span>' : ""}</td><td>${esc(w.branch)}</td><td>${pill(w.dirty ? "dirty" : "clean")}</td><td><code>${esc(w.head.slice(0,12))}</code></td></tr>`))}</section>
         <section class="panel"><h2 data-i18n="activeAgents">${I18N.zh.activeAgents}</h2>${renderTable(["agent","role","task","status"], agents.map((a) => `<tr><td>${esc(a.agent_id || a.id)}</td><td>${esc(a.role)}</td><td><code>${esc(a.task_id || "")}</code></td><td>${pill(a.status)}</td></tr>`))}</section>
@@ -1095,7 +1140,7 @@ function applyLang(lang) {
   document.documentElement.lang = lang === 'en' ? 'en' : 'zh-CN';
   document.querySelectorAll('[data-i18n]').forEach((node) => {
     const key = node.getAttribute('data-i18n');
-    if (dict[key]) node.textContent = dict[key];
+    if (dict[key] && node.children.length === 0) node.textContent = dict[key];
   });
   document.querySelectorAll('[data-lang]').forEach((btn) => btn.classList.toggle('active', btn.getAttribute('data-lang') === lang));
   const next = document.querySelector('[data-next-zh]');
