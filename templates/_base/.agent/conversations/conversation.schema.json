@@ -1,0 +1,89 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/Kucell/cortex-agent/schemas/conversation.schema.json",
+  "title": "Cortex Agent Conversation",
+  "description": "Long-horizon conversation archive (general mode). A conversation bundles turns (user/assistant/tool), cross-agent handoffs, distilled summary, related decisions/artifacts, and external relations. See general-mode-design.md §6.4.1.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "conversation_id",
+    "created_at",
+    "updated_at"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "conversation_id": {
+      "type": "string",
+      "pattern": "^C-[A-Za-z0-9][A-Za-z0-9._-]*$",
+      "description": "Stable conversation id, prefix C-."
+    },
+    "topic": { "type": "string" },
+    "outcome": {
+      "type": ["string", "null"],
+      "enum": [null, "open", "resolved", "abandoned", "superseded"]
+    },
+    "domain": { "type": "string" },
+    "active_agent": {
+      "type": ["object", "null"],
+      "properties": {
+        "type": { "type": "string", "enum": ["claude-code", "cortex", "codex", "codey", "human", "other"] },
+        "agent_id": { "type": ["string", "null"] },
+        "session_id": { "type": ["string", "null"] }
+      },
+      "additionalProperties": false
+    },
+    "turn_count": { "type": "integer", "minimum": 0 },
+    "handoffs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["handoff_id", "from_agent", "to_agent", "timestamp", "reason"],
+        "properties": {
+          "handoff_id": { "type": "string", "pattern": "^H-[A-Za-z0-9][A-Za-z0-9._-]*$" },
+          "from_agent": { "type": "string" },
+          "to_agent": { "type": "string" },
+          "timestamp": { "type": "string", "format": "date-time" },
+          "reason": {
+            "type": "string",
+            "enum": ["user_switched_tool", "task_complete", "timeout", "explicit", "session_archive"]
+          },
+          "checksum": { "type": ["string", "null"] }
+        },
+        "additionalProperties": false
+      }
+    },
+    "summary_ref": { "type": ["string", "null"] },
+    "decisions_refs": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^D-[A-Za-z0-9][A-Za-z0-9._-]*$" }
+    },
+    "artifact_refs": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "relations": {
+      "type": "object",
+      "properties": {
+        "mission_ids": { "type": "array", "items": { "type": "string", "pattern": "^M-[A-Za-z0-9][A-Za-z0-9._-]*$" } },
+        "task_ids": { "type": "array", "items": { "type": "string" } },
+        "conversation_ids": { "type": "array", "items": { "type": "string", "pattern": "^C-[A-Za-z0-9][A-Za-z0-9._-]*$" } }
+      },
+      "additionalProperties": false
+    },
+    "state": {
+      "type": "object",
+      "description": "Live state pointer (latest turn / active missions / pending decisions) — must be regenerated on every handoff.",
+      "properties": {
+        "latest_turn": { "type": ["integer", "null"], "minimum": 0 },
+        "active_missions": { "type": "array", "items": { "type": "string" } },
+        "pending_decisions": { "type": "array", "items": { "type": "string" } },
+        "in_flight_tasks": { "type": "array", "items": { "type": "string" } },
+        "checksum": { "type": ["string", "null"] }
+      },
+      "additionalProperties": false
+    },
+    "created_at": { "type": "string", "format": "date-time" },
+    "updated_at": { "type": "string", "format": "date-time" }
+  }
+}
