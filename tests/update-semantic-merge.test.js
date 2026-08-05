@@ -9,10 +9,25 @@ const test = require("node:test");
 
 const ROOT = path.resolve(__dirname, "..");
 const CLI = path.join(ROOT, "bin", "cli.js");
+const { buildManagedScriptsMap } = require("./helpers/managed-scripts");
 
 function writeJson(file, value) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+}
+
+function writeManagedScriptsManifest(cwd) {
+  // Pre-register every managed template script so reconcileScripts never
+  // reports `unmanaged_cold_start` for a script that the legacy fixture did
+  // not copy into the project. Without this, the only shared+en duplicate
+  // (`skills/vcs-pr/scripts/backends/gitlab.js`) would land in
+  // `protectedLocal` and flip the update exit code to 2 with "Safe update
+  // partially complete", which is not the legacy happy-path outcome.
+  const scripts = buildManagedScriptsMap(ROOT);
+  writeJson(path.join(cwd, ".agent", ".script-manifest.json"), {
+    schema_version: 1,
+    scripts,
+  });
 }
 
 function createLegacyProject() {
@@ -71,6 +86,7 @@ function createLegacyProject() {
       ],
     },
   });
+  writeManagedScriptsManifest(cwd);
   return cwd;
 }
 

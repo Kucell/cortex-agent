@@ -9,7 +9,7 @@ const test = require("node:test");
 
 const ROOT = path.resolve(__dirname, "..");
 const CLI = path.join(ROOT, "bin", "cli.js");
-const FILES = ["index.js", "normalize-token-usage.js", "projection-registry.json", "query-activity.js"];
+const FILES = ["index.js", "normalize-token-usage.js", "projection-registry.json", "query-activity.js", "query-dispatch-state.js"];
 
 function createProject() {
   const project = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-writer-cli-"));

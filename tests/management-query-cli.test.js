@@ -15,6 +15,7 @@ const MANAGEMENT_FILES = [
   "projection-registry.json",
   "query-activity.js",
   "query-coordination.js",
+  "query-dispatch-state.js",
 ];
 
 function createProject(prefix = "cortex-management-cli-") {
@@ -58,7 +59,8 @@ test("generic query delegates every registered core projection", (t) => {
 
   const registry = JSON.parse(fs.readFileSync(path.join(project, ".agent", "skills", "management-api", "scripts", "projection-registry.json")));
   for (const entry of registry.projections) {
-    const result = run(caller, ["query", entry.name, "--project", project]);
+    const exactArgs = entry.name === "dispatch-plan" ? ["--task-id", "T-QUERY-EXACT"] : [];
+    const result = run(caller, ["query", entry.name, "--project", project, ...exactArgs]);
     assert.equal(result.status, 0, `${entry.name}: ${result.stderr}`);
     const payload = JSON.parse(result.stdout);
     assert.equal(payload.ok, true);

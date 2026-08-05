@@ -16,7 +16,7 @@ function copy(source, target) {
 function createProject() {
   const project = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-mcp-project-"));
   const management = path.join(project, ".agent", "skills", "management-api", "scripts");
-  for (const file of ["index.js", "normalize-token-usage.js", "projection-registry.json", "query-activity.js"]) {
+  for (const file of ["index.js", "normalize-token-usage.js", "projection-registry.json", "query-activity.js", "query-dispatch-state.js"]) {
     copy(path.join(ROOT, "templates", "_shared", ".agent", "skills", "management-api", "scripts", file), path.join(management, file));
   }
   copy(
