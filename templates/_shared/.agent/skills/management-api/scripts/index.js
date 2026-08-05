@@ -967,8 +967,14 @@ function resolveDecision() {
   const file = decisionFile(decisionId);
   const existing = readJson(file);
   if (!existing) fail("decision_not_found", `Decision ${decisionId} does not exist.`);
-  if (!Array.isArray(existing.options) || !existing.options.includes(selectedOption)) {
-    fail("invalid_selected_option", `selected_option must be one of: ${(existing.options || []).join(", ")}.`);
+  // Decision options may be legacy strings or structured { id, label } entries.
+  // Resolve against the stable id so a human-facing label never becomes the
+  // machine contract. Keep legacy string options compatible.
+  const allowedOptions = Array.isArray(existing.options)
+    ? existing.options.map((entry) => (entry && typeof entry === "object" ? entry.id : entry))
+    : [];
+  if (!allowedOptions.includes(selectedOption)) {
+    fail("invalid_selected_option", `selected_option must be one of: ${allowedOptions.join(", ")}.`);
   }
   if (existing.status !== "open") fail("decision_not_open", `Decision ${decisionId} is already ${existing.status}.`, 1);
   const timestamp = nowIso();
@@ -1720,6 +1726,28 @@ function coordinationProjection(name) {
   return queryCoordination ? () => queryCoordination({ root, args, projection: name }) : null;
 }
 
+// FAE-002 dispatch-state projection (read-only). Lives outside the
+// coordination module so the audit can prove it composes existing read
+// sources and never mutates.
+function dispatchStateProjection() {
+  const dispatchState = require("../../../../lib/coordination/dispatch-state");
+  return dispatchState.queryDispatchState(root);
+}
+
+function triggersProjection() {
+  const dispatchState = require("../../../../lib/coordination/dispatch-state");
+  return dispatchState.queryTriggers(root);
+}
+
+function dispatchPlanProjection() {
+  const taskId = option("--task-id", option("task-id", null));
+  if (!taskId) {
+    fail("dispatch_plan_task_id_required", "`query dispatch-plan` requires --task-id <id>.", 2);
+  }
+  const dispatchState = require("../../../../lib/coordination/dispatch-state");
+  return dispatchState.queryDispatchPlan(root, taskId);
+}
+
 const QUERY_HANDLERS = Object.freeze({
   "dashboard-state": queryDashboardState,
   runs: queryRuns,
@@ -1738,6 +1766,9 @@ const QUERY_HANDLERS = Object.freeze({
   "coordination-events": coordinationProjection("coordination-events"),
   "coordination-ownership": coordinationProjection("coordination-ownership"),
   "coordination-notifications": coordinationProjection("coordination-notifications"),
+  "dispatch-state": dispatchStateProjection,
+  "dispatch-plan": dispatchPlanProjection,
+  triggers: triggersProjection,
 });
 
 function availableProjections() {
@@ -1854,7 +1885,7 @@ function main() {
   printJson({
     ok: false,
     error: "unsupported_command",
-    usage: "node .agent/skills/management-api/scripts/index.js query capabilities|dashboard-state|runs|queues|sessions|inbox|decisions|waitpoints|activity|context-trajectories|operations|readiness|authorizations|checkpoints | runs upsert|event|checkpoint|tokens | queues upsert|item | sessions open|heartbeat|pause|close | decisions request|resolve|supersede | inbox send|transition | waitpoints create|release|cancel",
+    usage: "node .agent/skills/management-api/scripts/index.js query capabilities|dashboard-state|dispatch-state|dispatch-plan|triggers|runs|queues|sessions|inbox|decisions|waitpoints|activity|context-trajectories|operations|readiness|authorizations|checkpoints | runs upsert|event|checkpoint|tokens | queues upsert|item | sessions open|heartbeat|pause|close | decisions request|resolve|supersede | inbox send|transition | waitpoints create|release|cancel",
   });
   process.exitCode = 2;
 }
