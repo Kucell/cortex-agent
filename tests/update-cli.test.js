@@ -1,7 +1,6 @@
 "use strict";
 
 const assert = require("node:assert/strict");
-const crypto = require("node:crypto");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
@@ -12,10 +11,7 @@ const ROOT = path.resolve(__dirname, "..");
 const CLI = path.join(ROOT, "bin", "cli.js");
 const REL = "skills/agent-dashboard/scripts/serve.js";
 const TEMPLATE = path.join(ROOT, "templates", "_shared", ".agent", REL);
-
-function sha(content) {
-  return crypto.createHash("sha256").update(content).digest("hex");
-}
+const { sha, buildManagedScriptsMap } = require("./helpers/managed-scripts");
 
 function fixture({ userModified = false } = {}) {
   const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-update-cli-"));
@@ -24,9 +20,21 @@ function fixture({ userModified = false } = {}) {
   const installed = "// installed framework version\n";
   const current = userModified ? "// local project customization\n" : installed;
   fs.writeFileSync(target, current, "utf8");
+  // Manifest must cover every managed template script so reconcileScripts
+  // never reports `unmanaged_cold_start` for a script that the test did not
+  // pre-register. The helper sets origin_hash to the post-walkAndAdd hash
+  // (shared version when both en and _shared define the file, otherwise the
+  // sole version), which lets the en overlay re-apply through
+  // `stale_template` instead of leaving the file skipped.
+  const scripts = buildManagedScriptsMap(ROOT);
+  // Override serve.js with the test's dummy "installed" content so the
+  // default fixture takes the stale_template path (project file gets
+  // refreshed to the shared template) and the userModified fixture takes
+  // the user_modified path (project file preserved, exit 2).
+  scripts[REL] = { origin_hash: sha(installed), sha256: sha(installed) };
   fs.writeFileSync(path.join(cwd, ".agent", ".script-manifest.json"), `${JSON.stringify({
     schema_version: 1,
-    scripts: { [REL]: { origin_hash: sha(installed), sha256: sha(installed) } },
+    scripts,
   }, null, 2)}\n`, "utf8");
   return { cwd, target, current };
 }
