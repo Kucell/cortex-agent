@@ -83,6 +83,13 @@ const { designCommand } = require("../lib/design/cli");
 // the new subcommand is added to the case dispatch below.
 const { branchCommand } = require("../lib/commands/branch");
 
+// M-004 MS-002: Framework Event Bus CLI surface.
+// `event-bus <publish|subscribe|list-events|history>` is owned by
+// lib/event-bus/cli.js. The 4 subcommands map to the bridge / bus
+// core API; --help / --json exit cleanly without touching
+// lib/commands.js (M-001 binding contract preserved).
+const { eventBusCommand } = require("../lib/event-bus/cli");
+
 // ─── Context ──────────────────────────────────────────────────────────────────
 
 const cwd = process.cwd();
@@ -449,6 +456,7 @@ async function initModeGeneral() {
     case "hook":        hook(ctx); break;
     case "design":      await designCommand(ctx); break;
     case "branch":      branchCommand(ctx); break;
+    case "event-bus":   eventBusCommand(ctx); break;
     case "help":        args.includes("--json") ? cliHelp(ctx) : printHelp(); break;
     case "dev":         await dev(ctx); break;
     case undefined:
