@@ -9,7 +9,7 @@ const test = require("node:test");
 
 const ROOT = path.resolve(__dirname, "..");
 const CLI = path.join(ROOT, "bin", "cli.js");
-const MANAGEMENT_FILES = ["index.js", "normalize-token-usage.js", "projection-registry.json", "query-activity.js"];
+const MANAGEMENT_FILES = ["index.js", "normalize-token-usage.js", "projection-registry.json", "query-activity.js", "query-dispatch-state.js"];
 
 function installAgent(agentRoot) {
   const scripts = path.join(agentRoot, "skills", "management-api", "scripts");
