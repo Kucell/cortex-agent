@@ -87,6 +87,30 @@ description: 批准架构提案，按规模自动调度到 /plan（小任务）�
 > **状态**: approved
 ```
 
+### 第三点五步：自动建绑定分支（仅当 status: approved 时）
+
+调用 `cortex-agent branch create`，把提案自动绑定到 `feat/<slug>` 或 `fix/<slug>` 等命名分支，并写入 `.agent/branches/registry.json`：
+
+```bash
+# 提案路径 = 原始输入；分支名从提案 slug 自动推导（kebab-case，长度 ≤ 60）
+cortex-agent branch create \
+  --from <proposal-path> \
+  --base main \
+  --json
+```
+
+- 期望 exit 0；输出 JSON 含 `name` / `type` / `base` / `base_commit` / `registered_at` 字段
+- 注册表 `.agent/branches/registry.json` 新增 entry（status=`active`，proposal_ref 指向本次输入，mission_id 由第 4 步回填）
+- **失败处理**：
+  - exit 1（提案文件不存在 / 命名不合规 / kebab-case 违规）→ fail-closed；不进入第四步，提示用户修正提案
+  - exit 2（在 main 上 / 工作区脏）→ fail-closed；abort /approve，提示用户切换到 feature 分支或清理工作区
+  - exit 3（git 命令失败 / 写入失败）→ fail-closed；保留原状态，向用户报告
+- **可观测检查**：注册表新增条目 + 新分支已 checkout（`git rev-parse --abbrev-ref HEAD` 等于 `name`）
+- **向后兼容**：如果提案 type 是 `archive` 或 `supersede`（旧提案归档场景），跳过本步骤；`/approve` 仅处理「创建新分支」类提案
+- **幂等性**：重复批准同一提案时，CLI 的 upsert 语义保证注册表只更新已有 entry 而不报错
+
+> 详细规范见 `.agent/rules/branch-management.md`；CLI 子命令参考 `cortex-agent branch --help`。
+
 ### 第四步：调度执行
 
 **路径 A：/plan（小任务）**

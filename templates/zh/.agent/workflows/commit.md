@@ -13,6 +13,28 @@ description: 分析暂存区改动，自动生成符合 Conventional Commits 规
 - `.agent/rules/tech-stack.md` — 确认项目的**语言偏好**（中文 / English）
 - `.agent/plans/task-progress.md` — 找到当前 `in-progress` 任务，用于关联 Issue 或描述背景
 
+## 第一点五步：main 分支保护
+
+**禁止在主分支直接 commit**。在生成任何 commit message 之前先验证当前分支：
+
+```bash
+current_branch=$(git rev-parse --abbrev-ref HEAD)
+if [[ "$current_branch" == "main" || "$current_branch" == "master" ]]; then
+  echo "[commit] refusing to commit on $current_branch" >&2
+  echo "[commit] create a feature branch first: cortex-agent branch create --from <proposal>" >&2
+  exit 2
+fi
+```
+
+- main / master 上 commit → 立刻 `exit 2` + stderr 解释，不进入第二步
+- **不影响 amend / fixup**：`git commit --amend` 是在既有 commit 上的修改，不视为「新 commit」；第一点五步只在全新 commit 入口触发
+- **不影响 worktree 分支**：所有在 `feat/*` / `fix/*` / `wt/*` / `release/*` / `hotfix/*` / `chore/*` 上的 commit 不被此 gate 拦截
+- **失败处理**：exit 2 后用户应：
+  1. 切换到一个已存在的 feature 分支（`git switch feat/<slug>`），或
+  2. 用 `cortex-agent branch create --from <proposal> --base main` 新建绑定分支
+
+> 命名规范见 `.agent/rules/branch-management.md`；注册表 schema 见 `.agent/branches/registry.json`。
+
 ## 第二步：分析改动
 
 ```bash

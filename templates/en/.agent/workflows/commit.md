@@ -13,6 +13,28 @@ Before generating anything, read the following files (if they exist):
 - `.agent/rules/tech-stack.md` — confirm the project's **language preference** (English / 中文)
 - `.agent/plans/task-progress.md` — find the current `in-progress` task for issue linking
 
+## Step 1.5: main branch protection
+
+**Direct commits on the default branch are forbidden.** Verify the current branch before generating any commit message:
+
+```bash
+current_branch=$(git rev-parse --abbrev-ref HEAD)
+if [[ "$current_branch" == "main" || "$current_branch" == "master" ]]; then
+  echo "[commit] refusing to commit on $current_branch" >&2
+  echo "[commit] create a feature branch first: cortex-agent branch create --from <proposal>" >&2
+  exit 2
+fi
+```
+
+- `main` / `master` commit → immediately `exit 2` + stderr explanation, never reaches Step 2
+- **Does not block amend / fixup**: `git commit --amend` modifies an existing commit and is not a "new" commit; Step 1.5 only fires on fresh-commit entry points
+- **Does not block worktree branches**: any commit on `feat/*` / `fix/*` / `wt/*` / `release/*` / `hotfix/*` / `chore/*` passes through
+- **Failure handling**: after `exit 2`, the user should either:
+  1. Switch to an existing feature branch (`git switch feat/<slug>`), or
+  2. Create a binding branch: `cortex-agent branch create --from <proposal> --base main`
+
+> Naming conventions: see `.agent/rules/branch-management.md`. Registry schema: see `.agent/branches/registry.json`.
+
 ## Step 2: Analyze Changes
 
 ```bash

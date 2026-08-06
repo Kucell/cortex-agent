@@ -87,7 +87,46 @@ Use these templates when creating files:
    - sequencing
    - risks
    - exit criteria
-6. Use the `validation-contract` skill in CREATE mode to write `validation-contract.json`.
+
+### 5 关联分支（仅当当前分支在 registry 中时）
+
+读取 `git rev-parse --abbrev-ref HEAD`，并查询 `.agent/branches/registry.json`：
+
+- 如果当前分支是 `feat/<slug>` / `fix/<slug>` 等命名分支且 registry 已有对应 entry：
+  - 在 `mission-plan.md` 头部追加一行 `Branch: <branch-name>`，用于 mission ↔ branch 双向链接
+  - 通过 `cortex-agent branch show <branch> --json` 读取 `mission_id` 字段，**写入 registry entry 的 `mission_id` 字段**（CLI 调用 `branch sync <branch>` 不会自动写 `mission_id`，需要走 `updateBranch` 直接 patch registry；或后续 milestone VALIDATE 阶段用 `branch ready --validation-artifact` 间接确认关联）
+  - 实际写入步骤：
+
+  ```bash
+  current_branch=$(git rev-parse --abbrev-ref HEAD)
+  # 检查注册表里有没有这个分支
+  if cortex-agent branch show "$current_branch" --json >/dev/null 2>&1; then
+    # mission-plan.md 头部加 Branch: 行
+    sed -i.bak "1a\\
+  Branch: ${current_branch}
+  " .agent/missions/M-xxx/mission-plan.md
+  fi
+  ```
+
+- 如果当前分支不在 registry（ad-hoc mission / 不在提案分支上下文）→ 跳过本步，不报错
+- 旧 mission-plan 头部已有 `Branch:` 字段时，保持已有值不变（idempotent）
+
+### 5.5 验证后 merge_ready 标记
+
+mission 跑完 `/mission validate M-xxx MS-xxx` 成功后（VALIDATE 阶段），如果当前 mission 关联了一个命名分支（Step 5 已写入 `mission_id`），调用 `branch ready` 标记分支为可合并状态：
+
+```bash
+cortex-agent branch ready <current-branch> \
+  --validation-artifact .agent/missions/M-xxx/milestones/MS-xxx.md
+```
+
+- 期望 exit 0；registry entry 状态由 `active` → `merge_ready`
+- gate 1（working tree clean）必须通过；如果 mission 收口时有未提交改动，先 commit
+- gate 2（commits_ahead ≥ 0）必须通过；如有落后先 `branch sync` 一次
+- gate 3（validation-artifact 存在）必须通过；milestone 文件必须存在
+- 后续 `/mission COMPLETE` 时，提示用户执行 `cortex-agent branch merge <current-branch> --to main` 把分支合入主线
+
+### 6. Use the `validation-contract` skill in CREATE mode to write `validation-contract.json`.
 7. Create `command-log.md` from `.agent/resources/templates/mission/command-log.md`.
 8. Create the first milestone file from `.agent/resources/templates/mission/milestone.md`.
 9. Present the mission plan and contract summary for confirmation before implementation.
@@ -279,29 +318,3 @@ mission 不能只因为子 worktree 验证通过就完成；必须在合并目�
 - 用户通过 `decisions resolve --gate user` 批准后，`/mission` 调用 `waitpoints release --gate owner` 解锁下游 run。
 - `/mission` 不转移 Task gate ownership —— Task Pipeline 仍由 `/start-task`、`/ship` 等 owning workflow 持有；mission 只暴露与消费决策。
 - Checkpoint 状态挂在 Decision / Waitpoint 的 relations 上，pending approval 时标记 `Checkpoint`，其余 run 仍可推进到不依赖该决策的位置。
-
-## 录制节点
-
-`/mission` 在每次状态转换时拥有活动。里程碑状态变更后记录 event，验证契约执行后记录 delivery 收据：
-
-```bash
-# 里程碑转换后（PLAN -> CONTRACT、EXECUTE -> VALIDATE 等）
-node .agent/skills/activity-recording/scripts/index.js record-event \
-  --kind coordination \
-  --source /mission \
-  --summary "Mission <MISSION_ID> 里程碑 <MS-XXX> -> <next-state>" \
-  --actor-type workflow \
-  --actor-id /mission \
-  --dedupe-key "mission:<MISSION_ID>:<MS-XXX>:transition"
-
-# 验证契约执行后
-node .agent/skills/activity-recording/scripts/index.js record-receipt \
-  --kind delivery \
-  --source /mission \
-  --activity-refs ACT-mission-<MISSION_ID>-<MS-XXX>-validate \
-  --availability available \
-  --redaction not_applicable \
-  --dedupe-key "mission:<MISSION_ID>:<MS-XXX>:validate:receipt"
-```
-
-如果 helper 缺失或录制不可用，保持原工作流行为并跳过调用，不得编造收据。

@@ -77,6 +77,12 @@ const { agentM003Command } = require("../lib/agents/m003-cli");
 // to the case dispatch below and registered in lib/cli-contract.js.
 const { designCommand } = require("../lib/design/cli");
 
+// M-016 MS-002: Branch Management CLI surface.
+// `branch <create|list|show|sync|ready|merge|cleanup>` is owned by
+// lib/commands/branch.js. Strictly additive: no changes to lib/commands.js;
+// the new subcommand is added to the case dispatch below.
+const { branchCommand } = require("../lib/commands/branch");
+
 // ─── Context ──────────────────────────────────────────────────────────────────
 
 const cwd = process.cwd();
@@ -442,6 +448,7 @@ async function initModeGeneral() {
     }
     case "hook":        hook(ctx); break;
     case "design":      await designCommand(ctx); break;
+    case "branch":      branchCommand(ctx); break;
     case "help":        args.includes("--json") ? cliHelp(ctx) : printHelp(); break;
     case "dev":         await dev(ctx); break;
     case undefined:

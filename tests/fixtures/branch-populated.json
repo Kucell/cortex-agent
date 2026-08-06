@@ -1,0 +1,112 @@
+{
+  "schema_version": 1,
+  "updated_at": "2026-08-06T00:00:00.000Z",
+  "branches": {
+    "feat/branch-management": {
+      "name": "feat/branch-management",
+      "type": "feat",
+      "base_branch": "main",
+      "base_commit": "7de54a0d6f6a4c8e7d3a2b1c4e5f6a7b8c9d0e1f",
+      "created_at": "2026-08-05T16:00:00.000Z",
+      "proposal_ref": ".agent/plans/proposals/cortex-agent-branch-management-proposal.md",
+      "mission_id": "M-016",
+      "task_id": null,
+      "status": "active",
+      "last_sync": "2026-08-06T03:30:00.000Z",
+      "commits_ahead": 1,
+      "worktree_path": null,
+      "purpose": "M-016 MS-001 branch registry I/O + naming validator",
+      "merged_commit": null,
+      "shipped": []
+    },
+    "feat/m016-ms002-cli": {
+      "name": "feat/m016-ms002-cli",
+      "type": "feat",
+      "base_branch": "main",
+      "base_commit": "7de54a0d6f6a4c8e7d3a2b1c4e5f6a7b8c9d0e1f",
+      "created_at": "2026-08-06T00:00:00.000Z",
+      "proposal_ref": null,
+      "mission_id": "M-016",
+      "task_id": "T-IMPL-M016-MS-002",
+      "status": "active",
+      "last_sync": "2026-08-06T03:00:00.000Z",
+      "commits_ahead": 0,
+      "worktree_path": "/tmp/m016-ms002",
+      "purpose": "M-016 MS-002 CLI subcommand implementation",
+      "merged_commit": null,
+      "shipped": []
+    },
+    "fix/t-fix-tests-001": {
+      "name": "fix/t-fix-tests-001",
+      "type": "fix",
+      "base_branch": "main",
+      "base_commit": "b5b7200477d0ab44295c3516072d6d52acf5db81",
+      "created_at": "2026-01-22T00:20:20+08:00",
+      "proposal_ref": null,
+      "mission_id": "M-T-FIX-TESTS-001",
+      "task_id": "T-FIX-TESTS-001",
+      "status": "merged",
+      "last_sync": "2026-01-22T00:20:20+08:00",
+      "commits_ahead": 0,
+      "worktree_path": null,
+      "purpose": "F1-F5 fixture fix; released in main",
+      "merged_commit": "7de54a0d6f6a4c8e7d3a2b1c4e5f6a7b8c9d0e1f",
+      "shipped": [
+        "merge: F2/F3/F4 update fixture fix → 4970bed"
+      ]
+    },
+    "release/1-12-0": {
+      "name": "release/1-12-0",
+      "type": "release",
+      "base_branch": "main",
+      "base_commit": "5a4e3d2c1b0a99887766554433221100aabbccdd",
+      "created_at": "2025-12-01T00:00:00.000Z",
+      "proposal_ref": null,
+      "mission_id": null,
+      "task_id": null,
+      "status": "merge_ready",
+      "last_sync": "2026-08-01T00:00:00.000Z",
+      "commits_ahead": 0,
+      "worktree_path": null,
+      "purpose": "1.12.0 release prep; pending merge",
+      "merged_commit": null,
+      "shipped": []
+    },
+    "ops-stash": {
+      "name": "ops-stash",
+      "type": "chore",
+      "base_branch": "main",
+      "base_commit": "b5b7200477d0ab44295c3516072d6d52acf5db81",
+      "created_at": "2026-01-22T00:20:20+08:00",
+      "proposal_ref": null,
+      "mission_id": null,
+      "task_id": null,
+      "status": "merged",
+      "last_sync": "2026-01-22T00:20:20+08:00",
+      "commits_ahead": 0,
+      "worktree_path": null,
+      "purpose": "ops-stash scratch; merged",
+      "merged_commit": "047680682859b666deb9bfa458984da447114b9c",
+      "shipped": [
+        "merge: codex/acn-surfaces → 2eb36a6"
+      ]
+    },
+    "hotfix/security-patch": {
+      "name": "hotfix/security-patch",
+      "type": "hotfix",
+      "base_branch": "main",
+      "base_commit": null,
+      "created_at": "2026-07-15T00:00:00.000Z",
+      "proposal_ref": null,
+      "mission_id": null,
+      "task_id": null,
+      "status": "archived",
+      "last_sync": "2026-07-20T00:00:00.000Z",
+      "commits_ahead": 0,
+      "worktree_path": null,
+      "purpose": "Security patch (archived)",
+      "merged_commit": null,
+      "shipped": []
+    }
+  }
+}
