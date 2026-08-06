@@ -1,0 +1,39 @@
+{
+  "run_id": "R-M-004-MS-003-dispatch",
+  "mission_id": "M-004",
+  "milestone_id": "MS-003",
+  "dispatched_at": "2026-08-06T22:48:00Z",
+  "dispatched_to": "background task bg_10687fe7-73b5-4494-95af-54563cdcf256 (Worker-B coder agent)",
+  "agent": "Worker-B (派发完成, run_in_background=true)",
+  "status": "dispatching",
+  "worktree": "/Volumes/workspace/Projects/AI-Tools/cortex-agent-worktrees/agent-M-004-MS-003-parent-resume",
+  "branch": "agent/M-004-MS-003-parent-resume",
+  "base_commit": "a22d919",
+  "spec_handoff": ".agent/missions/M-004/handoffs/20260806-224500-ms-003-spec-done.md",
+  "spec_json": ".agent/missions/M-004/handoffs/H-20260806-224500-ms-003-spec-done.json",
+  "scope": "F-006 parent-resume + F-007 E2E + P-003 整合 + VC-008..VC-010",
+  "estimated_duration_min": "90-130",
+  "dispatch_instructions_5_sentences": [
+    "1. worktree 绝对路径: /Volumes/workspace/Projects/AI-Tools/cortex-agent-worktrees/agent-M-004-MS-003-parent-resume",
+    "2. commit to agent/M-004-MS-003-parent-resume branch, 禁 main",
+    "3. commit message 末列 M-004 FAE-002 feature chain (8 commits + 3-4 MS-003 commits)",
+    "4. 报 commit SHA + tests pass (142 既有 + 37-42 = 179-184 估) + node --check syntax 0 错",
+    "5. 冲突文件 git diff --staged --stat 验证再 commit (避免误 commit 到 main)"
+  ],
+  "monitoring": {
+    "cron_name": "M-004-MS-003-worker-b-monitor",
+    "cron_id": "03dcac0d-0ee0-4220-b674-f89aee282e62",
+    "interval": "5m",
+    "thresholds": {
+      "30min_no_commit": "task framework 触发 threshold → 主 session task_stop + 同 worktree 接管 (M-019 实战模式)",
+      "1h_no_checkpoint": "同上",
+      "framework_network_error": "worktree 实际可能 100% 完成, 验证 worktree 文件状态 (M-019 实战模式)"
+    }
+  },
+  "next_steps_after_ship": [
+    "主 session verify (tests pass / BC verify / commit SHA 验证)",
+    "merge to main (1 merge commit + close-out handoff)",
+    "MS-003 close-out handoff dual-artifact",
+    "更新 task-progress.md + mission plan status (MS-003 → done, MS-004 → 派发准备)"
+  ]
+}
