@@ -34,7 +34,29 @@ Examples below use **`origin/main`**; swap for **`origin/master`** if needed.
 
 - If you stashed: `git stash pop` (resolve conflicts if any).
 - Optionally run the project’s quick check (`npm test`, `npm run build`, `tsc --noEmit`, etc.).
-- Short 1–2 sentence summary for the user.
+
+## 6. Post-sync registry update (MS-003)
+
+If the current branch is registered in `.agent/branches/registry.json` (i.e. visible in `cortex-agent branch list`), call `branch sync` to refresh `last_sync` and `commits_ahead`:
+
+```bash
+# Use git rev-parse --abbrev-ref HEAD to obtain the current branch name
+cortex-agent branch sync <current-branch> --no-rebase
+```
+
+- Expected exit 0; the registry entry's `last_sync` is updated to the current ISO timestamp
+- `commits_ahead` is recomputed from `git rev-list --count <base>..<head>` after the rebase
+- **Skip rule**: if the current branch is not in the registry (e.g. ad-hoc feature branch, scratch work) → silently skip, no error. Users can verify with `cortex-agent branch list`
+- **Behavior on main**: `branch sync main` is effectively a no-op (base == self); `--no-rebase` still updates `last_sync` but does not change other state
+
+> Naming conventions and registry schema: see `.agent/rules/branch-management.md`. Subcommand details: `cortex-agent branch sync --help`.
+
+## 7. Report
+
+- Short 1–2 sentence summary for the user covering:
+  - rebase result (success / conflicts need manual resolution)
+  - if the registry was updated: `Updated registry for <branch>: last_sync=<ts> commits_ahead=<N>`
+  - if the registry was skipped: keep the summary brief, do not surface registry details
 
 ## References
 
