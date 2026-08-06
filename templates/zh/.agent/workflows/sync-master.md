@@ -33,7 +33,29 @@ description: 向主干同步：fetch + rebase，禁止日常 merge；含脏工�
 
 - Rebase 成功后：若第 1 步曾 stash，执行 `git stash pop`（若有冲突再人工处理）。
 - 建议运行项目约定的快速校验（如 `npm test`、`npm run build` 或 `tsc --noEmit`），确认通过。
-- 用 1～2 句话向用户汇报结果。
+
+## 6. Sync 后注册表更新
+
+如果当前分支在 `.agent/branches/registry.json` 中（即 `cortex-agent branch list` 能看到），调用 `branch sync` 同步 last_sync 与 commits_ahead：
+
+```bash
+# 自动取当前分支名（git rev-parse --abbrev-ref HEAD）作为参数
+cortex-agent branch sync <current-branch> --no-rebase
+```
+
+- 期望 exit 0；registry entry 的 `last_sync` 字段更新为当前 ISO timestamp
+- `commits_ahead` 字段根据 rebase 结果（`git rev-list --count <base>..<head>`）重算
+- **跳过规则**：当前分支不在 registry（陌生 feature 分支、ad-hoc 工作）→ 静默跳过，不报错；用户可通过 `cortex-agent branch list` 确认
+- **不在 main 上跑 sync**：在 main 上 sync 是 no-op（base == self），但 `--no-rebase` 仍会更新 `last_sync`，不影响行为
+
+> 命名规范与 registry schema 见 `.agent/rules/branch-management.md`；sync 子命令细节 `cortex-agent branch sync --help`。
+
+## 7. 输出报告
+
+- 用 1～2 句话向用户汇报结果：
+  - rebase 结果（成功 / 有冲突需解决）
+  - 若触发了注册表更新：`Updated registry for <branch>: last_sync=<ts> commits_ahead=<N>`
+  - 若跳过：保持简洁，不强提注册表细节
 
 ## 参考
 
