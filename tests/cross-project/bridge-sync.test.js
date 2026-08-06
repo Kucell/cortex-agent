@@ -189,7 +189,7 @@ test("syncForProject: correlation_group filter excludes other groups", withRoots
   seedOutbox(source, "cortex-agent", [
     event({ bridge_event_id: "BR-EVT-A", correlation_group: "XPC-OTHER" }),
     event({ bridge_event_id: "BR-EVT-B", correlation_group: "XPC-DASHBOARD-PRD" }),
-    event({ bridge_event_id: "BR-EVT-C" /* no group */ }),
+    event({ bridge_event_id: "BR-EVT-C", correlation_group: undefined /* no group */ }),
   ]);
   const result = bridgeSync.syncForProject(target, { sourceProjectId: "cortex-agent", sourceRoot: source });
   assert.equal(result.scanned, 3);
@@ -276,4 +276,4 @@ test("syncAll: iterates over every distinct source_project_id in subscriptions",
   const bySource = Object.fromEntries(run.sources.map((s) => [s.source_project_id, s.result]));
   assert.equal(bySource["cortex-agent"].written, 1);
   assert.equal(bySource["SamHMI"].written, 1);
-});
+}));
