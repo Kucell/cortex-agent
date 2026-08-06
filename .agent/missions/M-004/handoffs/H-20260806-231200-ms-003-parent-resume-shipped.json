@@ -1,0 +1,127 @@
+{
+  "schema_version": 1,
+  "handoff_id": "H-20260806-231200-ms-003-parent-resume-shipped",
+  "mission_id": "M-004",
+  "milestone_id": "MS-003",
+  "from_agent": "Mavis-main-session (orchestrator, 接管 Worker-B 取消)",
+  "to_agent": "coordinator",
+  "status": "done",
+  "mode": "AGENT_RESUME",
+  "from": {
+    "agent_id": "Mavis-main-session",
+    "model": "MiniMax-M3",
+    "session_id": "mvs_91074c42ae6e446cb6007961842da0f5"
+  },
+  "to_detail": {
+    "role": "coordinator",
+    "model_pref": ["MiniMax-M3", "claude-sonnet"],
+    "required_capabilities": ["mission_orchestration", "rfc_review", "spec_approval", "phase_4_mission_dispatch"]
+  },
+  "to": {
+    "role": "coordinator",
+    "model_pref": ["MiniMax-M3", "claude-sonnet"],
+    "required_capabilities": ["mission_orchestration", "rfc_review", "spec_approval", "phase_4_mission_dispatch"]
+  },
+  "task_id": "M-004-MS-003-parent-resume-takeover",
+  "task_progress": {
+    "current_step": "MS-003 ship via 主 session 接管 — Worker-B bg_10687fe7 起草全 8 文件 (22 min) + framework 取消 + 主 session 接管验证 181/181 pass + 准备 commit",
+    "completed_steps": [
+      "MS-001 done (Eric 8-05/06, 110/110 tests, VC-001..VC-005)",
+      "MS-002 done (Mavis 8-06 cherry-pick, 142/142 tests, VC-006/VC-007)",
+      "MS-003 spec-done (commit 0b3528f)",
+      "MS-003 Worker-B dispatched (bg_10687fe7, commit 7326195 dispatch state)",
+      "Worker-B 起草 8 文件 (22 min, 23:01 最后改动)",
+      "Worker-B framework 取消 at 23:09:46 (M-019 实战模式)",
+      "主 session 接管 verify: 181/181 pass / 0 fail / 0 regression",
+      "主 session BC verify: P-003 0 diff + lib/event-bus 既有 5 模块 0 diff + 0 引入 regression"
+    ],
+    "in_progress": "主 session 接管 commit (Kucell author, 7 files / +2006 lines staged)",
+    "remaining_steps": [
+      "commit (本 handoff + 1 merge commit + close-out)",
+      "merge to main",
+      "MS-003 close-out handoff",
+      "MS-004 派发准备 (3 client)"
+    ]
+  },
+  "artifacts": {
+    "completed": [
+      "lib/event-bus/clients/parent-resume.js (712 lines, F-006)",
+      "lib/event-bus/clients/index.js (122 lines, F-006b)",
+      "lib/event-bus/cli.js (+113 lines, F-006c)",
+      "lib/cli-contract.js (+4 lines, F-006c)",
+      "tests/event-bus-parent-resume-fsm.test.js (348 lines, VC-008)",
+      "tests/event-bus-parent-resume-e2e.test.js (379 lines, VC-009)",
+      "tests/event-bus-parent-resume-safety.test.js (332 lines, VC-010)",
+      ".agent/missions/M-004/handoffs/20260806-231200-ms-003-parent-resume-shipped.md (7.3 KB, 本 handoff)",
+      ".agent/missions/M-004/handoffs/H-20260806-231200-ms-003-parent-resume-shipped.json (5.6 KB, 本 handoff)"
+    ],
+    "test_summary": {
+      "total_cases": 181,
+      "pass": 181,
+      "fail": 0,
+      "regression": 0,
+      "vc_008": "~17 cases PASS (FSM 5 状态 + 5 trigger + 2 lease + 2 mission + 3 P-003 整合)",
+      "vc_009": "~12 cases PASS (4 场景 + 7 关键断言)",
+      "vc_010": "~10 cases PASS (ack + retry + escalate + lease + 边界)"
+    }
+  },
+  "commits": [
+    "[待主 session 接管 commit] feat(M-004-MS-003): parent-resume client + FSM 5 状态 + P-003 整合 + 3 test files (主 session 接管 Worker-B 取消)",
+    "[主 session] merge(M-004-MS-003): parent-resume + e2e + safety"
+  ],
+  "validation": {
+    "VC-008": {"type": "fsm", "blocking": true, "status": "PASS", "evidence": "FSM 5 状态 + 5 trigger + 2 lease + 2 mission + 3 P-003 cases pass"},
+    "VC-009": {"type": "e2e", "blocking": true, "status": "PASS", "evidence": "4 场景 + 7 关键断言 cases pass"},
+    "VC-010": {"type": "safety", "blocking": true, "status": "PASS", "evidence": "ack + retry + escalate + lease + 边界 cases pass"}
+  },
+  "deviations": [
+    {
+      "id": "D-1",
+      "severity": "minor",
+      "type": "agent_decision",
+      "description": "Worker-B 起草 8 文件后被 framework 取消 (M-019 实战模式), 主 session 接管 commit 用 Kucell author 跟 MS-002 cherry-pick 一致",
+      "mitigation": "M-019 实战规则: worktree 文件状态 = ground truth, framework status 只是 metadata",
+      "impact": "无",
+      "responsibility": "主 session 接管决策"
+    },
+    {
+      "id": "D-2",
+      "severity": "minor",
+      "type": "framework_event",
+      "description": "Worker-B 起草阶段计划分多个 commit (跟 M-002 MS-002 模式), 实际被取消时 0 commit, 主 session 接管后合成 1 ship commit",
+      "mitigation": "Mavis session close 模式: 接管 commit 保留全 7 files 改动, 跟 ship 完整性等价",
+      "impact": "无 (commits 数量变 1, 但 7 files 完整保留)",
+      "responsibility": "framework 取消事件 + 主 session 接管"
+    },
+    {
+      "id": "D-3",
+      "severity": "pre_existing",
+      "type": "pre_existing_bug",
+      "description": "templates/_shared/.agent/skills/subagent-trace/scripts/index.js:193 status 变量未定义 (D-MS-002-3 之前标注, MS-003 不涉及)",
+      "mitigation": "M-004 MS-002 标注过, MS-003 0 引入 regression",
+      "impact": "D-3 仍存在但 D-FAE-002 不阻塞",
+      "responsibility": "历史遗留"
+    }
+  ],
+  "next_milestone": {
+    "id": "MS-004",
+    "scope": "F-008 coordination-sync client (M-008 journal 双源) + F-009 dashboard-push client (实时面板) + F-010 notification-pump client (跨 host 通知) + VC-011..VC-013",
+    "estimated_duration": "1 周 (5-7 天)",
+    "depends_on": "MS-003 (done)"
+  },
+  "async_audit": {
+    "active_background_tasks": 0,
+    "pending_ci_mr_cron": 1,
+    "waiting_human_reply": 0
+  },
+  "stats": {
+    "files_added": 5,
+    "files_modified_additive": 2,
+    "lines_added": 2006,
+    "lines_removed": 4,
+    "tests_passed": 181,
+    "tests_failed": 0,
+    "duration_worker_b_min": 22,
+    "duration_main_session_min": 5
+  }
+}
