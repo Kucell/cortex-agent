@@ -37,6 +37,23 @@
 
 部分平台（Cursor、Claude Code、Windsurf、Roo Code）原生支持加载特定目录下的文件作为自定义命令/规则/代理。`init` 命令会自动创建符号链接，将 `.agent` 子目录映射到工具的默认配置路径，实现零开销原生体验。
 
+### 全局配置 symlink 与可移植性（M-SETUP-PORT-001）
+
+> **Symlink 跨机器可移植性**：`.agent/global` 是 `linkGlobalConfig()` 主动生成的 symlink，采用相对路径（非绝对）以保证跨用户/跨机器/跨容器可移植。`.gitignore` 已 ignore 此 symlink，不会进版本控制。`doctor` 会在 4 类情况（missing / not-symlink / broken / wrong-target）上主动检查并报告。
+
+要点：
+
+- **相对路径**：`linkGlobalConfig()` 写入 `path.relative(.agent, ~/.agent)` 作为 symlink target，不再用 `os.homedir()` 拼绝对路径。绝对路径会在换用户、换机器、换容器（DevContainer / Codespaces / Docker）时立刻断链。
+- **创建期校验**：每次创建 symlink 后立即 `realpathSync()` 验证可解析，避免留下"节点在但 target 死"的隐蔽 broken symlink。
+- **静态期校验**：`cortex-agent doctor` 的 `setup-portability` 段会在 4 类情况主动报警：
+  - `missing` — 节点不存在（`init` 没跑过）
+  - `not-symlink` — 节点不是 symlink（被覆盖为普通文件或目录）
+  - `broken` — 节点在但 target 不可解析
+  - `wrong-target` — target 与当前 `~/.agent` 不一致（跨用户、换机器后）
+- **Git 卫生**：`.agent/global` 已在仓库根 `.gitignore` 中显式 ignore；这条规则的目的就是防止绝对路径 symlink 进版本控制。`git check-ignore -v .agent/global` 应命中仓库 `.gitignore` 而非 global exclude。
+- **不要**手编辑这个 symlink；删除后重跑 `cortex-agent init` 即可重建。
+- **克隆后行为**：换机器 / 新用户拉取项目后第一次跑 `cortex-agent init` / `update` 时会自动重建相对路径 symlink；无需手动干预。
+
 ---
 
 ## 平台映射表
