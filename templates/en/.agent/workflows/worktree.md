@@ -38,6 +38,58 @@ git worktree add ../<repo>-worktrees/T-001 -b agent/T-001-<slug>
 
 Before moving a legacy worktree, run the read-only `plan` command, check dirty state and active processes, then use `git worktree move`; never move it with Finder or `mv`.
 
+### Naming and base for new worktrees (MS-003)
+
+**Resolve the proposal branch first.** The new worktree must branch off the active proposal branch in `.agent/branches/registry.json`, not off `main`:
+
+```bash
+current=$(git rev-parse --abbrev-ref HEAD)
+proposal_branch=$(node -e "
+  const r = require('./lib/branch-registry.js');
+  const cur = process.env.CUR || '';
+  if (cur) {
+    const e = r.getBranch('.', cur);
+    if (e.ok) { console.log(e.entry.name); process.exit(0); }
+  }
+  const l = r.listBranches('.', { status: 'active' });
+  if (l.ok && l.entries.length) { console.log(l.entries[0].name); process.exit(0); }
+  console.log('main');
+" CUR="$current")
+
+if ! git rev-parse --verify --quiet "$proposal_branch" >/dev/null; then
+  echo "[worktree] proposal branch not found: $proposal_branch" >&2
+  exit 2
+fi
+```
+
+**Derive the worktree branch name.** Format is `wt/<proposal-slug>/<task-id>-<slug>`, and the baseline is the proposal branch (not `main`):
+
+```bash
+proposal_slug=$(echo "$proposal_branch" | sed 's|^[^/]*/||')
+wt_branch="wt/${proposal_slug}/<task-id>-<slug>"
+
+if [[ ${#wt_branch} -gt 60 ]]; then
+  echo "[worktree] wt branch name exceeds 60 chars: $wt_branch" >&2
+  exit 2
+fi
+
+node .agent/workspaces/scripts/worktree-layout.js resolve --repo "$(pwd)" --task-id <task-id>
+mkdir -p ../<repo>-worktrees
+git worktree add ../<repo>-worktrees/<task-id> -b "$wt_branch" "$proposal_branch"
+```
+
+Naming examples:
+
+| Proposal branch | task-id | worktree branch |
+| --- | --- | --- |
+| `feat/branch-management` | `T-CLI-001` | `wt/branch-management/T-CLI-001-create` |
+| `fix/dashboard-flicker` | `T-FIX-001` | `wt/dashboard-flicker/T-FIX-001-flk` |
+| `release/1-12-0` | `T-REL-002` | `wt/1-12-0/T-REL-002-prep` |
+
+**Merge target change.** Worktrees merge into the proposal branch first; the proposal branch is later merged into `main` through `/mission COMPLETE`. The older `agent/<task-id>-<slug>` naming is still allowed for legacy worktrees (backward compatibility), but **new worktrees must use `wt/<slug>/<task-id>-<slug>`**.
+
+> Naming conventions and registry schema: see `.agent/rules/branch-management.md`.
+
 Checkpoint runtime progress with the Management API, including the exact phase and evidence:
 
 ```bash

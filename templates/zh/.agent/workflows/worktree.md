@@ -61,11 +61,71 @@ Worktree 计划：
 
 创建 worktree：
 
+**Step 1: 解析当前提案分支（MS-003 新增）**
+
+先从 `.agent/branches/registry.json` 找到当前在用的提案分支（不是 main）：
+
 ```bash
+# 优先：当前分支如果是 feat/fix/etc 命名分支且在 registry → 直接用
+current=$(git rev-parse --abbrev-ref HEAD)
+proposal_branch=$(node -e "
+  const r = require('./lib/branch-registry.js');
+  const cur = process.env.CUR || '';
+  if (cur) {
+    const e = r.getBranch('.', cur);
+    if (e.ok) { console.log(e.entry.name); process.exit(0); }
+  }
+  // fallback: 找 registry 中 status=active 的第一个 feat/fix/release/hotfix/chore
+  const l = r.listBranches('.', { status: 'active' });
+  if (l.ok && l.entries.length) { console.log(l.entries[0].name); process.exit(0); }
+  console.log('main');
+" CUR="$current")
+
+# Sanity check: 提案分支存在
+if ! git rev-parse --verify --quiet "$proposal_branch" >/dev/null; then
+  echo "[worktree] proposal branch not found: $proposal_branch" >&2
+  echo "[worktree] run: cortex-agent branch list" >&2
+  exit 2
+fi
+```
+
+**Step 2: 派生 worktree 分支（基于提案分支，MS-003 新增）**
+
+worktree 分支命名格式为 `wt/<proposal-slug>/<task-id>-<slug>`，**基线 = 提案分支**（不是 main）：
+
+```bash
+# 提案分支的 slug（去掉 feat/fix/.../前缀）
+proposal_slug=$(echo "$proposal_branch" | sed 's|^[^/]*/||')
+
+# worktree 分支名
+wt_branch="wt/${proposal_slug}/<task-id>-<slug>"
+
+# 总长校验（建议 ≤ 60，符合命名规范；过长会被 branch naming validator 拒绝）
+if [[ ${#wt_branch} -gt 60 ]]; then
+  echo "[worktree] wt branch name exceeds 60 chars: $wt_branch" >&2
+  exit 2
+fi
+
 node .agent/workspaces/scripts/worktree-layout.js resolve --repo "$(pwd)" --task-id <task-id>
 mkdir -p ../<repo>-worktrees
-git worktree add ../<repo>-worktrees/<task-id> -b agent/<task-id>-<slug>
+git worktree add ../<repo>-worktrees/<task-id> -b "$wt_branch" "$proposal_branch"
 ```
+
+预期分支命名示例：
+
+| 提案分支 | task-id | worktree 分支 |
+| :--- | :--- | :--- |
+| `feat/branch-management` | `T-CLI-001` | `wt/branch-management/T-CLI-001-create` |
+| `fix/dashboard-flicker` | `T-FIX-001` | `wt/dashboard-flicker/T-FIX-001-flk` |
+| `release/1-12-0` | `T-REL-002` | `wt/1-12-0/T-REL-002-prep` |
+
+**合并策略变更（MS-003）**：
+
+- worktree 合并目标 = 提案分支（不是 main）
+- 提案分支最终通过 `/mission COMPLETE` 流程合并到 main
+- 老的 `agent/<task-id>-<slug>` 命名仍允许在 main worktree 上手动使用（向后兼容），但**新建 worktree 一律用 `wt/<slug>/<task-id>-<slug>`**
+
+> 命名规范与 registry schema 见 `.agent/rules/branch-management.md`。
 
 默认目录必须是 `<repo-parent>/<repo>-worktrees/<task-id>[-slug]`，不得继续在项目父目录平铺 `<repo>-<task-id>`。迁移旧 worktree 前先运行只读 `plan` 审计 dirty 状态和活动进程，然后使用 `git worktree move`，不得用 Finder 或 `mv`。
 

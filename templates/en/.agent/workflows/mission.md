@@ -45,6 +45,40 @@ On every resume, first run `node .agent/skills/runtime-continuity/scripts/index.
 4. Define the validation contract before implementation, including commands, independent validator expectations, required artifacts, and failure behavior.
 5. Mark safe parallel opportunities and exclusive write scopes.
 
+### 5.5 Link the binding branch (MS-003)
+
+Read `git rev-parse --abbrev-ref HEAD` and look it up in `.agent/branches/registry.json`:
+
+- If the current branch is a named branch (`feat/<slug>` / `fix/<slug>` / etc.) and the registry has a matching entry:
+  - Prepend a `Branch: <branch-name>` line to `mission-plan.md` for bidirectional mission ↔ branch linking
+  - Write the new Mission ID into the registry entry's `mission_id` field via `updateBranch` (the CLI's `branch sync` does not mutate `mission_id`; a small helper or direct registry write is needed)
+  - One-liner:
+    ```bash
+    current_branch=$(git rev-parse --abbrev-ref HEAD)
+    if cortex-agent branch show "$current_branch" --json >/dev/null 2>&1; then
+      sed -i.bak "1a\\
+    Branch: ${current_branch}
+    " .agent/missions/M-xxx/mission-plan.md
+    fi
+    ```
+- If the current branch is not in the registry (ad-hoc mission / not in a proposal context) → skip silently, no error
+- Idempotent: if `mission-plan.md` already has a `Branch:` line, keep the existing value (do not overwrite)
+
+### Mark `merge_ready` after a successful VALIDATE (MS-003)
+
+After `/mission validate M-xxx MS-xxx` passes, if the mission is bound to a named branch (Step 5.5 wrote `mission_id`), call `branch ready` to mark the branch as merge-eligible:
+
+```bash
+cortex-agent branch ready <current-branch> \
+  --validation-artifact .agent/missions/M-xxx/milestones/MS-xxx.md
+```
+
+- Expected exit 0; the registry entry's status flips from `active` to `merge_ready`
+- Gate 1 (working tree clean) must pass; if the mission ends with unstaged changes, commit first
+- Gate 2 (`commits_ahead >= 0`) must pass; if behind, run `branch sync` once
+- Gate 3 (validation artifact exists) must pass; the milestone file must be on disk
+- On `/mission COMPLETE`, prompt the user to run `cortex-agent branch merge <current-branch> --to main`
+
 ## DISPATCH and EXECUTE
 
 Create Task, Run, Queue, Session, lock, Runtime Continuity checkpoint, and handoff records through their owning APIs. Keep one coordinator owner for mission transitions. Checkpoint meaningful phase changes; never infer progress from chat alone.
