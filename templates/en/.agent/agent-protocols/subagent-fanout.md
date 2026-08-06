@@ -71,3 +71,25 @@ Failure handling: when `status=failed` or `status=partial`, hosts
 SHOULD additionally write an `inbox` message to the parent_run so
 parent agent gets notified (this is host-side; framework is a passive
 receiver here).
+
+## event-bus bridge (M-004 / FAE-002 — additive section, BC preserved)
+
+> Added after M-004; the legacy `subagent-trace emit` path is **fully preserved**.
+
+The framework event bus (M-004 MS-001 + MS-002) ships 8 core event types.
+The subagent 5 (subagent_spawned / subagent_progress / subagent_completed /
+subagent_failed / subagent_cancelled) are the bridge between event-bus and
+the subagent-fanout protocol.
+
+| subagent-fanout event | event-bus event (`eb:` prefix) | Trigger |
+| :--- | :--- | :--- |
+| `subagent_spawned` | `eb:subagent_spawned` | `bridge.spawn()` |
+| `subagent_progress` | `eb:subagent_progress` | `bridge.progress()` (throttled ≥ 10%) |
+| `subagent_completed` (status=success\|partial) | `eb:subagent_completed` | `bridge.complete()` |
+| `subagent_completed` (status=failed) | `eb:subagent_failed` | `bridge.complete()` + auto inbox parent run |
+| `subagent_cancelled` | `eb:subagent_cancelled` | `bridge.cancel()` |
+
+**BC preserved**: the legacy `node ... subagent-trace emit ...` command
+is unchanged and does NOT publish to event-bus. The new `bridge.*` path
+auto-emits and double-writes `runs/<id>.json#subagent_fanout[]`
+(the legacy path remains the source of truth for the fanout audit trail).
