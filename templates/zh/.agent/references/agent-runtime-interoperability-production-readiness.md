@@ -5,9 +5,9 @@ module_path: .agent/plans/proposals/projects/agent-workspace-orchestration/propo
 module_type: report
 keywords: [agent-runtime, interoperability, production-readiness, P-006, coordination-adapter]
 status: stable
-owner: Codex
+owner: Kucell
 last_verified: 2026-07-29
-verified_by: Codex
+verified_by: Kucell
 sources:
   - .agent/plans/proposals/projects/agent-workspace-orchestration/proposals/P-006-agent-operation-lifecycle-readiness-proposal.md
 linked_decisions:

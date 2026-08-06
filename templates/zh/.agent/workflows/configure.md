@@ -9,7 +9,7 @@ outputs: []
 linked_skills: []
 linked_rules: []
 linked_workflows: []
-owner: Codex
+owner: Kucell
 last_verified: 2026-08-06
 status: stable
 ---

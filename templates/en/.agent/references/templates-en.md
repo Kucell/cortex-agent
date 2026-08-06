@@ -17,9 +17,9 @@ last_commit: 957cc7b
 dependencies: []
 summary: "cortex-agent 英文模板集，与 templates/zh 结构完全对称，内容以英文表达"
 status: stable
-owner: Codex
+owner: Kucell
 last_verified: 2026-06-08
-verified_by: Codex
+verified_by: Kucell
 sources:
   - templates/en/.agent/
 linked_decisions:

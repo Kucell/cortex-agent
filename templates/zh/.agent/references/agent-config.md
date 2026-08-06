@@ -23,9 +23,9 @@ dependencies:
   - templates-zh
 summary: "cortex-agent 项目自身的 Agent Harness 配置，由 zh 模板安装，当前活跃运行"
 status: stable
-owner: Codex
+owner: Kucell
 last_verified: 2026-06-08
-verified_by: Codex
+verified_by: Kucell
 sources:
   - .agent/
   - templates/zh/.agent/
