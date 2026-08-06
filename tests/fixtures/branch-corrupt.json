@@ -1,0 +1,2 @@
+{not valid json
+this is intentionally broken to exercise the corrupt-recovery path
