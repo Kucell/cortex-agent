@@ -20,9 +20,9 @@ last_commit: 957cc7b
 dependencies: []
 summary: "cortex-agent 中文模板集，包含完整的 workflows/skills/sub-agents/rules/hooks 配置"
 status: stable
-owner: Codex
+owner: Kucell
 last_verified: 2026-06-08
-verified_by: Codex
+verified_by: Kucell
 sources:
   - templates/zh/.agent/
 linked_decisions:

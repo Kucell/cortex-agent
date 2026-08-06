@@ -23,9 +23,9 @@ last_commit: 957cc7b
 dependencies: []
 summary: "cortex-agent CLI 入口与核心执行引擎，提供 init/upgrade/add/remove 等全部命令"
 status: stable
-owner: Codex
+owner: Kucell
 last_verified: 2026-06-08
-verified_by: Codex
+verified_by: Kucell
 sources:
   - bin/cortex-agent.js
   - lib/

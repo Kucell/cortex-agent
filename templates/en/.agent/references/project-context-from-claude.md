@@ -12,9 +12,9 @@ dependencies:
   - CLAUDE.md
   - .agent/imported_rules/imported_from_CLAUDE.md.md
 status: stable
-owner: Codex
+owner: Kucell
 last_verified: 2026-07-17
-verified_by: Codex
+verified_by: Kucell
 sources:
   - CLAUDE.md
   - .agent/imported_rules/imported_from_CLAUDE.md.md
