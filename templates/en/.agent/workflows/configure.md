@@ -1,67 +1,85 @@
 ---
 name: configure
-description: Interactively configure the Cortex Agent for a new project.
+description: "Interactively configure the Cortex Agent for a new project."
+type: procedure
+applicable_to:
+  - all
+inputs: []
+outputs: []
+linked_skills: []
+linked_rules: []
+linked_workflows: []
+owner: Codex
+last_verified: 2026-08-06
+status: stable
 ---
 
-# 🚀 Agent Configuration Workflow (/configure)
+# 🚀 Agent 配置工作流 (/configure)
 
-Hi! I'm Cortex Agent. To serve you better, I need to understand your project. Please answer the questions below and I'll generate the initial configuration files for you.
+你好！我是 Cortex Agent。为了更好地协助你，我需要了解一下你的项目。请回答以下几个问题，我将为你自动生成初始配置文件。
 
-## 1. Project Briefing
+## 1. 简要介绍 (Project Briefing)
 
-**In a few sentences, what is the core goal of this project? Who are its main users?**
+**请用几句话描述这个项目的核心目标是什么？它的主要用户是谁？**
 
-> (Your answer here)
+> (请在这里填写你的回答)
 
-## 2. Tech Stack
+## 2. 技术栈定义 (Tech Stack)
 
-**What programming languages, frameworks, and key libraries does this project primarily use?** (e.g. TypeScript, React, Node.js, Express, PostgreSQL)
+**这个项目主要使用哪些编程语言、框架和关键库？** (例如: TypeScript, React, Node.js, Express, PostgreSQL)
 
-> (Your answer here)
+> (请在这里填写你的回答)
 
-## 3. Primary Language
+## 3. 主力编程语言 (Primary Language)
 
-**Please select one or more primary languages so I can load the matching language-specific rules:**
+**请选择一个或多个主力编程语言，以便我加载对应的语言规范规则：**
 
 - [ ] TypeScript / JavaScript
 - [ ] Python
 - [ ] Go
 - [ ] Java
 - [ ] Swift
-- [ ] Other (please specify)
+- [ ] 其他（请说明）
 
-> (Check all that apply)
+> (请勾选或填写)
 
-## 4. Architecture Principles
+## 4. 架构原则 (Architecture Design)
 
-**Does the project follow a specific architectural pattern? (e.g. layered, hexagonal, microservices) Are there any core design principles you want me to follow?** (e.g. "keep modules decoupled", "services must be stateless")
+**项目有无遵循特定的架构模式？(例如：分层架构、六边形架构、微服务) 或者，有哪些你希望我遵守的核心设计原则？** (例如: "保持模块解耦", "服务必须是无状态的")
 
-> (Your answer here)
+> (请在这里填写你的回答)
 
 ---
-## 🤖 My Actions
+## 🤖 我的操作 (My Actions)
 
-After receiving your answers I will:
+收到你的回答后，我将执行以下操作：
 
-1. **Update `task-progress.md`** — fill in the project roadmap with your goals.
-2. **Update `tech-stack.md`** — write your tech stack into the rules file.
-3. **Activate language rules** — based on step 3, read the matching language rule file and append its full content to `.agent/rules/tech-stack.md`:
+1. **更新 `task-progress.md`**：将你的项目目标填充到项目路线图中。
+2. **更新 `tech-stack.md`**：将你定义的技术栈写入规则文件。
+3. **激活语言规则**：根据第 3 步选择，读取对应的语言规则文件内容，追加到 `.agent/rules/tech-stack.md` 末尾：
 
-   | Selection | Language Rule File |
-   |-----------|-------------------|
+   | 选择 | 语言规则文件 |
+   |------|-------------|
    | TypeScript / JavaScript | `.agent/rules/languages/typescript.md` |
    | Python | `.agent/rules/languages/python.md` |
    | Go | `.agent/rules/languages/golang.md` |
    | Java | `.agent/rules/languages/java.md` |
    | Swift | `.agent/rules/languages/swift.md` |
 
-   Action: read the full content of the matching file and append to `tech-stack.md` with a separator:
+   操作：读取对应文件的完整内容，在 `tech-stack.md` 末尾追加分隔线和内容：
    ```
    ---
-   <!-- Auto-injected by /configure: {language} conventions -->
-   {language rule file content}
+   <!-- 以下由 /configure 自动注入：{语言} 语言规范 -->
+   {语言规则文件内容}
    ```
 
-4. **Update `architecture-design.md`** — record your architecture principles.
+4. **更新 `architecture-design.md`**：将你的架构原则写入规则文件。
 
-Once done, I'll be your project-dedicated AI engineer. Let's get started!
+5. **知识层合规校验**：运行 OKF V0.2 校验与知识层 lint，确保 `.agent/` 三层 frontmatter 合规：
+   ```bash
+   node .agent/scripts/validate-frontmatter.js
+   node .agent/skills/knowledge-lint/scripts/index.js
+   ```
+   若 `validate-frontmatter.js` 报 `V-FM-002`（必填字段缺失），请补全对应字段后再继续；`knowledge-lint` 的 `R-LINT-007/008` 仅为 warning，可后续增量修复。
+
+完成后，我就是你项目的专属 AI 工程师了！让我们开始吧。

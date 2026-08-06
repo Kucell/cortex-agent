@@ -1,46 +1,46 @@
 ---
 name: knowledge-lint
-description: Run deterministic knowledge checks for broken links, missing READMEs, plan lifecycle drift, and architecture doc mismatches, then emit knowledge-health.json.
+description: 对仓库知识结构做确定性检查，发现断链、缺 README、计划生命周期异常和架构文档引用失配，并输出 knowledge-health.json。
 ---
 
 # Knowledge Lint
 
-## Goal
+## 目标
 
-Provide a first-pass deterministic audit for the repository knowledge system, focusing on structural problems instead of rewriting documentation.
+为仓库知识系统提供第一版确定性检查，优先发现结构性问题，而不是直接重写文档。
 
-## What It Checks
+## 检查范围
 
-- Broken Markdown links and invalid anchors
-- Missing README files in key knowledge directories
-- Active/completed plan lifecycle drift
-- Workflow / sub-agent / skill references in `docs/architecture.md` that no longer match the repo
+- Markdown 断链与失效锚点
+- 关键知识目录缺少 README
+- active/completed plan 生命周期异常
+- `docs/architecture.md` 中对 workflow / sub-agent / skill 的失配引用
 
-## Output
+## 输出
 
-The script writes:
+脚本执行后会写入：
 
 ```text
 .agent/metrics/knowledge-health.json
 ```
 
-and prints a short summary to the terminal.
+并在终端输出简要摘要。
 
-## Usage
+## 使用方式
 
 ```bash
 node .agent/skills/knowledge-lint/scripts/index.js
 ```
 
-## Design Principles
+## 设计原则
 
-- Deterministic checks only
-- Zero dependencies
-- High signal over broad coverage
-- Do not automatically rewrite large documentation blocks
+- 只做确定性检查
+- 保持零依赖
+- 优先输出高信噪比问题
+- 不自动重写大段文档
 
-## Future Integration
+## 后续集成方向
 
-- Let `/briefing` read `knowledge-health.json`
-- Run lightweight knowledge lint after `/ship`
-- Let doc-gardening use lint output for small maintenance tasks
+- `/briefing` 读取 `knowledge-health.json`
+- `/ship` 后执行轻量 knowledge lint
+- doc-gardening 基于 lint 输出做小步维护
