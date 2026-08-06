@@ -13,6 +13,7 @@ Eliminate the cost of manually maintaining symbolic links and achieve "one-click
 
 - Automatically scan `~/.agent/workflows/` and link them to the project.
 - Automatically scan `~/.agent/skills/` and link them to the project.
+- Automatically scan `~/.agents/skills/` (industry-shared skills, Agent Skills standard) and link them to the project.
 - Keep physical files global, with only shortcuts stored within the project.
 
 ## 📝 Usage
