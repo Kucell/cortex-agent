@@ -4,6 +4,25 @@
 
 > **目录边界**：`.agent/` 是唯一维护源。`.agents/skills/source-command-*` 等复数目录如果出现，通常是外部工具把 slash command 转换为 skill 的生成适配层，不应作为 Cortex Agent 规则、工作流或技能的编辑入口。
 
+> **运行期回归**：宿主在 `AGENTS.md` 中看到的 `## Compatibility Adapter Bootstrap` 受管块明确约定——适配器只负责识别命令 `<command>`，识别后**任何任务动作之前必须**加载 `.agent/workflows/<command>.md`；若该真源缺失，必须显式报告并停止，不得回退到适配器副本。
+
+---
+
+## 适配器与真源不一致的诊断示例
+
+当宿主读取了 `.agents/skills/source-command-<command>/SKILL.md` 但 `.agent/workflows/<command>.md` 不存在时，应该输出类似下面的诊断并停止相关工作流，而不是执行适配器副本：
+
+```text
+[adapter-vs-truth mismatch] source-command-<command> 指向 <command>，
+但 .agent/workflows/<command>.md 缺失。请检查：
+  1. 是否漏跑 `cortex-agent update` 补齐真源；
+  2. 是否手编辑了 .agents/skills/source-command-*；
+  3. .agent/workflows/<command>.md 是否被项目忽略。
+已停止本任务的适配器执行。
+```
+
+该诊断语气与 `.agent/rules/ai-behavior.md` 中“缺源即停”的规则保持一致，避免适配器副本静默抢占真源。
+
 ---
 
 ## 集成模式
