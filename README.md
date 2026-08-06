@@ -275,6 +275,39 @@ unset NPM_TOKEN
   <em>左：终端实际命令 · 右：6 步开发链路 · 总时长约 12 秒 · 无限循环</em>
 </p>
 
+## 跨工具识别锚点
+
+`.agent/` 默认 gitignored（见项目根 `.git/info/exclude` 的 `/.agent` 行），这意味着 clone 项目的 AI 工具只能读到 `AGENTS.md` 入口，看不到内部规则 / 工作流 / 技能的具体约定。为了让 **Claude Code / Codex / Cursor / Aider / Pi agent / 其他任何 AI 编码工具** 都能准确识别「这是一个由 cortex-agent 管理的项目」，框架提供一个**对外锚点**：
+
+- 锚点文件：<code>docs/cortex-agent/anchor.md</code>（**进版本控制**），由 `cortex-agent init` 自动生成并写入。
+- CLI 命令：<code>cortex-agent export-anchor</code> 把同一段内容打印到 stdout，可直接 `>` 重定向到 `CLAUDE.md` / `AGENTS.md` / `.pi/agent.md`。
+
+```bash
+# 输出 Markdown 片段（默认）— 粘到 CLAUDE.md / AGENTS.md / 任何 markdown 记忆
+cortex-agent export-anchor
+
+# 输出结构化 JSON — 给吃 JSON 的工具（Pi agent settings / 自研 agent）
+cortex-agent export-anchor --json
+
+# 写入 Claude Code 长期记忆
+cortex-agent export-anchor > CLAUDE.md
+
+# 在指定项目目录跑（默认 cwd）
+cortex-agent export-anchor --project /path/to/other-project
+```
+
+锚点内容包含：
+
+- `cortex-agent:anchor:v1` 标记（带版本号，便于后续升级）
+- 「此项目由 cortex-agent 管理」的明确声明
+- 入口文件（`./AGENTS.md`）和内部目录（`./.agent/`）的分工
+- 跨工具协作约定：读 `AGENTS.md` → 加载 `.agent/rules/` → 走既有 workflow → 不发明新脚本
+- 记忆纪律：记忆是线索不是事实，**项目文件才是真相**
+
+任何工具只要看到 `cortex-agent:anchor` 标记，就知道该走 cortex-agent 流程，而不是按自己的默认行为瞎改。
+
+---
+
 ## 目录结构
 
 ```text
@@ -311,6 +344,7 @@ docs/
 ├── quality/        # knowledge lint、doc-gardening 与质量治理
 ├── reliability/    # 日志、指标、Trace、浏览器验证等运行时证据
 ├── security/       # 安全边界与扫描策略
+├── cortex-agent/   # 跨工具识别锚点：anchor.md（对外公开，进版本控制）
 └── tech-debt.md    # 已知技术债务与偿还路径
 ```
 
