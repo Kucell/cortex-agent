@@ -14,6 +14,51 @@
 - **熵治理闭环**：`entropy-scanner` 周期扫描知识库漂移，PostCommit Hook 自动修复，保持 `.agent/` 长期健康。
 - **工具无关**：同一套 `.agent/` 配置通过符号链接和指令文件适配 11 个主流 AI 平台。
 
+## 知识层理念 / Knowledge Layer Philosophy
+
+cortex-agent 的 `.agent/references/`、`.agent/workflows/`、`.agent/rules/` 和 `.agent/decisions/` 共同构成项目级的**可验证知识层**，对标 **OKF (Open Knowledge Format) V0.2** 的陈述性知识可信度机制。这不是一个静态 Wiki，而是一套 agent-first 的知识工程基础设施：知识必须有生命周期、可以被自动校验、可以追溯到决策，并且通过 frontmatter 元数据实现程序化消费。
+
+### 四层知识栈 / 4-Layer Knowledge Stack
+
+| 层 | 目录 | 知识类型 | 约束 | 消费方 |
+| :--- | :--- | :--- | :--- | :--- |
+| **L0 源代码** | `lib/` `src/` 等 | 可执行事实 | lint / test / type-check | 人类 + Agent |
+| **L1 程序性知识** | `.agent/workflows/` `.agent/scripts/` | 工作流（怎么做事）| `validate-frontmatter.js` 强制必填字段 | Agent 调度器 |
+| **L2 约束性知识** | `.agent/rules/` | 规则（什么能做、什么不能做）| `knowledge-lint` R-LINT 系列规则 | Agent 上下文注入 |
+| **L3 陈述性知识** | `.agent/references/` | 模块参考文档（现状是什么）| `knowledge-lint` 校验 status / sources / linked_decisions | Agent 知识检索 |
+| **L4 可追溯层** | `.agent/decisions/` `.agent/references/INDEX.md` | 决策记录 + 知识图谱 | ADR 落地必须引用 affected references | Agent + 人（审计/复盘）|
+
+> **关键设计**：L1-L4 每层都有 frontmatter 元数据（`status` / `owner` / `last_verified` / `linked_decisions`），使得 Agent 可以在运行时区分"可信的 stable 知识"和"不应直接采信的 draft 知识"，而不是无差别注入所有 Markdown。
+
+### 与 OpenWiki 的差异化定位 / Differentiation from OpenWiki
+
+| 维度 | OpenWiki | cortex-agent 知识层 |
+| :--- | :--- | :--- |
+| **受众** | 人类团队（阅读优先） | Agent + 人类（程序化消费优先） |
+| **生命周期** | Wiki 页面手动归档 | 4 态自动治理：draft → stable → deprecated（物理不删除，走 git history） |
+| **验证** | 人工 review | `validate-frontmatter.js` 阻塞校验 + `knowledge-lint` 健康扫描 + 季度 stale check |
+| **可追溯** | 页面历史 | 每条 reference 通过 `linked_decisions` 关联 ADR；`INDEX.md` 自动生成 Mermaid 知识图谱 |
+| **入口** | 目录树 / 搜索 | `INDEX.md` 知识图谱入口（Agent 必读，不读全文避免 context bloat） |
+| **同步** | 无内置机制 | L1 双语模板（`templates/{zh,en}/.agent/`）通过 `cortex-agent update` 自动同步 |
+
+> OpenWiki 是一个通用的企业知识库工具，适合人类团队的文档协作。cortex-agent 知识层则聚焦于 **agent-first 的项目级知识工程**——它不替代 OpenWiki，而是为 AI 编码助手提供一套结构化的、可验证的、可追溯的知识消费基础设施。
+
+### 知识治理工具链 / Knowledge Governance Toolchain
+
+| 工具 | 路径 | 用途 |
+| :--- | :--- | :--- |
+| `knowledge-lint` | `.agent/skills/knowledge-lint/` | 知识健康扫描（frontmatter 合规、过期检测、linked_decisions 空引用警告） |
+| `validate-frontmatter.js` | `.agent/scripts/` | 阻塞校验（CI/pre-commit hook），必填字段缺失 exit 1 |
+| `build-references-index.js` | `.agent/scripts/` | 自动生成 `INDEX.md`（status 分布 + Mermaid 关系图 + Archived 分区） |
+| `knowledge-governance.md` | `.agent/rules/` | 知识治理规则（生命周期、废弃流程、验证流程、违反处理） |
+
+详见：
+- 知识治理规则：[`.agent/rules/knowledge-governance.md`](.agent/rules/knowledge-governance.md)
+- 架构设计：[`docs/architecture/okf-knowledge-layer.md`](docs/architecture/okf-knowledge-layer.md)
+- 知识图谱入口：[`.agent/references/INDEX.md`](.agent/references/INDEX.md)
+
+---
+
 ## 快速开始
 
 ### 给 LLM / 本地已安装用户

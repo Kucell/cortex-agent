@@ -1,6 +1,17 @@
 ---
 name: configure
-description: Interactively configure the Cortex Agent for a new project.
+description: "Interactively configure the Cortex Agent for a new project."
+type: procedure
+applicable_to:
+  - all
+inputs: []
+outputs: []
+linked_skills: []
+linked_rules: []
+linked_workflows: []
+owner: Codex
+last_verified: 2026-08-06
+status: stable
 ---
 
 # 🚀 Agent 配置工作流 (/configure)
@@ -63,5 +74,12 @@ description: Interactively configure the Cortex Agent for a new project.
    ```
 
 4. **更新 `architecture-design.md`**：将你的架构原则写入规则文件。
+
+5. **知识层合规校验**：运行 OKF V0.2 校验与知识层 lint，确保 `.agent/` 三层 frontmatter 合规：
+   ```bash
+   node .agent/scripts/validate-frontmatter.js
+   node .agent/skills/knowledge-lint/scripts/index.js
+   ```
+   若 `validate-frontmatter.js` 报 `V-FM-002`（必填字段缺失），请补全对应字段后再继续；`knowledge-lint` 的 `R-LINT-007/008` 仅为 warning，可后续增量修复。
 
 完成后，我就是你项目的专属 AI 工程师了！让我们开始吧。
