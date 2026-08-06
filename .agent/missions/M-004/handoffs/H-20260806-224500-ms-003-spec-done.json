@@ -1,0 +1,149 @@
+{
+  "schema_version": 1,
+  "handoff_id": "H-20260806-224500-ms-003-spec-done",
+  "mission_id": "M-004",
+  "milestone_id": "MS-003",
+  "from_agent": "Mavis-main-session",
+  "to_agent": "Worker-B",
+  "status": "spec-done",
+  "mode": "AGENT_DISPATCH",
+  "from": {
+    "agent_id": "Mavis-main-session",
+    "model": "MiniMax-M3",
+    "session_id": "mvs_91074c42ae6e446cb6007961842da0f5"
+  },
+  "to_detail": {
+    "role": "Worker-B",
+    "model_pref": ["MiniMax-M3", "claude-sonnet"],
+    "required_capabilities": ["phase_4_mission_implementation", "additive_architecture", "node_test", "git_worktree_workflow", "fsm_implementation", "p3_integration"]
+  },
+  "to": {
+    "role": "Worker-B",
+    "model_pref": ["MiniMax-M3", "claude-sonnet"],
+    "required_capabilities": ["phase_4_mission_implementation", "additive_architecture", "node_test", "git_worktree_workflow", "fsm_implementation", "p3_integration"]
+  },
+  "task_id": "M-004-MS-003-parent-resume",
+  "task_progress": {
+    "current_step": "MS-003 spec-done, worktree 创建, 准备派发 Worker-B",
+    "completed_steps": [
+      "M-004 mission approved (D-M004, 2026-08-04)",
+      "MS-001 done (Eric 8-05/06, 110/110 tests pass, VC-001..VC-005)",
+      "MS-002 done (Mavis 8-06 cherry-pick, 142/142 tests pass, VC-006/VC-007)",
+      "MS-002 cherry-pick 到 origin/main 整合 (a22d919, Kucell author)",
+      "MS-003 spec drafted (F-006 parent-resume + F-007 E2E + P-003 整合 + VC-008..VC-010)",
+      "worktree 创建 at /Volumes/workspace/Projects/AI-Tools/cortex-agent-worktrees/agent-M-004-MS-003-parent-resume",
+      "branch agent/M-004-MS-003-parent-resume created based on a22d919"
+    ],
+    "in_progress": "派发 Worker-B 实施 MS-003 (估 90-130 min autonomous)",
+    "remaining_steps": [
+      "Worker-B autonomous ship F-006 parent-resume.js (~250-300 行)",
+      "Worker-B autonomous ship F-006b clients/index.js (~30 行)",
+      "Worker-B autonomous ship F-006c CLI 扩 (lib/event-bus/cli.js + bin/cli.js + lib/cli-contract.js)",
+      "Worker-B autonomous ship VC-008 FSM test (~17 cases)",
+      "Worker-B autonomous ship VC-009 E2E test (~10-12 cases, 4 场景)",
+      "Worker-B autonomous ship VC-010 Safety test (~10 cases)",
+      "Worker-B validation: full regression + BC verify + commit + handoff dual-artifact",
+      "主 session 验证 + merge + MS-003 close-out handoff"
+    ]
+  },
+  "artifacts": {
+    "spec_drafts": [
+      ".agent/missions/M-004/handoffs/20260806-224500-ms-003-spec-done.md (14.2 KB spec, 必读)"
+    ],
+    "validation_contract": ".agent/missions/M-004/validation-contract.json VC-008..VC-010 (既有, 不需新建)",
+    "worktree": {
+      "path": "/Volumes/workspace/Projects/AI-Tools/cortex-agent-worktrees/agent-M-004-MS-003-parent-resume",
+      "branch": "agent/M-004-MS-003-parent-resume",
+      "base_commit": "a22d919 (origin/main + 2 Kucell-author M-004 MS-002 cherry-picks)"
+    }
+  },
+  "scope": {
+    "F-006": {
+      "name": "parent-resume client (FSM 5 状态)",
+      "files_new": [
+        "lib/event-bus/clients/parent-resume.js (~250-300 行)",
+        "lib/event-bus/clients/index.js (~30 行)"
+      ],
+      "files_additive": [
+        "lib/event-bus/cli.js (+50-100 行, resume subcommand)",
+        "bin/cli.js (+5-10 行, case event-bus resume forward)",
+        "lib/cli-contract.js (+5-10 行, 1 command entry update)"
+      ],
+      "files_untouched": [
+        "lib/event-bus/{event-bus,event-types,persistence,fs-watcher,subagent-trace-bridge}.js (MS-001 + MS-002 ship)",
+        "lib/cross-project/* (P-003 ship, MS-003 只 read)"
+      ],
+      "fsm_states": ["INIT", "RECEIVED", "ACKED", "RUNNING", "DONE", "FAILED"],
+      "trigger_events": ["eb:subagent_spawned", "eb:subagent_progress", "eb:subagent_completed", "eb:subagent_failed", "eb:subagent_cancelled"],
+      "p3_integration": "inbox write + subscriptions read + bridge sync trigger"
+    },
+    "F-007": {
+      "name": "E2E 验证 (派 3 sub 并行 → 父 resume)",
+      "scenarios": [
+        "A: 3 sub completed → 父 DONE",
+        "B: 1 sub failed + 2 completed → 父 RESUME_PARTIAL + escalate",
+        "C: 1 cancelled + 2 completed → 父 DONE",
+        "D: P-003 bridge sync mock 收到聚合调用"
+      ],
+      "key_assertions": 7
+    },
+    "VC-008": {"test_file": "tests/event-bus-parent-resume-fsm.test.js", "cases_estimated": 17, "type": "fsm"},
+    "VC-009": {"test_file": "tests/event-bus-parent-resume-e2e.test.js", "cases_estimated": "10-12", "type": "e2e"},
+    "VC-010": {"test_file": "tests/event-bus-parent-resume-safety.test.js", "cases_estimated": 10, "type": "safety"}
+  },
+  "estimated_metrics": {
+    "files_total": 8,
+    "lines_added": "1040-1450 估",
+    "test_cases_added": "37-42 估",
+    "duration_min": 90,
+    "duration_max": 130,
+    "comparison_to_MS-001": "M-004 MS-001 30 min ship, MS-003 范围 2.5-3x (FSM + e2e + 3 test files)"
+  },
+  "dispatch_instructions": {
+    "worktree_path": "/Volumes/workspace/Projects/AI-Tools/cortex-agent-worktrees/agent-M-004-MS-003-parent-resume",
+    "branch": "agent/M-004-MS-003-parent-resume",
+    "base_commit": "a22d919",
+    "commit_to_branch": true,
+    "commit_to_main": false,
+    "required_commits_min": 3,
+    "required_commits_format": "feat(M-004-MS-003) prefix + feature chain at end",
+    "report_required": [
+      "commit SHA(s) (3 估)",
+      "tests pass count (142 + 37-42 = 179-184 估)",
+      "BC verify: P-003 bridge 零修改 + lib/event-bus 既有 5 模块零修改",
+      "冲突文件 git diff --staged --stat 验证"
+    ],
+    "validation_steps": [
+      "cd /Volumes/workspace/Projects/AI-Tools/cortex-agent-worktrees/agent-M-004-MS-003-parent-resume",
+      "node --test tests/event-bus-{schema,publish,subscribe,ack,dedupe,persistence,perf-bench,bc-subagent-trace,cli,parent-resume-fsm,parent-resume-e2e,parent-resume-safety}.test.js",
+      "node --test tests/*.test.js (full regression)",
+      "node bin/cli.js event-bus --help",
+      "node bin/cli.js event-bus resume --help"
+    ]
+  },
+  "failure_modes": {
+    "30min_no_commit": "task framework threshold → 主 session task_stop + 同 worktree 接管 (M-019 实战模式)",
+    "1h_no_checkpoint": "同上",
+    "framework_network_error": "worktree 实际可能 100% 完成, 验证 worktree 文件状态 (M-019 实战模式)",
+    "lib_commands_js_modified": "立即 revert + 跟 Eric 报 + 标注 deviation",
+    "bin_cli_js_existing_case_modified": "立即 revert + 重新 additive",
+    "p3_bridge_modified": "立即 revert (MS-003 只 read P-003)",
+    "lib_event_bus_existing_modified": "立即 revert (MS-001 + MS-002 完整保留)",
+    "npm_dependency_added": "立即 revert",
+    "regression_break": "立即定位 + 修, 不允许 break BC"
+  },
+  "architecture_constraints": {
+    "zero_npm_install": "✅ maintained",
+    "package_json_modified": false,
+    "lib_commands_js_modified": false,
+    "lib_memory_modified": false,
+    "lib_coordination_modified": false,
+    "lib_agents_modified": false,
+    "bin_cli_js_modified": "additive only (新 case event-bus resume, +5-10 行)",
+    "lib_event_bus_existing_modules_modified": false,
+    "lib_event_bus_schemas_modified": false,
+    "lib_cross_project_modified": false,
+    "p3_bridge_js_modified": false
+  },
+  "next_milestone_after": "MS-004 (coordination-sync + dashboard-push + notification-pump 3 client, 估 1 周, 等 MS-003 ship)"
+}
