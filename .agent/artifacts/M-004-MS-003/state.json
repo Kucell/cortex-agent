@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "mission_id": "M-004",
+  "milestone_id": "MS-003",
+  "state": "DISPATCHING",
+  "started_at": "2026-08-06T22:48:00Z",
+  "completed_at": null,
+  "estimated_duration_min": "90-130",
+  "mode": "WORKER_B_AUTONOMOUS",
+  "worktree": "/Volumes/workspace/Projects/AI-Tools/cortex-agent-worktrees/agent-M-004-MS-003-parent-resume",
+  "branch": "agent/M-004-MS-003-parent-resume",
+  "base_commit": "a22d919",
+  "scope": "F-006 parent-resume + F-007 E2E + P-003 整合 + VC-008..VC-010",
+  "spec_handoff": ".agent/missions/M-004/handoffs/20260806-224500-ms-003-spec-done.md",
+  "expected_commits": 3,
+  "expected_test_cases_added": "37-42"
+}
