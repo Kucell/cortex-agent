@@ -67,3 +67,24 @@ sub-agent 结束时 push `subagent_completed`(或 `subagent_cancelled`)。
 失败处理:当 `status=failed` 或 `status=partial`,host **应当**额外
 向 parent_run 写一条 `inbox` 消息让 parent agent 知道(此步是 host
 侧责任,framework 仍是被动接收者)。
+
+## event-bus 桥接 (M-004 / FAE-002 — 增量段落, BC 兼容)
+
+> 本节为 M-004 之后追加; 旧 `subagent-trace emit` 路径**完全保留**.
+
+framework event bus (M-004 MS-001 + MS-002) 提供 8 类 core event,
+subagent 5 类 (subagent_spawned / subagent_progress / subagent_completed /
+subagent_failed / subagent_cancelled) 是 event-bus 跟 subagent-fanout
+协议的双向桥接.
+
+| subagent-fanout 事件 | event-bus 事件 (`eb:` 前缀) | 触发 |
+| :--- | :--- | :--- |
+| `subagent_spawned` | `eb:subagent_spawned` | `bridge.spawn()` |
+| `subagent_progress` | `eb:subagent_progress` | `bridge.progress()` (节流 ≥ 10%) |
+| `subagent_completed` (status=success\|partial) | `eb:subagent_completed` | `bridge.complete()` |
+| `subagent_completed` (status=failed) | `eb:subagent_failed` | `bridge.complete()` + 自动 inbox 父 run |
+| `subagent_cancelled` | `eb:subagent_cancelled` | `bridge.cancel()` |
+
+**BC 兼容**: 旧 `node ... subagent-trace emit ...` 命令 unchanged,
+event-bus 不收. 新 `bridge.*` 路径自动 emit + 双写
+`runs/<id>.json#subagent_fanout[]` (旧路径 preserved).

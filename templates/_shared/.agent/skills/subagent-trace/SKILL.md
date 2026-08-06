@@ -93,5 +93,43 @@ node .agent/skills/subagent-trace/scripts/index.js tree \
 - `scripts/match-trigger.js` — keyword-matching pure helper.
 - This `SKILL.md` — how to invoke the receiver as a CLI.
 
+## 自动 emit (M-004 / FAE-002 — framework event bus 桥接)
+
+> 适用于 M-004 之后, framework event bus 已 ship (MS-001) + bridge 已 ship
+> (MS-002)。本节为**追加段落**, 不影响上面 BC 路径; 旧的 `node ... emit ...`
+> 调用方式完全保留。
+
+除了上面 4 个 BC emit 命令 (写 `runs/<id>.json#subagent_fanout[]` + `#events[]`,
+event-bus 不收), framework 同时提供 **bridge 自动 emit** 路径:
+
+- `lib/event-bus/subagent-trace-bridge.js` 提供 4 个方法:
+  - `bridge.spawn({parent_run_id, subagent_id, role, task_description, ...})`
+  - `bridge.progress({parent_run_id, subagent_id, percent, current_step, ...})` (节流 ≥ 10%)
+  - `bridge.complete({parent_run_id, subagent_id, status, output_summary, ...})` (status=success|partial → eb:subagent_completed; status=failed → eb:subagent_failed + 默认 inbox 父 run)
+  - `bridge.cancel({parent_run_id, subagent_id, reason, ...})`
+
+- 调用 `bridge.*` 会**双写**:
+  1. publish 到 framework event bus (`eb:subagent_*` 8 类 core event 之一)
+  2. spawn 旧的 `subagent-trace/scripts/index.js emit ...` 把同一事件写进
+     `runs/<id>.json#subagent_fanout[]` + `#events[]` (BC 旧路径 preserved)
+
+- 何时用 bridge vs 旧的 emit CLI:
+  - **bridge**: 当 sub-agent 想让 framework **自动感知** 完成/失败/取消
+    (parent-resume client 自动 resume, dashboard 实时显示, coordination
+    journal 双源同步)
+  - **旧的 emit CLI**: 仅当只想写 subagent_fanout[] 不要 event-bus
+    (BC 兼容场景, 例如不想让 framework 触发后续 client)
+
+- CLI 入口 (M-004 MS-002 / F-005): `cortex-agent event-bus <publish|subscribe|list-events|history>`:
+  ```bash
+  cortex-agent event-bus publish \
+    --event subagent_completed \
+    --payload '{"status":"success","output_summary":"done"}'
+
+  cortex-agent event-bus list-events --event subagent_completed --limit 5
+
+  cortex-agent event-bus subscribe --event subagent_spawned
+  ```
+
 For return-shape / edge cases, read `scripts/index.js` — it is
 single-file and well-commented.
