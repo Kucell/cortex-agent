@@ -14,7 +14,7 @@ linked_skills:
   - validate-frontmatter
   - build-references-index
   - knowledge-lint
-owner: mavis
+owner: Kucell
 last_verified: 2026-08-06
 status: stable
 ---
@@ -40,7 +40,7 @@ status: stable
 
 - `module` / `module_path` / `module_type` / `keywords` (现有)
 - `status` (新增,必填,枚举: `stable` / `draft` / `deprecated`)
-- `owner` (新增,知识责任人,默认 = 主仓 git author)
+- `owner` (新增,知识责任人,**必须 = 主仓 git author 的实名**,禁止填写 `Codex` / `Mavis` 等通用 agent 身份;见 `validate-frontmatter.js` 的 `FORBIDDEN_OWNERS`)
 - `last_verified` (新增,最后一次人工/自动校验时间)
 - `sources` (新增,至少一条 URL / ADR 引用 / 内部 cross-reference)
 - `linked_decisions` (新增,关联 ADR 列表,允许空但 knowledge-lint 警告)
