@@ -7,6 +7,60 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.13.0-rc.1] - 2026-08-06
+
+> **Pre-release**:rc.1 给 AI-Brain 内部 dogfooding 试用 + 实战 ≥ 2 周观察期,**不建议生产使用**。
+> **基础**:`3f51c2c`(v1.12.0-rc.1,2026-08-04)→ 148 commits → `90e9cd5` feat(platform) → `a7d8bf3` feat(cli export-anchor) → `dde5cf5` 4-merge 节点
+> **累积 commits**:148(feat 73 / fix 29 / chore 11 / docs 12 / merge 12 / test 11 / refactor 1)
+> **完整 release notes**:`docs/releases/v1.13.0-rc.1.md`(双语 zipped,中文在前,English 在后)
+> **Mission 关联**:M-015(ACN/P-005 bounded monitor)+ T-CAB-001(host-adapter P0/P1)+ P-003(cross-project-event-bridge Phase 1+2)+ M-SETUP-PORT-001(setup-portability)+ T-FIX-TESTS-001(F1-F5 测试修复)
+
+### Major
+
+- **跨项目事件桥接 (P-003) — 新能力**:Phase 1 事件桥模块层 + CLI 路由;Phase 2 跨主机 handoff 元数据扩展(4 字段:`origin_project` / `target_project` / `topology_ref` / `working_branch`);101/101 tests pass;为 SamHMI × hmi-platform 双线协作落地。commits: `0d3b582` / `8031a1e` / `d77b7af` / `abccdaf`
+- **AGENTS.md 兼容性适配器 (T-CAB-001)**:P0/P1 — `## Compatibility Adapter Bootstrap` 受管块强约束宿主工作流(必须先加载真源 `.agent/workflows/<command>.md`);`lib/setup.js` 3 新函数;双语模板 principle 11;`fix(host-adapter): preserve upgrade additive-only boundary` 修升级路径。commits: `1ce7a95` / `dc8615e` / `ce8f5b8`
+- **安装配置可移植性 (M-SETUP-PORT-001)**:`linkGlobalConfig()` 改用 `path.relative`(跨用户/机器/容器可移植);`.gitignore` 加 `.agent/global`;`cortex-agent doctor` 新增 `[setup-portability]` 4 类检查(missing / not-symlink / broken / wrong-target);实施中修 2 个 task 外的真实 bug(macOS `/tmp → /private/tmp` 别名 + `fs.existsSync` 跟随 symlink)。commits: `1e736f2` / `dde5cf5`
+- **受治理监控收口 (M-015 / ACN/P-005)**:严格区分 Task 状态 vs execution-attempt disposition;5 attempt 状态(attempt_active / attempt_review_ready / attempt_attention_required / attempt_closed / attempt_inconsistent);Heartbeat 终态异常仅通知一次后自动暂停;Fenced 人工 reconciliation(fresh lease + fencing token + evidence 三必)。commits: `b0c596d` / `2651f36`
+- **厂商无关通知 (ACN/P-003)**:Host Wakeup Adapter + stdio/JSONL transport;Codex App Server wakeups 接入;Production notification lifecycle 集成。commits: `0d73da2` / `efed4ef` / `6855cd9` / `ae446bd`
+
+### Added
+
+- **Agent Skills 标准生态融合** (Ref M-017, `90e9cd5`):注册 grok / opencode / pi 三个一等平台;`linkGlobalConfig` 新增 `~/.agents/skills` 检测;`installPlatform` 支持 merge 字段(JSON 数组并集 + 标量保留 existing)
+- **跨工具识别锚点 (export-anchor)** (`a7d8bf3`):新增 `cortex-agent export-anchor` 命令,输出标准 HTML 锚点 `<!-- cortex-agent:anchor:v1 -->`;让 Claude Code / Codex / Cursor / Aider / Pi 等任何 AI 工具准确识别 cortex-agent 管理;`lib/anchor.js` 173 行新模块
+- **secrets bridge** (`aeacf89`):`secret://<ref>` 桥接到 MCP `bearer_token_env_var`(resolve / render-bearer / inject 三步)
+- **memory 3 protocol-level patches** (`ac08519`):Claude Code v2.1.216 binary 兼容
+- **T-CAB-001 P-002 follow-up proposal** (`1555a33`):6 个候选方向(适配器扩展/Claude Code 路径/测试矩阵/doctor/跨 host/SamHMI 实战)
+- **P-003 cross-project-coordination project 重建**:5 个子提案 P-001..P-005 + index/references/relations
+- **P-002 (cross-project-event-bridge Phase 2) 提案**:10 章节 active
+- **7 个 P-NNN 文件补 `status:` frontmatter**(AWO 全 P-001..P-007)
+- **INCONSISTENCIES-REPORT.md + INCONSISTENCIES-FOLLOWUP-TASKS.md**:6 个 inconsistencies + 6 个 follow-up 任务
+- **`docs/cortex-agent/anchor.md`**:export-anchor 锚点规范
+
+### Fixed
+
+- **T-FIX-TESTS-001 (F1-F5)**:`1237dca` dispatch-state projections + retrieval-trace panel,`d61d918` query-dispatch-state.js fixture,`c7c05b2` lib/setup.js dedup,`4970bed` F2/F3/F4 update fixture,`7de54a0` T-FIX 整体 merge
+- **post-v1.9.4 governance hardening** (`6472f00`):公共租约 + 受治理手动派发
+- **监控收口日志真相一致性** (`2651f36`)
+- **management-api 空协调运行时查询兼容** (`e55b238`)
+- **governed launch 修复**:`4cc3c6f` 终态恢复 + `a05021b` monitor 进程组分离 + `3f9292f` 接管后恢复幽灵任务
+
+### Excluded
+
+- **M-004 FAE-002 Event Bus MS-002+**:MS-001 done(105 tests pass),MS-002+ 在推
+- **M-007 skill-dispatch P-001..004**:SCOPE 等 Gate-1
+- **M-016 branch-management MS-002+**:MS-001 done,后续在另一 agent 推
+- **M-018 knowledge layer**:SCOPE → PLAN,plan ready for user confirmation
+
+### Validation
+
+- **全测试套**:~5 fail(全部 pre-existing baseline 8 fail 子集)
+- **真合并引入回归**:**0**
+- **`.agent` 漂移修复**:4 个文件同步
+- **2 个新 feat 冒烟测试**:`lib/anchor.js` / `lib/platform.js` / `lib/registry.js` require OK,`export-anchor` 命令可执行
+- **main ↔ origin/main**:`ahead 0 / behind 0`
+
+---
+
 ## [1.12.0-rc.1] - 2026-08-04
 
 > **Pre-release**:rc.1 给 AI-Brain 内部 dogfooding 试用,**不建议生产使用**。
