@@ -13,6 +13,7 @@ description: 将全局 ~/.agent 下的工作流和技能一键同步(Link)到当
 
 - 自动扫描 `~/.agent/workflows/` 并链接到项目。
 - 自动扫描 `~/.agent/skills/` 并链接到项目。
+- 自动扫描 `~/.agents/skills/`（行业共享 skills，Agent Skills 标准）并链接到项目。
 - 保持物理文件在全局，项目内仅存储快捷方式。
 
 ## 📝 使用方法

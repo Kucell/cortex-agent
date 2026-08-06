@@ -1,0 +1,5 @@
+{
+  "skills": [".agent/skills", ".agents/skills"],
+  "prompts": [".agent/workflows"],
+  "packages": []
+}
