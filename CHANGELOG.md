@@ -7,6 +7,76 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.13.0-rc.2] - 2026-08-07
+
+> **Pre-release**:rc.2 给 AI-Brain 内部 dogfooding 试用 + 实战 ≥ 2 周观察期,**不建议生产使用**。
+> **基础**:`44108f2`(v1.13.0-rc.1,2026-08-06)→ 99 commits → `8ae1d70` (M-004-MS-003 close-out)
+> **rc.1 vs rc.2 差异**:**99 commits 增量**,**88 files changed, +15643 / -80 lines**
+> **累积 commits**(v1.12.0-rc.1 起):**247 commits**
+> **完整 release notes**:`docs/releases/v1.13.0-rc.2.md`(双语 zipped)
+> **Mission 关联**:M-004(FAE-002 Event Bus MS-001+MS-002+MS-003 全部 done)+ M-016(branch-management 4 milestones COMPLETE)+ M-018(OKF Knowledge Layer MS-004+MS-005)+ M-015(ACN/P-005)+ T-CAB-001 + P-003 + M-SETUP-PORT-001 + T-FIX-TESTS-001
+
+### Major
+
+- **M-004 Event Bus 完整闭环 (MS-001+MS-002+MS-003) — 核心基础设施**:
+  - MS-001: `lib/event-bus/` 核心 API + 105 tests pass (VC-001..VC-005)
+  - MS-002: F-004 subagent-trace bridge (`lib/event-bus/subagent-trace-bridge.js` ~340 行) + 8 类 core event 双写;F-005 `cortex-agent event-bus` CLI 4 subcommand (`lib/event-bus/cli.js` ~470 行) + VC-006/VC-007
+  - MS-003: F-006 parent-resume client + **FSM 5 状态** (`parent_idle` → `parent_dispatching` → `parent_waiting_subagent` → `parent_resuming` → `parent_consolidating`) + clients registry + event-bus resume subcommand + P-003 整合
+  - 派发模式: Worker-B 起草 22 min + framework 取消 + 主 session 接管 (M-019 实战 5+ 次验证)
+  - 3 deviations honest 标注 + close-out handoff
+  - 5 个新 test files: `event-bus-bc-subagent-trace` (529) + `event-bus-cli` (277) + `event-bus-parent-resume-fsm` (348) + `event-bus-parent-resume-e2e` (379) + `event-bus-parent-resume-safety` (332)
+  - M-004 MS-003 39 cases total
+- **M-016 Branch Management 4 milestones COMPLETE**:
+  - MS-001: `lib/branch-naming.js` + `lib/branch-registry.js`(5 类分支命名规范 + 提案-分支绑定)
+  - MS-002: `lib/commands/branch.js` (5 subcommand: create / list / merge-ready / lock / unlock)
+  - MS-003: 5 workflows 集成 (start-task / mission / ship / commit / handoff)
+  - MS-004: `docs/architecture/branch-management-design.md` + 3 fixtures
+  - 3 个新 test files: `branch-cli` / `branch-naming` / `branch-registry` + `workflow-integration` (534 行)
+  - commits: `08a9b55` / `4471e17` / `db5c1b3` / `7606028` / `125a08d`
+- **M-018 OKF Knowledge Layer MS-004 + MS-005**:
+  - `feat(okf): implement OKF V0.2 knowledge layer` (`0cf448e`)
+  - `docs/architecture/okf-knowledge-layer.md`(新,完整设计)
+  - 知识架构 V0.2 实施,与 Harness Phase 7 对齐
+
+### Fixed
+
+- **`fix(knowledge): owner/verified_by`: mavis → Kucell**(V-FM-003,2 commits `6b54264` / `d81685a`)
+  - 治理规则 owner / verified_by 字段从 generic "mavis" agent id 改为项目作者 "Kucell"
+  - 防止 future 误用 generic agent id 进入 owner gate
+
+### Validation
+
+- 5 个新 test files (event-bus):共 1865 行
+- 3 个新 test files (branch):覆盖 MS-001/002/003
+- 1 个新 test file (workflow-integration):534 行
+- 3 个新 fixtures:branch-corrupt / branch-minimal / branch-populated
+- main ↔ origin/main:`ahead 0 / behind 0`
+- Inner `.agent` ↔ origin:`ahead 0 / behind 0`
+- **rc.1 tag 保留**:`v1.13.0-rc.1` 仍指向 `44108f2`(历史可追溯)
+
+### Excluded
+
+- M-007 skill-dispatch P-001..004:SCOPE 等 Gate-1
+- M-006 AWO/P-007:ADVANCE MS-003 planned
+- M-013 FAE-002/003/004/007:VALIDATE
+- M-014 ARI/P-006:PLAN
+
+### 继承自 v1.13.0-rc.1 (148 commits,详见 rc.1 release notes)
+
+- P-003 cross-project-event-bridge Phase 1+2
+- T-CAB-001 AGENTS.md Compatibility Adapter Bootstrap
+- M-SETUP-PORT-001 linkGlobalConfig portability
+- M-015 (ACN/P-005) bounded monitor reconciliation
+- ACN/P-003 host-neutral notification
+- Agent Skills ecosystem fusion (Ref M-017)
+- export-anchor CLI command
+- T-FIX-TESTS-001 (F1-F5) test stability
+- post-v1.9.4 governance hardening
+- T-CAB-001 P-002 follow-up proposal
+- INCONSISTENCIES-REPORT.md + 6 follow-up tasks
+
+---
+
 ## [1.13.0-rc.1] - 2026-08-06
 
 > **Pre-release**:rc.1 给 AI-Brain 内部 dogfooding 试用 + 实战 ≥ 2 周观察期,**不建议生产使用**。
