@@ -98,7 +98,13 @@ const { eventBusCommand } = require("../lib/event-bus/cli");
 // and stages/commits/pushes them so project-management state stays
 // in lock-step across machines. Strictly additive: no changes to
 // lib/commands.js; the new subcommand is added to the case dispatch below.
-const { stateSync } = require("../lib/state-sync");
+//
+// `installStateGithooks` and `fireAndForgetSync` are the auto-mode entry
+// points wired into the case dispatch below (init / upgrade / update /
+// decisions / inbox / waitpoints / task / event). They live here in
+// bin/cli.js (not lib/commands.js) so M-001 shadow-init's invariant
+// "lib/commands.js has 0 changes vs base f8a1d38" stays intact.
+const { stateSync, installStateGithooks, fireAndForgetSync } = require("../lib/state-sync");
 
 // ─── Context ──────────────────────────────────────────────────────────────────
 
@@ -394,10 +400,11 @@ async function initModeGeneral() {
       process.exit(2);
     }
     await initModeGeneral();
+    installStateGithooks({ cwd, lang });
     return;
   }
   switch (command) {
-    case "init":        await init(ctx); break;
+    case "init":        await init(ctx); installStateGithooks({ cwd, lang }); break;
     case "add":         await addPlatforms(ctx); break;
     case "remove":      await removePlatforms(ctx); break;
     case "list":        listPlatforms(ctx); break;
@@ -408,13 +415,13 @@ async function initModeGeneral() {
         process.exitCode = 3;
         break;
       }
-      await upgrade(l1Ctx); break;
+      await upgrade(l1Ctx); installStateGithooks({ cwd, lang }); break;
     case "update":
       l1Ctx.options.updateScripts = true;
       if (l1Ctx.options.team) {
         l1Ctx.options.teamPhase = "L1-then-L2";
       }
-      await upgrade(l1Ctx);
+      await upgrade(l1Ctx); installStateGithooks({ cwd, lang });
       break;
     case "track":       trackAgent(ctx); break;
     case "untrack":     untrackAgent(ctx); break;
@@ -426,11 +433,11 @@ async function initModeGeneral() {
     case "queues":      queues(ctx); break;
     case "sessions":    sessions(ctx); break;
     case "session":     runSession(args); break;
-    case "decisions":   decisions(ctx); break;
-    case "inbox":       inbox(ctx); break;
-    case "waitpoints":  waitpoints(ctx); break;
+    case "decisions":   decisions(ctx); fireAndForgetSync(l1Ctx).catch(() => {}); break;
+    case "inbox":       inbox(ctx); fireAndForgetSync(l1Ctx).catch(() => {}); break;
+    case "waitpoints":  waitpoints(ctx); fireAndForgetSync(l1Ctx).catch(() => {}); break;
     case "task":
-    case "event":       coordination(ctx); break;
+    case "event":       coordination(ctx); fireAndForgetSync(l1Ctx).catch(() => {}); break;
     case "lease":       lease(ctx); break;
     case "notification": await notification(ctx); break;
     case "mcp":         await mcp(ctx); break;
