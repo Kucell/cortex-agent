@@ -342,7 +342,7 @@ test("VC-013-02-19 lease acquire missing required argument throws LeaseCliError"
 });
 
 test("VC-013-02-20 lease-cli module never imports subprocess / network / fetch primitives", () => {
-  const src = fs.readFileSync(path.join(__dirname, "../lib/coordination/lease-cli.js"), "utf8");
+  const src = fs.readFileSync(path.join(__dirname, "../../lib/coordination/lease-cli.js"), "utf8");
   assert.ok(!/child_process/.test(src), "lease-cli must not import child_process");
   assert.ok(!/\bnet\.Socket\b/.test(src), "lease-cli must not use net.Socket");
   assert.ok(!/require\(['"]https?['"]\)/.test(src), "lease-cli must not import http/https");

@@ -128,7 +128,7 @@ test("VC-013-04-07 resolveDispatchPlan composes capability-aware matcher snapsho
 });
 
 test("VC-013-04-08 dispatch-plan module is pure (no fs write or subprocess)", () => {
-  const src = fs.readFileSync(path.join(__dirname, "../lib/dispatch-plan.js"), "utf8");
+  const src = fs.readFileSync(path.join(__dirname, "../../lib/dispatch/plan.js"), "utf8");
   // Note: fs.readFileSync IS allowed (read-only). writeFile/appendFile/rename are not.
   assert.ok(!/fs\.(writeFile|appendFile|rename|chmod|chown|unlink|rm|rmdir)/.test(src), "dispatch-plan must not write to disk");
   assert.ok(!/child_process/.test(src), "dispatch-plan must not import child_process");

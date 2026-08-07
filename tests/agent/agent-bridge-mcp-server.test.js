@@ -372,7 +372,7 @@ test("mcp-server: e2e subprocess round-trip (proves stdio wiring)", async () => 
   // constructs a server bound to the actual process.stdin/stdout.
   const loader = `'use strict';
 const path = require('node:path');
-const { McpServer } = require(${JSON.stringify(path.join(__dirname, '..', 'lib', 'agents', 'bridge', 'mcp-server.js'))});
+const { McpServer } = require(${JSON.stringify(path.join(__dirname, "../../lib/agents/bridge/mcp-server.js"))});
 const server = new McpServer({ projectRoot: ${JSON.stringify(root)} });
 server.start();
 `;

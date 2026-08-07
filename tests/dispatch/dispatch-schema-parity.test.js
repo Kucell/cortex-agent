@@ -11,9 +11,9 @@ const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
 
-const SHARED = path.join(__dirname, "../templates/_shared/.agent/dispatch");
-const ZH = path.join(__dirname, "../templates/zh/.agent/dispatch");
-const EN = path.join(__dirname, "../templates/en/.agent/dispatch");
+const SHARED = path.join(__dirname, "../../templates/_shared/.agent/dispatch");
+const ZH = path.join(__dirname, "../../templates/zh/.agent/dispatch");
+const EN = path.join(__dirname, "../../templates/en/.agent/dispatch");
 
 const FILES = [
   "README.md",

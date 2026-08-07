@@ -9,7 +9,7 @@ const test = require("node:test");
 const { CoordinationApplicationService } = require("../../lib/coordination/application-service");
 const { createEvent, STATES } = require("../../lib/coordination/contract");
 
-const MONITOR = path.resolve(__dirname, "../../lib/governed-child-monitor.js");
+const MONITOR = path.resolve(__dirname, "../../.claude/worktrees/main-merge-ops/lib/governed-child-monitor.js");
 
 // ─── Shared fixtures ──────────────────────────────────────────────────────────
 

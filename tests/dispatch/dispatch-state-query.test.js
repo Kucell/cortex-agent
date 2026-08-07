@@ -159,7 +159,7 @@ test("VC-013-03-08 dispatch-plan requires taskId argument", () => {
 });
 
 test("VC-013-03-09 dispatch-state module is read-only (no fs write or mutation verbs)", () => {
-  const src = fs.readFileSync(path.join(__dirname, "../lib/coordination/dispatch-state.js"), "utf8");
+  const src = fs.readFileSync(path.join(__dirname, "../../lib/coordination/dispatch-state.js"), "utf8");
   // No writeFileSync / rename / appendFile
   assert.ok(!/fs\.(writeFile|appendFile|rename|chmod|chown|unlink|rm|rmdir)/.test(src), "dispatch-state must not write to disk");
   // No mutation verbs leak through schema
@@ -167,7 +167,7 @@ test("VC-013-03-09 dispatch-state module is read-only (no fs write or mutation v
 });
 
 test("VC-013-03-10 query dispatch-state is queryable via management-api index.js", () => {
-  const src = fs.readFileSync(path.join(__dirname, "../.agent/skills/management-api/scripts/index.js"), "utf8");
+  const src = fs.readFileSync(path.join(__dirname, "../../.agent/skills/management-api/scripts/index.js"), "utf8");
   assert.ok(src.includes('"dispatch-state"'), "management-api must register dispatch-state");
   assert.ok(src.includes('"dispatch-plan"'), "management-api must register dispatch-plan");
   assert.ok(src.includes('triggers'), "management-api must register triggers");

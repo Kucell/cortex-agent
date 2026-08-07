@@ -586,7 +586,7 @@ test("mcp-bridge: e2e subprocess round-trip (external client → bridge → cort
   // subprocess exits.
   const bootstrap = `'use strict';
 const path = require("node:path");
-const { McpBridge, ExternalMcpClient } = require(${JSON.stringify(path.resolve(__dirname, "../lib/agents/bridge/mcp-bridge.js"))});
+const { McpBridge, ExternalMcpClient } = require(${JSON.stringify(path.resolve(__dirname, "../../lib/agents/bridge/mcp-bridge.js"))});
 
 const root = ${JSON.stringify(root)};
 const fake = ${JSON.stringify(fakeExternal)};

@@ -205,7 +205,7 @@ test("VC-013-05-10 executeDispatch emits only redacted boundary event fields", (
 });
 
 test("VC-013-05-11 executeDispatch module never imports subprocess / network / fetch", () => {
-  const src = fs.readFileSync(path.join(__dirname, "../lib/dispatch-execute.js"), "utf8");
+  const src = fs.readFileSync(path.join(__dirname, "../../lib/dispatch/execute.js"), "utf8");
   assert.ok(!/child_process/.test(src), "dispatch-execute must not import child_process");
   assert.ok(!/\bnet\.Socket\b/.test(src), "dispatch-execute must not use net.Socket");
   assert.ok(!/require\(['"]https?['"]\)/.test(src), "dispatch-execute must not import http/https");
