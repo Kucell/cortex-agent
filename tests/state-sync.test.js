@@ -117,6 +117,17 @@ test("isStatePath: non-state paths return false", () => {
   assert.equal(isStatePath(""), false);
 });
 
+test("isStatePath: .bak / .bak.prev / .tmp / ~ backup paths return false even in state dirs", () => {
+  // cortex-agent update --force-scripts leaves these behind; they are
+  // backups, not state, even if they live under a state dir.
+  assert.equal(isStatePath("skills/vcs-pr/scripts/index.js.bak"), false);
+  assert.equal(isStatePath("skills/vcs-pr/scripts/index.js.bak.prev"), false);
+  assert.equal(isStatePath("decisions/D-001.json.bak"), false);
+  assert.equal(isStatePath("branches/registry.json.tmp"), false);
+  assert.equal(isStatePath("workflows/foo.md~"), false);
+  assert.equal(isStatePath("decisions/.#D-001.json"), true, "lockfile pattern not on blocklist, still state");
+});
+
 test("suggestCommitMessage: deterministic, includes dirs and count", () => {
   const msg = suggestCommitMessage(
     ["decisions/D-001.json", "tasks/T-001.json"],
