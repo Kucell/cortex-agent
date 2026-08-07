@@ -90,6 +90,16 @@ const { branchCommand } = require("../lib/commands/branch");
 // lib/commands.js (M-001 binding contract preserved).
 const { eventBusCommand } = require("../lib/event-bus/cli");
 
+// T-FOLLOW-002 v2: `.agent/` state sync CLI surface.
+// `state-sync [--dry-run|--add|--commit|--push]` lives in
+// lib/state-sync.js. It scans the 9 state-class directories
+// (decisions/ waitpoints/ tasks/ missions/ plans/ dispatch/ workflows/
+// skills/ branches/registry.json) inside the inner .agent/ git repo
+// and stages/commits/pushes them so project-management state stays
+// in lock-step across machines. Strictly additive: no changes to
+// lib/commands.js; the new subcommand is added to the case dispatch below.
+const { stateSync } = require("../lib/state-sync");
+
 // ─── Context ──────────────────────────────────────────────────────────────────
 
 const cwd = process.cwd();
@@ -457,6 +467,7 @@ async function initModeGeneral() {
     case "design":      await designCommand(ctx); break;
     case "branch":      branchCommand(ctx); break;
     case "event-bus":   eventBusCommand(ctx); break;
+    case "state-sync":  await stateSync(l1Ctx); break;
     case "help":        args.includes("--json") ? cliHelp(ctx) : printHelp(); break;
     case "dev":         await dev(ctx); break;
     case undefined:
