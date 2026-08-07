@@ -6,8 +6,8 @@ const os = require("node:os");
 const path = require("node:path");
 const { spawn, spawnSync } = require("node:child_process");
 const test = require("node:test");
-const { CoordinationApplicationService } = require("../lib/coordination/application-service");
-const { createEvent, STATES } = require("../lib/coordination/contract");
+const { CoordinationApplicationService } = require("../../lib/coordination/application-service");
+const { createEvent, STATES } = require("../../lib/coordination/contract");
 
 const MONITOR = path.resolve(__dirname, "../lib/governed-child-monitor.js");
 

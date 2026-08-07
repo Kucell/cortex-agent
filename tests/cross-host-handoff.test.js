@@ -14,7 +14,7 @@ const {
   redactValue,
   isTainted,
   CrossHostHandoffError,
-} = require("../lib/runtime-adapters/cross-host-handoff");
+} = require("../../lib/runtime-adapters/cross-host-handoff");
 
 const NOW = "2026-07-28T12:00:00.000Z";
 

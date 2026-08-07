@@ -6,8 +6,8 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const cc = require("../lib/runtime-adapters/minimax-cli-capability-contract");
-const gateway = require("../lib/runtime-adapters/minimax-cli-governed-tool");
+const cc = require("../../lib/runtime-adapters/minimax-cli-capability-contract");
+const gateway = require("../../lib/runtime-adapters/minimax-cli-governed-tool");
 
 function fakeSnapshot() {
   const capabilities = {};

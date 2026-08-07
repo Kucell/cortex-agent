@@ -26,8 +26,8 @@ const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
 
-const { createPersistence } = require("../lib/event-bus/persistence");
-const { createFsWatcher } = require("../lib/event-bus/fs-watcher");
+const { createPersistence } = require("../../lib/event-bus/persistence");
+const { createFsWatcher } = require("../../lib/event-bus/fs-watcher");
 
 // ---------------------------------------------------------------------------
 // Helpers

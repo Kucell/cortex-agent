@@ -14,7 +14,7 @@ const {
   validateRequirement,
   validateSnapshot,
   ExecutionSurfaceError,
-} = require("../lib/runtime-adapters/execution-surface-matcher");
+} = require("../../lib/runtime-adapters/execution-surface-matcher");
 
 const NOW = "2026-07-28T12:00:00.000Z";
 

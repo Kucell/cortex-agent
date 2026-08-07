@@ -22,7 +22,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
 
-const et = require("../lib/event-bus/event-types");
+const et = require("../../lib/event-bus/event-types");
 
 const repoRoot = path.resolve(__dirname, "..");
 const schemasDir = path.join(repoRoot, "lib", "event-bus", "schemas");

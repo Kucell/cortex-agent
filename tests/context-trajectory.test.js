@@ -12,7 +12,7 @@ const SELECT = path.join(ROOT, ".agent", "skills", "context-budget", "scripts", 
 const MANAGEMENT = path.join(ROOT, ".agent", "skills", "management-api", "scripts", "index.js");
 const {
   validateContextTrajectory,
-} = require("../lib/runtime-adapters/context-trajectory");
+} = require("../../lib/runtime-adapters/context-trajectory");
 
 function sha(char) { return `sha256:${char.repeat(64)}`; }
 

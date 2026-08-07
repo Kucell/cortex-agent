@@ -6,7 +6,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const cc = require("../lib/runtime-adapters/minimax-cli-capability-contract");
+const cc = require("../../lib/runtime-adapters/minimax-cli-capability-contract");
 
 const ALLOWED_FAMILIES = ["version", "help", "resource_help"];
 const ALLOWED_RESOURCES = ["text", "image", "video", "speech", "music", "vision", "search"];

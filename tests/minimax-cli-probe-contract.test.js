@@ -6,8 +6,8 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const cc = require("../lib/runtime-adapters/minimax-cli-capability-contract");
-const probeMod = require("../lib/runtime-adapters/minimax-cli-probe");
+const cc = require("../../lib/runtime-adapters/minimax-cli-capability-contract");
+const probeMod = require("../../lib/runtime-adapters/minimax-cli-probe");
 
 function makeFakeExec(scriptedResponses) {
   // scriptedResponses: array of { args_match: string[], result: {status, stdout?, stderr?} }

@@ -19,7 +19,7 @@ const {
   isIdempotent,
   CapabilityAwareDispatchError,
   createAuthoritativeOwner,
-} = require("../lib/runtime-adapters/capability-aware-dispatch");
+} = require("../../lib/runtime-adapters/capability-aware-dispatch");
 
 const NOW = "2026-07-28T12:00:00.000Z";
 
@@ -199,7 +199,7 @@ test("VC-009-02 dispatch issues a unique plan_id when TTL changes between calls"
 });
 
 test("VC-009-02 automatic dispatch and daemon are explicitly disabled and never flipped on by the module", () => {
-  const { AUTOMATIC_DISPATCH_ENABLED, DAEMON_ENABLED } = require("../lib/runtime-adapters/capability-aware-dispatch");
+  const { AUTOMATIC_DISPATCH_ENABLED, DAEMON_ENABLED } = require("../../lib/runtime-adapters/capability-aware-dispatch");
   assert.equal(AUTOMATIC_DISPATCH_ENABLED, false);
   assert.equal(DAEMON_ENABLED, false);
 });

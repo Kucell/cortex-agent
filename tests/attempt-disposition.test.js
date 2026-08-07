@@ -5,14 +5,14 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
-const { CoordinationApplicationService } = require("../lib/coordination/application-service");
-const { createEvent, STATES } = require("../lib/coordination/contract");
+const { CoordinationApplicationService } = require("../../lib/coordination/application-service");
+const { createEvent, STATES } = require("../../lib/coordination/contract");
 const {
   ATTEMPT_DISPOSITIONS,
   ATTEMPT_DISPOSITION_SET,
   deriveAttemptDisposition,
   buildAttemptProjection,
-} = require("../lib/attempt-disposition");
+} = require("../../lib/attempt-disposition");
 
 test("attempt disposition vocabulary covers P-005 enumerations", () => {
   for (const expected of [

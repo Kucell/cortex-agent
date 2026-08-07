@@ -20,7 +20,7 @@ const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
 
-const { createEventBus } = require("../lib/event-bus/event-bus");
+const { createEventBus } = require("../../lib/event-bus/event-bus");
 
 let _counter = 0;
 function tmpDir() {
@@ -57,7 +57,7 @@ test("VC-003 dedupe: same event_id published twice returns deduped: true", () =>
   // We simulate this by directly calling publish with a pre-built event_id
   // Since buildEvent generates a new uuid each time, we test isDuplicate at the
   // persistence level by re-appending the same event object.
-  const event = require("../lib/event-bus/event-types").buildEvent(
+  const event = require("../../lib/event-bus/event-types").buildEvent(
     { event_name: "subagent_progress", payload: { percent: 10 } },
     producerCtx()
   );
@@ -81,7 +81,7 @@ test("VC-003 dedupe: deduped event is not written to events.jsonl twice", () => 
   );
 
   // Second publish with same event_id (simulate replay)
-  const et = require("../lib/event-bus/event-types");
+  const et = require("../../lib/event-bus/event-types");
   const event2 = et.buildEvent(
     { event_name: "subagent_completed", payload: { status: "success", output_summary: "done" } },
     producerCtx()
@@ -113,11 +113,11 @@ test("VC-003 dedupe: LRU evicts oldest IDs beyond capacity", () => {
   bus.close();
 
   // Test persistence directly
-  const { createPersistence } = require("../lib/event-bus/persistence");
+  const { createPersistence } = require("../../lib/event-bus/persistence");
   const p = createPersistence({ dataDir: dir, fsync: false, dedupeLruSize: 3 });
   p.init();
 
-  const et = require("../lib/event-bus/event-types");
+  const et = require("../../lib/event-bus/event-types");
   const ids = [];
   for (let i = 0; i < 5; i++) {
     const event = et.buildEvent(
@@ -142,7 +142,7 @@ test("VC-003 dedupe: LRU evicts oldest IDs beyond capacity", () => {
 test("VC-003 dedupe: LRU rebuilt from events.jsonl tail after restart", () => {
   const dir = tmpDir();
   const bus = makeBus(dir);
-  const et = require("../lib/event-bus/event-types");
+  const et = require("../../lib/event-bus/event-types");
 
   // Publish 10 events
   const ids = [];
@@ -157,7 +157,7 @@ test("VC-003 dedupe: LRU rebuilt from events.jsonl tail after restart", () => {
 
   // Create a new bus (simulates restart) with dedupeLruSize = 5
   // Since createEventBus doesn't pass dedupeLruSize, test persistence directly
-  const { createPersistence } = require("../lib/event-bus/persistence");
+  const { createPersistence } = require("../../lib/event-bus/persistence");
   const p = createPersistence({ dataDir: dir, fsync: false, dedupeLruSize: 5 });
   p.init();
 
@@ -201,7 +201,7 @@ test("VC-003 dedupe: deduped event does not trigger subscriber handler", () => {
   assert.strictEqual(callCount, 1, "handler called once for first publish");
 
   // Re-publish with same event_id -> bus.publish should dedupe and NOT fan out
-  const et = require("../lib/event-bus/event-types");
+  const et = require("../../lib/event-bus/event-types");
   const event = et.buildEvent(
     { event_name: "subagent_progress", payload: { percent: 20 } },
     producerCtx()
@@ -222,7 +222,7 @@ test("VC-003 dedupe: deduped event does not trigger subscriber handler", () => {
 test("VC-003 dedupe: list() returns correct count without deduped duplicates", () => {
   const dir = tmpDir();
   const bus = makeBus(dir);
-  const et = require("../lib/event-bus/event-types");
+  const et = require("../../lib/event-bus/event-types");
 
   // Publish 3 unique events
   for (let i = 0; i < 3; i++) {
@@ -241,7 +241,7 @@ test("VC-003 dedupe: list() returns correct count without deduped duplicates", (
 // 8. Dedupe LRU size is configurable
 test("VC-003 dedupe: persistence respects custom dedupeLruSize", () => {
   const dir = tmpDir();
-  const { createPersistence } = require("../lib/event-bus/persistence");
+  const { createPersistence } = require("../../lib/event-bus/persistence");
   const p = createPersistence({ dataDir: dir, fsync: false, dedupeLruSize: 10 });
   p.init();
   assert.strictEqual(p.dedupeLruSize, 10, "dedupeLruSize should be 10");
@@ -251,7 +251,7 @@ test("VC-003 dedupe: persistence respects custom dedupeLruSize", () => {
 // 9. Default dedupe LRU size is 10000
 test("VC-003 dedupe: default dedupeLruSize is 10000", () => {
   const dir = tmpDir();
-  const { createPersistence } = require("../lib/event-bus/persistence");
+  const { createPersistence } = require("../../lib/event-bus/persistence");
   const p = createPersistence({ dataDir: dir, fsync: false });
   p.init();
   assert.strictEqual(p.dedupeLruSize, 10000, "default dedupeLruSize should be 10000");
@@ -261,7 +261,7 @@ test("VC-003 dedupe: default dedupeLruSize is 10000", () => {
 // 10. Empty events.jsonl -> dedupe LRU is empty
 test("VC-003 dedupe: empty events.jsonl results in empty dedupe LRU", () => {
   const dir = tmpDir();
-  const { createPersistence } = require("../lib/event-bus/persistence");
+  const { createPersistence } = require("../../lib/event-bus/persistence");
   const p = createPersistence({ dataDir: dir, fsync: false });
   p.init();
   assert.strictEqual(p.getDedupeSize(), 0, "dedupe LRU should be empty on fresh init");

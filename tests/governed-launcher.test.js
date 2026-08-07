@@ -6,8 +6,8 @@ const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
 
-const { STATES } = require("../lib/coordination/contract");
-const { CoordinationApplicationService } = require("../lib/coordination/application-service");
+const { STATES } = require("../../lib/coordination/contract");
+const { CoordinationApplicationService } = require("../../lib/coordination/application-service");
 const {
   createGovernedLauncher,
   createPrivateLaunchContext,
@@ -19,7 +19,7 @@ const {
   validateOwnership,
   validateAgentCommand,
   validateAgentArgs,
-} = require("../lib/governed-launcher");
+} = require("../../lib/governed-launcher");
 
 test("monitor runs in a detached process group after the launcher exits", () => {
   const options = createMonitorSpawnOptions("/private/context.json", {
@@ -1001,7 +1001,7 @@ test("second coordinator cannot fail an assigned task (ASSIGNED→FAILED rejecte
     assert.equal(launchResult.ok, true);
 
     // Now try to fail the assigned task with coordinator-2
-    const { createEvent, STATES } = require("../lib/coordination/contract");
+    const { createEvent, STATES } = require("../../lib/coordination/contract");
     const failEvent = createEvent({
       eventId: "CE-coord2-fail-TASK-AUTH-001",
       projectId: "test-project",

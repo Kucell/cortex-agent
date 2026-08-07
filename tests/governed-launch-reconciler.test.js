@@ -5,9 +5,9 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
-const { CoordinationApplicationService } = require("../lib/coordination/application-service");
-const { createEvent, STATES } = require("../lib/coordination/contract");
-const { reconcileGovernedLaunch } = require("../lib/governed-launch-reconciler");
+const { CoordinationApplicationService } = require("../../lib/coordination/application-service");
+const { createEvent, STATES } = require("../../lib/coordination/contract");
+const { reconcileGovernedLaunch } = require("../../lib/governed-launch-reconciler");
 
 test("reconciler idempotently finalizes a ghost accepted task and releases its lease", () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-reconcile-"));

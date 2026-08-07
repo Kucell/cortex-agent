@@ -28,7 +28,7 @@ const {
   detectTestSignal,
   mergeProgress,
   validateEvidenceRefs,
-} = require("../lib/coordination/claude-hook-adapter");
+} = require("../../lib/coordination/claude-hook-adapter");
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 

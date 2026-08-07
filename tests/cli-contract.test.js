@@ -8,7 +8,7 @@ const test = require("node:test");
 
 const ROOT = path.resolve(__dirname, "..");
 const CLI = path.join(ROOT, "bin", "cli.js");
-const contract = require("../lib/cli-contract");
+const contract = require("../../lib/cli-contract");
 
 test("machine-readable help covers every dispatched public command", () => {
   const source = fs.readFileSync(CLI, "utf8");

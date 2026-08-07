@@ -6,7 +6,7 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
-const lifecycle = require("../lib/runtime-state/operation-lifecycle");
+const lifecycle = require("../../lib/runtime-state/operation-lifecycle");
 
 const AT = "2026-07-29T01:30:00.000Z";
 function operation(attempt = 1, retry = null) {

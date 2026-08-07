@@ -18,9 +18,9 @@ const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
 
-const { createEventBus } = require("../lib/event-bus/event-bus");
-const { createPersistence } = require("../lib/event-bus/persistence");
-const et = require("../lib/event-bus/event-types");
+const { createEventBus } = require("../../lib/event-bus/event-bus");
+const { createPersistence } = require("../../lib/event-bus/persistence");
+const et = require("../../lib/event-bus/event-types");
 
 let _counter = 0;
 function tmpDir() {

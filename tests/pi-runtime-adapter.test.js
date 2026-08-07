@@ -16,9 +16,9 @@ const {
   detectPi,
   mapMany,
   mapPiEventToBoundaryEvent,
-} = require("../lib/runtime-adapters/pi-adapter");
-const boundaryEvent = require("../lib/runtime-adapters/boundary-event");
-const capabilityContract = require("../lib/runtime-adapters/capability-contract");
+} = require("../../lib/runtime-adapters/pi-adapter");
+const boundaryEvent = require("../../lib/runtime-adapters/boundary-event");
+const capabilityContract = require("../../lib/runtime-adapters/capability-contract");
 
 function baseEvent(overrides) {
   return Object.assign(

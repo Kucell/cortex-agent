@@ -30,8 +30,8 @@ const test = require("node:test");
 
 const {
   CoordinationApplicationService,
-} = require("../lib/coordination/application-service");
-const { createEvent, STATES } = require("../lib/coordination/contract");
+} = require("../../lib/coordination/application-service");
+const { createEvent, STATES } = require("../../lib/coordination/contract");
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 

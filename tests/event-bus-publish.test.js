@@ -20,7 +20,7 @@ const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
 
-const { createEventBus } = require("../lib/event-bus/event-bus");
+const { createEventBus } = require("../../lib/event-bus/event-bus");
 
 let _counter = 0;
 function tmpDir() {

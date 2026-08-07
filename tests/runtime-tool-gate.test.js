@@ -14,7 +14,7 @@ const {
   evaluate,
   evaluateFromRecords,
   ToolGateError,
-} = require("../lib/runtime-adapters/tool-gate");
+} = require("../../lib/runtime-adapters/tool-gate");
 
 const DIGEST = "sha256:9c1b1d5f6c2f4c7d8e9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e";
 const OTHER_DIGEST = "sha256:8a2b1d5f6c2f4c7d8e9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1f";

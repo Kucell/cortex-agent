@@ -8,8 +8,8 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const cap = require("../lib/runtime-adapters/capability-contract");
-const evt = require("../lib/runtime-adapters/boundary-event");
+const cap = require("../../lib/runtime-adapters/capability-contract");
+const evt = require("../../lib/runtime-adapters/boundary-event");
 
 // ─── Capability vocabulary ──────────────────────────────────────────────────
 

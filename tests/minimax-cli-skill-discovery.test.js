@@ -6,7 +6,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const skillDiscovery = require("../lib/runtime-adapters/minimax-cli-skill-discovery");
+const skillDiscovery = require("../../lib/runtime-adapters/minimax-cli-skill-discovery");
 
 const HOSTS = ["claude-code", "cursor", "pi", "codex", "common"];
 const SCOPES = ["user", "project", "template"];

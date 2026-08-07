@@ -6,13 +6,13 @@ const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
 
-const { CoordinationApplicationService } = require("../lib/coordination/application-service");
+const { CoordinationApplicationService } = require("../../lib/coordination/application-service");
 const {
   parseBridgeArgs,
   executeBridgeCommand,
   HOST_EVENT_BRIDGE_SCHEMA_VERSION,
-} = require("../lib/host-event-bridge");
-const { createEvent, STATES } = require("../lib/coordination/contract");
+} = require("../../lib/host-event-bridge");
+const { createEvent, STATES } = require("../../lib/coordination/contract");
 
 function runtimeDir() {
   return fs.mkdtempSync(path.join(os.tmpdir(), "cortex-host-bridge-"));
