@@ -1,5 +1,16 @@
 ---
-description: Used to propose, evaluate, and integrate new architectural ideas or solutions during the development process.
+description: "Used to propose, evaluate, and integrate new architectural ideas or solutions during the development process."
+type: procedure
+applicable_to:
+  - all
+inputs: []
+outputs: []
+linked_skills: []
+linked_rules: []
+linked_workflows: []
+owner: Kucell
+last_verified: 2026-08-06
+status: stable
 ---
 
 # Architectural Evolution and Design Workflow (/arch-design)

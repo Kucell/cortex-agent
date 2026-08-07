@@ -1,6 +1,17 @@
 ---
 name: release
-description: 按语义化版本规范（SemVer）发布新版本。自动分析变更类型、更新版本号、提交、打 tag 并发布到 npm。
+description: "按语义化版本规范（SemVer）发布新版本。自动分析变更类型、更新版本号、提交、打 tag 并发布到 npm。"
+type: procedure
+applicable_to:
+  - all
+inputs: []
+outputs: []
+linked_skills: []
+linked_rules: []
+linked_workflows: []
+owner: Kucell
+last_verified: 2026-08-06
+status: stable
 ---
 
 # 发布工作流 (/release)

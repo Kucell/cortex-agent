@@ -1,5 +1,16 @@
 ---
 description: 每日晨播，快速同步项目进度、活跃任务及今日优先动作
+type: procedure
+applicable_to:
+  - all
+inputs: []
+outputs: []
+linked_skills: []
+linked_rules: []
+linked_workflows: []
+owner: Kucell
+last_verified: 2026-08-06
+status: stable
 ---
 
 # 项目简报工作流 (/briefing)
