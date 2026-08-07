@@ -1,0 +1,45 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Multi-agent Shared Context",
+  "type": "object",
+  "required": ["schema_version", "generated_at", "prefix_epoch", "system", "rules", "l0", "l1", "selected_l2"],
+  "properties": {
+    "schema_version": { "type": "string", "const": "1.0" },
+    "generated_at": { "type": "string", "format": "date-time" },
+    "prefix_epoch": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "前缀缓存版本号（对应 cache-config.yml 的 cache_version）。sub-agent 启动时应校验与自身期望一致，避免用旧共享上下文。"
+    },
+    "task_id": { "type": "string", "minLength": 1 },
+    "system": {
+      "type": "object",
+      "properties": {
+        "tokens_estimate": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": true
+    },
+    "rules": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "分级后的强制规则 URI 列表（来自 rule-tier 的 L0 区）。"
+    },
+    "l0": {
+      "type": "array",
+      "items": { "type": "object" },
+      "description": "L0 摘要块（~100 tokens/条）。"
+    },
+    "l1": {
+      "type": "array",
+      "items": { "type": "object" },
+      "description": "L1 概览块（~2k tokens/条）。"
+    },
+    "selected_l2": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "选中的 L2 引用 URI（按需注入，不在共享上下文内联正文）。"
+    },
+    "estimated_tokens": { "type": "integer", "minimum": 0 }
+  },
+  "additionalProperties": false
+}

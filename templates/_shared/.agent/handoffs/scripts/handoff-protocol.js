@@ -159,6 +159,17 @@ function validatePayload(payload) {
     issues.push("context_budget_hint");
   }
 
+  // ── P4 (C2): 共享上下文引用校验 ──
+  // shared_context_ref 须指向 .agent/artifacts/ 下的共享上下文文件，
+  // 与数值型 context_budget_hint（token 预算）语义不同，二者可并存。
+  if (payload.shared_context_ref !== undefined && payload.shared_context_ref !== null) {
+    if (typeof payload.shared_context_ref !== "string" || payload.shared_context_ref.trim() === "") {
+      issues.push("shared_context_ref:invalid-type");
+    } else if (!payload.shared_context_ref.includes(".agent/artifacts/")) {
+      issues.push("shared_context_ref:must-reside-in-.agent/artifacts/");
+    }
+  }
+
   if (Number.isNaN(Date.parse(payload.produced_at))) issues.push("produced_at:invalid-date");
   return issues;
 }

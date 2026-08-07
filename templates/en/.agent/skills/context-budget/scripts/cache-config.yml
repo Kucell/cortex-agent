@@ -1,0 +1,33 @@
+# context-budget 前缀缓存（prompt prefix caching）配置
+# 用于将稳定前缀（语言设定 + 强制规则）与不稳定的任务 token 串分隔，
+# 使 host 端 prompt-caching 能在多次请求间复用前缀 KV 缓存。
+#
+# 该文件可被 select.js 通过 --cache-config 覆盖；字段语义见 prefix-builder.js。
+
+# 是否启用前缀缓存分隔输出。禁用时 select.js 仍输出原始 merged_prompt。
+enabled: true
+
+# 强制进入 L0/L1 前缀区块的规则与资源（顺序即最终前缀顺序）。
+# 这些条目高度稳定，几乎不会随任务变化，是缓存命中的主体。
+pinned_prefix:
+  - cortex://rules/language
+  - cortex://rules/core-principles
+  - cortex://rules/ai-behavior
+  - cortex://rules/code-standards
+  - cortex://resources/agent-config
+
+# 稳定但允许被评分排序/裁剪的「半稳定」前缀条目。
+# 它们也进入前缀区，但顺序由 rule-tier.js 按其稳定性打分决定。
+stable_prefix:
+  - cortex://references/context-index
+
+# 缓存版本号。任何前缀区块内容变更都应 bump 该值，
+# cache-break.js 据此检测 prefix-region 哈希漂移并提示 host 刷新缓存。
+cache_version: 1
+
+# 缓存 TTL（秒）。超过该时长未命中的前缀缓存视为需重建。
+ttl_seconds: 7200
+
+# 阈值：当 pinned_prefix + stable_prefix 命中数 < 该值时，
+# 不生成独立的前缀区块（避免极小前缀带来的调度开销）。
+min_prefix_entries: 2

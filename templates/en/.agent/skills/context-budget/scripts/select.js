@@ -36,6 +36,11 @@ const MANIFEST_PATH = path.join(ROOT, ".agent", "plans", "context-manifest.json"
 const TRAJECTORY_DIR = path.join(ROOT, ".agent", "runtime-evidence", "trajectory");
 const CONTEXT_TRAJECTORY_DIR = path.join(ROOT, ".agent", "runtime-evidence", "context-trajectories");
 
+// P1（前缀缓存 + 规则分级）配套模块。
+const { loadConfig, buildPrefix } = require("./prefix-builder");
+const { tierAll } = require("./rule-tier");
+const { dedup, loadEntriesFromIndex } = require("./dedup-refs");
+
 function parseArgs() {
   const args = {};
   for (let i = 2; i < process.argv.length; i++) {
@@ -185,6 +190,74 @@ function buildManifest(args, scored, picked, index) {
       })),
       tier3_summaries: picked.tiers.tier3_summaries,
     },
+    // ── P1: 前缀缓存区块 + 规则稳定性分级 ──
+    prefix_caching: buildPrefixCaching(args, scored, picked, index),
+    // ── P3 (C1): 注入阶段引用去重报告 ──
+    dedup_report: buildDedupReport(index, picked),
+  };
+}
+
+// 对本轮选中的引用，基于 context-index 的 l1 正文做精确 hash 去重，
+// 输出重复组与预计节省 token（与 dedup-refs.js --index 口径一致）。
+function buildDedupReport(index, picked) {
+  if (!index || !Array.isArray(index.resources) && !Array.isArray(index.modules)) return null;
+  const selectedModules = [
+    ...picked.tiers.tier1,
+    ...picked.tiers.tier2,
+    ...(picked.tiers.tier3_summaries || []),
+  ];
+  const selectedUris = new Set(selectedModules.map((s) => `cortex://references/${s.module_path || s.module_name}`));
+  const allEntries = index.modules || index.resources || [];
+  const selectedEntries = allEntries
+    .filter((e) => e.uri && selectedUris.has(e.uri))
+    .map((e) => ({ uri: e.uri, l1: e.l1, l1_tokens: e.l1_tokens, l2_tokens: e.l2_tokens }));
+  if (!selectedEntries.length) return null;
+  const d = dedup(selectedEntries);
+  const dupGroups = d.canonical.filter((c) => c.duplicated);
+  return {
+    selected_refs: selectedEntries.length,
+    canonical_blocks: d.canonical.length,
+    duplicate_groups: dupGroups.length,
+    estimated_saved_tokens: dupGroups.reduce((s, c) => s + c.tokens * (c.uris.length - 1), 0),
+    duplicates: dupGroups.map((c) => ({ ref: c.ref, uris: c.uris })),
+  };
+}
+
+// 收集本次选中条目的 URI + token 估计，交由 prefix-builder / rule-tier 处理。
+function buildPrefixCaching(args, scored, picked, index) {
+  const selectedModules = [
+    ...picked.tiers.tier1,
+    ...picked.tiers.tier2,
+    ...scored.filter((s) => picked.tiers.tier3_summaries.includes(s.module_name)),
+  ];
+  const selectedUris = selectedModules.map((s) => `cortex://references/${s.module_path || s.module_name}`);
+  const entriesById = {};
+  selectedModules.forEach((s) => {
+    entriesById[`cortex://references/${s.module_path || s.module_name}`] = {
+      tokens: s.l2_tokens || s.tokens,
+      reason_codes: s.matched && s.matched.length ? ["selector-match"] : [],
+    };
+  });
+
+  const config = loadConfig(args["cache-config"]);
+  const prefix = buildPrefix(selectedUris, { config, entriesById });
+
+  const tierEntries = tierAll(
+    selectedModules.map((s) => ({
+      uri: `cortex://references/${s.module_path || s.module_name}`,
+      module_type: (s.module_path || "").includes("rules") ? "rule" : undefined,
+      tokens: s.l2_tokens || s.tokens,
+    })),
+    { pinned_prefix: config.pinned_prefix, stable_prefix: config.stable_prefix },
+  );
+
+  return {
+    enabled: prefix.enabled,
+    cache_break: prefix.cache_break,
+    cache_version: prefix.cache_version,
+    prefix_region: prefix.prefix_region,
+    suffix_token_string: prefix.suffix_token_string,
+    rule_tiers: tierEntries,
   };
 }
 

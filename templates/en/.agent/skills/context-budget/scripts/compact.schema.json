@@ -1,0 +1,34 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Context Compact Summary",
+  "type": "object",
+  "required": ["schema_version", "compacted_at", "source_events", "summary"],
+  "properties": {
+    "schema_version": { "type": "string", "const": "1.0" },
+    "compacted_at": { "type": "string", "format": "date-time" },
+    "source_events": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 1
+    },
+    "key_decisions": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "open_threads": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "estimated_tokens": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "prev_compact_ref": {
+      "type": ["string", "null"]
+    }
+  },
+  "additionalProperties": false
+}

@@ -21,6 +21,10 @@ last_updated: 2026-06-08
 last_commit: 957cc7b
 dependencies:
   - templates-zh
+  # core-principles 内容由 context-budget 的 dedup-refs.js 归并为 canonical block，
+  # 本项目内所有对其的引用统一指向 #ref-<hash8>（见 .agent/skills/context-budget/canonical-refs.json），
+  # 不在本文件内嵌其正文，避免重复注入（提案 C1 / 消除 B4）。
+  - cortex://resources/cortex-agent-rules/core-principles
 summary: "cortex-agent 项目自身的 Agent Harness 配置，由 zh 模板安装，当前活跃运行"
 status: stable
 owner: Kucell

@@ -125,6 +125,10 @@
       },
       "additionalProperties": false
     },
+    "shared_context_ref": {
+      "type": ["string", "null"],
+      "description": "指向 main agent 生成的 read-only 共享上下文文件（落在 .agent/artifacts/<task-id>/shared-context.json）。sub-agent 通过此引用复用稳定前缀，避免各自重投 system+rules+refs 的固定前缀（提案 C2 / 消除 B3）。与 context_budget_hint（数值型 token 预算）语义不同，二者可并存。"
+    },
     "context_budget_hint": { "type": ["integer", "null"], "minimum": 0 },
     "produced_at": { "type": "string", "format": "date-time" }
   },

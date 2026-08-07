@@ -228,6 +228,41 @@ function main() {
     if (!fs.existsSync(t)) continue;
     entries.push(build(t));
   }
+
+  // ── P3 (C1): 引用级精确去重 ──
+  let dedupReport = null;
+  if (args.dedup) {
+    const dedupEntries = entries.map((e) => ({
+      uri: `cortex://references/${e.module_path || e.file}`,
+      l1: e.l1,
+      l1_tokens: e.l1_tokens,
+    }));
+    const d = dedup(dedupEntries);
+    const canonicalRefByUri = {};
+    d.refs.forEach((r) => { canonicalRefByUri[r.uri] = r; });
+    const canonicalHashByUri = {};
+    d.canonical.forEach((c) => c.uris.forEach((u) => { canonicalHashByUri[u] = c.ref; }));
+    entries.forEach((e) => {
+      const uri = `cortex://references/${e.module_path || e.file}`;
+      const ref = canonicalRefByUri[uri];
+      if (ref && ref.hash8 && !ref.canonical) {
+        // 非 canonical：正文替换为引用式占位，避免重复注入。
+        const refTag = canonicalHashByUri[uri];
+        e._dedup_canonical = false;
+        e._dedup_ref = refTag;
+        e.l1 = `(see ${refTag})`;
+      } else {
+        e._dedup_canonical = true;
+      }
+    });
+    dedupReport = {
+      total_refs: d.refs.length,
+      canonical_blocks: d.canonical.length,
+      duplicate_groups: d.canonical.filter((c) => c.duplicated).length,
+      estimated_saved_tokens: d.canonical.filter((c) => c.duplicated).reduce((s, c) => s + c.tokens * (c.uris.length - 1), 0),
+    };
+  }
+
   const writes = [];
   if (args.write) {
     for (const e of entries) {
@@ -247,6 +282,7 @@ function main() {
   if (args["inject-index"]) {
     indexUpdate = injectIntoIndex(entries);
   }
+  const compactOut = integrateHistory(args, entries); // §10.2 历史压缩集成
   console.log(JSON.stringify({
     ok: true,
     count: entries.length,
@@ -255,8 +291,28 @@ function main() {
     total_l2_tokens: entries.reduce((s, e) => s + e.l2_tokens, 0),
     writes: writes.length || undefined,
     index_update: indexUpdate,
+    dedup_report: dedupReport || undefined,
+    compact_ref: compactOut ? path.relative(ROOT, compactOut) : undefined,
     entries: args.all ? undefined : entries,
   }, null, 2));
+}
+
+// ── P2 (§10.2): 进度历史集成 ──
+const { appendEvent, runCompact } = require("./compact");
+// ── P3 (C1): 引用级去重 ──
+const { dedup } = require("./dedup-refs");
+
+function integrateHistory(args, entries) {
+  if (!args.history) return null;
+  const historyFile = path.resolve(ROOT, args.history);
+  const summary = entries
+    .map((e) => `${e.module_path || e.file}: L0=${e.l0_tokens}/L1=${e.l1_tokens}/L2=${e.l2_tokens}t`)
+    .join("; ");
+  appendEvent({ file: historyFile, role: "assistant", kind: "tool_result", text: `build-l0l1: ${entries.length} modules — ${summary}`, quiet: true });
+
+  const compactOut = path.join(path.dirname(historyFile), "compact.json");
+  runCompact({ file: historyFile, out: compactOut, quiet: true });
+  return compactOut;
 }
 
 if (require.main === module) {
