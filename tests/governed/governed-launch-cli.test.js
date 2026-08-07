@@ -7,7 +7,7 @@ const path = require("node:path");
 const test = require("node:test");
 const { CoordinationApplicationService } = require("../../lib/coordination/application-service");
 const { createEvent, STATES } = require("../../lib/coordination/contract");
-const { executeGovernedLaunch } = require("../../lib/governed-launch-cli");
+const { executeGovernedLaunch } = require("../../lib/governed/launch-cli.js");
 
 function setup() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-launch-cli-"));

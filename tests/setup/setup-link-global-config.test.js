@@ -6,7 +6,7 @@ const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
 
-const setup = require("../../lib/setup");
+const setup = require("../../lib/setup/index.js");
 
 // ---------------------------------------------------------------------------
 // Test fixture

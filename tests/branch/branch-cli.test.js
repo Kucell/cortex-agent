@@ -29,7 +29,7 @@ const {
   ALLOWED_STATUSES,
   ALLOWED_TYPES,
 } = require("../../lib/commands/branch");
-const branchRegistry = require("../../lib/branch-registry");
+const branchRegistry = require("../../lib/branch/registry.js");
 
 // ─── Test helpers ────────────────────────────────────────────────────────────
 

@@ -5,7 +5,7 @@
 // Exits 0 on success, non-zero on first failed assertion.
 
 const assert = require("assert");
-const { scanContent, scanFile, isHighSeverity, redact } = require("./secret-scan");
+const { scanContent, scanFile, isHighSeverity, redact } = require("../../lib/security/scan");
 
 const cases = [
   // Negative cases

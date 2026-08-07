@@ -5,7 +5,7 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
-const { runSecrets } = require("../../lib/secrets-cli");
+const { runSecrets } = require("../../lib/secrets/cli.js");
 
 function project() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-secrets-cli-"));
@@ -32,7 +32,8 @@ test("store delegates the secret through env, never through argv", async () => {
   // This is what guarantees the value never enters shell history or
   // `ps` output.
   const root = project();
-  process.env.CORTEX_TEST_NPM_TOKEN = "private-test-value";
+  const npmTestValue = "private-test-value";
+  process.env.CORTEX_TEST_NPM_TOKEN = npmTestValue;
   let observed;
   console.log("[test-debug] before runSecrets");
   const response = await runSecrets({

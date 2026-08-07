@@ -291,7 +291,7 @@ test("teamPublish: missing --paths → exitCode = 2", () => {
 test("teamStatus: freshly initialised project → single-line summary", () => {
   const root = mkRoot();
   // Initialise the pack.
-  const teamPack = require("../../lib/team-pack");
+  const teamPack = require("../../lib/team-pack/index.js");
   teamPack.initSkeleton(root, "demo-pack");
   const { restore: restoreOut } = captureStdout();
   const { restore: restoreErr } = captureStderr();
@@ -313,7 +313,7 @@ test("teamStatus: freshly initialised project → single-line summary", () => {
 
 test("teamStatus: --json → emits valid JSON with schema_version=1", () => {
   const root = mkRoot();
-  const teamPack = require("../../lib/team-pack");
+  const teamPack = require("../../lib/team-pack/index.js");
   teamPack.initSkeleton(root, "demo-pack");
   const { restore: restoreOut } = captureStdout();
   const { restore: restoreErr } = captureStderr();

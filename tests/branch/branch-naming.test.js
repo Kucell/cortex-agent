@@ -12,7 +12,7 @@ const {
   validate,
   slugFromProposal,
   slugFromMissionId,
-} = require("../../lib/branch-naming");
+} = require("../../lib/branch/naming.js");
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 

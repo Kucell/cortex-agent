@@ -52,7 +52,7 @@ function withExitCode(fn) {
 //
 // api-helpers.js uses destructure imports at the top:
 //
-//     const { attachProject, queryManagementProject } = require("../../management-client");
+//     const { attachProject, queryManagementProject } = require("../../../lib/management/client.js");
 //
 // So a bare cache replacement on the management-client entry is too late —
 // the destructure has already happened. To re-bind the destructure, we have

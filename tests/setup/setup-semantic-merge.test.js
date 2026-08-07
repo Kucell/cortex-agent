@@ -7,7 +7,7 @@ const path = require("node:path");
 const test = require("node:test");
 
 const ROOT = path.resolve(__dirname, "..", "..");
-const setup = require("../../lib/setup");
+const setup = require("../../lib/setup/index.js");
 
 function fixture(t) {
   const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-setup-merge-"));

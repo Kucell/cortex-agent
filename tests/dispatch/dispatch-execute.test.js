@@ -13,8 +13,8 @@ const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
 
-const dispatchExecute = require("../../lib/dispatch-execute");
-const { DispatchExecuteError } = require("../../lib/dispatch-execute");
+const dispatchExecute = require("../../lib/dispatch/execute.js");
+const { DispatchExecuteError } = require("../../lib/dispatch/execute.js");
 
 function mkProject() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "m013-exec-"));

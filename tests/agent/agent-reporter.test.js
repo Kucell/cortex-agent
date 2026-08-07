@@ -21,7 +21,7 @@ const {
   buildRedactedReceipt,
   buildRetryDedupKey,
   readLaunchContext,
-} = require("../../lib/agent-reporter");
+} = require("../../lib/agents/reporter.js");
 
 function runtimeDir() {
   return fs.mkdtempSync(path.join(os.tmpdir(), "cortex-agent-reporter-"));
@@ -1228,7 +1228,7 @@ test("E2E lifecycle: governed launch, agent report, ready with evidence", async 
     const fixtureDir = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-e2e-fixture-"));
     const fixtureExec = path.join(fixtureDir, "test-agent.sh");
     fs.writeFileSync(fixtureExec, "#!/bin/sh\necho 'agent'", { mode: 0o755 });
-    const { createGovernedLauncher } = require("../../lib/governed-launcher");
+    const { createGovernedLauncher } = require("../../lib/governed/launcher.js");
     const launcher = createGovernedLauncher(service, {
       coordinatorId: "coordinator-1",
       projectId: "test-project",
@@ -1308,7 +1308,7 @@ test("E2E lifecycle: governed launch, agent report, ready with evidence", async 
     fs.writeFileSync(ctxFile, JSON.stringify(context), { encoding: "utf8", mode: 0o600 });
     process.env.CORTEX_LAUNCH_CONTEXT = ctxFile;
 
-    const { executeBridgeCommand } = require("../../lib/host-event-bridge");
+    const { executeBridgeCommand } = require("../../lib/coordination/host-event-bridge");
     const heartbeatResult = executeBridgeCommand([
       "agent", "report",
       "--event-type", "task.heartbeat",

@@ -70,7 +70,7 @@ test("runScriptReconcile: reconcileScripts throws → returns null (non-fatal)",
   // an empty list and reconcileScripts returns an empty report.  We instead
   // monkey-patch scriptManifest.reconcileScripts to throw, which exercises
   // runScriptReconcile's catch-arm at line 247-249.
-  const scriptManifest = require("../../lib/script-manifest");
+  const scriptManifest = require("../../lib/script/manifest.js");
   const origReconcile = scriptManifest.reconcileScripts;
   const origWarn = console.warn;
   const warnWrites = [];

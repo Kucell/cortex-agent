@@ -19,7 +19,7 @@ const {
   validateOwnership,
   validateAgentCommand,
   validateAgentArgs,
-} = require("../../lib/governed-launcher");
+} = require("../../lib/governed/launcher.js");
 
 test("monitor runs in a detached process group after the launcher exits", () => {
   const options = createMonitorSpawnOptions("/private/context.json", {

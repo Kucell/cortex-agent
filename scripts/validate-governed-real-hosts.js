@@ -6,8 +6,8 @@ const os = require("node:os");
 const path = require("node:path");
 const { CoordinationApplicationService } = require("../lib/coordination/application-service");
 const { createEvent, STATES } = require("../lib/coordination/contract");
-const { executeGovernedLaunch } = require("../lib/governed-launch-cli");
-const { defaultExecutor } = require("../lib/governed-launcher");
+const { executeGovernedLaunch } = require("../lib/governed/launch-cli.js");
+const { defaultExecutor } = require("../lib/governed/launcher.js");
 const CLI = path.resolve(__dirname, "../bin/cli.js");
 
 function resolveBinary(envName, fallback) {

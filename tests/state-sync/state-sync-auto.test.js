@@ -19,7 +19,7 @@ const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
 const { spawnSync } = require("node:child_process");
-const { stateSyncAuto } = require("../../lib/state-sync");
+const { stateSyncAuto } = require("../../lib/state-sync/index.js");
 
 function git(args, cwd, env = {}) {
   return spawnSync("git", ["-C", cwd, ...args], {

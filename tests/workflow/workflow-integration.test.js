@@ -24,8 +24,8 @@ const path = require("node:path");
 const { execFileSync, spawnSync } = require("node:child_process");
 
 const test = require("node:test");
-const branchRegistry = require("../../lib/branch-registry");
-const branchNaming = require("../../lib/branch-naming");
+const branchRegistry = require("../../lib/branch/registry.js");
+const branchNaming = require("../../lib/branch/naming.js");
 
 // ─── Test helpers ────────────────────────────────────────────────────────────
 
@@ -518,8 +518,8 @@ test("VC-016-13: regression — 4 active missions are not impacted by workflow f
   // We assert: lib/branch-{naming,registry,commands}.js exports are intact
   // and the bin/cli.js still registers the branch command. This proves the
   // surface that other missions depend on is unchanged.
-  const lib = require("../../lib/branch-naming");
-  const regLib = require("../../lib/branch-registry");
+  const lib = require("../../lib/branch/naming.js");
+  const regLib = require("../../lib/branch/registry.js");
   const cliLib = require("../../lib/commands/branch");
   assert.equal(typeof lib.validate, "function");
   assert.equal(typeof lib.slugFromProposal, "function");

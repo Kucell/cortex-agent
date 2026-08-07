@@ -6,9 +6,9 @@ const path = require("node:path");
 const test = require("node:test");
 
 const ROOT = path.resolve(__dirname, "..", "..");
-const contract = require("../../lib/cli-contract");
+const contract = require("../../lib/cli/contract.js");
 const notificationCli = require("../../lib/coordination/notification-cli");
-const cliContract = require("../../lib/cli-contract");
+const cliContract = require("../../lib/cli/contract.js");
 
 const { EXIT, ERR, ADAPTER_WHITELIST, ACTOR_KINDS } = notificationCli;
 

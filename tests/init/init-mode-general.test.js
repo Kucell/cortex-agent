@@ -19,7 +19,7 @@ const test = require("node:test");
 
 const ROOT = path.resolve(__dirname, "..", "..");
 const CLI = path.join(ROOT, "bin", "cli.js");
-const { inferMode } = require("../../lib/mode-infer");
+const { inferMode } = require("../../lib/coordination/mode-infer");
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 

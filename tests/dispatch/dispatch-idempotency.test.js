@@ -11,8 +11,8 @@ const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
 
-const dispatchExecute = require("../../lib/dispatch-execute");
-const { IDEMPOTENCY_RETENTION_MS } = require("../../lib/dispatch-execute");
+const dispatchExecute = require("../../lib/dispatch/execute.js");
+const { IDEMPOTENCY_RETENTION_MS } = require("../../lib/dispatch/execute.js");
 const leaseStore = require("../../lib/coordination/lease-store");
 
 function mkProject() {

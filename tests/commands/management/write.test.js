@@ -254,7 +254,7 @@ test("decisions: forwards (resource=decisions, allowedActions=cliContract.manage
       return { ok: true, payload: {}, project: { root: "/r", agent_root: "/r/.agent" } };
     },
   }, {}, () => {
-    const cliContract = require("../../../lib/cli-contract");
+    const cliContract = require("../../../lib/cli/contract.js");
     const { decisions } = require("../../../lib/commands/management/write");
     captureStdout();
     decisions({ args: ["decisions", "request"], lang: "en" });
@@ -275,7 +275,7 @@ test("inbox: forwards (resource=inbox, allowedActions=cliContract.management.wri
       return { ok: true, payload: {}, project: { root: "/r", agent_root: "/r/.agent" } };
     },
   }, {}, () => {
-    const cliContract = require("../../../lib/cli-contract");
+    const cliContract = require("../../../lib/cli/contract.js");
     const { inbox } = require("../../../lib/commands/management/write");
     captureStdout();
     inbox({ args: ["inbox", "send"], lang: "en" });
@@ -295,7 +295,7 @@ test("waitpoints: forwards (resource=waitpoints, allowedActions=cliContract.mana
       return { ok: true, payload: {}, project: { root: "/r", agent_root: "/r/.agent" } };
     },
   }, {}, () => {
-    const cliContract = require("../../../lib/cli-contract");
+    const cliContract = require("../../../lib/cli/contract.js");
     const { waitpoints } = require("../../../lib/commands/management/write");
     captureStdout();
     waitpoints({ args: ["waitpoints", "create"], lang: "en" });

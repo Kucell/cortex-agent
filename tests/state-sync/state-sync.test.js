@@ -26,7 +26,7 @@ const {
   commitState,
   STATE_DIRS,
   STATE_FILES,
-} = require("../../lib/state-sync");
+} = require("../../lib/state-sync/index.js");
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 

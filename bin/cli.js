@@ -45,7 +45,7 @@ const {
 // `dry-run` → lib/dispatch-plan.resolveDispatchPlan (0 mutation),
 // `execute` / unknown / no-subcommand → lib/automation-stubs (Phase 0 stub).
 // `daemon` and `trigger` keep their current phaseZeroAutomation binding.
-const { dispatchCommand } = require("../lib/dispatch-cli");
+const { dispatchCommand } = require("../lib/dispatch/cli.js");
 
 // M-002 MS-002: Memory subsystem CLI surface.
 // `memory <subcommand>` lives in lib/memory/cli.js and routes
@@ -104,7 +104,7 @@ const { eventBusCommand } = require("../lib/event-bus/cli");
 // decisions / inbox / waitpoints / task / event). They live here in
 // bin/cli.js (not lib/commands.js) so M-001 shadow-init's invariant
 // "lib/commands.js has 0 changes vs base f8a1d38" stays intact.
-const { stateSync, installStateGithooks, fireAndForgetSync } = require("../lib/state-sync");
+const { stateSync, installStateGithooks, fireAndForgetSync } = require("../lib/state-sync/index.js");
 
 // ─── Context ──────────────────────────────────────────────────────────────────
 
@@ -326,7 +326,7 @@ function runSession(args) {
 // addition to the data layer. Pure addition — no changes to _base/ or
 // to the existing init() function.
 async function initModeGeneral() {
-  const { copyRecursive } = require("../lib/setup");
+  const { copyRecursive } = require("../lib/setup/index.js");
   const baseSrc = path.join(__dirname, "..", "templates", "_base", ".agent");
   if (!fs.existsSync(baseSrc)) {
     console.error(
@@ -376,7 +376,7 @@ async function initModeGeneral() {
   // line below stay byte-identical. `lib/commands.js` is also untouched —
   // the inferred code path is the same default init() MS-001 ships.
   if (command === "init") {
-    const { isInferModeEnabled, inferMode } = require("../lib/mode-infer");
+    const { isInferModeEnabled, inferMode } = require("../lib/coordination/mode-infer");
     if (isInferModeEnabled({ options, args })) {
       const inferred = inferMode(cwd);
       options.mode = inferred;

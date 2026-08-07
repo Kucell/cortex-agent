@@ -50,7 +50,7 @@ test("printHelp: contains 'Usage' + 'Commands' + 'Options' + 'Available platform
 });
 
 test("printHelp: lists every entry from cliContract.commands", () => {
-  const cliContract = require("../../lib/cli-contract");
+  const cliContract = require("../../lib/cli/contract.js");
   const { restore: restoreOut } = captureStdout();
   const origExitCode = process.exitCode;
   process.exitCode = undefined;
@@ -66,7 +66,7 @@ test("printHelp: lists every entry from cliContract.commands", () => {
 });
 
 test("printHelp: lists every entry from PLATFORM_REGISTRY", () => {
-  const { PLATFORM_REGISTRY } = require("../../lib/registry");
+  const { PLATFORM_REGISTRY } = require("../../lib/registry/index.js");
   const { restore: restoreOut } = captureStdout();
   const origExitCode = process.exitCode;
   process.exitCode = undefined;

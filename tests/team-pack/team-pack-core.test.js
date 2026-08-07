@@ -6,7 +6,7 @@
 const assert = require("assert");
 const fs = require("fs");
 const path = require("path");
-const t = require("../../lib/team-pack");
+const t = require("../../lib/team-pack/index.js");
 
 let failures = 0;
 function check(name, fn) {

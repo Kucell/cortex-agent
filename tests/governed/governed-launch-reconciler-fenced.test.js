@@ -7,7 +7,7 @@ const path = require("node:path");
 const test = require("node:test");
 const { CoordinationApplicationService } = require("../../lib/coordination/application-service");
 const { createEvent, STATES } = require("../../lib/coordination/contract");
-const { reconcileAttemptForReadiness } = require("../../lib/governed-launch-reconciler");
+const { reconcileAttemptForReadiness } = require("../../lib/governed/launch-reconciler.js");
 
 // ─── Fixture helpers ────────────────────────────────────────────────────────
 

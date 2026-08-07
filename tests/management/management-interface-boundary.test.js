@@ -7,7 +7,7 @@ const test = require("node:test");
 
 const ROOT = path.resolve(__dirname, "..", "..");
 const CLI = path.join(ROOT, "bin", "cli.js");
-const contract = require("../../lib/cli-contract");
+const contract = require("../../lib/cli/contract.js");
 
 test("management CLI exposes only explicit projections and writer actions", () => {
   assert.equal(Object.prototype.hasOwnProperty.call(contract.management.writers, "write"), false);

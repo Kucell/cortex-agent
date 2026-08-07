@@ -16,7 +16,7 @@ const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
 const { spawnSync } = require("node:child_process");
-const { installStateGithooks } = require("../../lib/state-sync");
+const { installStateGithooks } = require("../../lib/state-sync/index.js");
 
 function git(args, cwd) {
   return spawnSync("git", ["-C", cwd, ...args], {

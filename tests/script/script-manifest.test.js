@@ -6,7 +6,7 @@ const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
 
-const sm = require("../../lib/script-manifest");
+const sm = require("../../lib/script/manifest.js");
 
 // ─── fixtures ───────────────────────────────────────────────────────────────
 

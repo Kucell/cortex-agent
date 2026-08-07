@@ -18,7 +18,7 @@ const {
   upsertBranch,
   updateBranch,
   removeBranch,
-} = require("../../lib/branch-registry");
+} = require("../../lib/branch/registry.js");
 
 function project() {
   return fs.mkdtempSync(path.join(os.tmpdir(), "cortex-branch-registry-"));

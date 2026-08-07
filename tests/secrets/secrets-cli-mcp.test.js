@@ -20,7 +20,7 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
-const { runSecrets } = require("../../lib/secrets-cli");
+const { runSecrets } = require("../../lib/secrets/cli.js");
 
 function project() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-secrets-mcp-"));
@@ -342,7 +342,7 @@ test("inject: forwards child exit code to response.exitCode", async () => {
 // ─── help / usage surface ────────────────────────────────────────────────────
 
 test("actions set is exported and includes the three new mcp-injection actions", () => {
-  const { ACTIONS, BEARER_AUTH_PROFILES } = require("../../lib/secrets-cli");
+  const { ACTIONS, BEARER_AUTH_PROFILES } = require("../../lib/secrets/cli.js");
   assert.equal(ACTIONS.has("resolve"), true);
   assert.equal(ACTIONS.has("render-bearer"), true);
   assert.equal(ACTIONS.has("inject"), true);

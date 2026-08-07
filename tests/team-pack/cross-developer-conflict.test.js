@@ -18,7 +18,7 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const crypto = require("crypto");
-const t = require("../../lib/team-pack");
+const t = require("../../lib/team-pack/index.js");
 
 let failures = 0;
 function check(name, fn) {

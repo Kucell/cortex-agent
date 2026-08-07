@@ -10,7 +10,7 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 const surface = require("../../../lib/commands/surface/phase-zero");
-const automationStubs = require("../../../lib/automation-stubs");
+const automationStubs = require("../../../lib/automation/stubs.js");
 
 function captureStdout() {
   const chunks = [];

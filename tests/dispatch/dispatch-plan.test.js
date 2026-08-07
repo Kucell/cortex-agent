@@ -11,7 +11,7 @@ const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
 
-const dispatchPlan = require("../../lib/dispatch-plan");
+const dispatchPlan = require("../../lib/dispatch/plan.js");
 
 function mkProject() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "m013-plan-"));

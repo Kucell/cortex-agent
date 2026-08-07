@@ -11,7 +11,7 @@ const test = require("node:test");
 const ROOT = path.resolve(__dirname, "..", "..");
 const CLI = path.join(ROOT, "bin", "cli.js");
 const SHARED = path.join(ROOT, "templates", "_shared", ".agent", "dispatch");
-const contract = require("../../lib/cli-contract");
+const contract = require("../../lib/cli/contract.js");
 const COMMANDS = ["daemon", "trigger"];
 const SCHEMAS = ["trigger.schema.json", "daemon-state.schema.json", "idempotency.schema.json"];
 

@@ -7,10 +7,10 @@ const path = require("node:path");
 const { spawnSync } = require("node:child_process");
 const test = require("node:test");
 
-const cliContract = require("../../lib/cli-contract");
+const cliContract = require("../../lib/cli/contract.js");
 const { executeCoordinationCommand } = require("../../lib/coordination/cli");
 const { createEvent, STATES } = require("../../lib/coordination/contract");
-const { validatePublishSource } = require("../../lib/team-pack");
+const { validatePublishSource } = require("../../lib/team-pack/index.js");
 
 const ROOT = path.resolve(__dirname, "..", "..");
 
