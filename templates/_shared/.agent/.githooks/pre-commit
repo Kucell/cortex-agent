@@ -1,0 +1,92 @@
+#!/usr/bin/env bash
+# T-FOLLOW-002 v2: state-class pre-commit reminder
+#
+# When the developer commits, this hook scans working-tree changes
+# against the 9 state classes (decisions/ waitpoints/ tasks/ missions/
+# plans/ dispatch/ workflows/ skills/ branches/registry.json) and
+# prints a reminder if any of them are unstaged / untracked.
+#
+# It does NOT block the commit. The intent is to surface a forgotten
+# `git add` before the commit lands, not to force a workflow.
+#
+# To disable: `git -C .agent commit --no-verify`.
+# To uninstall: `git -C .agent config --unset core.hooksPath`.
+#
+# Wiring (one-time, per clone):
+#   git -C .agent config core.hooksPath .githooks
+#
+# This is part of the state-sync flow. Run
+#   cortex-agent state-sync --add
+# (or --commit / --push) to do the staged work in one shot.
+
+set -e
+
+STATE_DIRS=(
+  "decisions"
+  "waitpoints"
+  "tasks"
+  "missions"
+  "plans"
+  "dispatch"
+  "workflows"
+  "skills"
+)
+STATE_FILES=(
+  "branches/registry.json"
+)
+
+is_state_path() {
+  local f="$1"
+  for d in "${STATE_DIRS[@]}"; do
+    if [ "$f" = "$d" ] || [[ "$f" == "$d/"* ]]; then
+      return 0
+    fi
+  done
+  for sf in "${STATE_FILES[@]}"; do
+    if [ "$f" = "$sf" ]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+# git status --porcelain --untracked-files=all
+# Lines look like:
+#   " M foo"   unstaged modification
+#   "M  foo"   staged modification
+#   "?? foo"   untracked
+unstaged_state=()
+while IFS= read -r line; do
+  [ -z "$line" ] && continue
+  # Extract filename: skip the 2-char XY status + 1 space, then handle " -> " rename.
+  rest="${line:3}"
+  if [[ "$rest" == *" -> "* ]]; then
+    file="${rest##* -> }"
+  else
+    file="$rest"
+  fi
+  # Skip if already staged (XY[0] is not ' ' and not '?').
+  xy="${line:0:2}"
+  xy_staged_char="${xy:0:1}"
+  if [ "$xy_staged_char" != " " ] && [ "$xy_staged_char" != "?" ]; then
+    continue
+  fi
+  if is_state_path "$file"; then
+    unstaged_state+=("$file")
+  fi
+done < <(git status --porcelain --untracked-files=all 2>/dev/null || true)
+
+if [ "${#unstaged_state[@]}" -gt 0 ]; then
+  echo ""
+  echo "⚠️  state-sync reminder: ${#unstaged_state[@]} state-class file(s) are unstaged / untracked:"
+  for f in "${unstaged_state[@]}"; do
+    echo "    $f"
+  done
+  echo ""
+  echo "  Run \`cortex-agent state-sync --add\` to stage them,"
+  echo "  or \`--commit\` / \`--push\` to finish in one shot."
+  echo "  (This is a reminder, not a blocker — proceeding with commit.)"
+  echo ""
+fi
+
+exit 0
