@@ -327,6 +327,9 @@ function runSession(args) {
 // to the existing init() function.
 async function initModeGeneral() {
   const { copyRecursive } = require("../lib/setup/index.js");
+  const { writeVersionFile } = require("../lib/commands/patches.js");
+  const { writePublicAnchor } = require("../lib/commands/anchor.js");
+  const { applyGitExclusion } = require("../lib/platform/index.js");
   const baseSrc = path.join(__dirname, "..", "templates", "_base", ".agent");
   if (!fs.existsSync(baseSrc)) {
     console.error(
@@ -339,8 +342,24 @@ async function initModeGeneral() {
   console.log(
     `✅ general mode init: copied shared data layer to ${baseDest}`,
   );
-  if (fs.existsSync(path.join(cwd, "AGENTS.md"))) {
+
+  // Seed AGENTS.md at project root from the general-mode template. Only
+  // writes when the file does not already exist — a user-provided AGENTS.md
+  // is authoritative and must never be clobbered. AGENTS.md is the documented
+  // entry file for general-mode projects (see mode-infer.js rule 1).
+  const agentsMdPath = path.join(cwd, "AGENTS.md");
+  if (fs.existsSync(agentsMdPath)) {
     console.log("ℹ️  AGENTS.md detected; general mode is the right profile for this project.");
+  } else {
+    const agentsMdSrc = path.join(__dirname, "..", "templates", "general", "AGENTS.md");
+    if (fs.existsSync(agentsMdSrc)) {
+      fs.writeFileSync(agentsMdPath, fs.readFileSync(agentsMdSrc, "utf8"), "utf8");
+      console.log(`✅ general mode init: seeded ${agentsMdPath} (edit it to match your project).`);
+    } else {
+      console.warn(
+        "⚠️  templates/general/AGENTS.md not found; please create AGENTS.md at project root manually.",
+      );
+    }
   }
 
   // MS-004: copy the general template layer (workflows + skills + sub-agents +
@@ -359,6 +378,34 @@ async function initModeGeneral() {
       "⚠️  templates/general/.agent not found; skipped template layer copy (general workflow contracts unavailable).",
     );
   }
+
+  // Stamp the framework version so `cortex-agent doctor` recognises this as a
+  // managed project. Mirrors what `init()` does for code mode.
+  writeVersionFile(cwd);
+
+  // Write the cross-tool recognition anchor (docs/cortex-agent/anchor.md) so
+  // any AI tool (Claude Code, Codex, Cursor, …) can identify this project as
+  // cortex-agent-managed. Same helper `init()` uses for code mode.
+  const anchorWritten = writePublicAnchor(cwd, false);
+  if (anchorWritten) {
+    console.log("🌐 Cross-tool anchor written to: docs/cortex-agent/anchor.md (version-controlled)");
+  }
+
+  // Keep generated files out of Git unless the user explicitly opts in with
+  // `--track`. Reuses the platform helper that updates .git/info/exclude.
+  try {
+    applyGitExclusion({ cwd, options: {} });
+  } catch (_) {
+    // best-effort: never fail general-mode init because of git exclusion
+  }
+
+  console.log("\n🎉 Cortex Agent (general mode) initialized successfully!");
+  console.log(
+    "\n👉 Next steps:\n" +
+      "   - Edit AGENTS.md to describe your project context.\n" +
+      "   - Run `cortex-agent doctor` to verify setup health.\n" +
+      "   - Explore `.agent/general/workflows/` for /memory recall, /agent discover, etc.",
+  );
 }
 
 (async () => {
