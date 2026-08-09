@@ -190,7 +190,7 @@ function cmdEmit(argv) {
       run.body.subagent_fanout.push({
         subagent_id: subagentId,
         role: "(unknown — spawned event was not emitted)",
-        status: ev === "subagent_completed" ? status : "running",
+        status: ev === "subagent_completed" ? event.status : "running",
         spawned_at: event.at,
         last_event_at: event.at,
         events: [{ type: ev, at: event.at }],
