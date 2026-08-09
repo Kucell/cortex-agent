@@ -6,7 +6,7 @@ const os = require("os");
 const path = require("path");
 const test = require("node:test");
 
-const ROOT = path.resolve(__dirname, "..");
+const ROOT = path.resolve(__dirname, "..", "..");
 const LOCAL_SKILL = path.join(ROOT, ".agent", "skills", "dashboard-supervisor");
 const SHARED_SKILL = path.join(ROOT, "templates", "_shared", ".agent", "skills", "dashboard-supervisor");
 const contracts = require(path.join(LOCAL_SKILL, "scripts", "contracts.js"));

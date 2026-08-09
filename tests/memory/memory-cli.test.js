@@ -291,7 +291,7 @@ test("memory-cli: unknown memory subcommand exits 2", () => {
 
 test("memory-cli: cli-contract advertises memory as general_memory mode", () => {
   // Sanity check that the contract entry was added (regression guard).
-  const contract = require(path.join(repoRoot, "lib/cli-contract.js"));
+  const contract = require(path.join(repoRoot, "lib/cli/contract.js"));
   const mem = contract.commands.find((c) => c.name === "memory");
   assert.ok(mem, "memory command must be registered in lib/cli-contract.js");
   assert.equal(mem.mode, "general_memory");

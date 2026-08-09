@@ -8,7 +8,7 @@ const { spawnSync } = require("node:child_process");
 const test = require("node:test");
 const vm = require("node:vm");
 
-const ROOT = path.resolve(__dirname, "..");
+const ROOT = path.resolve(__dirname, "..", "..");
 const GENERATOR = path.join(ROOT, ".agent", "skills", "agent-dashboard", "scripts", "generate.js");
 const MARKDOWN_IT = path.join(ROOT, ".agent", "skills", "agent-dashboard", "vendor", "markdown-it.min.js");
 

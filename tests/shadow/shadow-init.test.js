@@ -253,7 +253,7 @@ test("v2 init: explicit --mode general wins over package.json code signal", () =
 test("auto-infer (lib/mode-infer): empty dir -> 'general'", () => {
   const cwd = makeTmp("infer-empty");
   try {
-    const { inferMode } = require(path.join(repoRoot, "lib", "mode-infer.js"));
+    const { inferMode } = require(path.join(repoRoot, "lib", "coordination", "mode-infer.js"));
     assert.strictEqual(inferMode(cwd), "general");
   } finally {
     rmrf(cwd);
@@ -267,7 +267,7 @@ test("auto-infer (lib/mode-infer): package.json -> 'code'", () => {
       path.join(cwd, "package.json"),
       JSON.stringify({ name: "demo" }, null, 2)
     );
-    const { inferMode } = require(path.join(repoRoot, "lib", "mode-infer.js"));
+    const { inferMode } = require(path.join(repoRoot, "lib", "coordination", "mode-infer.js"));
     assert.strictEqual(inferMode(cwd), "code");
   } finally {
     rmrf(cwd);
@@ -278,7 +278,7 @@ test("auto-infer (lib/mode-infer): .cursorrules -> 'code'", () => {
   const cwd = makeTmp("infer-cursor");
   try {
     fs.writeFileSync(path.join(cwd, ".cursorrules"), "# cursor rules\n");
-    const { inferMode } = require(path.join(repoRoot, "lib", "mode-infer.js"));
+    const { inferMode } = require(path.join(repoRoot, "lib", "coordination", "mode-infer.js"));
     assert.strictEqual(inferMode(cwd), "code");
   } finally {
     rmrf(cwd);
@@ -293,7 +293,7 @@ test("auto-infer (lib/mode-infer): AGENTS.md wins over package.json", () => {
       path.join(cwd, "package.json"),
       JSON.stringify({ name: "demo" }, null, 2)
     );
-    const { inferMode } = require(path.join(repoRoot, "lib", "mode-infer.js"));
+    const { inferMode } = require(path.join(repoRoot, "lib", "coordination", "mode-infer.js"));
     assert.strictEqual(inferMode(cwd), "general");
   } finally {
     rmrf(cwd);
@@ -379,7 +379,7 @@ test("additivity: lib/commands.js has 0 changes vs base f8a1d38", () => {
 test("additivity: lib/mode-infer.js function body inferMode is unchanged", () => {
   // The inferMode function body is the MS-002 contract; MS-003 only
   // appended helpers below it.  MS-004 must not touch the function.
-  const fp = path.join(repoRoot, "lib", "mode-infer.js");
+  const fp = path.join(repoRoot, "lib", "coordination", "mode-infer.js");
   const src = fs.readFileSync(fp, "utf8");
   // Sanity: the function signature line is present, and a "Resolution order"
   // comment block (5 rules) is intact.

@@ -5,7 +5,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
 
-const ROOT = path.resolve(__dirname, "..");
+const ROOT = path.resolve(__dirname, "..", "..");
 const ROOTS = [
   path.join(ROOT, ".agent", "workflows"),
   path.join(ROOT, "templates", "zh", ".agent", "workflows"),

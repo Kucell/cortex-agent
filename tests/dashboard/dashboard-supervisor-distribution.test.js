@@ -23,7 +23,7 @@ const os = require("node:os");
 const path = require("node:path");
 const { execFileSync } = require("node:child_process");
 
-const ROOT = path.resolve(__dirname, "..");
+const ROOT = path.resolve(__dirname, "..", "..");
 const SHARED = path.join(ROOT, "templates", "_shared", ".agent");
 const EN_TPL = path.join(ROOT, "templates", "en", ".agent");
 const ZH_TPL = path.join(ROOT, "templates", "zh", ".agent");

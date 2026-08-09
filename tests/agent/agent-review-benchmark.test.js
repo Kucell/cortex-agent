@@ -7,7 +7,7 @@ const path = require("node:path");
 const { spawnSync } = require("node:child_process");
 const test = require("node:test");
 
-const ROOT = path.resolve(__dirname, "..");
+const ROOT = path.resolve(__dirname, "..", "..");
 const SCRIPT = path.join(ROOT, ".agent/skills/agent-review-benchmark/scripts/index.js");
 
 function fixture(t) {

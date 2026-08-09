@@ -12,7 +12,7 @@ const path = require("node:path");
 const { spawnSync } = require("node:child_process");
 const test = require("node:test");
 
-const ROOT = path.resolve(__dirname, "..");
+const ROOT = path.resolve(__dirname, "..", "..");
 const MANAGEMENT = path.join(ROOT, "templates", "_shared", ".agent", "skills", "management-api", "scripts", "index.js");
 
 function project() {

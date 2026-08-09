@@ -8,7 +8,7 @@ const path = require("node:path");
 const { spawn } = require("node:child_process");
 const test = require("node:test");
 
-const ROOT = path.resolve(__dirname, "..");
+const ROOT = path.resolve(__dirname, "..", "..");
 const SERVER = path.join(ROOT, ".agent", "skills", "agent-dashboard", "scripts", "serve.js");
 
 function write(file, content) {

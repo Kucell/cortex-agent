@@ -7,7 +7,7 @@ const path = require("path");
 const { spawnSync } = require("child_process");
 const test = require("node:test");
 
-const ROOT = path.resolve(__dirname, "..");
+const ROOT = path.resolve(__dirname, "..", "..");
 const CLI = path.join(ROOT, "bin", "cli.js");
 const SHARED_AGENT = path.join(ROOT, "templates", "_shared", ".agent");
 

@@ -6,7 +6,7 @@ const path = require("node:path");
 const test = require("node:test");
 const vm = require("node:vm");
 
-const ROOT = path.resolve(__dirname, "..");
+const ROOT = path.resolve(__dirname, "..", "..");
 const VENDOR = path.join(ROOT, "templates", "_shared", ".agent", "skills", "agent-dashboard", "vendor", "markdown-it.min.js");
 
 function parser() {

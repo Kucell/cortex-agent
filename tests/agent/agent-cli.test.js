@@ -13,7 +13,7 @@ const path = require("node:path");
 const test = require("node:test");
 const { spawnSync } = require("node:child_process");
 
-const repoRoot = path.resolve(__dirname, "..");
+const repoRoot = path.resolve(__dirname, "..", "..");
 
 function mkProject() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "m002-ms003-cli-"));
@@ -317,7 +317,7 @@ test("agent-cli: unknown agent subcommand exits 2 with M-002 / M-008 hint", () =
 });
 
 test("agent-cli: cli-contract advertises agent as split_registry mode", () => {
-  const contract = require(path.join(repoRoot, "lib/cli-contract.js"));
+  const contract = require(path.join(repoRoot, "lib/cli/contract.js"));
   const agent = contract.commands.find((c) => c.name === "agent");
   assert.ok(agent, "agent command must be registered in lib/cli-contract.js");
   assert.equal(agent.mode, "split_registry");

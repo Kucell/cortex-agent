@@ -24,7 +24,7 @@ const path = require("node:path");
 const test = require("node:test");
 const { spawnSync } = require("node:child_process");
 
-const repoRoot = path.resolve(__dirname, "..");
+const repoRoot = path.resolve(__dirname, "..", "..");
 const binCli = path.join(repoRoot, "bin", "cli.js");
 
 // ─── helpers ────────────────────────────────────────────────────────────────
