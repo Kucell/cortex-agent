@@ -61,7 +61,7 @@ function withExitCode(fn) {
 // three steps in a single withMockedClient() call.
 
 function withMockedClient(overrides, fn) {
-  const clientTarget = require.resolve("../../../lib/management-client");
+  const clientTarget = require.resolve("../../../lib/management/client");
   const helpersTarget = require.resolve("../../../lib/commands/management/api-helpers");
 
   const origClient = require.cache[clientTarget];

@@ -17,7 +17,7 @@ const {
   getLockfilePath,
   LOCKFILE_VERSION,
   SCHEMA_VERSION,
-} = require("../../lib/design/lockfile');
+} = require("../../lib/design/lockfile");
 
 function makeTmpCwd() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'cortex-design-lockfile-'));

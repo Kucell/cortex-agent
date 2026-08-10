@@ -62,7 +62,7 @@ function withExitCode(fn) {
 // write.js from the cache before re-requiring it.
 
 function withMockedDeps(clientOverrides, apiHelpersOverrides, fn) {
-  const clientTarget = require.resolve("../../../lib/management-client");
+  const clientTarget = require.resolve("../../../lib/management/client");
   const helpersTarget = require.resolve("../../../lib/commands/management/api-helpers");
   const writeTarget = require.resolve("../../../lib/commands/management/write");
 

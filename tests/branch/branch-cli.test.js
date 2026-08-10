@@ -90,7 +90,7 @@ function initRepo(cwd) {
 }
 
 function copyFixture(cwd, name) {
-  const src = path.join(__dirname, "fixtures", name);
+  const src = path.join(__dirname, "..", "fixtures", name);
   const target = path.join(cwd, ".agent", "branches", "registry.json");
   fs.mkdirSync(path.dirname(target), { recursive: true });
   fs.copyFileSync(src, target);
@@ -540,7 +540,7 @@ test("branch-cli: list — readRegistry recovers from corrupt JSON", () => {
   const target = branchRegistry.registryPath(cwd);
   fs.mkdirSync(path.dirname(target), { recursive: true });
   fs.copyFileSync(
-    path.join(__dirname, "fixtures", "branch-corrupt.json"),
+    path.join(__dirname, "..", "fixtures", "branch-corrupt.json"),
     target,
   );
   // Without --recover=false, readRegistry should succeed and the file should

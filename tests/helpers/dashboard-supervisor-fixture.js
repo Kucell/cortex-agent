@@ -7,7 +7,7 @@ const path = require("node:path");
 const { spawnSync } = require("node:child_process");
 
 const ROOT = path.resolve(__dirname, "..", "..");
-const SUPERVISOR = path.join(ROOT, "lib", "dashboard-supervisor.js");
+const SUPERVISOR = path.join(ROOT, "lib", "dashboard", "supervisor.js");
 
 function randomPort() {
   return 30000 + Math.floor(Math.random() * 20000);

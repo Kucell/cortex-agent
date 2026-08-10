@@ -5,7 +5,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
 
-const ROOT = path.join(__dirname, "fixtures", "runtime-state", "failed-operation-replay");
+const ROOT = path.join(__dirname, "..", "fixtures", "runtime-state", "failed-operation-replay");
 
 function read(name) {
   return JSON.parse(fs.readFileSync(path.join(ROOT, name), "utf8"));

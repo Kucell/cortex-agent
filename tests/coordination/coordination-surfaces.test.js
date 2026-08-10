@@ -250,7 +250,7 @@ test("focused Management API projections read runtime state without writing", ()
     consumerId: "codex", pending: { delivery: { eventId: "CE-1", taskId: "T-1" } },
   }));
   const before = fs.statSync(path.join(runtime, "tasks/T-1.json")).mtimeMs;
-  const { queryCoordination } = require("../templates/_shared/.agent/skills/management-api/scripts/query-coordination");
+  const { queryCoordination } = require("../../templates/_shared/.agent/skills/management-api/scripts/query-coordination");
   const tasks = queryCoordination({ root: project, args: ["--state", "EXECUTING"], projection: "coordination-tasks" });
   const events = queryCoordination({ root: project, args: ["--producer", "claude"], projection: "coordination-events" });
   const notifications = queryCoordination({ root: project, args: ["--task", "T-1"], projection: "coordination-notifications" });

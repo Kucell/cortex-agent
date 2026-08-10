@@ -39,7 +39,7 @@ const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
 
-const MANAGEMENT_CLIENT_PATH = require.resolve("../../../lib/management-client");
+const MANAGEMENT_CLIENT_PATH = require.resolve("../../../lib/management/client");
 const VERIFY_PATH = require.resolve("../../../lib/commands/update/verify");
 
 // Save original exports BEFORE we patch.

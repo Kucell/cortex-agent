@@ -12,7 +12,7 @@ const {
   verifyHash,
   writeFileAtomic,
   clearDirectory,
-} = require("../../lib/design/fetch');
+} = require("../../lib/design/fetch");
 
 function makeTmpDir() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'cortex-design-fetch-'));

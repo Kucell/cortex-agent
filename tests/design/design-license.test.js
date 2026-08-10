@@ -9,7 +9,7 @@ const {
   isBrandCategory,
   isYesAnswer,
   STARTERS_CATEGORY,
-} = require("../../lib/design/license');
+} = require("../../lib/design/license");
 
 // -- isBrandCategory --------------------------------------------------------
 

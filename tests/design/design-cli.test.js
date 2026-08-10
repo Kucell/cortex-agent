@@ -10,9 +10,9 @@ const {
   parseDesignArgs,
   designCommand,
   printHelp,
-} = require("../../lib/design/cli');
-const { sha256 } = require("../../lib/design/fetch');
-const lockfile = require("../../lib/design/lockfile');
+} = require("../../lib/design/cli");
+const { sha256 } = require("../../lib/design/fetch");
+const lockfile = require("../../lib/design/lockfile");
 
 function makeTmpCwd() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'cortex-design-cli-'));

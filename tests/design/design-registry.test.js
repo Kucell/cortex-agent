@@ -13,7 +13,7 @@ const {
   readCacheRaw,
   getDefaultCachePath,
   DEFAULT_CACHE_TTL_MS,
-} = require("../../lib/design/registry');
+} = require("../../lib/design/registry");
 
 function makeTmpDir() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'cortex-design-registry-'));

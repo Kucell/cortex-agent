@@ -9,7 +9,7 @@
 //
 // Mocking strategy:
 //   - `resolveManagementProject` is destructured at the top of dashboard.js from
-//     lib/management-client. We use the cache-delete + re-require trick to
+//     lib/management/client. We use the cache-delete + re-require trick to
 //     inject the mock.
 //   - `spawnSync` is a built-in (`node:child_process`), so require.cache cannot
 //     replace it. We patch `Module._load` to intercept the require of
@@ -21,7 +21,7 @@ const Module = require("node:module");
 const test = require("node:test");
 
 const DASH_PATH = require.resolve("../../../lib/commands/surface/dashboard");
-const MC_PATH = require.resolve("../../../lib/management-client");
+const MC_PATH = require.resolve("../../../lib/management/client");
 
 function captureStdout() {
   const chunks = [];
@@ -129,7 +129,7 @@ test("dashboard: happy path → spawnSync called with lib/dashboard-supervisor.j
     dashboard(makeCtx(["dashboard"]));
     assert.equal(spawnCalls.length, 1, "spawnSync must be called once");
     const call = spawnCalls[0];
-    const expectedScript = path.resolve(__dirname, "..", "..", "..", "lib", "dashboard-supervisor.js");
+    const expectedScript = path.resolve(__dirname, "..", "..", "..", "lib", "dashboard", "supervisor.js");
     assert.equal(call.args[0], expectedScript);
     assert.equal(call.opts.cwd, fakeProject.project.root);
     assert.equal(process.exitCode, 0, "result.status = 0 → exitCode 0");

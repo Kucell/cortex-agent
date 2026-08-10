@@ -112,7 +112,7 @@ test("M-005: supervisor skill source stays in lockstep between inner .agent and 
 });
 
 test("standard CLI core and opt-in workflow adapters ship together", () => {
-  assert.ok(fs.existsSync(path.join(ROOT, "lib", "dashboard-supervisor.js")));
+  assert.ok(fs.existsSync(path.join(ROOT, "lib", "dashboard", "supervisor.js")));
   for (const template of [INNER, EN_TPL, ZH_TPL]) {
     const hooks = fs.readFileSync(path.join(template, "hooks", "hooks.json"), "utf8");
     assert.match(hooks, /cortex-agent dashboard ensure/);

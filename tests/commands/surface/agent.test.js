@@ -19,8 +19,8 @@ const path = require("node:path");
 const test = require("node:test");
 
 const AGENT_PATH = require.resolve("../../../lib/commands/surface/agent");
-const BRIDGE_PATH = require.resolve("../../../lib/host-event-bridge");
-const LAUNCH_PATH = require.resolve("../../../lib/governed-launch-cli");
+const BRIDGE_PATH = require.resolve("../../../lib/coordination/host-event-bridge");
+const LAUNCH_PATH = require.resolve("../../../lib/governed/launch-cli");
 
 function captureStdout() {
   const chunks = [];

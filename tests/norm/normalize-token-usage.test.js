@@ -12,7 +12,7 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 
-const helperPath = require.resolve("../.agent/skills/management-api/scripts/normalize-token-usage.js");
+const helperPath = require.resolve("../../.agent/skills/management-api/scripts/normalize-token-usage.js");
 const { normalizeTokenUsage, coerceToNonNegativeInt, parseNumericString } = require(helperPath);
 
 // ─── canonical numeric / boolean / null inputs ────────────────────────────────

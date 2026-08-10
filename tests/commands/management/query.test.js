@@ -49,7 +49,7 @@ function withExitCode(fn) {
 // `query.js` from the cache before re-requiring it.
 
 function withMockedDeps(clientOverrides, apiHelpersOverrides, fn) {
-  const clientTarget = require.resolve("../../../lib/management-client");
+  const clientTarget = require.resolve("../../../lib/management/client");
   const helpersTarget = require.resolve("../../../lib/commands/management/api-helpers");
   const queryTarget = require.resolve("../../../lib/commands/management/query");
 

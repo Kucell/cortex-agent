@@ -44,7 +44,7 @@ check("isHostEntryPath .claude/settings.json", () => assert.strictEqual(t.isHost
 check("isHostEntryPath rules/foo.md false", () => assert.strictEqual(t.isHostEntryPath("rules/foo.md"), false));
 
 // ─── Manifest reading ────────────────────────────────────────────────────────
-const fixturePack = path.join(__dirname, "..", "..", "fixtures", "clean-no-team-pack");
+const fixturePack = path.join(__dirname, "..", "..", "..", "fixtures", "clean-no-team-pack");
 check("readManifest returns parsed fixture", () => {
   const m = t.readManifest(fixturePack);
   assert.ok(m, "manifest should parse");

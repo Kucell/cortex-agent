@@ -5,7 +5,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
 
-const FIXTURES = path.join(__dirname, "fixtures", "runtime-state");
+const FIXTURES = path.join(__dirname, "..", "fixtures", "runtime-state");
 
 function readJson(...parts) {
   return JSON.parse(fs.readFileSync(path.join(FIXTURES, ...parts), "utf8"));

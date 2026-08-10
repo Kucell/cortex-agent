@@ -42,13 +42,13 @@ test("AUDIT_EVENT_TYPES is a subset of contract EVENT_TYPES", () => {
 
 test("lease module never imports contract (independent)", () => {
   const fs = require("node:fs");
-  const src = fs.readFileSync(require.resolve("../lib/coordination/lease.js"), "utf8");
+  const src = fs.readFileSync(require.resolve("../../lib/coordination/lease.js"), "utf8");
   assert.ok(!/require\(['"]\.\/contract['"]\)/.test(src), "lease.js must not depend on contract.js");
 });
 
 test("no Math.random / Date.now in lease.js (deterministic)", () => {
   const fs = require("node:fs");
-  const src = fs.readFileSync(require.resolve("../lib/coordination/lease.js"), "utf8");
+  const src = fs.readFileSync(require.resolve("../../lib/coordination/lease.js"), "utf8");
   // 匹配实际调用（带括号），排除注释中的文字提及
   assert.equal((src.match(/Math\.random\(/g) || []).length, 0, "must not call Math.random");
   // Date.now() 只允许出现在 defaultClock 中（恰好 1 处）
