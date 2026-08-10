@@ -468,7 +468,10 @@ async function initModeGeneral() {
       if (l1Ctx.options.team) {
         l1Ctx.options.teamPhase = "L1-then-L2";
       }
-      await upgrade(l1Ctx); installStateGithooks({ cwd, lang });
+      await upgrade(l1Ctx);
+      // Respect --dry-run: state-githooks installer copies templates to disk,
+      // which would violate the zero-write contract. Skip when dryRun is set.
+      if (!l1Ctx.options.dryRun) installStateGithooks({ cwd, lang });
       break;
     case "track":       trackAgent(ctx); break;
     case "untrack":     untrackAgent(ctx); break;
