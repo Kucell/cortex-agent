@@ -54,6 +54,7 @@ function parseArgs(argv) {
     scope: null,
     file: null,
     timeoutSec: 60,
+    maxTimeSec: 0,  // 0 = no global wall-clock cap. Set --max-time SEC to enforce.
     help: false,
     quiet: false,
   };
@@ -67,6 +68,7 @@ function parseArgs(argv) {
       case '-s': case '--scope':   opts.scope = argv[++i]; break;
       case '-f': case '--file':    opts.file = argv[++i]; break;
       case '--timeout':            opts.timeoutSec = parseInt(argv[++i], 10); break;
+      case '--max-time':           opts.maxTimeSec = parseInt(argv[++i], 10); break;
       case '-q': case '--quiet':   opts.quiet = true; break;
       case '-h': case '--help':    opts.help = true; break;
       default:
@@ -90,6 +92,7 @@ Options:
   -s, --scope PATH        Run only tests/PATH/**.test.js
   -f, --file RELPATH      Run a specific file relative to tests/
   --timeout SEC           Per-file timeout (default 60)
+  --max-time SEC          Global wall-clock cap (default 0 = no cap)
   -q, --quiet             Suppress per-file output, only print summary
   -h, --help              Show this help
 
@@ -340,6 +343,19 @@ async function main() {
     'dim', useColor,
   ));
 
+  // Global wall-clock cap: abort the whole run if --max-time SEC is set.
+  // Without this, the parallel runner only times out per file; if many files
+  // each timeout, the cumulative wall-clock can still be 60s × N. Set a
+  // hard cap so a CI / interactive run can't get stuck indefinitely.
+  let globalTimer = null;
+  if (opts.maxTimeSec > 0) {
+    globalTimer = setTimeout(() => {
+      console.error(`\n[GLOBAL TIMEOUT after ${opts.maxTimeSec}s — aborting run]`);
+      process.exit(2);
+    }, opts.maxTimeSec * 1000);
+    if (globalTimer.unref) globalTimer.unref();
+  }
+
   const t0 = Date.now();
   let results;
   if (opts.serial || files.length === 1) {
@@ -347,6 +363,7 @@ async function main() {
   } else {
     results = await runParallel(files, workers, opts.timeoutSec, opts.quiet);
   }
+  if (globalTimer) clearTimeout(globalTimer);
   const total = Date.now() - t0;
 
   const pass = results.filter(r => r.ok).length;

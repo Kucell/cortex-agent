@@ -24,12 +24,13 @@
     "node": "24.19.0"
   },
   "scripts": {
-    "test": "node scripts/test-runner.cjs",
-    "test:serial": "node scripts/test-runner.cjs --serial",
+    "test": "node scripts/test-runner.cjs --max-time 600 --timeout 30",
+    "test:serial": "node scripts/test-runner.cjs --serial --max-time 600 --timeout 30",
     "test:module": "node scripts/test-runner.cjs --module",
     "test:modules": "node scripts/test-runner.cjs --scope commands",
     "test:scope": "node scripts/test-runner.cjs --scope",
     "test:file": "node scripts/test-runner.cjs --file",
+    "test:quick": "node scripts/test-runner.cjs --scope setup --scope update --scope state-sync --max-time 120",
     "release:patch": "npm version patch && npm publish --registry https://registry.npmjs.org/",
     "release:minor": "npm version minor && npm publish --registry https://registry.npmjs.org/",
     "release:major": "npm version major && npm publish --registry https://registry.npmjs.org/",
