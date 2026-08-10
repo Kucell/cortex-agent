@@ -55,6 +55,8 @@ function parseArgs(argv) {
     file: null,
     timeoutSec: 60,
     maxTimeSec: 0,  // 0 = no global wall-clock cap. Set --max-time SEC to enforce.
+    perTestTimeoutMs: 0,  // 0 = no per-test timeout. Set --per-test-timeout MS to enforce (Node 24+).
+    idleTimeoutSec: 0,    // 0 = no activity timeout. Set --idle-timeout SEC to kill children that print nothing for N seconds.
     help: false,
     quiet: false,
   };
@@ -69,6 +71,8 @@ function parseArgs(argv) {
       case '-f': case '--file':    opts.file = argv[++i]; break;
       case '--timeout':            opts.timeoutSec = parseInt(argv[++i], 10); break;
       case '--max-time':           opts.maxTimeSec = parseInt(argv[++i], 10); break;
+      case '--per-test-timeout':  opts.perTestTimeoutMs = parseInt(argv[++i], 10); break;
+      case '--idle-timeout':       opts.idleTimeoutSec = parseInt(argv[++i], 10); break;
       case '-q': case '--quiet':   opts.quiet = true; break;
       case '-h': case '--help':    opts.help = true; break;
       default:
@@ -93,6 +97,8 @@ Options:
   -f, --file RELPATH      Run a specific file relative to tests/
   --timeout SEC           Per-file timeout (default 60)
   --max-time SEC          Global wall-clock cap (default 0 = no cap)
+  --per-test-timeout MS   Pass through to node --test --test-timeout (Node 24+)
+  --idle-timeout SEC      Kill a child if it prints nothing for N seconds (default 0 = off)
   -q, --quiet             Suppress per-file output, only print summary
   -h, --help              Show this help
 
@@ -161,28 +167,51 @@ function filterFiles(files, opts) {
 
 // ---- Worker -------------------------------------------------------------
 
-function runOne(file, timeoutSec) {
+function runOne(file, timeoutSec, perTestTimeoutMs, idleTimeoutSec) {
   return new Promise((resolve) => {
     const start = Date.now();
     const rel = toRel(file);
-    const child = spawn(process.execPath, ['--test', file], {
+    // Build child argv. Node 24+ supports --test-timeout for per-test
+    // granularity (independent of the file-level timeout we set below).
+    const childArgv = ['--test', file];
+    if (perTestTimeoutMs > 0) childArgv.push(`--test-timeout=${perTestTimeoutMs}`);
+    const child = spawn(process.execPath, childArgv, {
       cwd: ROOT,
       stdio: ['ignore', 'pipe', 'pipe'],
       env: process.env,
     });
     let stdout = '';
     let stderr = '';
-    child.stdout.on('data', d => { stdout += d.toString(); });
-    child.stderr.on('data', d => { stderr += d.toString(); });
+    child.stdout.on('data', d => { stdout += d.toString(); lastActivity = Date.now(); });
+    child.stderr.on('data', d => { stderr += d.toString(); lastActivity = Date.now(); });
 
     let killed = false;
+    let killReason = 'timeout';
+    let lastActivity = Date.now();
+
     const timer = setTimeout(() => {
       killed = true;
+      killReason = `file-timeout(${timeoutSec}s)`;
       try { child.kill('SIGKILL'); } catch (_) {}
     }, timeoutSec * 1000);
 
+    // Idle timeout: if the child hasn't printed anything for N seconds,
+    // it is almost certainly hung (e.g. deadlocked subprocess, infinite
+    // poll). Kill it so the suite doesn't drag on.
+    let idleTimer = null;
+    if (idleTimeoutSec > 0) {
+      idleTimer = setInterval(() => {
+        if (Date.now() - lastActivity < idleTimeoutSec * 1000) return;
+        killed = true;
+        killReason = `idle-timeout(${idleTimeoutSec}s-no-stdout)`;
+        try { child.kill('SIGKILL'); } catch (_) {}
+      }, Math.max(250, Math.floor(idleTimeoutSec * 1000 / 4)));
+      if (idleTimer.unref) idleTimer.unref();
+    }
+
     child.on('close', (code, signal) => {
       clearTimeout(timer);
+      if (idleTimer) clearInterval(idleTimer);
       resolve({
         file,
         rel,
@@ -190,6 +219,7 @@ function runOne(file, timeoutSec) {
         code,
         signal: signal || null,
         killed,
+        killReason: killed ? killReason : null,
         duration: Date.now() - start,
         stdout,
         stderr,
@@ -214,7 +244,7 @@ function runOne(file, timeoutSec) {
 
 // ---- Runners ------------------------------------------------------------
 
-async function runParallel(files, workers, timeoutSec, quiet) {
+async function runParallel(files, workers, timeoutSec, quiet, perTestTimeoutMs, idleTimeoutSec) {
   const queue = files.slice();
   const results = [];
   let inflight = 0;
@@ -226,11 +256,14 @@ async function runParallel(files, workers, timeoutSec, quiet) {
       const file = queue.shift();
       if (!file) return;
       inflight += 1;
-      const r = await runOne(file, timeoutSec);
+      const r = await runOne(file, timeoutSec, perTestTimeoutMs, idleTimeoutSec);
       inflight -= 1;
       completed += 1;
       results.push(r);
       if (!quiet) printResult(r, completed, total);
+    if (r.killed && r.killReason) {
+      console.error(`  ⏱ kill-reason: ${r.killReason}`);
+    }
     }
   }
   const w = Math.max(1, Math.min(workers, files.length || 1));
@@ -361,7 +394,7 @@ async function main() {
   if (opts.serial || files.length === 1) {
     results = await runSerial(files, opts.timeoutSec * Math.max(1, files.length));
   } else {
-    results = await runParallel(files, workers, opts.timeoutSec, opts.quiet);
+    results = await runParallel(files, workers, opts.timeoutSec, opts.quiet, opts.perTestTimeoutMs, opts.idleTimeoutSec);
   }
   if (globalTimer) clearTimeout(globalTimer);
   const total = Date.now() - t0;
@@ -394,3 +427,36 @@ main().catch(err => {
   console.error('[test-runner] fatal:', err && err.stack || err);
   process.exit(2);
 });
+
+// ---- Signal handling: kill all spawned children on Ctrl-C / SIGTERM ----------
+//
+// Without this, `npm test` could leave orphaned test-runner or node --test
+// children behind when the user Ctrl-C's the run. We trap the signal,
+// forward SIGTERM to any tracked child PID set, and exit with the standard
+// 130 (128 + SIGINT) or 143 (128 + SIGTERM) code so callers can detect an
+// aborted run vs a clean pass/fail.
+//
+// Implementation: the parallel runner doesn't expose a child-pid registry,
+// so we use a fallback — spawn a kill tree walk via `pgrep -P <ppid>` plus
+// SIGKILL on the runner's own PID. This is best-effort: on macOS without
+// gtimeout / Linux without pgrep the cleanup may be incomplete, but the
+// runner always exits cleanly so the shell that invoked it can proceed.
+
+let aborted = false;
+function abortRun(signal) {
+  if (aborted) return;
+  aborted = true;
+  console.error(`\n[test-runner] aborted by ${signal} — killing children`);
+  try {
+    // Try pgrep-based tree walk; fall back to pkill on the runner's own
+    // process group. pgrep is available on macOS and Linux by default.
+    const { spawnSync } = require('child_process');
+    const myPid = process.pid;
+    spawnSync('pkill', ['-P', String(myPid)], { stdio: 'ignore' });
+    spawnSync('pkill', ['-TERM', '-P', String(myPid)], { stdio: 'ignore' });
+  } catch (_) { /* best-effort */ }
+  process.exit(signal === 'SIGINT' ? 130 : 143);
+}
+process.on('SIGINT', () => abortRun('SIGINT'));
+process.on('SIGTERM', () => abortRun('SIGTERM'));
+process.on('SIGHUP', () => abortRun('SIGHUP'));
