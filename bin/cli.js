@@ -462,7 +462,11 @@ async function initModeGeneral() {
         process.exitCode = 3;
         break;
       }
-      await upgrade(l1Ctx); installStateGithooks({ cwd, lang }); break;
+      await upgrade(l1Ctx);
+      // Respect --dry-run: state-githooks installer copies templates to disk,
+      // which would violate the zero-write contract. Skip when dryRun is set.
+      if (!l1Ctx.options.dryRun) installStateGithooks({ cwd, lang });
+      break;
     case "update":
       l1Ctx.options.updateScripts = true;
       if (l1Ctx.options.team) {
