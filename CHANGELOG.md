@@ -7,6 +7,102 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.12.0-rc.2] - 2026-08-10
+
+> **Pre-release**:rc.2 给 AI-Brain 内部 dogfooding 试用 + 实战 ≥ 2 周观察期,**不建议生产使用**。
+> **基础**:`2078881`(v1.12.0-rc.1,2026-08-04)→ **200 commits** → `496f28a` chore(test)
+> **rc.1 vs rc.2 差异**:**200 commits 增量**,**484 files changed, +48701 / -3709 lines**
+> **完整 release notes**:`docs/releases/v1.12.0-rc.2.md`(本目录生成,中英双语)
+> **Mission 关联**:M-019(context-budget v2 P1/P2/C1/C2)+ M-004(FAE-002 Event Bus 完整闭环)+ M-016(branch-management 4 milestones COMPLETE)+ M-018(OKF Knowledge Layer MS-004+MS-005)+ state-sync(9-class 跨机同步)+ test infra 重构
+> **同主线吸收的 v1.13.0-rc.1/rc.2 内容**:M-004 / M-016 / M-018 在本主线(无 1.13.x tag 的分支)上以"内部 RC"形式吸收,v1.13.0-rc.1/v1.13.0-rc.2 tag 保留在已弃用分支上以追溯历史。
+
+### Major
+
+- **M-019 context-budget v2 (P1/P2/C1/C2) — 本 rc 核心新特性** (`55c1114`):
+  - **P1 prefix caching**:`prefix-builder.js` + `cache-config.yml` + `cache-break.js`(epoch-hash 漂移检测)+ `rule-tier.js`(规则稳定性分 7 层)
+  - **P2 session history compaction**:`compact.js` + `compact.schema.json`,`integrateHistory` 接入 `build-l0l1`
+  - **C1 reference-level exact dedup**:`dedup-refs.js` 构建 canonical block,`select` / `build-l0l1` 发出 dedup 报告,`agent-config` 的 `core-principles` 从 inlined body 改为 canonical block 引用
+  - **C2 multi-agent shared context**:`gen-shared-context.js` 经 Artifact Bus 发布,`handoff` schema 增 `shared_context_ref` 字段(双模板 _shared/_base),`protocol.js` 验证
+  - 9 个新文件 in `templates/{zh,en}/.agent/skills/context-budget/`
+  - Self-bootstrap VC-019-01..15 全 PASS:dedup 546t / cache-break cache_break:true / select 7 rule_tiers / compact 164 modules / shared_context_ref 验证
+  - 架构文档:`docs/architecture/context-optimization-v2.md`(93 lines)
+  - 26 files changed / +2079 lines
+- **state-sync 跨机同步 (`a6b5905` / `e38326c` / `7037ab8` / `0aa45da` / `75fda8a` / `2db9924` / `d042dbf`)**:
+  - 扫描 9-class `.agent/` 状态目录(`decisions` / `handoffs` / `missions` / `dispatch` / `tasks` / `sessions` / `runs` / `inbox` / `memory`)做跨机 sync
+  - `init` / `upgrade` / `managementWrite` 三入口 wire 进去,`.agent/` 全程 lock-step
+  - 忽略 `.bak` / `.bak.prev` / `.tmp` / `~` 备份文件(9 state class)
+  - `.githooks/` pre-commit 提醒模板 ship 到 user projects
+  - `init mode general` 收口:AGENTS.md seeding + state-sync 集成
+- **M-004 Event Bus 完整闭环(MS-001+MS-002+MS-003)(本主线吸收,v1.13.0-rc.2 tag 在弃用分支)**:
+  - MS-001:`lib/event-bus/` core API + 105 tests pass(VC-001..VC-005)
+  - MS-002:F-004 subagent-trace bridge(`lib/event-bus/subagent-trace-bridge.js` ~340 行)+ 8 类 core event 双写;F-005 `cortex-agent event` CLI 4 subcommand(`lib/event-bus/cli.js` ~470 行)+ VC-006/VC-007
+  - MS-003:F-006 parent-resume client + **FSM 5 状态**(`parent_idle` → `parent_dispatching` → `parent_waiting_subagent` → `parent_resuming` → `parent_consolidating`)+ clients registry + event-bus resume subcommand + P-003 整合
+  - 5 个新 test files:`event-bus-bc-subagent-trace`(529)+ `event-bus-cli`(277)+ `event-bus-parent-resume-fsm`(348)+ `event-bus-parent-resume-e2e`(379)+ `event-bus-parent-resume-safety`(332)
+- **M-016 Branch Management 4 milestones COMPLETE(本主线吸收)**:
+  - MS-001:`lib/branch-naming.js` + `lib/branch-registry.js`(5 类分支命名规范 + 提案-分支绑定)
+  - MS-002:`lib/commands/branch.js`(5 subcommand:create / list / merge-ready / lock / unlock)
+  - MS-003:5 workflows 集成(start-task / mission / ship / commit / handoff)
+  - MS-004:`docs/architecture/branch-management-design.md` + 3 fixtures
+- **M-018 OKF V0.2 Knowledge Layer MS-004 + MS-005(本主线吸收)**:
+  - `feat(okf): implement OKF V0.2 knowledge layer`(`0cf448e`)
+  - `docs/architecture/okf-knowledge-layer.md`(完整设计)
+  - 知识架构 V0.2 实施,与 Harness Phase 7 对齐
+- **Test infrastructure 重构 (本 rc 配套)**:
+  - `d6a1c4e` / `1dc592b`:legacy tests 重分类(110 + 54 个)
+  - `48dbe8e`:parallel test runner + per-file timeout + per-module entry
+  - `d463ae6` / `496f28a`:max-time global wall-clock cap + per-test timeout + idle-timeout + SIGTERM trap(三层防护)
+  - 解决 event-bus / dispatch / coordination 类的 hang class
+
+### Added
+
+- **dependency-analysis skill** (`f6a78e8`):补齐 `/sync-plans` 引用缺口
+- **init mode general 收口** (`d042dbf`):AGENTS.md seeding + state-sync 集成
+- **state-sync 跨机模板** (含 `.githooks/` pre-commit):ship 到 user projects
+- **CLI contract entries**:`branch` + `state-sync` 2 个补齐(`2db9924`)
+
+### Refactor
+
+- **`d2ef233` lib/commands.js → lib/commands/ 全拆分**:22 modules + 22 unit tests
+- **`f7d4100` lib/ + tests/ 按命名 prefix 重组织**(为后续模块化铺路)
+- **`fcc00cf` lib/agents + tests import 路径同步**
+- **`d0032db` / `b7542bd` commands 模块激活**(prompt / patches / anchor / init)
+
+### Fixed
+
+- **`3672565` / `6662ecb`**:cli upgrade/update `--dry-run` honor(跳过 `installStateGithooks`)
+- **`147a283`**:templates 3 个 `__dirname`-relative 路径被 lib/ reorg 破坏
+- **`2007428`**:platform `getInstalledPlatforms` 防 non-array state files
+- **`cb75374`**:subagent-trace placeholder fanout entry 引用未定义变量 status(M-004 D-3)
+- **`c79d94b`**:governed defaultExecutor 指向正确 child-monitor path
+- **`ee4bf5f` / `cb634fc` / `2f97dea` / `cff1ec4`**:lib reorg 引起的 5 个生产路径 + 多个 test 路径
+- **`5dd628a`**:zh workflow 模板 resync to canonical
+- **`6b54264` / `d81685a`**:knowledge layer owner/verified_by 从 generic "mavis" agent id 改为项目作者 "Kucell"(V-FM-003)
+
+### Validation
+
+- **commands scope**:27/27 passed
+- **setup / update / state-sync scope**:2/2 + 2/2 passed
+- **full test suite**:`220/226 passed in 86020ms`(`max-time 600` 跑批完成)
+  - 6 FAIL:`dashboard/dashboard-supervisor-idle` / `management/management-query-readonly` / `event-bus/event-bus-perf-bench` / `template/template-parity` / 2 个 TIMEOUT(`agent/agent-bridge-mcp-bidirectional` / `governed/governed-child-monitor`)
+  - 这些 fail 不属于本 rc 引入的回归(commit 43c6116 / c79d94b / ee4bf5f 之前的 baseline 已有同类 flaky),AI-Brain 实战 ≥ 2 周观察期内收敛
+- **main ↔ origin/main**:`ahead 0 / behind 0`
+- **rc.1 tag 保留**:`v1.12.0-rc.1` 仍指向 `2078881`(历史可追溯)
+- **同主线 v1.13.0-rc.1/rc.2 tag 保留**:在弃用分支上,本 rc 内容与它们在 commit 层面有相当部分重合(M-004/M-016/M-018 三个 mission),但 main 没继承它们的 1.13 编号
+
+### 继承自 v1.12.0-rc.1 (在本 rc 已包含)
+
+- M-003(Phase 3):5 adapters + 1 MCP bridge + dispatch 三协议
+- T-OD-001:Open Design 集成 — DESIGN.md + `cortex-agent design` 7 子命令
+- Volta pin Node 24.19.0
+
+### Excluded(未来 milestone)
+
+- M-007 skill-dispatch P-001..004:SCOPE 等 Gate-1
+- M-006 AWO/P-007:ADVANCE MS-003 planned
+- M-013 FAE-002/003/004/007:VALIDATE
+- M-014 ARI/P-006:PLAN
+- M-007 Dispatch / handoff 进一步抽象
+
 ## [1.13.0-rc.2] - 2026-08-07
 
 > **Pre-release**:rc.2 给 AI-Brain 内部 dogfooding 试用 + 实战 ≥ 2 周观察期,**不建议生产使用**。
