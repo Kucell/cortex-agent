@@ -1,0 +1,137 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Kucell/cortex-agent-agent/.agent/schemas/governed-attempt-progress.v1.json",
+  "title": "GovernedAttemptProgress",
+  "description": "P-005 §3.2 宿主中立 Governed Attempt Progress V1 契约. 4 evidence levels (alive/active/productive/verified) + phase + activity counters + worktree digest + validation digest. 默认不记录路径 (only repo-relative or sha256 ref).",
+  "type": "object",
+  "required": [
+    "taskId",
+    "operationId",
+    "launchId",
+    "attempt",
+    "phase",
+    "evidenceLevel",
+    "lastActivityAt"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "const": "1.0"
+    },
+    "taskId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "opaque task id"
+    },
+    "operationId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "opaque operation id"
+    },
+    "launchId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "opaque launch id"
+    },
+    "attempt": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "attempt number (>= 1)"
+    },
+    "phase": {
+      "type": "string",
+      "enum": ["observing", "editing", "testing", "ready", "blocked", "failed"],
+      "description": "agent phase (P-005 §3.2)"
+    },
+    "evidenceLevel": {
+      "type": "string",
+      "enum": ["alive", "active", "productive", "verified"],
+      "description": "P-005 §3.1 4 evidence levels"
+    },
+    "lastActivityAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "RFC3339 timestamp of last activity"
+    },
+    "lastProductiveAt": {
+      "type": ["string", "null"],
+      "format": "date-time",
+      "description": "RFC3339 timestamp of last productive evidence, or null if never reached"
+    },
+    "activity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["readOnlyToolCount", "writeToolCount", "testToolCount", "failedToolCount"],
+      "properties": {
+        "readOnlyToolCount": {"type": "integer", "minimum": 0},
+        "writeToolCount": {"type": "integer", "minimum": 0},
+        "testToolCount": {"type": "integer", "minimum": 0},
+        "failedToolCount": {"type": "integer", "minimum": 0}
+      }
+    },
+    "worktree": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["baselineHead", "statusDigest", "diffDigest", "changedFileCount", "insertions", "deletions"],
+      "properties": {
+        "baselineHead": {
+          "type": "string",
+          "minLength": 1,
+          "description": "sha256-ref of baseline HEAD at launch time"
+        },
+        "statusDigest": {
+          "type": "string",
+          "minLength": 1,
+          "description": "sha256 digest of git status (tracked + untracked)"
+        },
+        "diffDigest": {
+          "type": "string",
+          "minLength": 1,
+          "description": "sha256 digest of git diff (baseline vs current)"
+        },
+        "changedFileCount": {"type": "integer", "minimum": 0},
+        "insertions": {"type": "integer", "minimum": 0},
+        "deletions": {"type": "integer", "minimum": 0}
+      }
+    },
+    "validation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status"],
+      "properties": {
+        "lastCommandId": {
+          "type": ["string", "null"],
+          "description": "opaque command id or null"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["not_run", "running", "passed", "failed"]
+        },
+        "evidenceRef": {
+          "type": ["string", "null"],
+          "description": "artifact-ref (sha256 digest) or null"
+        }
+      }
+    },
+    "diagnostics": {
+      "type": "array",
+      "maxItems": 50,
+      "description": "bounded diagnostics list (P-005 §9 journal 膨胀防护); evict oldest beyond 50",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["timestamp", "code", "message"],
+        "properties": {
+          "timestamp": {"type": "string", "format": "date-time"},
+          "code": {"type": "string", "minLength": 1},
+          "message": {"type": "string", "minLength": 1},
+          "severity": {
+            "type": "string",
+            "enum": ["info", "warning", "error"]
+          }
+        }
+      }
+    }
+  }
+}
