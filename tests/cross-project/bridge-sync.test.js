@@ -239,6 +239,27 @@ test("syncForProject: corrupt source events count as skipped, not as writes", wi
   assert.equal(result.scanned, 1);
   assert.equal(result.skipped, 1);
   assert.equal(result.written, 1);
+  // Skip reason must be visible, not silently dropped (dogfood finding 2026-08-11).
+  assert.equal(result.skipped_events.length, 1);
+  assert.equal(result.skipped_events[0].file, "BR-EVT-CORRUPT.json");
+  assert.equal(result.skipped_events[0].bridge_event_id, null);
+  assert.match(result.skipped_events[0].errors[0], /not valid JSON/);
+}));
+
+test("syncForProject: schema-invalid event reports validation errors in skipped_events", withRoots((t, target, source) => {
+  subscriptions.addSubscription(target, { source_project_id: "cortex-agent", event_types: ["task.state_changed"] });
+  // Reproduces the field dogfood case: summary as string + forbidden payload.
+  const invalid = event({ bridge_event_id: "BR-EVT-BAD", summary: "plain string", payload: { x: 1 } });
+  seedOutbox(source, "cortex-agent", [invalid]);
+  const result = bridgeSync.syncForProject(target, { sourceProjectId: "cortex-agent", sourceRoot: source });
+  assert.equal(result.scanned, 0);
+  assert.equal(result.skipped, 1);
+  assert.equal(result.written, 0);
+  assert.equal(result.skipped_events.length, 1);
+  assert.equal(result.skipped_events[0].bridge_event_id, "BR-EVT-BAD");
+  const joined = result.skipped_events[0].errors.join("; ");
+  assert.match(joined, /summary/);
+  assert.match(joined, /payload/);
 }));
 
 // ─── cursor persistence is atomic ────────────────────────────────────────
