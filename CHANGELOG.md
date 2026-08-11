@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **local-publish-validate 工作流 (三件套)** — 本地发包 + 本地安装 + 可选目标项目升级的本地验证循环,用于 RC dogfooding / 跨项目模板更新验证。**永不 publish 到 npm**,只走 `volta install <pkg>@file:<tarball>` 协议。
+  - **脚本**:`bin/local-publish-validate.cjs` (13811 bytes,在 npm tarball 中,跨机器/容器可移植)
+  - **CLI 模块**:`lib/commands/local-publish-validate.js` (包装脚本)
+  - **CLI 入口 hookup**:`bin/cli.js` `case "local-publish-validate"` + `lib/cli/contract.js` contract
+  - **工作流文档**:`.agent/workflows/local-publish-validate.md` (中文+英文)
+  - **source-command 适配**:`.agents/skills/source-command-local-publish-validate/SKILL.md` (让 AI 在用户说"本地发包/本地验证/RC 跑一遍"等时自动调度)
+  - **测试**:`tests/commands/local-publish-validate.test.js` (7 子测试 全绿;`tests/commands` scope 28/28 通过)
+  - **支持选项**:`--target <path>` / `--bump <rc|patch|minor|major>` / `--skip-tests` / `--skip-commit` / `--dry-run` / `--force` / `-v, --verbose`
+  - **使用示例**:
+    - `cortex-agent local-publish-validate --target ../SamHMI --bump rc` (装 + 升级 SamHMI,bump 到下一个 rc)
+    - `cortex-agent local-publish-validate --target ../SamHMI --skip-tests` (跳过 baseline flaky 测试)
+    - `cortex-agent local-publish-validate --dry-run` (看会做什么)
+    - `node bin/local-publish-validate.cjs --target ../SamHMI` (直接调脚本,跳过 CLI 包装)
+
+### Validation
+
+- `tests/commands` scope 28/28 通过 (含新 7 子测试)
+- `npm pack` 后 tarball 包含 `package/bin/local-publish-validate.cjs` 和 `package/lib/commands/local-publish-validate.js`
+- `volta install cortex-agent@file:...tgz` 后 install dir 的 `cortex-agent local-publish-validate --help` 正常工作
+- 跨源仓 (cortex-agent) 和 install dir (volta) 双路径都能调通
+
 ## [1.12.0-rc.2] - 2026-08-10
 
 > **Pre-release**:rc.2 给 AI-Brain 内部 dogfooding 试用 + 实战 ≥ 2 周观察期,**不建议生产使用**。

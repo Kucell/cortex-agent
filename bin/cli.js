@@ -38,6 +38,7 @@ const {
   teamPack,
   secrets,
   bridge,
+  localPublishValidate,
 } = require("../lib/commands");
 
 // M-013 P0 C2: Governed manual dispatch CLI surface.
@@ -483,6 +484,7 @@ async function initModeGeneral() {
     case "doctor":      await doctor(ctx); break;
     case "reconcile":   minimaxCliReconcile(ctx); break;
     case "bridge":      bridge(l1Ctx); break;
+    case "local-publish-validate": localPublishValidate(ctx); break;
     case "runs":        runs(ctx); break;
     case "queues":      queues(ctx); break;
     case "sessions":    sessions(ctx); break;
