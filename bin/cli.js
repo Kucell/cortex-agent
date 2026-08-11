@@ -38,6 +38,7 @@ const {
   teamPack,
   secrets,
   bridge,
+  topology,
   localPublishValidate,
 } = require("../lib/commands");
 
@@ -490,6 +491,7 @@ async function initModeGeneral() {
     case "doctor":      await doctor(l1Ctx); break;
     case "reconcile":   minimaxCliReconcile(ctx); break;
     case "bridge":      bridge(l1Ctx); break;
+    case "topology":    topology(l1Ctx); break;
     case "local-publish-validate": localPublishValidate(ctx); break;
     case "runs":        runs(ctx); break;
     case "queues":      queues(ctx); break;
