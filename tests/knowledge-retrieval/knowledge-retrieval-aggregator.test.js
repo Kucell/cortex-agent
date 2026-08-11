@@ -8,7 +8,7 @@ const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
 
-const SCRIPTS = path.resolve(__dirname, "../../../../.agent/skills/knowledge-retrieval/scripts");
+const SCRIPTS = path.resolve(__dirname, "../../.agent/skills/knowledge-retrieval/scripts");
 const agg = require(path.join(SCRIPTS, "recall.js"));
 
 function makeVault() {
