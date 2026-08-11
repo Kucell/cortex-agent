@@ -36,14 +36,40 @@ function digestTree(root) {
 }
 
 test("focused, aggregate, and activity queries do not mutate managed state", () => {
-  const before = digestTree(path.join(ROOT, ".agent"));
-  for (const args of [
-    ["query", "runs", "--project", ROOT],
-    ["query", "dashboard-state", "--project", ROOT],
-    ["query", "activity", "--project", ROOT, "--since", "2026-07-01", "--until", "2026-07-31"],
-  ]) {
-    const result = spawnSync(process.execPath, [CLI, ...args], { cwd: os.tmpdir(), encoding: "utf8", env: { ...process.env, LANG: "en_US.UTF-8" } });
-    assert.equal(result.status, 0, result.stderr);
+  // Use a tmpdir project root so the test is parallel-run safe.
+  // Querying against the real cortex-agent project root works in
+  // isolation, but fails under the npm test parallel runner because
+  // sibling tests concurrently write to .agent/runtime-evidence/
+  // and other directories. Spinning up a minimal project in a tmpdir
+  // copies the Management API scripts + tasks + metrics surface that
+  // each projection needs, and gives the test its own isolated tree
+  // to digest.
+  const scratch = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-query-readonly-"));
+  const agentRoot = path.join(scratch, ".agent");
+  fs.mkdirSync(path.join(agentRoot, "skills/management-api/scripts"), { recursive: true });
+  fs.mkdirSync(path.join(agentRoot, "tasks/scripts"), { recursive: true });
+  fs.mkdirSync(path.join(agentRoot, "metrics"), { recursive: true });
+  fs.cpSync(
+    path.join(ROOT, "templates/_shared/.agent/skills/management-api/scripts"),
+    path.join(agentRoot, "skills/management-api/scripts"),
+    { recursive: true },
+  );
+  fs.cpSync(
+    path.join(ROOT, "templates/_shared/.agent/tasks/scripts/task-state.js"),
+    path.join(agentRoot, "tasks/scripts/task-state.js"),
+  );
+  try {
+    const before = digestTree(agentRoot);
+    for (const args of [
+      ["query", "runs", "--project", scratch],
+      ["query", "dashboard-state", "--project", scratch],
+      ["query", "activity", "--project", scratch, "--since", "2026-07-01", "--until", "2026-07-31"],
+    ]) {
+      const result = spawnSync(process.execPath, [CLI, ...args], { cwd: scratch, encoding: "utf8", env: { ...process.env, LANG: "en_US.UTF-8" } });
+      assert.equal(result.status, 0, result.stderr);
+    }
+    assert.equal(digestTree(agentRoot), before);
+  } finally {
+    fs.rmSync(scratch, { recursive: true, force: true });
   }
-  assert.equal(digestTree(path.join(ROOT, ".agent")), before);
 });

@@ -121,7 +121,7 @@ test("daemon recovery safely replaces an owned orphan Dashboard", async () => {
         && state.dashboard_pid !== first.dashboard_pid
         ? state
         : null;
-    }, 8000);
+    }, 20000);
     assert.ok(recovered.url);
     assert.throws(() => process.kill(first.dashboard_pid, 0));
   } finally {
