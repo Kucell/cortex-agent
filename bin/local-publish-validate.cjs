@@ -165,10 +165,10 @@ function isDirty(cwd) {
 
 function gitCommitAndTag(cwd, version, message, opts) {
   if (opts.dryRun) {
-    console.log(`[DRY-RUN] git add -A && git commit -m "${message}" && git tag -a v${version} -m "v${version}"`);
+    console.log(`[DRY-RUN] git add -u && git commit -m "${message}" && git tag -a v${version} -m "v${version}"`);
     return;
   }
-  runInherit('git', ['add', '-A'], cwd, opts);
+  runInherit('git', ['add', '-u'], cwd, opts);
   runInherit('git', ['commit', '-m', message, '--no-verify'], cwd, opts);
   runInherit('git', ['tag', '-a', `v${version}`, '-m', `v${version}`], cwd, opts);
 }
