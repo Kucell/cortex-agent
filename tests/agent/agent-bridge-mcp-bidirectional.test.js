@@ -301,6 +301,7 @@ test("mcp-bridge: handleOutgoing sends to ExternalMcpClient and resolves the res
     assert.equal(bridge.stats.outgoing.requests, 1);
     assert.equal(bridge.stats.outgoing.responses, 1);
     bridge.close();
+    await client.close();
   } finally { rmProject(root); }
 });
 
@@ -331,6 +332,7 @@ test("mcp-bridge: handleOutgoing propagates error envelope (boom tool returns er
     assert.match(threw.message, /boom/);
     assert.equal(bridge.stats.outgoing.errors, 1);
     bridge.close();
+    await client.close();
   } finally { rmProject(root); }
 });
 
@@ -357,6 +359,7 @@ test("mcp-bridge: outgoingCallTool is a convenience wrapper around handleOutgoin
     const echoed = JSON.parse(result.content[0].text);
     assert.equal(echoed.hello, "world");
     bridge.close();
+    await client.close();
   } finally { rmProject(root); }
 });
 
@@ -374,6 +377,7 @@ test("mcp-bridge: outgoingPing returns empty object (outgoing stats increment)",
     assert.deepEqual(r, {});
     assert.ok(bridge.stats.outgoing.responses >= 1);
     bridge.close();
+    await client.close();
   } finally { rmProject(root); }
 });
 
@@ -518,6 +522,7 @@ test("mcp-bridge: incoming and outgoing can be active simultaneously (concurrent
     assert.equal(bridge.stats.incoming.responses, 1);
     assert.equal(bridge.stats.outgoing.responses, 1);
     bridge.close();
+    await client.close();
   } finally { rmProject(root); }
 });
 
@@ -542,6 +547,7 @@ test("mcp-bridge: log callback receives direction prefix 'incoming' or 'outgoing
     });
     await bridge.handleOutgoing("ping", {});
     bridge.close();
+    await client.close();
     // The McpServer itself doesn't log on ping success (no stderr), so the
     // outgoing client should have at least emitted something to log when
     // it received the response. Verify the prefix format.
