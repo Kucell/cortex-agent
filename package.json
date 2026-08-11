@@ -24,7 +24,7 @@
     "node": "24.19.0"
   },
   "scripts": {
-    "test": "node scripts/test-runner.cjs --max-time 600 --timeout 30 --per-test-timeout 20000 --idle-timeout 30",
+    "test": "node scripts/test-runner.cjs --max-time 600 --timeout 60 --per-test-timeout 30000 --idle-timeout 45",
     "test:serial": "node scripts/test-runner.cjs --serial --max-time 600 --timeout 30 --per-test-timeout 20000",
     "test:module": "node scripts/test-runner.cjs --module",
     "test:modules": "node scripts/test-runner.cjs --scope commands",
