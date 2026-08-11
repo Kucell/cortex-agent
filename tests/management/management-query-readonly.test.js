@@ -13,8 +13,15 @@ const CLI = path.join(ROOT, "bin", "cli.js");
 
 function digestTree(root) {
   const hash = crypto.createHash("sha256");
+  // runtime-evidence/ is a runtime cache (state.json files written by
+  // the Management API on every query). Excluding it from the digest
+  // lets the test verify "queries do not mutate business state" —
+  // the original invariant — without false-failing on cache writes
+  // that are by design.
+  const skipDirs = new Set(["runtime-evidence"]);
   const visit = (dir) => {
     for (const name of fs.readdirSync(dir).sort()) {
+      if (skipDirs.has(name)) continue;
       const file = path.join(dir, name);
       const relative = path.relative(root, file);
       const stat = fs.lstatSync(file);
