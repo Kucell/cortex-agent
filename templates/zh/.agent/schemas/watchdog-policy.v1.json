@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Kucell/cortex-agent-agent/.agent/schemas/watchdog-policy.v1.json",
+  "title": "WatchdogPolicy",
+  "description": "P-005 §7.2 versioned watchdog policy. Different tasks may tighten or disable steer, but cannot disable redaction, lease, or evidence truthfulness. Default behavior is notify (not auto-abort).",
+  "type": "object",
+  "required": [
+    "policyId",
+    "maxReadOnlyActionsWithoutEvidence",
+    "maxNoProductiveMs",
+    "maxNoHeartbeatMs",
+    "maxSteerAttempts",
+    "steerGraceMs",
+    "onExhausted"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "policyId": {
+      "type": "string",
+      "const": "v1-default",
+      "description": "Versioned policy identifier. Bumping this signals a schema change."
+    },
+    "schemaVersion": {
+      "type": "string",
+      "const": "1.0"
+    },
+    "maxReadOnlyActionsWithoutEvidence": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 1000,
+      "description": "Number of consecutive read-only actions without productive evidence before no_progress_detected fires."
+    },
+    "maxNoProductiveMs": {
+      "type": "integer",
+      "minimum": 1000,
+      "description": "Time in ms with no productive evidence before no_progress_detected fires. Default 600000 (10 min)."
+    },
+    "maxNoHeartbeatMs": {
+      "type": "integer",
+      "minimum": 1000,
+      "description": "Time in ms without heartbeat before heartbeat_lost fires. Default 90000 (90 s)."
+    },
+    "maxSteerAttempts": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 1,
+      "description": "Maximum steer attempts per attempt. Per P-005 §7.2: bounded to 1. Setting 0 disables steer entirely."
+    },
+    "steerGraceMs": {
+      "type": "integer",
+      "minimum": 1000,
+      "description": "After a steer attempt, the grace period during which productive evidence cancels the exhausted path. Default 120000 (120 s)."
+    },
+    "onExhausted": {
+      "type": "string",
+      "enum": ["notify", "abort"],
+      "description": "Behavior after grace expires without recovery. notify (default) emits diagnostic and notifies Coordinator. abort requires explicit policy + 4-gate verification."
+    },
+    "notifyChannel": {
+      "type": "string",
+      "enum": ["coordination", "silent"],
+      "description": "Optional override for notification routing. coordination routes through Application Service projection; silent emits diagnostic only."
+    }
+  }
+}
