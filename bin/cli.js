@@ -514,11 +514,31 @@ async function initModeGeneral() {
     case "agent": {
       // Subcommand peek: M-002 MS-003 owns discover/invoke; M-008 owns
       // report/launch (forwarded via lib/commands.js). M-003 MS-001 owns
-      // adapter <list|health> and dispatch-execute. Routing is strictly
-      // additive — the M-002 dispatcher body is unchanged.
+      // adapter <list|health> and dispatch-execute. M-013 SP-006 owns
+      // supervise <status|steer|abort>. Routing is strictly additive —
+      // the M-002 dispatcher body is unchanged.
       const sub = args[1];
       if (sub === "adapter" || sub === "dispatch-execute") {
         agentM003Command(ctx);
+      } else if (sub === "supervise") {
+        // M-013 SP-006: supervise <status|steer|abort> entry point.
+        // Delegates to lib/cli/agent-supervise.js for the pure envelope,
+        // then prints the JSON or plain-text envelope to stdout.
+        const { cliDispatch: agentSuperviseDispatch } = require("../lib/cli/agent-supervise");
+        const superviseArgs = args.slice(2);
+        const result = agentSuperviseDispatch(superviseArgs, null);
+        if (args.includes("--json")) {
+          process.stdout.write(JSON.stringify(result, null, 2) + "\n");
+        } else if (result.ok) {
+          // For status, the supervisor returns a structured projection; the
+          // caller is expected to pass a real reducer-derived state via
+          // --json in production use cases. For steer/abort, the envelope
+          // includes action + reason + idempotencyKey + nonce.
+          process.stdout.write(JSON.stringify(result, null, 2) + "\n");
+        } else {
+          process.stdout.write(JSON.stringify(result, null, 2) + "\n");
+          process.exitCode = result.error && result.error.code === "INVALID_ACTION" ? 2 : 1;
+        }
       } else {
         // M-002 dispatcher is the SOLE entry point for `agent` (per D-002-3).
         // Internally it routes:
