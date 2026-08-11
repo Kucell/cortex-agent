@@ -481,7 +481,13 @@ async function initModeGeneral() {
     case "track":       trackAgent(ctx); break;
     case "untrack":     untrackAgent(ctx); break;
     case "link-global": linkGlobal(ctx); break;
-    case "doctor":      await doctor(ctx); break;
+    // doctor must use l1Ctx so that --project <path> is resolved into cwd
+    // before readVersionFile(cwd) / isGitRepo(cwd) / .agent discovery run.
+    // Without this, `cortex-agent doctor --project <other>` silently
+    // reports the *current* directory's .agent, masking drift between
+    // the global CLI version and the target project's template version
+    // (regression introduced when doctor.js moved into lib/commands/).
+    case "doctor":      await doctor(l1Ctx); break;
     case "reconcile":   minimaxCliReconcile(ctx); break;
     case "bridge":      bridge(l1Ctx); break;
     case "local-publish-validate": localPublishValidate(ctx); break;
