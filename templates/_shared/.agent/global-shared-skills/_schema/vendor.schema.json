@@ -1,0 +1,149 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://cortex-agent.local/schemas/vendor-skill.schema.json",
+  "title": "Cortex Agent Vendor Skill Manifest",
+  "description": "Provenance + governance metadata for an externally-sourced (third-party) skill vendored into .agent/global-shared-skills/. Required for every vendor skill; consumed by _schema/validate.js.",
+  "type": "object",
+  "required": [
+    "name",
+    "version",
+    "source",
+    "license",
+    "synced_at",
+    "compatibility"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Unique kebab-case identifier matching the directory name under global-shared-skills/.",
+      "pattern": "^[a-z0-9][a-z0-9-]{1,62}[a-z0-9]$",
+      "minLength": 3,
+      "maxLength": 64
+    },
+    "display_name": {
+      "type": "string",
+      "description": "Human-friendly label; if absent, falls back to name."
+    },
+    "version": {
+      "type": "string",
+      "description": "Upstream semver or release tag (e.g. 'v1.0.0' or 'v2.0.0-beta.3').",
+      "pattern": "^v?\\d+\\.\\d+\\.\\d+([-.+][A-Za-z0-9.-]+)?$"
+    },
+    "source": {
+      "type": "object",
+      "description": "Provenance — where the upstream code came from.",
+      "required": ["repo", "ref", "path"],
+      "additionalProperties": false,
+      "properties": {
+        "repo": {
+          "type": "string",
+          "description": "Upstream GitHub-style repo (owner/repo).",
+          "pattern": "^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$"
+        },
+        "ref": {
+          "type": "string",
+          "description": "Pinned commit SHA (40 hex) or branch/tag (e.g. 'v1.0.0' or 'main').",
+          "minLength": 4
+        },
+        "resolved_sha": {
+          "type": "string",
+          "description": "Concrete commit SHA at the time of last sync. Pinned and used for upgrade detection.",
+          "pattern": "^[a-f0-9]{40}$"
+        },
+        "path": {
+          "type": "string",
+          "description": "Path within the upstream repo where the skill lives, e.g. 'skills/brainstorming' or 'CLAUDE.md'."
+        },
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "description": "Direct link to upstream README or source file (optional)."
+        }
+      }
+    },
+    "license": {
+      "type": "string",
+      "description": "SPDX license identifier.",
+      "enum": [
+        "MIT", "Apache-2.0", "BSD-2-Clause", "BSD-3-Clause", "ISC",
+        "MPL-2.0", "GPL-2.0", "GPL-3.0", "LGPL-2.1", "LGPL-3.0",
+        "AGPL-3.0", "Unlicense", "CC0-1.0", "CC-BY-4.0", "CC-BY-SA-4.0"
+      ]
+    },
+    "synced_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO-8601 timestamp of last upstream sync."
+    },
+    "synced_by": {
+      "type": "string",
+      "description": "Who/what did the sync (e.g. 'Mavis 2026-08-11')."
+    },
+    "compatibility": {
+      "type": "object",
+      "description": "Cortex-Agent ecosystem compatibility — which agents/harnesses it works with.",
+      "additionalProperties": false,
+      "properties": {
+        "cortex_agent": {
+          "type": "string",
+          "description": "Minimum cortex-agent version supporting this skill (semver range).",
+          "pattern": "^[~^]?\\d+(\\.\\d+)?(\\.\\d+)?$"
+        },
+        "harnesses": {
+          "type": "array",
+          "description": "Compatible host harnesses (subset of 'claude-code','codex','cursor','opencode','gemini-cli','windsurf','antigravity','kiro','pi').",
+          "items": { "type": "string" },
+          "minItems": 1
+        },
+        "skill_standard": {
+          "type": "string",
+          "description": "Skill standard the manifest conforms to.",
+          "enum": ["agentskills.io/1.0", "anthropic-skills/2025-10", "custom"]
+        }
+      }
+    },
+    "skill_files": {
+      "type": "array",
+      "description": "Top-level entrypoint files (relative to the vendor/<name>/ directory).",
+      "items": {
+        "type": "object",
+        "required": ["path", "kind"],
+        "properties": {
+          "path": { "type": "string" },
+          "kind": {
+            "type": "string",
+            "enum": ["skill", "rule", "command", "agent", "reference", "script", "asset"]
+          }
+        }
+      }
+    },
+    "category": {
+      "type": "string",
+      "description": "Curated category for discovery.",
+      "enum": [
+        "core-methodology", "llm-behavior", "engineering-process",
+        "design-aesthetics", "token-optimization", "security",
+        "testing", "debugging", "frontend", "backend", "devops",
+        "documentation", "mcp-bridge"
+      ]
+    },
+    "tags": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Free-form search tags."
+    },
+    "notes": {
+      "type": "string",
+      "description": "Any quirks, known limitations, or cortex-agent-specific overrides (Markdown-friendly)."
+    },
+    "checksum": {
+      "type": "object",
+      "description": "Optional integrity checksums per vendored file (sha256).",
+      "additionalProperties": {
+        "type": "string",
+        "pattern": "^[a-f0-9]{64}$"
+      }
+    }
+  }
+}
