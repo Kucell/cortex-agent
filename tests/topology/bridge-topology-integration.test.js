@@ -49,7 +49,9 @@ function runBridge(ctxArgs, cwd) {
 
 const samHmi = {
   project_id: "SamHMI",
-  host_root: "/Users/workspace/code/HMI/SamHMI",
+  // Deliberately non-existent path: tests must not depend on real project
+  // checkouts on this machine.
+  host_root: path.join(os.tmpdir(), "cortex-topology-int-missing-peer-root"),
   primary_branch: "main",
   roles: ["desktop", "consumer"],
   capabilities: ["bridge-consumer"],
