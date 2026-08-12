@@ -59,12 +59,14 @@
 | `findPeer(topology, id)` | 精确匹配 project_id |
 | `resolveTopologyRef(topology, ref)` | 解析 `Project@branch` 或裸 project_id |
 | `validateTopology(data)` / `validatePeer(peer)` | 结构校验，返回 `{ ok, errors[] }` |
+| `initSelf(root, opts)` | (P-001A) 声明 self 身份；若 projects.json 已存在且 self.project_id 与新 id 不同且无 `--force`，返回 errors。已存在且 id 相同视为幂等刷新 |
 
 写入采用 `tmp + rename` 原子语义；目录不存在时自动创建。
 
 ## 4. CLI
 
 ```text
+cortex-agent topology init <project_id> [--host-root <path>] [--branch <name>] [--force] [--json]
 cortex-agent topology list [--json]
 cortex-agent topology show <project_id> [--json]
 cortex-agent topology register <project_id> --host-root <path>
@@ -74,6 +76,10 @@ cortex-agent topology help
 ```
 
 退出码：`0` 成功，`2` 参数/校验错误，`3` 运行时错误。
+
+### 4.1 `init` — 声明自我身份 (P-001A)
+
+需在项目根执行。 `host_root` 与 `branch` 可省略，默认取 `cwd` 与 `git rev-parse --abbrev-ref HEAD`，git 不可用时回退到 `main`。 已存在 self 且 id 不一致但未传 `--force` 时返回 exit 2 且不落盘。
 
 ## 5. 与 Event Bridge 的集成 (P-003)
 
