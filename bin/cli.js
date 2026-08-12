@@ -39,6 +39,7 @@ const {
   secrets,
   bridge,
   topology,
+  automation,
   localPublishValidate,
 } = require("../lib/commands");
 
@@ -492,6 +493,7 @@ async function initModeGeneral() {
     case "reconcile":   minimaxCliReconcile(ctx); break;
     case "bridge":      bridge(l1Ctx); break;
     case "topology":    topology(l1Ctx); break;
+    case "automation":  automation(l1Ctx); break;
     case "local-publish-validate": localPublishValidate(ctx); break;
     case "runs":        runs(ctx); break;
     case "queues":      queues(ctx); break;
