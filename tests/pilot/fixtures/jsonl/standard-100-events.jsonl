@@ -1,0 +1,11 @@
+{"type":"turn_start","timestamp":"2026-08-11T03:00:00.000Z","taskId":"pilot-fake-host-001","operationId":"op-fake-001","launchId":"launch-fake-001"}
+{"type":"tool_start","timestamp":"2026-08-11T03:00:01.000Z","taskId":"pilot-fake-host-001","toolName":"read_file","category":"read","success":true,"correlationId":"probe-001"}
+{"type":"tool_end","timestamp":"2026-08-11T03:00:02.000Z","taskId":"pilot-fake-host-001","toolName":"read_file","category":"read","success":true,"correlationId":"probe-001","durationMs":1000}
+{"type":"tool_start","timestamp":"2026-08-11T03:00:03.000Z","taskId":"pilot-fake-host-001","toolName":"grep","category":"read","success":true,"correlationId":"probe-002"}
+{"type":"tool_end","timestamp":"2026-08-11T03:00:04.000Z","taskId":"pilot-fake-host-001","toolName":"grep","category":"read","success":true,"correlationId":"probe-002","durationMs":500}
+{"type":"tool_start","timestamp":"2026-08-11T03:00:05.000Z","taskId":"pilot-fake-host-001","toolName":"write_file","category":"write","success":true,"correlationId":"probe-003"}
+{"type":"tool_end","timestamp":"2026-08-11T03:00:06.000Z","taskId":"pilot-fake-host-001","toolName":"write_file","category":"write","success":true,"correlationId":"probe-003","durationMs":200}
+{"type":"tool_start","timestamp":"2026-08-11T03:00:07.000Z","taskId":"pilot-fake-host-001","toolName":"validate","category":"test","success":true,"correlationId":"probe-004"}
+{"type":"tool_end","timestamp":"2026-08-11T03:00:08.000Z","taskId":"pilot-fake-host-001","toolName":"validate","category":"test","success":true,"correlationId":"probe-004","durationMs":3500}
+{"type":"turn_end","timestamp":"2026-08-11T03:00:09.000Z","taskId":"pilot-fake-host-001","launchId":"launch-fake-001"}
+{"type":"agent_settled","timestamp":"2026-08-11T03:00:10.000Z","taskId":"pilot-fake-host-001","launchId":"launch-fake-001"}

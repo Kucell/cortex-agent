@@ -82,6 +82,57 @@ async function getStatus(opts) {
   };
 }
 
+async function updatePR(opts) {
+  const { config, token, pr_number, title, body, reviewers, ready, close, remove_source, squash } = opts;
+  const pid = projectUrl(opts, config);
+  const payload = {};
+
+  if (title) payload.title = title;
+  if (body != null) payload.description = body;
+  if (close) payload.state_event = "close";
+  if (remove_source) payload.remove_source_branch = true;
+  if (squash) payload.squash = true;
+
+  if (Array.isArray(reviewers) && reviewers.length > 0) {
+    const reviewerIds = [];
+    for (const username of reviewers) {
+      const users = await send(
+        "GET",
+        config.host,
+        `/api/v4/users?username=${encodeURIComponent(username)}`,
+        token
+      );
+      if (users.status !== 200 || !Array.isArray(users.body)) {
+        throw new Error(`gitlab_reviewer_lookup_failed: ${username} HTTP ${users.status}`);
+      }
+      const exact = users.body.find((user) => user.username === username && user.state === "active");
+      if (!exact) throw new Error(`gitlab_reviewer_not_found: ${username}`);
+      reviewerIds.push(exact.id);
+    }
+    payload.reviewer_ids = reviewerIds;
+  }
+
+  if (ready && !payload.title) {
+    const current = await send("GET", config.host, `/api/v4/projects/${pid}/merge_requests/${pr_number}`, token);
+    if (current.status !== 200) {
+      throw new Error(`gitlab_status_failed: HTTP ${current.status} ${current.raw?.slice(0, 200)}`);
+    }
+    payload.title = current.body.title.replace(/^(?:Draft:\s*|WIP:\s*)/i, "");
+  }
+
+  const res = await send("PUT", config.host, `/api/v4/projects/${pid}/merge_requests/${pr_number}`, token, payload);
+  if (res.status !== 200) throw new Error(`gitlab_update_failed: HTTP ${res.status} ${res.raw?.slice(0, 200)}`);
+  return {
+    number: res.body.iid,
+    url: res.body.web_url,
+    state: res.body.state,
+    title: res.body.title,
+    draft: res.body.draft,
+    reviewers: (res.body.reviewers || []).map((reviewer) => reviewer.username),
+    raw: res.body,
+  };
+}
+
 async function merge(opts) {
   const { config, token, pr_number, commit_message } = opts;
   const pid = projectUrl(opts, config);
@@ -105,4 +156,4 @@ async function list(opts) {
   })) : [];
 }
 
-module.exports = { backend: "gitlab", createPR, getStatus, merge, list };
+module.exports = { backend: "gitlab", createPR, getStatus, updatePR, merge, list, _send: send, _projectUrl: projectUrl };
