@@ -111,6 +111,42 @@ test("bridge help lists the new sub-commands", () => {
   assert.ok(/outbox-prune/.test(help));
 });
 
+test("bridge sync --auto resolves host_root from topology registry", () => {
+  const target = mkRoot();
+  const source = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-p006-bridge-cli-src-"));
+  // Write topology: target has a self entry + one peer pointing at source root
+  fs.mkdirSync(path.join(target, ".agent", "topology"), { recursive: true });
+  fs.writeFileSync(path.join(target, ".agent", "topology", "projects.json"), `${JSON.stringify({
+    schema_version: 1,
+    self: { project_id: "cortex-agent", host_root: target, declared_at: "2026-08-12T00:00:00.000Z" },
+    peers: [
+      { project_id: "hmi-platform", host_root: source, role: "producer", registered_at: "2026-08-12T00:00:00.000Z" },
+    ],
+  }, null, 2)}\n`);
+  // Subscribe to hmi-platform
+  cli.bridgeCommand({ cwd: target, args: ["bridge", "subscribe", "--source", "hmi-platform", "--types", "task.state_changed", "--json"], options: {} });
+  // Seed an event into the source outbox
+  fs.mkdirSync(path.join(source, ".agent-runtime", "cross-project", "outbox", "hmi-platform"), { recursive: true });
+  fs.writeFileSync(path.join(source, ".agent-runtime", "cross-project", "outbox", "hmi-platform", "BR-EVT-p006-auto.json"), JSON.stringify({
+    bridge_event_id: "BR-EVT-p006-auto",
+    source_project_id: "hmi-platform",
+    source_task_id: "T-001",
+    event_type: "task.state_changed",
+    summary: { to_state: "READY_FOR_REVIEW" },
+    correlation_group: "agentic-ui-delivery",
+    propagated_at: "2026-08-12T02:00:00.000Z",
+  }));
+
+  const out = run(["sync", "--auto"], target);
+  const parsed = JSON.parse(out);
+  assert.equal(parsed.ok, true);
+  assert.equal(parsed.mode, "auto");
+  assert.equal(parsed.total, 1);
+  assert.equal(parsed.reachable, 1);
+  const inboxFile = path.join(target, ".agent-runtime", "cross-project", "inbox", "hmi-platform", "BR-EVT-p006-auto.json");
+  assert.ok(fs.existsSync(inboxFile), "inbox file should be written via --auto");
+});
+
 test.after(() => {
   process.exitCode = 0;
 });

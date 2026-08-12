@@ -82,6 +82,18 @@
           }
         ],
         "description": "仅当项目显式启用 Dashboard 自动化时，确保唯一 Supervisor 已运行；默认关闭时零写入、零进程"
+      },
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cortex-agent bridge sync --auto >/dev/null 2>&1; exit 0",
+            "async": true,
+            "timeout": 10
+          }
+        ],
+        "description": "P-006 §3.5：自动从 topology 注册表中为每个订阅的 peer 项目解析 host_root 并把 outbox 拉入本地 inbox；无订阅的项目零读取；源不可达的 peer 仅报告、不阻断会话"
       }
     ],
     "PermissionRequest": [

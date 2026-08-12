@@ -82,6 +82,18 @@
           }
         ],
         "description": "Ensure the singleton Dashboard Supervisor only when the project explicitly enabled automation; disabled projects perform zero writes and start no process"
+      },
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cortex-agent bridge sync --auto >/dev/null 2>&1; exit 0",
+            "async": true,
+            "timeout": 10
+          }
+        ],
+        "description": "P-006 §3.5: auto-pull every subscribed peer project's outbox into the local inbox by resolving host_root from the topology registry. Projects with no subscriptions perform zero reads. Source-unreachable peers are reported but never block the session."
       }
     ],
     "PermissionRequest": [
