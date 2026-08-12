@@ -63,13 +63,20 @@ test("bridgeEventSchema: source_task_id and correlation_group are optional", () 
   assert.deepEqual(validateBridgeEvent(event), { ok: true });
 });
 
-test("BRIDGE_EVENT_TYPES covers the four P-003 §4.3 event types", () => {
+test("BRIDGE_EVENT_TYPES covers the five event types (P-003 §4.3 + P-008B §3.2 mission.completed)", () => {
   assert.deepEqual(BRIDGE_EVENT_TYPES, [
     "task.state_changed",
     "decision.resolved",
     "waitpoint.released",
     "checkpoint.closed",
+    "mission.completed",
   ]);
+});
+
+test("BRIDGE_EVENT_TYPES: mission.completed is accepted by validateBridgeEvent", () => {
+  const event = validEvent({ event_type: "mission.completed" });
+  const result = validateBridgeEvent(event);
+  assert.equal(result.ok, true, `mission.completed should be valid: ${JSON.stringify(result.errors)}`);
 });
 
 // ─── validateBridgeEvent: valid ────────────────────────────────────────────

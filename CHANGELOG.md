@@ -30,6 +30,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `volta install cortex-agent@file:...tgz` 后 install dir 的 `cortex-agent local-publish-validate --help` 正常工作
 - 跨源仓 (cortex-agent) 和 install dir (volta) 双路径都能调通
 
+## [1.12.0-rc.9] - 2026-08-12
+
+> **Pre-release**:P-008B 双仓联动 + bridge event 白名单新增 `mission.completed`。**仅供 hmi-platform ↔ SamHMI 跨项目实战 + AI-Brain dogfooding 使用**,不建议生产使用。
+
+### Added
+
+- **bridge event `mission.completed` 白名单 (P-003 §4.3 增补)** — 让消费侧 mission 完成 → 反向 emit → 通知生产侧 hmi-platform 的闭环无需 fallback 到 `checkpoint.closed`
+  - `lib/cross-project/bridge-event-schema.js`:`BRIDGE_EVENT_TYPES` 增补 `mission.completed` (4 → 5)
+  - `tests/cross-project/bridge-event-schema.test.js`:同步断言 4 → 5 + 新增 `mission.completed is accepted by validateBridgeEvent`
+  - `.agent/plans/proposals/.../P-003-...proposal.md`:§4.3 表格同步补充 mission.completed 条目
+  - 实证:`hmi-platform` → `SamHMI/M-019` 端到端反向 emit 现在可直接 emit `mission.completed` 完成集成验收 (无需 `checkpoint.closed` fallback)
+
+### Validation
+
+- `node scripts/test-runner.cjs` 266/266 全绿 (含 2 个 bridge-event-schema 新断言)
+- 实战路径 (hmi-platform + SamHMI):
+  - hmi-platform emit `task.state_changed` MS-001 → SamHMI `bridge sync --auto` → inbox (scanned=3 written=1 matched=1) → `automation watch-inbox` dispatch → M-019 sidecar → SamHMI emit `mission.completed` MS-001 → hmi-platform inbox 收到闭环
+
 ## [1.12.0-rc.2] - 2026-08-10
 
 > **Pre-release**:rc.2 给 AI-Brain 内部 dogfooding 试用 + 实战 ≥ 2 周观察期,**不建议生产使用**。
