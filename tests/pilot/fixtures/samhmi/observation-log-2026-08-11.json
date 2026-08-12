@@ -1,0 +1,57 @@
+{
+  "pilot_date": "2026-08-11",
+  "source": "SamHMI standard appearance schema managed-Pi-Agent trial",
+  "scenarios": [
+    {
+      "scenario_id": "samhmi-scenario-001",
+      "description": "Standard login form draft via managed Pi agent",
+      "events": [
+        {"type": "turn_start", "timestamp": "2026-08-11T05:00:00.000Z", "taskId": "samhmi-001", "operationId": "op-samhmi-001", "launchId": "launch-samhmi-001"},
+        {"type": "tool_start", "timestamp": "2026-08-11T05:00:01.000Z", "taskId": "samhmi-001", "toolName": "read_file", "category": "read", "success": true, "correlationId": "samhmi-probe-001"},
+        {"type": "tool_end", "timestamp": "2026-08-11T05:00:02.000Z", "taskId": "samhmi-001", "toolName": "read_file", "category": "read", "success": true, "durationMs": 800},
+        {"type": "tool_start", "timestamp": "2026-08-11T05:00:03.000Z", "taskId": "samhmi-001", "toolName": "write_file", "category": "write", "success": true, "correlationId": "samhmi-probe-002"},
+        {"type": "tool_end", "timestamp": "2026-08-11T05:00:04.000Z", "taskId": "samhmi-001", "toolName": "write_file", "category": "write", "success": true, "durationMs": 300},
+        {"type": "tool_start", "timestamp": "2026-08-11T05:00:05.000Z", "taskId": "samhmi-001", "toolName": "validate", "category": "test", "success": true, "correlationId": "samhmi-probe-003"},
+        {"type": "tool_end", "timestamp": "2026-08-11T05:00:06.000Z", "taskId": "samhmi-001", "toolName": "validate", "category": "test", "success": true, "durationMs": 5000},
+        {"type": "turn_end", "timestamp": "2026-08-11T05:00:07.000Z", "taskId": "samhmi-001"},
+        {"type": "agent_settled", "timestamp": "2026-08-11T05:00:08.000Z", "taskId": "samhmi-001"}
+      ],
+      "expected_outcome": "productive",
+      "expected_evidence_at": "2026-08-11T05:00:04.000Z"
+    },
+    {
+      "scenario_id": "samhmi-scenario-002",
+      "description": "Theme color update via managed Pi agent",
+      "events": [
+        {"type": "turn_start", "timestamp": "2026-08-11T06:00:00.000Z", "taskId": "samhmi-002", "operationId": "op-samhmi-002", "launchId": "launch-samhmi-002"},
+        {"type": "tool_start", "timestamp": "2026-08-11T06:00:01.000Z", "taskId": "samhmi-002", "toolName": "read_file", "category": "read", "success": true, "correlationId": "samhmi-probe-001"},
+        {"type": "tool_end", "timestamp": "2026-08-11T06:00:02.000Z", "taskId": "samhmi-002", "toolName": "read_file", "category": "read", "success": true, "durationMs": 600},
+        {"type": "tool_start", "timestamp": "2026-08-11T06:00:03.000Z", "taskId": "samhmi-002", "toolName": "write_file", "category": "write", "success": true, "correlationId": "samhmi-probe-002"},
+        {"type": "tool_end", "timestamp": "2026-08-11T06:00:04.000Z", "taskId": "samhmi-002", "toolName": "write_file", "category": "write", "success": true, "durationMs": 250},
+        {"type": "tool_start", "timestamp": "2026-08-11T06:00:05.000Z", "taskId": "samhmi-002", "toolName": "validate", "category": "test", "success": true, "correlationId": "samhmi-probe-003"},
+        {"type": "tool_end", "timestamp": "2026-08-11T06:00:06.000Z", "taskId": "samhmi-002", "toolName": "validate", "category": "test", "success": true, "durationMs": 4500},
+        {"type": "turn_end", "timestamp": "2026-08-11T06:00:07.000Z", "taskId": "samhmi-002"},
+        {"type": "agent_settled", "timestamp": "2026-08-11T06:00:08.000Z", "taskId": "samhmi-002"}
+      ],
+      "expected_outcome": "productive",
+      "expected_evidence_at": "2026-08-11T06:00:04.000Z"
+    },
+    {
+      "scenario_id": "samhmi-scenario-003",
+      "description": "Form validation rule update via managed Pi agent",
+      "events": [
+        {"type": "turn_start", "timestamp": "2026-08-11T07:00:00.000Z", "taskId": "samhmi-003", "operationId": "op-samhmi-003", "launchId": "launch-samhmi-003"},
+        {"type": "tool_start", "timestamp": "2026-08-11T07:00:01.000Z", "taskId": "samhmi-003", "toolName": "read_file", "category": "read", "success": true, "correlationId": "samhmi-probe-001"},
+        {"type": "tool_end", "timestamp": "2026-08-11T07:00:02.000Z", "taskId": "samhmi-003", "toolName": "read_file", "category": "read", "success": true, "durationMs": 700},
+        {"type": "tool_start", "timestamp": "2026-08-11T07:00:03.000Z", "taskId": "samhmi-003", "toolName": "write_file", "category": "write", "success": true, "correlationId": "samhmi-probe-002"},
+        {"type": "tool_end", "timestamp": "2026-08-11T07:00:04.000Z", "taskId": "samhmi-003", "toolName": "write_file", "category": "write", "success": true, "durationMs": 280},
+        {"type": "tool_start", "timestamp": "2026-08-11T07:00:05.000Z", "taskId": "samhmi-003", "toolName": "validate", "category": "test", "success": true, "correlationId": "samhmi-probe-003"},
+        {"type": "tool_end", "timestamp": "2026-08-11T07:00:06.000Z", "taskId": "samhmi-003", "toolName": "validate", "category": "test", "success": true, "durationMs": 5000},
+        {"type": "turn_end", "timestamp": "2026-08-11T07:00:07.000Z", "taskId": "samhmi-003"},
+        {"type": "agent_settled", "timestamp": "2026-08-11T07:00:08.000Z", "taskId": "samhmi-003"}
+      ],
+      "expected_outcome": "productive",
+      "expected_evidence_at": "2026-08-11T07:00:04.000Z"
+    }
+  ]
+}
