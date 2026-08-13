@@ -8,6 +8,9 @@
 //   - trackAgent: not a git repo → warn + early return
 //   - trackAgent: .agent missing → warn + early return
 //   - trackAgent: no generated files on disk → "no files to track" message
+//   - trackAgent: lifts the canonical .agent-runtime/.gitignore hard-ignore
+//   - trackAgent: hand-managed .agent-runtime/.gitignore is preserved
+//   - untrackAgent: restores the runtime hard-ignore after tracking ends
 //   - linkGlobal: just forwards to linkGlobalConfig
 
 const assert = require("node:assert/strict");
@@ -21,6 +24,10 @@ const {
   trackAgent,
   linkGlobal,
 } = require("../../lib/commands/project");
+const {
+  RUNTIME_GITIGNORE_BODY,
+  RUNTIME_TRACKED_GITIGNORE_BODY,
+} = require("../../lib/cross-project/runtime-root");
 
 function mkRoot() {
   return fs.mkdtempSync(path.join(os.tmpdir(), "cortex-project-test-"));
@@ -262,6 +269,124 @@ test("trackAgent: .git/info/exclude contains cortex-agent entries → they get f
       assert.doesNotMatch(updated, /^\/\.agent$/m);
       assert.match(updated, /random-user-line/);
       assert.match(out, /Removed cortex-agent entries from \.git\/info\/exclude/);
+    }
+  });
+});
+
+// ─── .agent-runtime hard-ignore lift / restore ─────────────────────────────────
+
+function seedRuntimeIgnore(root, body) {
+  const runtimeDir = path.join(root, ".agent-runtime");
+  fs.mkdirSync(runtimeDir, { recursive: true });
+  const ignorePath = path.join(runtimeDir, ".gitignore");
+  fs.writeFileSync(ignorePath, body, { encoding: "utf8", mode: 0o600 });
+  return ignorePath;
+}
+
+test("trackAgent: canonical .agent-runtime/.gitignore hard-ignore is lifted before git add", () => {
+  const root = mkRoot();
+  fs.mkdirSync(path.join(root, ".agent"), { recursive: true });
+  const ignorePath = seedRuntimeIgnore(root, RUNTIME_GITIGNORE_BODY);
+  const ctx = { cwd: root, lang: "en" };
+
+  const gitPath = require.resolve("../../lib/git");
+  const platformPath = require.resolve("../../lib/platform");
+  const instrumentedGit = {
+    isGitRepo: () => true,
+    resolveGitExcludePath: () => null,
+  };
+  const instrumentedPlatform = {
+    getAllGeneratedPaths: () => [".agent", ".agent-runtime"],
+  };
+  withPatchedRequires([
+    [gitPath, instrumentedGit],
+    [platformPath, instrumentedPlatform],
+  ], () => {
+    delete require.cache[require.resolve("../../lib/commands/project")];
+    const fresh = require("../../lib/commands/project");
+    const { restore: restoreOut } = captureStdout();
+    const { restore: restoreErr } = captureStderr();
+    const origExitCode = process.exitCode;
+    process.exitCode = undefined;
+    try {
+      fresh.trackAgent(ctx);
+    } finally {
+      const out = restoreOut();
+      restoreErr();
+      process.exitCode = origExitCode;
+      assert.equal(fs.readFileSync(ignorePath, "utf8"), RUNTIME_TRACKED_GITIGNORE_BODY,
+        "hard-ignore payload must be replaced with the tracked marker");
+      assert.match(out, /Lifted the cold-start hard-ignore/);
+    }
+  });
+});
+
+test("trackAgent: hand-managed .agent-runtime/.gitignore is left untouched", () => {
+  const root = mkRoot();
+  fs.mkdirSync(path.join(root, ".agent"), { recursive: true });
+  const customBody = "# managed by hand\nsecret/\n";
+  const ignorePath = seedRuntimeIgnore(root, customBody);
+  const ctx = { cwd: root, lang: "en" };
+
+  const gitPath = require.resolve("../../lib/git");
+  const platformPath = require.resolve("../../lib/platform");
+  const instrumentedGit = {
+    isGitRepo: () => true,
+    resolveGitExcludePath: () => null,
+  };
+  const instrumentedPlatform = {
+    getAllGeneratedPaths: () => [".agent", ".agent-runtime"],
+  };
+  withPatchedRequires([
+    [gitPath, instrumentedGit],
+    [platformPath, instrumentedPlatform],
+  ], () => {
+    delete require.cache[require.resolve("../../lib/commands/project")];
+    const fresh = require("../../lib/commands/project");
+    const { restore: restoreOut } = captureStdout();
+    const { restore: restoreErr } = captureStderr();
+    const origExitCode = process.exitCode;
+    process.exitCode = undefined;
+    try {
+      fresh.trackAgent(ctx);
+    } finally {
+      const out = restoreOut();
+      restoreErr();
+      process.exitCode = origExitCode;
+      assert.equal(fs.readFileSync(ignorePath, "utf8"), customBody,
+        "custom .gitignore contents must be preserved");
+      assert.doesNotMatch(out, /Lifted the cold-start hard-ignore/);
+    }
+  });
+});
+
+test("untrackAgent: tracked-marker .agent-runtime/.gitignore is restored to the hard-ignore payload", () => {
+  const root = mkRoot();
+  const ignorePath = seedRuntimeIgnore(root, RUNTIME_TRACKED_GITIGNORE_BODY);
+  const ctx = { cwd: root, lang: "en" };
+
+  const gitPath = require.resolve("../../lib/git");
+  const instrumented = {
+    isGitRepo: () => true,
+    untrackGeneratedFilesFromGit: () => false,
+    applyGitExclusion: () => {},
+  };
+  withPatchedRequires([[gitPath, instrumented]], () => {
+    delete require.cache[require.resolve("../../lib/commands/project")];
+    const fresh = require("../../lib/commands/project");
+    const { restore: restoreOut } = captureStdout();
+    const { restore: restoreErr } = captureStderr();
+    const origExitCode = process.exitCode;
+    process.exitCode = undefined;
+    try {
+      fresh.untrackAgent(ctx);
+    } finally {
+      const out = restoreOut();
+      restoreErr();
+      process.exitCode = origExitCode;
+      assert.equal(fs.readFileSync(ignorePath, "utf8"), RUNTIME_GITIGNORE_BODY,
+        "tracked marker must be restored to the hard-ignore payload");
+      assert.match(out, /Restored the cold-start hard-ignore/);
     }
   });
 });

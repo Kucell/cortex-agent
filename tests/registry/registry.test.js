@@ -29,6 +29,8 @@ describe("registry — top-level constants", () => {
   test("BASE_PATHS contains the shared .agent and entry files", () => {
     assert.ok(BASE_PATHS.includes(".agent"));
     assert.ok(BASE_PATHS.includes("AGENTS.md"));
+    // `.agent-runtime` shares the `.agent` track/untrack lifecycle.
+    assert.ok(BASE_PATHS.includes(".agent-runtime"));
   });
 
   test("PLATFORMS_STATE_FILE lives under .agent", () => {

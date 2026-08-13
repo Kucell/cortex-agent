@@ -59,6 +59,7 @@ describe("platform — getAllGeneratedPaths", () => {
     const paths = getAllGeneratedPaths();
     assert.ok(paths.includes(".agent"));
     assert.ok(paths.includes("AGENTS.md"));
+    assert.ok(paths.includes(".agent-runtime"));
     const set = new Set(paths);
     assert.equal(set.size, paths.length, "no duplicates");
     // cursor cleanup path present
@@ -104,6 +105,37 @@ describe("platform — install/remove with a real templateDir", () => {
     removePlatform({ cwd: root, lang: "en" }, "cursor");
     assert.ok(!fs.existsSync(path.join(root, ".cursorrules")));
     assert.ok(!fs.existsSync(path.join(root, ".cursor")));
+  });
+});
+
+describe("platform — qoderclicn integration", () => {
+  // qoderclicn relies on the shared AGENTS.md entry plus symlinks only, so no
+  // template files are required; templateDir can be any path here.
+  const ctx = (root) => ({ cwd: root, lang: "zh", templateDir: root });
+
+  test("registry entry uses AGENTS.md + commands/agents/skills symlinks", () => {
+    const p = PLATFORM_REGISTRY.qoderclicn;
+    assert.ok(p, "qoderclicn must be registered");
+    assert.equal(p.files.length, 0, "no template files expected (AGENTS.md entry)");
+    const links = p.links.map((l) => l.link).sort();
+    assert.deepEqual(links, [".qoder/agents", ".qoder/commands", ".qoder/skills"]);
+  });
+
+  test("installPlatform creates the three .qoder symlinks", () => {
+    const root = makeProject();
+    installPlatform(ctx(root), "qoderclicn");
+    for (const link of [".qoder/commands", ".qoder/agents", ".qoder/skills"]) {
+      assert.ok(fs.lstatSync(path.join(root, link)).isSymbolicLink(), `${link} should be a symlink`);
+    }
+  });
+
+  test("removePlatform removes the .qoder symlinks", () => {
+    const root = makeProject();
+    installPlatform(ctx(root), "qoderclicn");
+    removePlatform({ cwd: root, lang: "zh" }, "qoderclicn");
+    for (const name of ["commands", "agents", "skills"]) {
+      assert.ok(!fs.existsSync(path.join(root, ".qoder", name)), `.qoder/${name} removed`);
+    }
   });
 });
 
