@@ -87,6 +87,43 @@
 | **Roo Code** | `.roorules` / `.roo/rules/` | 指令文件 + 符号链接 | 支持多模式（Architect/Code/Debug/Ask），双路径集成 |
 | **Amazon Q** | `.amazonq/rules/cortex.md` | 指令文件 | AWS 官方 AI 助手，从 `.amazonq/rules/*.md` 注入规则到每次对话上下文 |
 
+### OpenAI Codex 集成的内存边界（closes #4）
+
+> **作用域**：本节只描述 OpenAI / Codex CLI 场景下"哪些规则应该放哪里"的边界。 其他工具（Claude Code / Cursor / Windsurf 等）通常只读 `.agent/memory/`，不直接产生个人 memory，这条边界对它们是单方面的——但项目规则存放准则（第四条）对所有平台都适用。
+
+#### 1. 两套 memory 的边界
+
+Codex CLI 在项目中会同时看到两套完全不同的 memory 来源，**它们不是同义词**：
+
+| 来源 | 路径 | 范围 | 谁管理 | 持久性 | 禁止放什么 |
+|---|---|---|---|---|---|
+| **Cortex 项目级 memory** | `.agent/memory/{user,feedback,project,reference}/*.md` | 单项目 | 由 `MEMORY.md` 索引和 `memory.schema.json` 约束；`init`/`upgrade` 维护 | **进版本控制** | 凭据 / Token / 本机绝对路径 |
+| **Codex CLI 个人 memory** | `~/.codex/memories/` | 当前用户 + 当前机器 | Codex CLI 自动生成 | **不进版本控制** | 同上 |
+
+> 关键差异：Cortex 项目级 memory 是**项目的事实**（约束、协议、流程），跟用户/机器无关；`~/.codex/memories/` 是**个人偏好**（语言、风格、命名习惯），跟项目无关。两者由两套 schema 管理，**互不预期对方存在**。
+
+#### 2. 规则存放准则（适用于所有工具）
+
+- **必须执行的项目规则**（行为约束、协议、流程） → `AGENTS.md` 或 `.agent/rules/*.md`
+- **跨 session 偏好**（语言、风格、命名习惯） → `.agent/memory/user/*.md`
+- **项目事实快照**（已知坑、本项目独有约定） → `.agent/memory/project/*.md`
+- **外部参考摘要**（链接、API 速记） → `.agent/memory/reference/*.md`
+- **临时观察 / 自动进化产物** → `.agent/memory/feedback/*.md`（带 `expires`）
+
+> **不要**把"必须执行"的项目规则只放在任何一种 memory 里：项目级 memory 受 schema 约束，个人 memory 不进版本控制，两者在多用户/多机器/多工具切换时都会失效。`AGENTS.md` / `.agent/rules/` 是唯一会随项目 Git 走、跨用户/跨机器/跨工具都生效的载体。
+
+完整机制与硬上限（user 10 / feedback 30 / project 20 / reference 50）见 `.agent/memory/README.md`（zh 同步见 `templates/zh/.agent/memory/README.md`），每次 `cortex-agent doctor` 都会跑一次完整性校验（`lib/memory-validate.js`）。
+
+#### 3. 与外部工具的隔离
+
+在启用 MCP / Web 抓取 / 远程文档访问的 session 里，Codex 默认会把外部内容并入 prompt，触发 `memory-recall` 时可能让外部内容污染命中集合。建议在 `.codex/config.toml` 显式：
+
+```toml
+disable_on_external_context = true
+```
+
+开启后 memory 召回只走受控的 `.agent/memory/`，降低外部内容污染面。**该项不替代**项目内对外部输入的 MCP 工具白名单 / 函数级审计——它是 Codex 侧的最后一道防线。
+
 ---
 
 ## 平台管理命令
@@ -124,3 +161,4 @@ cortex-agent list
 ---
 
 > 返回：[快速上手](./getting-started.md) | [工作流命令](./workflows.md)
+| **OpenAI Codex** | `AGENTS.md` + `.codex/` | 指令文件 + 符号链接 | 根目录 `AGENTS.md` 由 `init`/`upgrade` 保证；`cortex-agent add codex` 会生成 `.codex/config.toml`、`.codex/README.md`，并将 `.codex/prompts` 链接到 `.agent/workflows/`（用 `/mention` 引用具体工作流）。Codex 集成的 memory 边界与规则存放准则见下文 [OpenAI Codex 集成的内存边界](#openai-codex-集成的内存边界closes-4) 一节。 |
