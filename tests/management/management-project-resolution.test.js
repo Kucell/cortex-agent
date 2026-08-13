@@ -10,14 +10,22 @@ const test = require("node:test");
 const ROOT = path.resolve(__dirname, "..", "..");
 const CLI = path.join(ROOT, "bin", "cli.js");
 const MANAGEMENT_FILES = ["index.js", "normalize-token-usage.js", "projection-registry.json", "query-activity.js", "query-dispatch-state.js"];
+const { managementScript } = require("../../lib/management/client");
 
 function installAgent(agentRoot) {
   const scripts = path.join(agentRoot, "skills", "management-api", "scripts");
   fs.mkdirSync(scripts, { recursive: true });
   for (const file of MANAGEMENT_FILES) {
-    const source = file === "query-activity.js"
-      ? path.join(ROOT, "templates", "_shared", ".agent", "skills", "management-api", "scripts", file)
-      : path.join(ROOT, ".agent", "skills", "management-api", "scripts", file);
+    const source = path.join(
+      ROOT,
+      "templates",
+      "_shared",
+      ".agent",
+      "skills",
+      "management-api",
+      "scripts",
+      file
+    );
     fs.copyFileSync(source, path.join(scripts, file));
   }
   fs.mkdirSync(path.join(agentRoot, "tasks", "scripts"), { recursive: true });
@@ -38,6 +46,32 @@ function run(cwd, args) {
     env: { ...process.env, LANG: "en_US.UTF-8" },
   });
 }
+
+test("source checkout falls back to its bundled Management API runtime", () => {
+  const script = managementScript(
+    { root: ROOT, agent_root: path.join(ROOT, ".agent") },
+    { existsSync: () => false, packageRoot: ROOT }
+  );
+  assert.equal(
+    script,
+    path.join(ROOT, "templates", "_shared", ".agent", "skills", "management-api", "scripts", "index.js")
+  );
+});
+
+test("ordinary projects never fall back to the cortex-agent bundled runtime", (t) => {
+  const project = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-management-no-fallback-"));
+  const agentRoot = path.join(project, ".agent");
+  fs.mkdirSync(agentRoot);
+  t.after(() => fs.rmSync(project, { recursive: true, force: true }));
+
+  assert.equal(
+    managementScript(
+      { root: fs.realpathSync(project), agent_root: fs.realpathSync(agentRoot) },
+      { existsSync: () => false, packageRoot: ROOT }
+    ),
+    path.join(fs.realpathSync(agentRoot), "skills", "management-api", "scripts", "index.js")
+  );
+});
 
 test("explicit worktree project keeps code root distinct from shared agent root", (t) => {
   const base = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-management-worktree-"));

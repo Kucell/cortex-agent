@@ -8,7 +8,6 @@ const test = require("node:test");
 const ROOT = path.resolve(__dirname, "..", "..");
 const WORKFLOWS = ["approve", "worktree", "release", "mission", "arch-design", "briefing"];
 const VARIANTS = {
-  canonical: path.join(ROOT, ".agent", "workflows"),
   zh: path.join(ROOT, "templates", "zh", ".agent", "workflows"),
   en: path.join(ROOT, "templates", "en", ".agent", "workflows"),
 };
@@ -24,9 +23,13 @@ function requireMarkers(variant, workflow, markers) {
   }
 }
 
-test("canonical and Chinese workflow templates remain aligned", () => {
+test("localized workflow variants keep valid frontmatter", () => {
   for (const workflow of WORKFLOWS) {
-    assert.equal(read("zh", workflow), read("canonical", workflow), `${workflow}.md drifted`);
+    for (const variant of Object.keys(VARIANTS)) {
+      const source = read(variant, workflow);
+      assert.match(source, /^---\n[\s\S]+?\n---\n/);
+      assert.doesNotMatch(source, /^(?:<<<<<<<|=======|>>>>>>>)/m);
+    }
   }
 });
 

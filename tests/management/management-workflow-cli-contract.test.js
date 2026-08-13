@@ -7,7 +7,6 @@ const test = require("node:test");
 
 const ROOT = path.resolve(__dirname, "..", "..");
 const ROOTS = [
-  path.join(ROOT, ".agent", "workflows"),
   path.join(ROOT, "templates", "zh", ".agent", "workflows"),
   path.join(ROOT, "templates", "en", ".agent", "workflows"),
 ];
@@ -18,21 +17,20 @@ function markdownFiles(dir) {
 
 test("standard workflows use public Management CLI commands", () => {
   const offenders = [];
-  let publicCalls = 0;
   for (const root of ROOTS) {
+    let publicCalls = 0;
     for (const file of markdownFiles(root)) {
       const source = fs.readFileSync(file, "utf8");
       if (source.includes(".agent/skills/management-api/scripts/index.js")) offenders.push(path.relative(ROOT, file));
       publicCalls += (source.match(/cortex-agent (?:query|runs|queues|sessions|decisions|inbox|waitpoints)\b/g) || []).length;
     }
+    assert.ok(publicCalls >= 10, `expected broad CLI migration in ${path.relative(ROOT, root)}, found ${publicCalls} calls`);
   }
   assert.deepEqual(offenders, []);
-  assert.ok(publicCalls >= 40, `expected broad CLI migration, found ${publicCalls} calls`);
 });
 
 test("Management API skills teach CLI discovery and debug-only fallback", () => {
   for (const file of [
-    path.join(ROOT, ".agent", "skills", "management-api", "SKILL.md"),
     path.join(ROOT, "templates", "zh", ".agent", "skills", "management-api", "SKILL.md"),
     path.join(ROOT, "templates", "en", ".agent", "skills", "management-api", "SKILL.md"),
   ]) {

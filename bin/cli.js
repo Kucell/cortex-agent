@@ -86,6 +86,11 @@ const { designCommand } = require("../lib/design/cli");
 // the new subcommand is added to the case dispatch below.
 const { branchCommand } = require("../lib/commands/branch");
 
+// Explicit user-gated PR merge facade. The implementation delegates to the
+// existing vcs-pr runtime so credential isolation and audit events stay owned
+// by one canonical surface.
+const { prCommand } = require("../lib/commands/pr");
+
 // M-004 MS-002: Framework Event Bus CLI surface.
 // `event-bus <publish|subscribe|list-events|history>` is owned by
 // lib/event-bus/cli.js. The 4 subcommands map to the bridge / bus
@@ -566,6 +571,7 @@ async function initModeGeneral() {
     case "hook":        hook(ctx); break;
     case "design":      await designCommand(ctx); break;
     case "branch":      branchCommand(ctx); break;
+    case "pr":          prCommand(ctx); break;
     case "event-bus":   eventBusCommand(ctx); break;
     case "state-sync":  await stateSync(l1Ctx); break;
     case "help":        args.includes("--json") ? cliHelp(ctx) : printHelp(); break;
