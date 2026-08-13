@@ -102,7 +102,7 @@
 | Codex 个人 memory | `~/.codex/memories/` | 当前用户 + 当前机器 | Codex CLI 自动生成 | 不进版本控制 |
 | Claude Code Auto Memory | `~/.claude/memory/` | 当前用户 + 当前机器 | Claude Code 自动生成 | 不进版本控制 |
 
-> **项目共享索引**：所有宿主（Codex、Claude、Gemini、Cursor、Cline、Roo、Pi、MiniMax、Qoder 等）切换时，统一以**当前项目**的 `.agent/memory/MEMORY.md` 作为共享召回索引（参见 `AGENTS.md` 的 `Memory Bootstrap` 段与 `.agent/rules/memory-protocol.md §5.1`）。宿主私有 memory 只能作为缓存，与当前用户指令、已验证的项目文件或 `.agent/` 内容冲突时，**以后者为准**。
+> **项目共享索引**：所有宿主（Codex、Claude、Gemini、Cursor、Cline、Roo、Pi、MiniMax、Qoder 等）切换时，统一以**当前项目**的 `.agent/memory/MEMORY.md` 作为共享召回索引（参见 `AGENTS.md` 的 `Memory Bootstrap` 段与 `.agent/rules/memory-protocol.md §5.1`）。宿主私有 memory 只能作为缓存，与当前用户指令、已验证的项目文件或 `.agent/` 内容冲突时，**以后者为准**。需要强调的是：Codex 自身的"本地 memory"配置开关（如 `memories.disable_on_external_context`）只影响 Codex 内部 `~/.codex/memories/` 的**生成**行为，不改变 Cortex 这条"以 `.agent/memory/MEMORY.md` 为共享召回索引"的边界 —— 两者是正交的。
 
 ### 规则存放准则（强制分层）
 
@@ -114,10 +114,10 @@
 | 外部参考摘要（链接、API 速记） | `.agent/memory/reference/*.md`（1–2 句指针，正文留在 `.agent/references/`） | 把完整正文复制进 `memory/reference/`（违反 `memory-protocol.md §4.5`） |
 | 临时观察 / 自动进化产物 | `.agent/memory/feedback/*.md`（必填 `expires`，90 天后归档到 `feedback/_archive/`） | `experiences/`（`experiences/` 是 commit-anchored 防复发载体，不是轻量观察） |
 
-> **核心原则**："必须执行的项目规则"**必须**双写到 `AGENTS.md` 或 `.agent/rules/`（强约束位置）+ `.agent/memory/`（具体偏好位置）；**只**写在任何一种 memory 都不能算"必须执行"，因为：
-> 1. 项目级 memory 受 schema 约束与硬上限管理（参见 `memory-protocol.md §2/§7`），`memory-validate` 可能改写或归档；
-> 2. 个人 memory（`~/.codex/memories/`、`~/.claude/memory/`）不进版本控制，多用户/多机器/多工具切换时**全部失效**；
-> 3. 跨宿主唯一可靠来源是当前项目的 `AGENTS.md` + `.agent/rules/`。
+> **核心原则**："必须执行的项目规则"的唯一可靠位置是当前项目的 `AGENTS.md` 与 `.agent/rules/*.md`（强约束位置），**不**依赖任何 memory 层，原因是：
+> 1. 项目级 `.agent/memory/` 受 schema 约束与四类硬上限管理（参见 `memory-protocol.md §2/§7`），`memory-validate` 可能在 `user 10 / feedback 30 / project 20 / reference 50` 触发后改写、合并或归档；
+> 2. 个人 memory（`~/.codex/memories/`、`~/.claude/memory/`、`~/.agent/memory/` 全局层）不进版本控制，多用户/多机器/多工具切换时**不一定被 recall**；
+> 3. 跨宿主唯一可靠来源是当前项目的 `AGENTS.md` + `.agent/rules/`；`.agent/memory/` 只承担"项目内可复用偏好、事实、参考与反馈"的角色，**不**承载"必须执行"的强约束语义。
 
 ### 宿主私有 Memory 适配（已验证）
 
@@ -130,17 +130,30 @@
 
 > 完整表格与边界说明参见 `.agent/rules/memory-protocol.md §5.1`；本节只摘录 Codex 一行（与本节主题对齐）。其他宿主的等价条目已在 `memory-protocol.md` 中列出。
 
-### 与外部上下文的隔离（基于当前模板的已验证做法）
+### 与外部上下文的隔离（Codex 本地 memory 的官方开关 + Cortex 受控层）
 
-> **关于 `disable_on_external_context`**：原平台集成 memory 边界提案（`D-arch-plat-mem-boundary-001`）曾建议在 `.codex/config.toml` 中设置 `disable_on_external_context = true` 作为外部 fetch 工具的隔离开关。**当前仓库状态**：该键**未**出现在 `templates/zh/integrations/codex/.codex/config.toml` 或 `templates/en/integrations/codex/.codex/config.toml` 项目级模板中，仓库内的 Codex 集成 README（`templates/{zh,en}/integrations/codex/.codex/README.md`）也未引用该键；Codex CLI 的官方配置文档（`https://developers.openai.com/codex/config-advanced`）链接亦未包含此键。因此**目前**不能假设该键是受支持的稳定配置 —— 在 Codex CLI 官方文档明确收录之前，**不**在项目模板或文档中推荐写入该键。
+> **重要更正（取代 d350135 的同节措辞）**：原平台集成 memory 边界提案（`D-arch-plat-mem-boundary-001`）建议的 `disable_on_external_context` 是 **Codex CLI 官方文档正式收录**的配置键。Codex 官方说明语义为："when true, keeps chats that used external context such as MCP tool calls, web search, or tool search out of memory generation"，旧名 `memories.no_memories_if_mcp_or_web_search` 仍被接受为别名。**该键控制的是 Codex 本地 memory 的"生成"侧（是否纳入含 MCP / web search / tool search 的会话作为生成输入），不是召回侧** —— 因此不会改变"以 `.agent/memory/MEMORY.md` 为项目级共享召回索引"的边界，也不会把召回重定向到 `~/.agent/memory/`。
 
-**当前已验证的外部上下文隔离做法**（无需新配置键）：
+**Codex 本地 memory 的官方开关（已在 Codex 官方 `codex/customization/memories` 页明确收录）**
+
+| 层级 | 键 | 推荐值 | 作用 |
+|---|---|---|---|
+| 启用开关（features 段） | `[features] memories = true` | `true` | 默认关闭；不启用此 flag，下面的 memory-specific 设置不会生效。Codex 桌面应用侧等价路径：Settings → Personalization → Enable memories |
+| 生成侧外部上下文隔离 | `[memories] disable_on_external_context = true`（或旧别名 `no_memories_if_mcp_or_web_search = true`） | `true` | 让"用过 MCP 工具调用 / web search / tool search 的会话"**不**进入 Codex 本地 memory 的生成输入；只影响 `~/.codex/memories/` 的写入，**不**改变 recall |
+| 其他相关（memory） | `memories.generate_memories`、`memories.use_memories`、`memories.min_rate_limit_remaining_percent`、`memories.extract_model`、`memories.consolidation_model` | 按需 | 控制"新会话是否可作为生成输入 / 是否注入既有 memory / 低于多少 rate-limit 跳过 / 抽取与合并模型" |
+
+**模板与项目级配置的关系**
+
+- `templates/{zh,en}/integrations/codex/.codex/config.toml` 当前模板**未**写入这些键；启用与否留给用户在仓库根 `.codex/config.toml` 或 `~/.codex/config.toml` 自行决定。`cortex-agent add codex` 也**不**自动改写 `~/.codex/config.toml`。
+- 当且仅当用户在 `.codex/config.toml`（项目层）中加入上述块、且仓库被 Codex 标记为受信任时，这些键才会生效；CI / DevContainer 等场景建议走 `~/.codex/config.toml`（用户层），避免把个人偏好签入仓库。
+
+**Cortex 侧的补充受控层**（与上面 Codex 开关**叠加生效**，覆盖不到的部分由本仓库自身约束兜底）
 
 1. **AGENTS.md 受控读取**：根目录 `AGENTS.md` 引导宿主读 `MEMORY.md` 与 `.agent/rules/` 时不抓外部内容（除非用户显式要求 fetch），本身是受控的；
 2. **memory-recall 走受控索引**：宿主做项目级 memory 召回时统一走 `.agent/memory/MEMORY.md`（参见 `AGENTS.md` 的 `Memory Bootstrap` 段），外部抓取内容默认不进入 MEMORY.md；
 3. **memory-protocol.md §8 Staleness Rule**：与当前用户指令或已验证项目文件冲突时，**memory 优先级更低**，防止外部抓取内容污染下次 session 的判断。
 
-> **跟进项**：当 Codex CLI（或下游等价的 Codex 兼容工具）官方文档正式收录 `disable_on_external_context`（或其他等价键）时，再回到本节补充推荐配置；本节不预先发明尚未由官方文档承认的键。
+> **关于"启用 Codex 本地 memory 后是否会污染 Cortex 项目 memory"的回答**：**不会**。Cortex 的 `.agent/memory/` 由本仓库协议（`memory-protocol.md`）管控写入路径；Codex 自动生成的 `~/.codex/memories/` 是另一套独立文件。两者是正交存储，不会互相写入。
 
 ### 链接到既有项目 memory 文档
 
