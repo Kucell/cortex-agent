@@ -97,10 +97,9 @@
 
 | 来源 | 路径 | 范围 | 谁管理 | 持久性 |
 |---|---|---|---|---|
-| Cortex 项目级 memory | `.agent/memory/{user,feedback,project,reference}/*.md` + 索引 `MEMORY.md` | 单项目 | 由 `MEMORY.md` 索引 + `memory.schema.json` 约束；`init`/`upgrade` 维护；四类硬上限 user 10 / feedback 30 / project 20 / reference 50 | **进版本控制** |
+| Cortex 项目级 memory | `.agent/memory/{user,feedback,project,reference}/*.md` + 索引 `MEMORY.md` | 单项目 | 由 `MEMORY.md` 索引 + `memory.schema.json` 约束；`init`/`upgrade` 维护；四类硬上限 user 10 / feedback 30 / project 20 / reference 50 | 按项目的 `.agent` track 策略共享 |
 | Cortex 全局 memory | `~/.agent/memory/` | 当前用户 + 当前机器 | 由 `AGENTS.md` 的 `Memory Bootstrap` 段定义；与项目 `.agent/memory/MEMORY.md` 互为补集 | 一般不进版本控制 |
 | Codex 个人 memory | `~/.codex/memories/` | 当前用户 + 当前机器 | Codex CLI 自动生成 | 不进版本控制 |
-| Claude Code Auto Memory | `~/.claude/memory/` | 当前用户 + 当前机器 | Claude Code 自动生成 | 不进版本控制 |
 
 > **项目共享索引**：所有宿主（Codex、Claude、Gemini、Cursor、Cline、Roo、Pi、MiniMax、Qoder 等）切换时，统一以**当前项目**的 `.agent/memory/MEMORY.md` 作为共享召回索引（参见 `AGENTS.md` 的 `Memory Bootstrap` 段与 `.agent/rules/memory-protocol.md §5.1`）。宿主私有 memory 只能作为缓存，与当前用户指令、已验证的项目文件或 `.agent/` 内容冲突时，**以后者为准**。需要强调的是：Codex 自身的"本地 memory"配置开关（如 `memories.disable_on_external_context`）只影响 Codex 内部 `~/.codex/memories/` 的**生成**行为，不改变 Cortex 这条"以 `.agent/memory/MEMORY.md` 为共享召回索引"的边界 —— 两者是正交的。
 
@@ -109,14 +108,14 @@
 | 规则类型 | 应该放哪里 | **不**应该放哪里 |
 |---|---|---|
 | 行为约束（"永远中文回复"、"先 lint 再 commit"、协议、流程） | `AGENTS.md` 或 `.agent/rules/*.md`（强约束） | 仅放在任何一种 memory 里 — memory 受 schema 约束、`memory-validate` 可能改写，跨用户/跨机器/多工具切换时不一定被 recall |
-| 跨 session 偏好（语言、风格、命名习惯等可复用偏好） | `.agent/memory/user/*.md`（项目内统一）+ `AGENTS.md` 引导所有宿主读 `MEMORY.md` | `~/.codex/memories/` 或 `~/.claude/memory/` 单独存放 — 这些是单用户/单机器私有，不与项目其他协作者共享 |
+| 跨 session 偏好（语言、风格、命名习惯等可复用偏好） | `.agent/memory/user/*.md`（项目内统一）+ `AGENTS.md` 引导所有宿主读 `MEMORY.md` | 仅存放在 `~/.codex/memories/` — 这是单用户/单机器私有层，不与项目其他协作者共享 |
 | 项目事实快照（已知坑、本项目独有约定） | `.agent/memory/project/*.md` | `.agent/memory/reference/`（过重 — `reference/` 只放指向既有 `.agent/` 内容的指针，不复制正文） |
 | 外部参考摘要（链接、API 速记） | `.agent/memory/reference/*.md`（1–2 句指针，正文留在 `.agent/references/`） | 把完整正文复制进 `memory/reference/`（违反 `memory-protocol.md §4.5`） |
 | 临时观察 / 自动进化产物 | `.agent/memory/feedback/*.md`（必填 `expires`，90 天后归档到 `feedback/_archive/`） | `experiences/`（`experiences/` 是 commit-anchored 防复发载体，不是轻量观察） |
 
 > **核心原则**："必须执行的项目规则"的唯一可靠位置是当前项目的 `AGENTS.md` 与 `.agent/rules/*.md`（强约束位置），**不**依赖任何 memory 层，原因是：
 > 1. 项目级 `.agent/memory/` 受 schema 约束与四类硬上限管理（参见 `memory-protocol.md §2/§7`），`memory-validate` 可能在 `user 10 / feedback 30 / project 20 / reference 50` 触发后改写、合并或归档；
-> 2. 个人 memory（`~/.codex/memories/`、`~/.claude/memory/`、`~/.agent/memory/` 全局层）不进版本控制，多用户/多机器/多工具切换时**不一定被 recall**；
+> 2. 个人 memory（`~/.codex/memories/`、`~/.agent/memory/` 全局层）不进版本控制，多用户/多机器/多工具切换时**不一定被 recall**；
 > 3. 跨宿主唯一可靠来源是当前项目的 `AGENTS.md` + `.agent/rules/`；`.agent/memory/` 只承担"项目内可复用偏好、事实、参考与反馈"的角色，**不**承载"必须执行"的强约束语义。
 
 ### 宿主私有 Memory 适配（已验证）
@@ -124,7 +123,6 @@
 | 宿主 | 用户/全局 memory | 项目/运行时 memory | 接入边界 |
 |---|---|---|---|
 | OpenAI Codex | `~/.codex/memories/`（CLI 自动生成） | 项目级以 `.agent/memory/MEMORY.md` 为索引 | 通过 `AGENTS.md` 引导读 `MEMORY.md`；不使用 Codex 个人 memory 替代项目 memory |
-| Claude Code | `~/.claude/memory/`（Auto Memory 自动生成） | 项目级以 `.agent/memory/MEMORY.md` 为索引 | 同上；宿主私有 memory 仅作缓存 |
 | MiniMax | `~/.minimax/memory/user.md`；tracking 日志位于 `~/.minimax/memory/tracking/` | `main` / `topic` 由 runtime 托管；`summary` 是视图 | 使用 MiniMax `memory` / `mavis` 工具；**不**直接编辑 runtime 内部存储或索引缓存 |
 | Qoder CN | `~/.qoder-cn/memories/<user-hash>/{global,projects}/<category>/` | 同上，按 `<encoded-project-path>/<category>/` 分桶 | 运行时发现 `<user-hash>` 与项目桶，**不**硬编码；`SharedClientCache/index/` 是索引缓存，**不**是记忆正文 |
 
