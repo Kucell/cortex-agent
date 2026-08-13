@@ -244,3 +244,71 @@ test("doctor: setup-portability prints path detail for an ok symlink", async () 
   assert.match(out, /\.agent\/global:\s*ok/);
   assert.match(out, /path:\s+\S+\/global/);
 });
+
+// T-ISSUE-2: when a project has .agent/memory/MEMORY.md, doctor must
+// emit a [memory-integrity] section and surface drift / orphan / missing
+// issues with file:line locators.
+test("doctor: memory-integrity section reports drift + orphan + missing with locators", async () => {
+  const root = mkRoot();
+  fs.mkdirSync(path.join(root, ".agent", "memory", "user"), { recursive: true });
+  fs.mkdirSync(path.join(root, ".agent", "memory", "feedback"), { recursive: true });
+  fs.mkdirSync(path.join(root, ".agent", "memory", "project"), { recursive: true });
+  fs.mkdirSync(path.join(root, ".agent", "memory", "reference"), { recursive: true });
+  fs.writeFileSync(
+    path.join(root, ".agent", "memory", "user", "reply-zh.md"),
+    `---\nname: reply-zh\ndescription: x\ntype: user\ncreated: 2026-08-13\ntags: [lang]\n---\n\nbody\n`
+  );
+  fs.writeFileSync(
+    path.join(root, ".agent", "memory", "MEMORY.md"),
+    [
+      "# Memory", "", "## user (0/10)", "", "## feedback (0/30)", "",
+      "## project (1/20)", "- [a](project/a.md) — desc", "- [b](project/b.md) — desc",
+      "", "## reference (0/50)", "",
+    ].join("\n")
+  );
+  const ctx = { cwd: root, lang: "en", templateDir: path.join(root, "no-such-template"), options: {} };
+  const { restore: restoreOut } = captureStdout();
+  const { restore: restoreErr } = captureStderr();
+  let out = "";
+  try {
+    await doctor(ctx);
+  } finally {
+    out = restoreOut();
+    restoreErr();
+  }
+  assert.match(out, /\[memory-integrity\]/);
+  assert.match(out, /drift:\s*\.agent\/memory\/MEMORY\.md/);
+  assert.match(out, /orphan:\s*user\/reply-zh\.md/);
+  assert.match(out, /summary:\s+drift=1, missing=2, schema=0, orphan=1, duplicate=0, over-cap=0/);
+  assert.match(out, /remedy:.*memory-validate --fix --yes/);
+});
+
+test("doctor: memory-integrity section says ok when MEMORY.md is consistent", async () => {
+  const root = mkRoot();
+  for (const type of ["user", "feedback", "project", "reference"]) {
+    fs.mkdirSync(path.join(root, ".agent", "memory", type), { recursive: true });
+  }
+  fs.writeFileSync(
+    path.join(root, ".agent", "memory", "user", "reply-zh.md"),
+    `---\nname: reply-zh\ndescription: x\ntype: user\ncreated: 2026-08-13\ntags: [lang]\n---\n\nbody\n`
+  );
+  fs.writeFileSync(
+    path.join(root, ".agent", "memory", "MEMORY.md"),
+    [
+      "# Memory", "", "## user (1/10)", "- [reply-zh](user/reply-zh.md) — 中文回复偏好",
+      "", "## feedback (0/30)", "", "## project (0/20)", "", "## reference (0/50)", "",
+    ].join("\n")
+  );
+  const ctx = { cwd: root, lang: "en", templateDir: path.join(root, "no-such-template"), options: {} };
+  const { restore: restoreOut } = captureStdout();
+  const { restore: restoreErr } = captureStderr();
+  let out = "";
+  try {
+    await doctor(ctx);
+  } finally {
+    out = restoreOut();
+    restoreErr();
+  }
+  assert.match(out, /\[memory-integrity\]/);
+  assert.match(out, /status:\s*ok/);
+});
