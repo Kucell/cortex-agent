@@ -37,22 +37,37 @@
 
 部分平台（Cursor、Claude Code、Windsurf、Roo Code）原生支持加载特定目录下的文件作为自定义命令/规则/代理。`init` 命令会自动创建符号链接，将 `.agent` 子目录映射到工具的默认配置路径，实现零开销原生体验。
 
-### 全局配置 symlink 与可移植性（M-SETUP-PORT-001）
+### 全局配置 symlink 与可移植性（M-SETUP-PORT-001 / T-ISSUE-3 follow-up）
 
-> **Symlink 跨机器可移植性**：`.agent/global` 是 `linkGlobalConfig()` 主动生成的 symlink，采用相对路径（非绝对）以保证跨用户/跨机器/跨容器可移植。`.gitignore` 已 ignore 此 symlink，不会进版本控制。`doctor` 会在 4 类情况（missing / not-symlink / broken / wrong-target）上主动检查并报告。
+> **Symlink 跨机器可移植性**：T-ISSUE-3 之后，`linkGlobalConfig()` 会主动生成 5 个本机专属 symlink，全部采用相对路径以保证跨用户 / 跨机器 / 跨容器可移植。仓库根 `.gitignore` 会自动追加这些条目，避免绝对路径 symlink 进版本控制。`doctor` 会在 5 类状态（`missing` / `not-symlink` / `broken` / `wrong-target` / `home-missing`）上对每个 symlink 主动检查并报告。
 
-要点：
+**`linkGlobalConfig()` 管理的 5 个 symlink**
 
-- **相对路径**：`linkGlobalConfig()` 写入 `path.relative(.agent, ~/.agent)` 作为 symlink target，不再用 `os.homedir()` 拼绝对路径。绝对路径会在换用户、换机器、换容器（DevContainer / Codespaces / Docker）时立刻断链。
-- **创建期校验**：每次创建 symlink 后立即 `realpathSync()` 验证可解析，避免留下"节点在但 target 死"的隐蔽 broken symlink。
-- **静态期校验**：`cortex-agent doctor` 的 `setup-portability` 段会在 4 类情况主动报警：
+| 相对路径 | 目标 | 用途 |
+|---|---|---|
+| `.agent/global` | `~/.agent` | 全局 Cortex 配置入口 |
+| `.agent/global-shared-skills` | `~/.agents/skills` | Agent Skills 标准共享技能 |
+| `.cursor/global-rules` | `~/.agent/rules` | Cursor 全局规则 |
+| `.cursor/global-commands` | `~/.agent/workflows` | Cursor 全局工作流命令 |
+| `.claude/global-commands` | `~/.agent/workflows` | Claude Code 全局工作流命令 |
+
+**要点**
+
+- **相对路径**：`linkGlobalConfig()` 写入 `path.relative(<parent>, <realTarget>)` 作为 symlink target，不再用 `os.homedir()` 拼绝对路径。绝对路径会在换用户、换机器、换容器（DevContainer / Codespaces / Docker）时立刻断链。
+- **创建期校验**：每次创建 symlink 后立即 `realpathSync()` 验证可解析，避免留下"节点在但 target 死"的隐蔽 broken symlink。`realTarget` 不可解析（目标目录缺失）时 warn + skip，绝不静默失败。
+- **静态期校验**：`cortex-agent doctor` 的 `setup-portability` 段对每个 symlink 输出 5 类状态：
+  - `ok` — symlink 存在且 resolve 到当前 `~/.agent`（或对应 home 路径）
   - `missing` — 节点不存在（`init` 没跑过）
   - `not-symlink` — 节点不是 symlink（被覆盖为普通文件或目录）
   - `broken` — 节点在但 target 不可解析
-  - `wrong-target` — target 与当前 `~/.agent` 不一致（跨用户、换机器后）
-- **Git 卫生**：`.agent/global` 已在仓库根 `.gitignore` 中显式 ignore；这条规则的目的就是防止绝对路径 symlink 进版本控制。`git check-ignore -v .agent/global` 应命中仓库 `.gitignore` 而非 global exclude。
-- **不要**手编辑这个 symlink；删除后重跑 `cortex-agent init` 即可重建。
+  - `wrong-target` — target 与当前 home 不一致（跨用户、换机器后）
+  - `home-missing` — 目标 home 路径本身不可解析
+- **Git 卫生（自动）**：`linkGlobalConfig()` 创建 symlink 后，会**自动**把相对路径追加到仓库根 `.gitignore`，确保绝对路径 symlink 不会进版本控制。如希望不污染项目 `.gitignore`，可在 `init` / `upgrade` 调用时设 `useLocalExclude: true`，改为写入 `.git/info/exclude`（本机专属 exclude）。两个开关：
+  - `updateGitignore: false` — 完全跳过 ignore 写入（用于 CI / sandbox）
+  - `useLocalExclude: true` — 走 `.git/info/exclude`（默认走 `.gitignore`）
+- **不要**手编辑这些 symlink；删除后重跑 `cortex-agent init` 即可重建，且会重新触发 gitignore 写入（幂等）。
 - **克隆后行为**：换机器 / 新用户拉取项目后第一次跑 `cortex-agent init` / `update` 时会自动重建相对路径 symlink；无需手动干预。
+- **跨平台 doctor**：`doctor` 在 git 仓库里还会输出每个 symlink 的 `git tracked / ignored` 状态；如果 `ok` 但被 git 跟踪，会额外 warning 提示运行 `cortex-agent untrack`。
 
 ---
 
