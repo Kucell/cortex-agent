@@ -24,7 +24,6 @@ test("cortex-agent mcp serve negotiates resources and read-only query tool", asy
 
 test("local and localized MCP skills document standard read-only serve", () => {
   for (const file of [
-    path.join(ROOT, ".agent", "skills", "runtime-state-mcp", "SKILL.md"),
     path.join(ROOT, "templates", "en", ".agent", "skills", "runtime-state-mcp", "SKILL.md"),
     path.join(ROOT, "templates", "zh", ".agent", "skills", "runtime-state-mcp", "SKILL.md"),
   ]) {

@@ -16,6 +16,7 @@ const MANAGEMENT_FILES = [
   "query-activity.js",
   "query-coordination.js",
   "query-dispatch-state.js",
+  "query-governed-attempt.js",
 ];
 
 function createProject(prefix = "cortex-management-cli-") {
@@ -23,9 +24,16 @@ function createProject(prefix = "cortex-management-cli-") {
   const scripts = path.join(cwd, ".agent", "skills", "management-api", "scripts");
   fs.mkdirSync(scripts, { recursive: true });
   for (const file of MANAGEMENT_FILES) {
-    const source = file === "query-activity.js"
-      ? path.join(ROOT, "templates", "_shared", ".agent", "skills", "management-api", "scripts", file)
-      : path.join(ROOT, ".agent", "skills", "management-api", "scripts", file);
+    const source = path.join(
+      ROOT,
+      "templates",
+      "_shared",
+      ".agent",
+      "skills",
+      "management-api",
+      "scripts",
+      file
+    );
     fs.copyFileSync(source, path.join(scripts, file));
   }
   fs.mkdirSync(path.join(cwd, ".agent", "tasks", "scripts"), { recursive: true });
