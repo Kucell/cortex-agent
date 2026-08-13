@@ -27,6 +27,7 @@ const {
   phaseZeroAutomation,
   dashboard,
   dev,
+  graphify,
   cliHelp,
   printHelp,
   teamPack,
@@ -772,6 +773,7 @@ async function initModeGeneral() {
     }
     case "help":        args.includes("--json") ? cliHelp(ctx) : printHelp(); break;
     case "dev":         await dev(ctx); break;
+    case "graphify":    graphify(ctx); break;
     case undefined:
     case "--help":
     case "-h":

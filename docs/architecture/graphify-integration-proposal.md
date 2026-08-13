@@ -2,12 +2,12 @@
 
 # Graphify × Cortex Agent 集成提案
 
-> 状态：**已实现（T-G01/G02/G03/T-G04/T-G05 ✅）**
+> 状态：**已实现（T-G01/G02/G03/T-G04/T-G05 ✅；T-GWG-001 / P-001 ✅）**
 > 提案日期：2026-06-12
-> 最后更新：2026-06-15
-> 影响范围：Artifact Bus · Handoff 协议 · PostCommit Hook · doctor 命令
-> 已完成任务：T-G01 · T-G02 · T-G03
-> 当前任务：Graphify 基础集成与自更新流程已完成，后续增强按需立项
+> 最后更新：2026-08-13（T-GWG-001 实施收口，refreshness 与 worktree 治理补齐）
+> 影响范围：Artifact Bus · Handoff 协议 · PostCommit Hook · doctor 命令 · Graphify Context Resolver · Freshness Receipt · CLI 表面 (`cortex-agent graphify <sub>`)
+> 已完成任务：T-G01 · T-G02 · T-G03 · T-G04 · T-G05 · **T-GWG-001**
+> 当前任务：Graphify 基础集成、PostCommit 自更新、Worktree-aware freshness gate 与 fail-closed 查询门禁均已完成；后续增强按需立项
 
 ---
 
@@ -204,6 +204,7 @@ subgraph:
 | **T-G03** | P1 | `extract-subgraph.js` BFS 子图裁剪 + L3 自举验证（90 nodes，Artifact Bus 注册成功） | ✅ 已完成 |
 | **T-G04** | P2 | `post-commit-update.js`：PostCommit 自动触发 `graphify update .` | ✅ 已完成（2026-06-15） |
 | **T-G05** | P2 | `cortex-agent doctor` 集成 Graphify 状态检测 + 未安装时交互安装提示 | ✅ 已完成（2026-06-15）|
+| **T-GWG-001** | P1 | P-001 Worktree-aware Graphify 检索与门禁：Context Resolver（self / primary-worktree fallback）、Freshness Receipt、Stale Marker、强制 hook 幂等修复、CLI 表面（`graphify context\|preflight\|update\|doctor\|receipt`）、en/zh 模板对齐、focused tests | ✅ 已完成（2026-08-13；详见 `.agent/artifacts/T-GWG-001/architecture.md` 与 `.agent/plans/proposals/projects/graphify-worktree-governance/proposals/P-001-...`）|
 
 后续增强（不在本提案范围，视需要再立项）：
 
