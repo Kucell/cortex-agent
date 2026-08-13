@@ -105,6 +105,29 @@ cortex-agent runs checkpoint --project . \
 
 Before handoff, the producing agent must record changed paths, validation commands and results, artifact refs, known risks, source commit, and remaining work. The receiving owner verifies the evidence before claiming the next write scope.
 
+## .agent Path Authorization (T-AGR-001)
+
+**Scope**: `.agent/` applies only to Cortex-managed projects. Projects that have not been initialized with Cortex Agent have no `.agent/` — do not create or infer one.
+
+**Managed Project Detection**:
+- The worktree's `.agent/` directory must exist and be a directory
+- Must contain both `rules/` and `workflows/` subdirectories (canonical Cortex markers)
+- Both conditions satisfied → "managed project"; governed launch auto-grants shared `.agent` read access
+
+**PreToolUse Gate**:
+- Business code paths (not touching shared `.agent/`): defer to Claude default
+- Shared `.agent/` paths: deny if no grant; Bash directly touching shared `.agent/` defaults deny (runtime updates go through Cortex public CLI/API)
+- Path must canonicalize to nearest existing parent (anti-symlink / non-existent file escape)
+
+**Authorization Propagation**:
+- Managed parent → child: child's read/write must be subsets of parent's `grant.delegate` for the corresponding operation
+- Parent without delegation: fail closed
+- Absolute grant paths never leak to public Task events/receipts
+
+**Manual --add-dir Restriction**:
+- Governed launch only auto-projects `--add-dir=<canonical .agent>` into the child process
+- Caller-supplied external `--add-dir` values are always rejected
+
 ## Single-Task Merge
 
 ### Preconditions

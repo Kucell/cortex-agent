@@ -93,6 +93,35 @@ identifiers, bounded summaries, exit status, timestamps, artifact references,
 and SHA-256 digests. It must not contain prompts, responses, credentials,
 private sessions, file bodies, or exact token usage.
 
+## .agent Path Authorization (T-AGR-001)
+
+**Scope**: `.agent/` applies only to Cortex-managed projects. Projects without a `.agent/` directory are not managed.
+
+**Managed Project Detection**:
+governed launch performs this check before spawning the child:
+1. worktree's `.agent/` must exist and be a directory
+2. must contain both `rules/` and `workflows/` subdirectories
+3. Both satisfied → "managed project"; a private `agentRootGrant` is built with `canonicalAgentRoot` and relative-path operation grants
+
+**Authorization Content**:
+- Managed project: private `agentRootGrant` written to `CORTEX_LAUNCH_CONTEXT` only — never to public Task events/receipts
+- Unmanaged project: no grant; PreToolUse defers to Claude default
+
+**Automatic Injection**:
+- Child process spawn injects `--add-dir=<canonical .agent>` before the `"--"` prompt separator
+- Caller-supplied external `--add-dir` values are always rejected
+
+**PreToolUse Gate**:
+- Business code paths: deferred
+- Shared `.agent/` read/write: denied when no grant
+- Bash touching shared `.agent/`: denied by default (runtime updates via Cortex CLI/API)
+- Path canonicalizes to nearest existing ancestor (anti-symlink / non-existent file escape)
+
+**Authorization Propagation**:
+- Managed parent → child: child's read/write must be subsets of parent's `grant.delegate.{read,write}`
+- Parent without delegation: fail closed
+- Absolute paths never appear in public events
+
 ## Prompt template
 
 ```text

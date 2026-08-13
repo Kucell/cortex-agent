@@ -93,6 +93,35 @@ identifiers, bounded summaries, exit status, timestamps, artifact references,
 and SHA-256 digests. It must not contain prompts, responses, credentials,
 private sessions, file bodies, or exact token usage.
 
+## .agent 路径授权（T-AGR-001）
+
+**适用范围**：`.agent/` 仅适用于已接入 Cortex Agent 的项目。未接入项目没有 `.agent/`。
+
+**Managed Project 检测**：
+governed launch 在启动子进程前执行以下检测：
+1. worktree 的 `.agent/` 目录必须存在且为目录
+2. 必须包含 `rules/` 和 `workflows/` 子目录
+3. 同时满足时，该 worktree 被识别为"已管理项目"，自动授予共享 `.agent` 的读权限
+
+**授权内容**：
+- 已管理项目：自动构建私有 `agentRootGrant`，包含 `canonicalAgentRoot`（canonical `.agent` 绝对路径）和相对路径授权模式（read/write/delegate.read/delegate.write）
+- 未管理项目：无 grant，PreToolUse defer
+- Grant 仅写入私有 `CORTEX_LAUNCH_CONTEXT`，不进入公共 Task event/receipt
+
+**自动注入**：
+- 子进程启动时，自动注入 `--add-dir=<canonical .agent>`（在 `"--"` 分隔符之前）
+- 拒绝调用方传入的任意外部 `--add-dir` 值
+
+**PreToolUse 门控**：
+- 业务代码路径：defer（Claude 自行判断）
+- 共享 `.agent/` 读写：无 grant 时 deny；Bash 操作共享 `.agent/` 默认 deny（运行时更新走 Cortex CLI/API）
+- 路径必须 canonicalize 到最近存在的父目录（防 symlink 逃逸）
+
+**授权传播**：
+- 受管父 Agent → 子 Agent：子 Agent 的 read/write 必须是父 `grant.delegate` 对应集合的子集
+- 父无 delegation 时 fail closed
+- 绝对路径永不进入公共事件
+
 ## Prompt template
 
 ```text

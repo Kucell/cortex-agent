@@ -26,6 +26,19 @@
         "description": "受治理的 PostToolUse：限速、脱敏，映射到 task.progress / task.testing"
       }
     ],
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit|MultiEdit|Bash|Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cortex-agent hook claude PreToolUse",
+            "timeout": 10
+          }
+        ],
+        "description": "受治理的 PreToolUse（T-AGR-001）：worktree 共享 .agent 路径级授权；业务代码路径 defer；未授权的 .agent 读写操作 deny"
+      }
+    ],
     "Notification": [
       {
         "hooks": [
