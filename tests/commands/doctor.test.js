@@ -277,10 +277,10 @@ test("doctor: memory-integrity section reports drift + orphan + missing with loc
     restoreErr();
   }
   assert.match(out, /\[memory-integrity\]/);
-  assert.match(out, /drift:\s*\.agent\/memory\/MEMORY\.md/);
-  assert.match(out, /orphan:\s*user\/reply-zh\.md/);
+  assert.match(out, new RegExp(`drift:\\s*${root.replace(/[.*+?^${}()|[\\]\\]/g, "\\$&")}/\\.agent/memory/MEMORY\\.md`));
+  assert.match(out, new RegExp(`orphan:\\s*${root.replace(/[.*+?^${}()|[\\]\\]/g, "\\$&")}/\\.agent/memory/user/reply-zh\\.md`));
   assert.match(out, /summary:\s+drift=1, missing=2, schema=0, orphan=1, duplicate=0, over-cap=0/);
-  assert.match(out, /remedy:.*memory-validate --fix --yes/);
+  assert.match(out, /remedy:.*memory validate --fix --yes/);
 });
 
 test("doctor: memory-integrity section says ok when MEMORY.md is consistent", async () => {
@@ -311,4 +311,40 @@ test("doctor: memory-integrity section says ok when MEMORY.md is consistent", as
   }
   assert.match(out, /\[memory-integrity\]/);
   assert.match(out, /status:\s*ok/);
+});
+
+test("doctor: --fix safely repairs drift and orphan entries", async () => {
+  const root = mkRoot();
+  for (const type of ["user", "feedback", "project", "reference"]) {
+    fs.mkdirSync(path.join(root, ".agent", "memory", type), { recursive: true });
+  }
+  fs.writeFileSync(
+    path.join(root, ".agent", "memory", "user", "reply-zh.md"),
+    "---\nname: reply-zh\ndescription: reply preference\ntype: user\ncreated: 2026-08-13\ntags: [language]\n---\nbody\n"
+  );
+  fs.writeFileSync(path.join(root, ".agent", "memory", "MEMORY.md"), [
+    "# Memory", "", "## user (0/10)", "", "## feedback (0/30)", "",
+    "## project (0/20)", "", "## reference (0/50)", "",
+  ].join("\n"));
+  const ctx = {
+    cwd: root,
+    lang: "en",
+    templateDir: path.join(root, "no-such-template"),
+    options: { fix: true },
+  };
+  const { restore: restoreOut } = captureStdout();
+  const { restore: restoreErr } = captureStderr();
+  let out = "";
+  try {
+    await doctor(ctx);
+  } finally {
+    out = restoreOut();
+    restoreErr();
+  }
+  assert.match(out, /fixed: 2 safe edit\(s\)/);
+  assert.match(out, /status after fix: ok/);
+  const index = fs.readFileSync(path.join(root, ".agent", "memory", "MEMORY.md"), "utf8");
+  assert.match(index, /## user \(1\/10\)/);
+  assert.match(index, /\[reply-zh\]\(user\/reply-zh\.md\)/);
+  fs.rmSync(root, { recursive: true, force: true });
 });

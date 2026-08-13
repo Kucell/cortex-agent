@@ -111,6 +111,18 @@ test("V-2 missing: 0-byte topic file IS reported", (t) => {
   assert.equal(result.issues.filter((i) => i.kind === "missing").length, 1);
 });
 
+test("V-2 missing: indexed paths cannot escape the memory root", (t) => {
+  const { root, memoryRoot } = freshProject(t);
+  fs.writeFileSync(path.join(root, "outside.md"), "sensitive outside content\n");
+  writeIndex(memoryRoot, {
+    user: { count: 1, items: [{ name: "outside", path: "../../outside.md" }] },
+  });
+  const result = validateMemory({ memoryRoot });
+  const issue = result.issues.find((item) => item.kind === "missing");
+  assert.ok(issue);
+  assert.match(issue.detail, /escapes the memory root/);
+});
+
 test("V-3 schema: missing required frontmatter keys is reported", (t) => {
   const { memoryRoot } = freshProject(t);
   fs.writeFileSync(
@@ -140,6 +152,46 @@ test("V-3 schema: complete frontmatter passes", (t) => {
   );
   writeIndex(memoryRoot, {
     project: { count: 1, items: [{ name: "pnpm-not-npm", path: "project/pnpm-not-npm.md" }] },
+  });
+  const result = validateMemory({ memoryRoot });
+  assert.equal(result.issues.filter((i) => i.kind === "schema").length, 0);
+});
+
+test("V-3 schema: invalid values and a type-directory mismatch are reported", (t) => {
+  const { memoryRoot } = freshProject(t);
+  fs.writeFileSync(
+    path.join(memoryRoot, "user", "bad.md"),
+    makeTopicFile("user", "bad", {
+      name: "Bad Name",
+      description: "x".repeat(201),
+      type: "project",
+      created: "2026-02-30",
+      tags: ["Bad Tag"],
+      unexpected: "value",
+    })
+  );
+  writeIndex(memoryRoot, {
+    user: { count: 1, items: [{ name: "bad", path: "user/bad.md" }] },
+  });
+  const result = validateMemory({ memoryRoot });
+  const schema = result.issues.filter((i) => i.kind === "schema");
+  assert.equal(schema.length, 1);
+  assert.match(schema[0].detail, /name must match/);
+  assert.match(schema[0].detail, /description must be at most 200/);
+  assert.match(schema[0].detail, /type must match directory "user"/);
+  assert.match(schema[0].detail, /created must be a valid YYYY-MM-DD date/);
+  assert.match(schema[0].detail, /tags\[0\] must match/);
+  assert.match(schema[0].detail, /unknown frontmatter key: unexpected/);
+});
+
+test("V-3 schema: block-list tags are parsed and validated", (t) => {
+  const { memoryRoot } = freshProject(t);
+  fs.writeFileSync(
+    path.join(memoryRoot, "user", "block-tags.md"),
+    "---\nname: block-tags\ndescription: valid\ntype: user\ncreated: 2026-08-13\ntags:\n  - language\n  - reply\n---\nbody\n"
+  );
+  writeIndex(memoryRoot, {
+    user: { count: 1, items: [{ name: "block-tags", path: "user/block-tags.md" }] },
   });
   const result = validateMemory({ memoryRoot });
   assert.equal(result.issues.filter((i) => i.kind === "schema").length, 0);
@@ -298,6 +350,48 @@ test("applyFixPlan: with confirm=true, drift + orphan + duplicate edits actually
   const after = validateMemory({ memoryRoot });
   assert.equal(after.issues.filter((i) => i.kind === "drift").length, 0);
   assert.equal(after.issues.filter((i) => i.kind === "orphan").length, 0);
+});
+
+test("applyFixPlan: orphan insertion before a later duplicate never deletes the valid entry", (t) => {
+  const { memoryRoot } = freshProject(t);
+  fs.writeFileSync(
+    path.join(memoryRoot, "user", "orphan.md"),
+    makeTopicFile("user", "orphan", {
+      name: "orphan",
+      description: "orphan topic",
+      type: "user",
+      created: "2026-08-13",
+      tags: ["orphan"],
+    })
+  );
+  fs.writeFileSync(
+    path.join(memoryRoot, "project", "keep.md"),
+    makeTopicFile("project", "keep", {
+      name: "keep",
+      description: "keep first entry",
+      type: "project",
+      created: "2026-08-13",
+      tags: ["keep"],
+    })
+  );
+  writeIndex(memoryRoot, {
+    user: { count: 0, items: [] },
+    project: {
+      count: 2,
+      items: [
+        { name: "keep", path: "project/keep.md", description: "first" },
+        { name: "keep-again", path: "project/keep.md", description: "duplicate" },
+      ],
+    },
+  });
+  const before = validateMemory({ memoryRoot });
+  const plan = buildFixPlan(before.parsed, before.issues, memoryRoot);
+  applyFixPlan(before.parsed, plan, { confirm: true });
+  const after = validateMemory({ memoryRoot });
+  assert.equal(after.issues.filter((i) => ["drift", "orphan", "duplicate"].includes(i.kind)).length, 0);
+  const text = fs.readFileSync(path.join(memoryRoot, "MEMORY.md"), "utf8");
+  assert.match(text, /\[keep\]\(project\/keep\.md\)/);
+  assert.doesNotMatch(text, /keep-again/);
 });
 
 test("end-to-end: reproduces the current-repo drift pattern (user orphan + project drift)", (t) => {
