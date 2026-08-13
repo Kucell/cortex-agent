@@ -86,6 +86,7 @@
 | **Cline** | `.clinerules` | 指令文件 | VS Code 中的 AI 编程助手，直接读取 `.clinerules` 作为系统指令 |
 | **Roo Code** | `.roorules` / `.roo/rules/` | 指令文件 + 符号链接 | 支持多模式（Architect/Code/Debug/Ask），双路径集成 |
 | **Amazon Q** | `.amazonq/rules/cortex.md` | 指令文件 | AWS 官方 AI 助手，从 `.amazonq/rules/*.md` 注入规则到每次对话上下文 |
+| **Qoder CLI CN** | `AGENTS.md` + `.qoder/` | 指令文件 + 符号链接 | `qoderclicn` 自动读取根目录 `AGENTS.md`（`/init` 生成）；`cortex-agent add qoderclicn` 会创建 `.qoder/commands`→`.agent/workflows/`、`.qoder/agents`→`.agent/sub-agents/`、`.qoder/skills`→`.agent/skills/` 符号链接，分别映射为原生斜杠命令、子代理与 Skill。注意：与 Qoder 内置命令同名的工作流（如 `/plan`、`/review`）会被 Qoder 自动重命名（如 `/plan1`），属宿主自身冲突处理行为 |
 
 ---
 
