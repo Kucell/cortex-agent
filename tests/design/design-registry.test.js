@@ -12,6 +12,8 @@ const {
   isCacheValid,
   readCacheRaw,
   getDefaultCachePath,
+  getLegacyCachePath,
+  migrateLegacyCache,
   DEFAULT_CACHE_TTL_MS,
 } = require("../../lib/design/registry");
 
@@ -217,7 +219,136 @@ test('fetchCatalog: throws on invalid tree response', async () => {
 
 // -- getDefaultCachePath ----------------------------------------------------
 
-test('getDefaultCachePath: ends with catalog-cache.json under ~/.cortex-agent', () => {
+test('getDefaultCachePath: ends with design-catalog-cache.json under ~/.agent/cache', () => {
   const p = getDefaultCachePath();
-  assert.ok(p.endsWith(path.join('.cortex-agent', 'catalog-cache.json')));
+  assert.ok(p.endsWith(path.join('.agent', 'cache', 'design-catalog-cache.json')),
+    `expected path to end with ~/.agent/cache/design-catalog-cache.json, got ${p}`);
+});
+
+test('getLegacyCachePath: ends with catalog-cache.json under ~/.cortex-agent', () => {
+  const p = getLegacyCachePath();
+  assert.ok(p.endsWith(path.join('.cortex-agent', 'catalog-cache.json')),
+    `expected legacy path to end with ~/.cortex-agent/catalog-cache.json, got ${p}`);
+});
+
+// -- migrateLegacyCache ------------------------------------------------------
+
+test('migrateLegacyCache: no-op when legacy file is missing', () => {
+  const tmp = makeTmpDir();
+  try {
+    const newPath = path.join(tmp, 'new.json');
+    const legacyPath = path.join(tmp, 'no-such.json');
+    const result = migrateLegacyCache({ newPath, legacyPath });
+    assert.deepEqual(result, { migrated: false, reason: 'legacy-cache-missing' });
+    assert.equal(fs.existsSync(newPath), false);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('migrateLegacyCache: no-op when new cache already exists', () => {
+  const tmp = makeTmpDir();
+  try {
+    const newPath = path.join(tmp, 'new-dir', 'cache.json');
+    const legacyPath = path.join(tmp, 'legacy-dir', 'cache.json');
+    fs.mkdirSync(path.dirname(newPath), { recursive: true });
+    fs.mkdirSync(path.dirname(legacyPath), { recursive: true });
+    fs.writeFileSync(newPath, JSON.stringify({ fetched_at: '2026-08-13T00:00:00Z', entries: [] }));
+    fs.writeFileSync(legacyPath, JSON.stringify({ fetched_at: '2026-08-12T00:00:00Z', entries: [] }));
+
+    const result = migrateLegacyCache({ newPath, legacyPath });
+    assert.deepEqual(result, { migrated: false, reason: 'new-cache-exists' });
+    // Legacy file must NOT be touched.
+    assert.equal(fs.existsSync(legacyPath), true);
+    // New file content unchanged.
+    const newContent = JSON.parse(fs.readFileSync(newPath, 'utf8'));
+    assert.equal(newContent.fetched_at, '2026-08-13T00:00:00Z');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('migrateLegacyCache: moves legacy file to new path', () => {
+  const tmp = makeTmpDir();
+  try {
+    const newPath = path.join(tmp, 'new-dir', 'cache.json');
+    const legacyPath = path.join(tmp, 'legacy-dir', 'cache.json');
+    fs.mkdirSync(path.dirname(legacyPath), { recursive: true });
+    const payload = { fetched_at: '2026-08-13T00:00:00Z', entries: [{ id: 'apple' }] };
+    fs.writeFileSync(legacyPath, JSON.stringify(payload));
+
+    const result = migrateLegacyCache({ newPath, legacyPath });
+    assert.equal(result.migrated, true);
+    assert.equal(result.legacyPath, legacyPath);
+    assert.equal(result.newPath, newPath);
+    // File moved, content preserved.
+    assert.equal(fs.existsSync(legacyPath), false);
+    assert.equal(fs.existsSync(newPath), true);
+    assert.deepEqual(JSON.parse(fs.readFileSync(newPath, 'utf8')), payload);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('migrateLegacyCache: removes empty legacy directory after move', () => {
+  const tmp = makeTmpDir();
+  try {
+    const legacyDir = path.join(tmp, 'legacy-dir');
+    const newPath = path.join(tmp, 'new-dir', 'cache.json');
+    const legacyPath = path.join(legacyDir, 'cache.json');
+    fs.mkdirSync(legacyDir, { recursive: true });
+    fs.writeFileSync(legacyPath, '{"fetched_at":"2026-08-13T00:00:00Z","entries":[]}');
+
+    migrateLegacyCache({ newPath, legacyPath });
+    // Empty legacy dir should be cleaned up.
+    assert.equal(fs.existsSync(legacyDir), false,
+      'empty legacy directory should be removed after migration');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('migrateLegacyCache: keeps legacy directory when other files exist', () => {
+  const tmp = makeTmpDir();
+  try {
+    const legacyDir = path.join(tmp, 'legacy-dir');
+    const newPath = path.join(tmp, 'new-dir', 'cache.json');
+    const legacyPath = path.join(legacyDir, 'cache.json');
+    const otherFile = path.join(legacyDir, 'other-state.json');
+    fs.mkdirSync(legacyDir, { recursive: true });
+    fs.writeFileSync(legacyPath, '{"fetched_at":"2026-08-13T00:00:00Z","entries":[]}');
+    fs.writeFileSync(otherFile, '{"user":true}');
+
+    migrateLegacyCache({ newPath, legacyPath });
+    // Legacy dir should still exist (has other files).
+    assert.equal(fs.existsSync(legacyDir), true);
+    assert.equal(fs.existsSync(otherFile), true);
+    assert.equal(fs.existsSync(legacyPath), false);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('migrateLegacyCache: idempotent — second call is no-op', () => {
+  const tmp = makeTmpDir();
+  try {
+    const legacyDir = path.join(tmp, 'legacy-dir');
+    const newPath = path.join(tmp, 'new-dir', 'cache.json');
+    const legacyPath = path.join(legacyDir, 'cache.json');
+    fs.mkdirSync(legacyDir, { recursive: true });
+    fs.writeFileSync(legacyPath, '{"fetched_at":"2026-08-13T00:00:00Z","entries":[]}');
+
+    const first = migrateLegacyCache({ newPath, legacyPath });
+    const second = migrateLegacyCache({ newPath, legacyPath });
+    assert.equal(first.migrated, true);
+    // Second call must be a no-op (any non-migrated reason is acceptable —
+    // depends on whether legacy dir still exists or not).
+    assert.equal(second.migrated, false);
+    assert.ok(['legacy-cache-missing', 'new-cache-exists'].includes(second.reason),
+      `unexpected reason: ${second.reason}`);
+    // Either way: new file must remain intact and present.
+    assert.equal(fs.existsSync(newPath), true);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
 });
