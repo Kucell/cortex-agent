@@ -146,6 +146,14 @@ const { prCommand } = require("../lib/commands/pr");
 // lib/commands.js (M-001 binding contract preserved).
 const { eventBusCommand } = require("../lib/event-bus/cli");
 
+// P-001 (M-024 / F-005): local feedback inbox CLI surface. Routes
+// `feedback <log|status|ingest-event> [options]` to lib/feedback/commands.js.
+// Strictly additive: only the new `feedback` subcommand is added to the case
+// dispatch below. No mutation to lib/commands.js, no global state, and the
+// module reads no prompts / transcripts / env vars beyond the explicit env
+// overrides declared in feedback/config.js.
+const { runFeedback } = require("../lib/feedback/commands");
+
 // T-FOLLOW-002 v2: `.agent/` state sync CLI surface.
 // `state-sync [--dry-run|--add|--commit|--push]` lives in
 // lib/state-sync/index.js. It resolves syncable state through the versioned
@@ -752,6 +760,7 @@ async function initModeGeneral() {
     case "pr":          prCommand(ctx); break;
     case "event-bus":   eventBusCommand(ctx); break;
     case "state-sync":  await stateSync(l1Ctx); break;
+<<<<<<< HEAD
     case "governance":  governanceCommand(l1Ctx); break;
     case "governance-index": {
       const result = governanceIndexCommand(ctx);
@@ -768,6 +777,25 @@ async function initModeGeneral() {
       const result = governanceMigrateCommand(ctx);
       if (result && result.ok && result.effect && result.effect.kind === "mutation" && result.effect.committed) {
         fireAndForgetSync({ ...l1Ctx, cwd: result.project_root }, { paths: result.effect.paths }).catch(() => {});
+=======
+    case "feedback": {
+      // P-001 / M-024: feedback subcommands never mutate global state,
+      // never read prompts / transcripts / env vars beyond the explicit
+      // CORTEX_AGENT_FEEDBACK_* family, and never push to the inner .agent.
+      // Allow tests and operators to scope the project root via
+      // CORTEX_AGENT_FEEDBACK_PROJECT_ROOT so e2e and unit tests can pin
+      // their own temporary roots without changing process.cwd().
+      const feedbackEnv = process.env.CORTEX_AGENT_FEEDBACK_PROJECT_ROOT
+        ? { ...process.env, CORTEX_AGENT_FEEDBACK_PROJECT_ROOT: process.env.CORTEX_AGENT_FEEDBACK_PROJECT_ROOT }
+        : process.env;
+      const result = runFeedback(args.slice(1), feedbackEnv);
+      if (result && typeof result === "object") {
+        if (result.stdout) process.stdout.write(result.stdout);
+        if (result.stderr) process.stderr.write(result.stderr);
+        if (typeof result.exitCode === "number" && result.exitCode !== 0) {
+          process.exitCode = result.exitCode;
+        }
+>>>>>>> 1476b06 (feat(feedback): P-001 Feedback Event Inbox (M-024 MS-001+MS-002))
       }
       break;
     }
