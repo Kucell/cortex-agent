@@ -237,6 +237,13 @@ for (let i = 0; i < args.length; i++) {
   if (arg === "--fix") {
     options.fix = true;
   }
+  if (arg === "--yes" || arg === "-y") {
+    // Confirms pending mutations for subcommands that gate writes behind
+    // user approval (e.g. `doctor --fix` will refuse to mutate MEMORY.md
+    // unless --yes is passed in non-TTY; TTY users can still rely on
+    // askYesNo() inside the command). Mirrors `memory validate --yes`.
+    options.yes = true;
+  }
   if (arg === "--dry-run") {
     // For upgrade: report what would change; for subcommands that also honor
     // it (none today besides upgrade), the flag is read from ctx.options.dryRun.

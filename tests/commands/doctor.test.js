@@ -330,7 +330,11 @@ test("doctor: --fix safely repairs drift and orphan entries", async () => {
     cwd: root,
     lang: "en",
     templateDir: path.join(root, "no-such-template"),
-    options: { fix: true },
+    // PR-7 bounded fix: --fix requires --yes in non-TTY (mirrors
+    // `memory validate --fix --yes`). Interactive TTY users still
+    // get an askYesNo() prompt; CI / piped stdin is rejected without
+    // --yes to prevent accidental mutation.
+    options: { fix: true, yes: true },
   };
   const { restore: restoreOut } = captureStdout();
   const { restore: restoreErr } = captureStderr();
@@ -341,6 +345,8 @@ test("doctor: --fix safely repairs drift and orphan entries", async () => {
     out = restoreOut();
     restoreErr();
   }
+  // The fix plan is printed before any mutation (defense-in-depth).
+  assert.match(out, /fix plan: 2 edit\(s\), 0 skip\(s\)/);
   assert.match(out, /fixed: 2 safe edit\(s\)/);
   assert.match(out, /status after fix: ok/);
   const index = fs.readFileSync(path.join(root, ".agent", "memory", "MEMORY.md"), "utf8");
@@ -349,6 +355,112 @@ test("doctor: --fix safely repairs drift and orphan entries", async () => {
   fs.rmSync(root, { recursive: true, force: true });
 });
 
+// PR-7 bounded fix (T-ISSUE-2): doctor --fix without --yes in non-TTY
+// must refuse to mutate MEMORY.md and leave the file untouched. This
+// matches the safety bound already enforced by `memory validate --fix`
+// (applyFixPlan requires confirm=true and the CLI refuses without
+// --yes). Interactive TTY users are out of scope for this test — the
+// askYesNo() prompt is exercised by the existing graphify-install path.
+test("doctor: --fix without --yes in non-TTY refuses to mutate MEMORY.md", async () => {
+  const root = mkRoot();
+  for (const type of ["user", "feedback", "project", "reference"]) {
+    fs.mkdirSync(path.join(root, ".agent", "memory", type), { recursive: true });
+  }
+  fs.writeFileSync(
+    path.join(root, ".agent", "memory", "user", "reply-zh.md"),
+    "---\nname: reply-zh\ndescription: reply preference\ntype: user\ncreated: 2026-08-13\ntags: [language]\n---\nbody\n"
+  );
+  const indexPath = path.join(root, ".agent", "memory", "MEMORY.md");
+  const before = [
+    "# Memory", "", "## user (0/10)", "", "## feedback (0/30)", "",
+    "## project (0/20)", "", "## reference (0/50)", "",
+  ].join("\n");
+  fs.writeFileSync(indexPath, before);
+  const ctx = {
+    cwd: root,
+    lang: "en",
+    templateDir: path.join(root, "no-such-template"),
+    options: { fix: true },
+  };
+  // Belt-and-braces: the test runner is non-TTY, but make doubly sure
+  // askYesNo() does not silently answer "yes" by forcing isTTY=false.
+  const originalIsTTY = process.stdin.isTTY;
+  Object.defineProperty(process.stdin, "isTTY", { value: false, configurable: true });
+  const { restore: restoreOut } = captureStdout();
+  const { restore: restoreErr } = captureStderr();
+  let out = "";
+  try {
+    await doctor(ctx);
+  } finally {
+    out = restoreOut();
+    restoreErr();
+    Object.defineProperty(process.stdin, "isTTY", { value: originalIsTTY, configurable: true });
+  }
+  // The plan was printed (so the user can see what would happen).
+  assert.match(out, /\[memory-integrity\]/);
+  assert.match(out, /fix plan: 2 edit\(s\), 0 skip\(s\)/);
+  // The refusal message is emitted and no "fixed" / "status after fix"
+  // line is produced (proves applyFixPlan never ran).
+  assert.match(out, /refused: no changes applied\. Re-run with --yes to skip confirmation\./);
+  assert.doesNotMatch(out, /fixed: \d+ safe edit\(s\)/);
+  assert.doesNotMatch(out, /status after fix/);
+  // Exit code is 2 to mirror `memory validate --fix` without --yes.
+  assert.equal(process.exitCode, 2);
+  // The file is byte-identical to the pre-call state.
+  const after = fs.readFileSync(indexPath, "utf8");
+  assert.equal(after, before);
+  // Reset exit code so subsequent tests in the same file are not affected.
+  process.exitCode = 0;
+  fs.rmSync(root, { recursive: true, force: true });
+});
+
+// PR-7 bounded fix (T-ISSUE-2): doctor --fix --yes applies the planned
+// edits end-to-end. This pins the success path that the existing
+// "safely repairs drift and orphan entries" test now exercises (it
+// passes `yes: true` for the same reason). Kept as a separate test
+// because the regression suite must clearly distinguish refusal from
+// success when reading the test list.
+test("doctor: --fix --yes applies planned edits and clears all issues", async () => {
+  const root = mkRoot();
+  for (const type of ["user", "feedback", "project", "reference"]) {
+    fs.mkdirSync(path.join(root, ".agent", "memory", type), { recursive: true });
+  }
+  fs.writeFileSync(
+    path.join(root, ".agent", "memory", "user", "reply-zh.md"),
+    "---\nname: reply-zh\ndescription: reply preference\ntype: user\ncreated: 2026-08-13\ntags: [language]\n---\nbody\n"
+  );
+  fs.writeFileSync(path.join(root, ".agent", "memory", "MEMORY.md"), [
+    "# Memory", "", "## user (0/10)", "", "## feedback (0/30)", "",
+    "## project (0/20)", "", "## reference (0/50)", "",
+  ].join("\n"));
+  const ctx = {
+    cwd: root,
+    lang: "en",
+    templateDir: path.join(root, "no-such-template"),
+    options: { fix: true, yes: true },
+  };
+  const { restore: restoreOut } = captureStdout();
+  const { restore: restoreErr } = captureStderr();
+  let out = "";
+  try {
+    await doctor(ctx);
+  } finally {
+    out = restoreOut();
+    restoreErr();
+  }
+  // Plan is printed, applied, and post-fix state is verified clean.
+  assert.match(out, /fix plan: 2 edit\(s\), 0 skip\(s\)/);
+  assert.match(out, /fixed: 2 safe edit\(s\)/);
+  assert.match(out, /status after fix: ok/);
+  // No refusal message and no exit code 2.
+  assert.doesNotMatch(out, /refused: no changes applied/);
+  assert.notEqual(process.exitCode, 2);
+  process.exitCode = 0;
+  const index = fs.readFileSync(path.join(root, ".agent", "memory", "MEMORY.md"), "utf8");
+  assert.match(index, /## user \(1\/10\)/);
+  assert.match(index, /\[reply-zh\]\(user\/reply-zh\.md\)/);
+  fs.rmSync(root, { recursive: true, force: true });
+});
 // ─── P-AUTO-001: --json envelope + available_update ─────────────────────────
 // Pins the contract for the machine-readable doctor output. Two tests:
 //   1. doctor({ json: true }) writes a single JSON document with the
