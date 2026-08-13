@@ -81,11 +81,77 @@
 | **Aider** | `.aider.instructions.md` | 指令文件 | 将 `/` 命令路由到 `.agent/workflows/` 对应文件 |
 | **Continue** | `.continuerules` | 指令文件 | 遵循 `.agent/` 目录中的指导方针 |
 | **GitHub Copilot** | `.github/copilot-instructions.md` | 指令文件 | 在代码建议时遵循 `.agent/rules/` 和 `.agent/workflows/` |
-| **OpenAI Codex** | `AGENTS.md` + `.codex/` | 指令文件 + 符号链接 | 根目录 `AGENTS.md` 由 `init`/`upgrade` 保证；`cortex-agent add codex` 会生成 `.codex/config.toml`、`.codex/README.md`，并将 `.codex/prompts` 链接到 `.agent/workflows/`（用 `/mention` 引用具体工作流） |
+| **OpenAI Codex** | `AGENTS.md` + `.codex/` | 指令文件 + 符号链接 | 根目录 `AGENTS.md` 由 `init`/`upgrade` 保证；`cortex-agent add codex` 会生成 `.codex/config.toml`、`.codex/README.md`，并将 `.codex/prompts` 链接到 `.agent/workflows/`（用 `/mention` 引用具体工作流）。Codex 项目级 memory 边界与外部上下文隔离见下文 §"平台集成 · Memory 与外部上下文边界" |
 | **Gemini CLI** | `GEMINI.md` | 指令文件 | 自动读取 `GEMINI.md`，以 `AGENTS.md` 为基准扩展 Gemini 特定行为 |
 | **Cline** | `.clinerules` | 指令文件 | VS Code 中的 AI 编程助手，直接读取 `.clinerules` 作为系统指令 |
 | **Roo Code** | `.roorules` / `.roo/rules/` | 指令文件 + 符号链接 | 支持多模式（Architect/Code/Debug/Ask），双路径集成 |
 | **Amazon Q** | `.amazonq/rules/cortex.md` | 指令文件 | AWS 官方 AI 助手，从 `.amazonq/rules/*.md` 注入规则到每次对话上下文 |
+
+---
+
+## 平台集成 · Memory 与外部上下文边界
+
+> **背景**：cortex-agent 把"项目级记忆"（`.agent/memory/`）与宿主工具的"个人 memory"明确分层。本节以 **OpenAI Codex** 为代表给出当前仓库**已实现并验证**的边界、规则存放准则与外部上下文隔离做法；其他宿主对应做法见各提案与对应 `AGENTS.md` 段。本节描述的"是否支持"以 `templates/{zh,en}/integrations/codex/.codex/config.toml` 与 `AGENTS.md` 当前模板为准。
+
+### 两套 Memory 的边界
+
+| 来源 | 路径 | 范围 | 谁管理 | 持久性 |
+|---|---|---|---|---|
+| Cortex 项目级 memory | `.agent/memory/{user,feedback,project,reference}/*.md` + 索引 `MEMORY.md` | 单项目 | 由 `MEMORY.md` 索引 + `memory.schema.json` 约束；`init`/`upgrade` 维护；四类硬上限 user 10 / feedback 30 / project 20 / reference 50 | **进版本控制** |
+| Cortex 全局 memory | `~/.agent/memory/` | 当前用户 + 当前机器 | 由 `AGENTS.md` 的 `Memory Bootstrap` 段定义；与项目 `.agent/memory/MEMORY.md` 互为补集 | 一般不进版本控制 |
+| Codex 个人 memory | `~/.codex/memories/` | 当前用户 + 当前机器 | Codex CLI 自动生成 | 不进版本控制 |
+| Claude Code Auto Memory | `~/.claude/memory/` | 当前用户 + 当前机器 | Claude Code 自动生成 | 不进版本控制 |
+
+> **项目共享索引**：所有宿主（Codex、Claude、Gemini、Cursor、Cline、Roo、Pi、MiniMax、Qoder 等）切换时，统一以**当前项目**的 `.agent/memory/MEMORY.md` 作为共享召回索引（参见 `AGENTS.md` 的 `Memory Bootstrap` 段与 `.agent/rules/memory-protocol.md §5.1`）。宿主私有 memory 只能作为缓存，与当前用户指令、已验证的项目文件或 `.agent/` 内容冲突时，**以后者为准**。
+
+### 规则存放准则（强制分层）
+
+| 规则类型 | 应该放哪里 | **不**应该放哪里 |
+|---|---|---|
+| 行为约束（"永远中文回复"、"先 lint 再 commit"、协议、流程） | `AGENTS.md` 或 `.agent/rules/*.md`（强约束） | 仅放在任何一种 memory 里 — memory 受 schema 约束、`memory-validate` 可能改写，跨用户/跨机器/多工具切换时不一定被 recall |
+| 跨 session 偏好（语言、风格、命名习惯等可复用偏好） | `.agent/memory/user/*.md`（项目内统一）+ `AGENTS.md` 引导所有宿主读 `MEMORY.md` | `~/.codex/memories/` 或 `~/.claude/memory/` 单独存放 — 这些是单用户/单机器私有，不与项目其他协作者共享 |
+| 项目事实快照（已知坑、本项目独有约定） | `.agent/memory/project/*.md` | `.agent/memory/reference/`（过重 — `reference/` 只放指向既有 `.agent/` 内容的指针，不复制正文） |
+| 外部参考摘要（链接、API 速记） | `.agent/memory/reference/*.md`（1–2 句指针，正文留在 `.agent/references/`） | 把完整正文复制进 `memory/reference/`（违反 `memory-protocol.md §4.5`） |
+| 临时观察 / 自动进化产物 | `.agent/memory/feedback/*.md`（必填 `expires`，90 天后归档到 `feedback/_archive/`） | `experiences/`（`experiences/` 是 commit-anchored 防复发载体，不是轻量观察） |
+
+> **核心原则**："必须执行的项目规则"**必须**双写到 `AGENTS.md` 或 `.agent/rules/`（强约束位置）+ `.agent/memory/`（具体偏好位置）；**只**写在任何一种 memory 都不能算"必须执行"，因为：
+> 1. 项目级 memory 受 schema 约束与硬上限管理（参见 `memory-protocol.md §2/§7`），`memory-validate` 可能改写或归档；
+> 2. 个人 memory（`~/.codex/memories/`、`~/.claude/memory/`）不进版本控制，多用户/多机器/多工具切换时**全部失效**；
+> 3. 跨宿主唯一可靠来源是当前项目的 `AGENTS.md` + `.agent/rules/`。
+
+### 宿主私有 Memory 适配（已验证）
+
+| 宿主 | 用户/全局 memory | 项目/运行时 memory | 接入边界 |
+|---|---|---|---|
+| OpenAI Codex | `~/.codex/memories/`（CLI 自动生成） | 项目级以 `.agent/memory/MEMORY.md` 为索引 | 通过 `AGENTS.md` 引导读 `MEMORY.md`；不使用 Codex 个人 memory 替代项目 memory |
+| Claude Code | `~/.claude/memory/`（Auto Memory 自动生成） | 项目级以 `.agent/memory/MEMORY.md` 为索引 | 同上；宿主私有 memory 仅作缓存 |
+| MiniMax | `~/.minimax/memory/user.md`；tracking 日志位于 `~/.minimax/memory/tracking/` | `main` / `topic` 由 runtime 托管；`summary` 是视图 | 使用 MiniMax `memory` / `mavis` 工具；**不**直接编辑 runtime 内部存储或索引缓存 |
+| Qoder CN | `~/.qoder-cn/memories/<user-hash>/{global,projects}/<category>/` | 同上，按 `<encoded-project-path>/<category>/` 分桶 | 运行时发现 `<user-hash>` 与项目桶，**不**硬编码；`SharedClientCache/index/` 是索引缓存，**不**是记忆正文 |
+
+> 完整表格与边界说明参见 `.agent/rules/memory-protocol.md §5.1`；本节只摘录 Codex 一行（与本节主题对齐）。其他宿主的等价条目已在 `memory-protocol.md` 中列出。
+
+### 与外部上下文的隔离（基于当前模板的已验证做法）
+
+> **关于 `disable_on_external_context`**：原平台集成 memory 边界提案（`D-arch-plat-mem-boundary-001`）曾建议在 `.codex/config.toml` 中设置 `disable_on_external_context = true` 作为外部 fetch 工具的隔离开关。**当前仓库状态**：该键**未**出现在 `templates/zh/integrations/codex/.codex/config.toml` 或 `templates/en/integrations/codex/.codex/config.toml` 项目级模板中，仓库内的 Codex 集成 README（`templates/{zh,en}/integrations/codex/.codex/README.md`）也未引用该键；Codex CLI 的官方配置文档（`https://developers.openai.com/codex/config-advanced`）链接亦未包含此键。因此**目前**不能假设该键是受支持的稳定配置 —— 在 Codex CLI 官方文档明确收录之前，**不**在项目模板或文档中推荐写入该键。
+
+**当前已验证的外部上下文隔离做法**（无需新配置键）：
+
+1. **AGENTS.md 受控读取**：根目录 `AGENTS.md` 引导宿主读 `MEMORY.md` 与 `.agent/rules/` 时不抓外部内容（除非用户显式要求 fetch），本身是受控的；
+2. **memory-recall 走受控索引**：宿主做项目级 memory 召回时统一走 `.agent/memory/MEMORY.md`（参见 `AGENTS.md` 的 `Memory Bootstrap` 段），外部抓取内容默认不进入 MEMORY.md；
+3. **memory-protocol.md §8 Staleness Rule**：与当前用户指令或已验证项目文件冲突时，**memory 优先级更低**，防止外部抓取内容污染下次 session 的判断。
+
+> **跟进项**：当 Codex CLI（或下游等价的 Codex 兼容工具）官方文档正式收录 `disable_on_external_context`（或其他等价键）时，再回到本节补充推荐配置；本节不预先发明尚未由官方文档承认的键。
+
+### 链接到既有项目 memory 文档
+
+- `.agent/memory/README.md` — `.agent/memory/` 的整体机制说明（四类、硬上限、写入约定）
+- `.agent/memory/MEMORY.md` — 项目级 memory 索引（≤200 行 / 25 KB）
+- `.agent/memory/memory.schema.json` — topic 文件 YAML frontmatter 的 JSON Schema
+- `.agent/rules/memory-protocol.md` — 四类的写入 / 读取 / 过期 / 归档协议（含 §5.1 跨宿主私有 memory 适配与 §8 Staleness Rule）
+- `AGENTS.md` 的 `Memory Bootstrap` 段 — 跨宿主共享记忆与切换交接约束
+- `.agent/memory/project/cross-host-memory-handoff.md` — 项目级 memory 的跨宿主交接事实
+
+> 本节是该体系在"平台集成"维度上的入口；具体写入 / 校验 / 归档协议见 `memory-protocol.md`，schema 见 `memory.schema.json`。
 
 ---
 
