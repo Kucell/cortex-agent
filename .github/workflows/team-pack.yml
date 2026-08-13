@@ -29,7 +29,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
-      - run: node lib/secret-scan.test.js
+      - run: node tests/security/scan.test.js
       - run: |
           for test_file in tests/team-pack/*.test.js; do
             node "$test_file"

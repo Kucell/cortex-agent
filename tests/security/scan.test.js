@@ -1,7 +1,7 @@
 "use strict";
 
 // Minimal sanity tests for lib/secret-scan.js. Run with:
-//   node lib/secret-scan.test.js
+//   node tests/security/scan.test.js
 // Exits 0 on success, non-zero on first failed assertion.
 
 const assert = require("assert");
