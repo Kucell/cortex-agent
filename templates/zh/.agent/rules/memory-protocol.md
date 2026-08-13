@@ -72,6 +72,23 @@
 | `/plan` `/ship` `/mission` 完成 | workflow DONE 阶段检查"是否有可复用的项目事实" → `project/` |
 | `/update-refs` 新增/更新 references | Step 6 → 在 `reference/` 留指针（不重复内容） |
 
+## 5.1 跨 Agent 工具交接
+
+- Cortex Agent 全局记忆位于 `~/.agent/memory/`，项目共享记忆位于 `<project>/.agent/memory/`。
+- Codex、Claude、Gemini、Cursor、Cline、Roo、Pi、MiniMax、Qoder 等宿主统一使用当前项目的 `.agent/memory/MEMORY.md` 作为共享召回索引。
+- 宿主私有记忆只能作为缓存。在回复结束或切换 Agent 工具前，可复用的项目事实、反馈和引用必须按本协议去重并写入项目 `.agent/memory/`。
+- session 启动或接手任务时，先读取项目索引，再按需读取匹配的 topic 文件；当前用户指令和已验证的项目文件优先于记忆。
+- 这里只处理同一项目内的宿主交接，不做跨项目同步。运行态继续写入 state/handoffs/decisions，凭据和隐私数据不得进入 memory。
+
+### 宿主私有记忆适配
+
+| 宿主 | 用户/全局记忆 | 项目/运行时记忆 | 接入边界 |
+|---|---|---|---|
+| MiniMax | `~/.minimax/memory/user.md`；跟踪日志位于 `~/.minimax/memory/tracking/` | `main`、`topic` target 由 runtime 托管，`summary` 是摘要视图 | 使用 MiniMax `memory` / `mavis` 工具，不直接编辑运行时内部存储；可复用项目事实归一化到 `<project>/.agent/memory/`。 |
+| Qoder CN | `~/.qoder-cn/memories/<user-hash>/global/<category>/` | `~/.qoder-cn/memories/<user-hash>/projects/<encoded-project-path>/<category>/` | 运行时发现 `<user-hash>` 和项目桶，不得硬编码；`SharedClientCache/index/` 只是索引/embedding 缓存，不是记忆正文；可复用事实归一化到 `<project>/.agent/memory/`。 |
+
+宿主私有存储仍由对应宿主管理。Cortex Agent 只通过受支持的宿主能力或只读发现来读取；除非宿主明确声明文件可由用户编辑，否则不得直接写入。
+
 ## 6. 显式边界（Non-Goals）
 
 以下事情**不做**（显式回应 P-006 反通用 MEMORY 立场）：

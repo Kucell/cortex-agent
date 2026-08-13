@@ -18,6 +18,7 @@
 2. `.agent/rules/tech-stack.md` — 项目技术栈、语言规范、框架约定
 3. `.agent/rules/architecture-design.md` — 架构设计模式和边界约束
 4. `.agent/plans/task-progress.md` — 当前任务状态和优先级
+5. `.agent/memory/MEMORY.md` — 跨 Agent 工具共享的项目记忆索引；写入规则见 `.agent/rules/memory-protocol.md`
 
 ## 代码质量要求
 

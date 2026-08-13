@@ -7,6 +7,7 @@
 - **`config.toml`** — 项目级 Codex 配置（与用户目录 `~/.codex/config.toml` 合并）。
 - **`prompts/`** — 指向 `.agent/workflows/` 的符号链接。每个 Markdown 对应一条工作流；Codex **不会像 Cursor 那样**自动注册为 `/斜杠命令`。请使用 **`/mention 某文件路径`**（或在界面中附加该文件），再让 Codex 按该工作流执行。
 - **仓库根目录 `AGENTS.md`** — 由 Cortex 的 `init` / `upgrade` 生成；Codex 会自动加载。其中应继续指向 `.agent/rules/` 与 `.agent/workflows/`。
+- **跨工具记忆** — Codex 的宿主记忆只作为缓存；项目共享记忆统一读取和写入 `.agent/memory/`，以 `MEMORY.md` 为索引、`memory-protocol.md` 为协议，确保切换其他 Agent 后仍可恢复。
 
 ## 参考
 

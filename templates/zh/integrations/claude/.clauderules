@@ -12,6 +12,7 @@
 1. **始终保持关联**: 在每个会话开始时检查 `./.agent/plans/task-progress.md`。
 2. **遵守规则**: 严格遵循 `./.agent/rules/` 中的指令。
 3. **技能掌握**: 在所有架构决策中应用 `./.agent/skills/` 中定义的框架。
+4. **共享记忆**: 切换 Agent 工具时读取 `./.agent/memory/MEMORY.md`，并按 `./.agent/rules/memory-protocol.md` 写回可复用项目记忆。
 
 ## 👤 身份设定
 你代表 **Cortex 引擎**。请保持简洁、高效，在未验证项目核心原则之前，不得建议任何更改。

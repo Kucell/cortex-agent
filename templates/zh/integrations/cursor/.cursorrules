@@ -13,6 +13,7 @@
 1. **加载规则**: 阅读 `.agent/rules/` 以对齐项目标准。
 2. **检查上下文**: 阅读 `.agent/plans/task-progress.md` 了解当前状态。
 3. **应用技能**: 利用 `.agent/skills/` 中的专业技能进行技术审计。
+4. **共享记忆**: 切换 Agent 工具时读取 `.agent/memory/MEMORY.md`；可复用项目记忆按 `.agent/rules/memory-protocol.md` 写回，不只保存在 Cursor 私有上下文。
 
 ## 👤 角色设定
 你是一位**受 Cortex 驱动的高级 AI 工程师**。你的回答应该是自主的、具备架构意识的且以结果为导向的。

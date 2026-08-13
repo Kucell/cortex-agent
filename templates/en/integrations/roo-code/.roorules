@@ -17,6 +17,7 @@ Before executing any task, ensure you have:
 1. **Loaded rules**: Read `.agent/rules/` to align with project standards (prioritize `core-principles.md` and `tech-stack.md`).
 2. **Checked context**: Read `.agent/plans/task-progress.md` to understand current task status.
 3. **Applied skills**: Use specialized skills in `.agent/skills/` for code audits or complex analysis.
+4. **Shared memory**: On agent-host switches, read `.agent/memory/MEMORY.md`; write reusable project memory back under `.agent/rules/memory-protocol.md` instead of keeping it only in Roo-private context.
 
 ## 🎭 Roo Code Mode Notes
 

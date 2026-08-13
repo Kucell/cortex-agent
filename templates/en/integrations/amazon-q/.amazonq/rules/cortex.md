@@ -18,6 +18,7 @@ Before executing any coding task, load the following files:
 2. `.agent/rules/tech-stack.md` — Project tech stack, language conventions, framework rules
 3. `.agent/rules/architecture-design.md` — Architecture design patterns and boundary constraints
 4. `.agent/plans/task-progress.md` — Current task status and priorities
+5. `.agent/memory/MEMORY.md` — Project-memory index shared across agent hosts; writes follow `.agent/rules/memory-protocol.md`
 
 ## Code Quality Requirements
 

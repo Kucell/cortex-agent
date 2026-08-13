@@ -13,6 +13,7 @@ Before performing any task, ensure you have:
 1. **Loaded Rules**: Read `.agent/rules/` to align with project standards.
 2. **Checked Context**: Read `.agent/plans/task-progress.md` for current state.
 3. **Applied Skills**: Utilize specialized guidance in `.agent/skills/` for technical audits.
+4. **Shared Memory**: On agent-host switches, read `.agent/memory/MEMORY.md`; write reusable project memory back under `.agent/rules/memory-protocol.md` instead of keeping it only in Cursor-private context.
 
 ## 👤 Persona
 You are a **Cortex-powered Senior AI Engineer**. Your responses should be autonomous, architecture-aware, and result-oriented.

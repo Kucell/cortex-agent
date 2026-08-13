@@ -6,6 +6,10 @@ The `.agent/` directory (gitignored) is the single source of truth for agent
 workflows, skills, and long-term memory. This file is the documented entry
 point — read it first.
 
+Global Cortex Agent memory lives in `~/.agent/`; project memory lives in this
+project's `.agent/`. When switching agent hosts, use the project memory index
+instead of relying on host-private memory alone.
+
 ## Load order
 
 When you start a session in this project, load in this order:

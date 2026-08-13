@@ -45,6 +45,48 @@ test("compatibility adapter bootstrap seeds fresh AGENTS.md with managed block",
   assert.match(initial, /source-command-/);
   assert.match(initial, /`.agent\/workflows\/<command>\.md`/);
   assert.match(initial, /report the adapter-vs-truth mismatch and stop/);
+  assert.match(initial, /cortex-agent:memory-bootstrap:start/);
+  assert.match(initial, /\.agent\/memory\/MEMORY\.md/);
+  assert.match(initial, /MiniMax, Qoder/);
+  assert.match(initial, /memory\/mavis/);
+});
+
+test("memory bootstrap merge preserves user content and is idempotent", (t) => {
+  const ctx = fixture(t);
+  const agents = path.join(ctx.cwd, "AGENTS.md");
+  fs.writeFileSync(agents, "# Existing project rules\n\nKeep this text untouched.\n", "utf8");
+
+  assert.equal(setup.needsMemoryBootstrapMerge(ctx, agents), true);
+  assert.equal(setup.ensureMemoryBootstrapEntry(ctx), true);
+  const once = fs.readFileSync(agents, "utf8");
+  assert.match(once, /Keep this text untouched\./);
+  assert.match(once, /cortex-agent:memory-bootstrap:start/);
+  assert.match(once, /\.agent\/memory\/MEMORY\.md/);
+  assert.match(once, /Host-private memory is only a cache/);
+  assert.equal(setup.needsMemoryBootstrapMerge(ctx, agents), false);
+  assert.equal(setup.ensureMemoryBootstrapEntry(ctx), false);
+  assert.equal(fs.readFileSync(agents, "utf8"), once);
+});
+
+test("memory bootstrap refreshes language without touching surrounding content", (t) => {
+  const ctx = fixture(t);
+  const agents = path.join(ctx.cwd, "AGENTS.md");
+  fs.writeFileSync(agents, [
+    "# Existing project rules",
+    "",
+    setup.memoryBootstrapSection({ lang: "zh" }),
+    "",
+    "## User section",
+    "",
+    "Tail text must survive.",
+    "",
+  ].join("\n"), "utf8");
+
+  assert.equal(setup.ensureMemoryBootstrapEntry(ctx), true);
+  const after = fs.readFileSync(agents, "utf8");
+  assert.match(after, /Host-private memory is only a cache/);
+  assert.match(after, /Tail text must survive\./);
+  assert.doesNotMatch(after, /宿主私有记忆只能作为缓存/);
 });
 
 test("compatibility adapter bootstrap merge preserves user content and is idempotent", (t) => {

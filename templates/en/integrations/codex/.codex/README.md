@@ -7,6 +7,7 @@ This folder is created by `cortex-agent add codex` (or selected during `init`).
 - **`config.toml`** — project-level Codex settings (merged with `~/.codex/config.toml`).
 - **`prompts/`** — symlink to `.agent/workflows/`. Each Markdown file is one SOP; Codex does not register them as `/slash` commands like Cursor. Use **`/mention path/to/file.md`** (or attach the file) and ask Codex to follow that workflow.
 - **Root `AGENTS.md`** — created by Cortex `init` / `upgrade`; Codex loads it automatically. It should keep pointing at `.agent/rules/` and `.agent/workflows/`.
+- **Cross-host memory** — Codex host memory is only a cache. Shared project memory is read from and written to `.agent/memory/`, using `MEMORY.md` as its index and `memory-protocol.md` as its protocol so another agent host can resume.
 
 ## References
 

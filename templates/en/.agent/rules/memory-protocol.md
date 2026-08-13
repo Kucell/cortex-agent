@@ -74,6 +74,23 @@ Per Claude Code Auto Memory internal write protocol:
 | `/plan` `/ship` `/mission` completed | workflow DONE stage checks "any reusable project facts?" → `project/` |
 | `/update-refs` adds/updates references | Step 7 → leave pointer in `reference/` (no content duplication) |
 
+## 5.1 Cross-Host Handoff
+
+- Global Cortex Agent memory lives in `~/.agent/memory/`; project-shared memory lives in `<project>/.agent/memory/`.
+- Codex, Claude, Gemini, Cursor, Cline, Roo, Pi, MiniMax, Qoder, and other hosts use the current project's `.agent/memory/MEMORY.md` as the shared recall index.
+- Host-private memory is only a cache. Before a reply ends or the active host changes, reusable project facts, feedback, and references must be deduplicated and stored in project `.agent/memory/` under this protocol.
+- At session start or task takeover, read the project index first and load matching topic files on demand. Current user instructions and verified project files override memory.
+- This is same-project host handoff, not cross-project synchronization. Runtime state stays in state/handoffs/decisions, and secrets or private data must never enter memory.
+
+### Host-private memory adapters
+
+| Host | User/global memory | Project/runtime memory | Integration boundary |
+|---|---|---|---|
+| MiniMax | `~/.minimax/memory/user.md`; tracking logs under `~/.minimax/memory/tracking/` | `main` and `topic` targets are runtime-managed; `summary` is a view | Use MiniMax `memory` / `mavis` tools. Do not edit runtime-managed internals directly. Normalize reusable project facts into `<project>/.agent/memory/`. |
+| Qoder CN | `~/.qoder-cn/memories/<user-hash>/global/<category>/` | `~/.qoder-cn/memories/<user-hash>/projects/<encoded-project-path>/<category>/` | Discover `<user-hash>` and the project bucket at runtime; never hardcode them. Treat `SharedClientCache/index/` as an index/embedding cache, not memory content. Normalize reusable facts into `<project>/.agent/memory/`. |
+
+Host-private stores remain owned by their host. Cortex Agent reads them only through supported host capabilities or read-only discovery, and never writes directly unless that host explicitly documents the file as user-editable.
+
 ## 6. Explicit Boundaries (Non-Goals)
 
 Things this mechanism **does NOT do** (explicit response to P-006's anti-MEMORY stance):

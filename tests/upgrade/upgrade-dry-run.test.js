@@ -132,7 +132,7 @@ test("upgrade apply followed by --dry-run reports Would add (0)", () => {
   assert.match(r2.stdout, /Would add \(0\)/);
 });
 
-test("upgrade does not merge compatibility bootstrap into an existing AGENTS.md", (t) => {
+test("upgrade preserves an existing AGENTS.md while adding only the memory bootstrap", (t) => {
   const cwd = fixture();
   t.after(() => fs.rmSync(cwd, { recursive: true, force: true }));
   const agentsPath = path.join(cwd, "AGENTS.md");
@@ -145,6 +145,8 @@ test("upgrade does not merge compatibility bootstrap into an existing AGENTS.md"
   const after = fs.readFileSync(agentsPath, "utf8");
   assert.match(after, /# Project-owned instructions/);
   assert.match(after, /Keep this exact content\./);
+  assert.match(after, /cortex-agent:memory-bootstrap:start/);
+  assert.match(after, /\.agent\/memory\/MEMORY\.md/);
   assert.doesNotMatch(after, /cortex-agent:compatibility-adapter-bootstrap:start/);
 });
 

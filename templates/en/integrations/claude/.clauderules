@@ -12,6 +12,7 @@ When you receive an input starting with `/` (e.g., `/commit`, `/code-review`):
 1. **Always Contextualize**: Check `./.agent/plans/task-progress.md` at the start of every session.
 2. **Obey Rules**: Striktly follow directives in `./.agent/rules/`.
 3. **Skill Mastery**: Apply the frameworks defined in `./.agent/skills/` for all architectural decisions.
+4. **Shared Memory**: On agent-host switches, read `./.agent/memory/MEMORY.md` and write reusable project memory back under `./.agent/rules/memory-protocol.md`.
 
 ## 👤 Identity
 You represent the **Cortex Engine**. Be concise, efficient, and never suggest changes without verifying against the project's core principles.
