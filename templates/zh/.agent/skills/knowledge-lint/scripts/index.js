@@ -1,6 +1,6 @@
 const fs = require('fs');
 const path = require('path');
-const { execFileSync } = require('child_process');
+const { execFileSync, spawnSync } = require('child_process');
 
 const root = process.cwd();
 const metricsDir = path.join(root, '.agent', 'metrics');
@@ -388,7 +388,8 @@ function computeHealthScore(summary) {
     summary.plan_issues * 10 +
     summary.architecture_doc_mismatches * 7 +
     summary.frontmatter_violations * 2 + // warning 级,低权重
-    summary.required_field_violations * 15; // 必填字段硬缺失,高权重
+    summary.required_field_violations * 15 + // 必填字段硬缺失,高权重
+    summary.memory_integrity_issues * 10;
 
   return Math.max(0, 100 - penalty);
 }
@@ -396,6 +397,22 @@ function computeHealthScore(summary) {
 function writeOutput(payload) {
   ensureDir(metricsDir);
   fs.writeFileSync(outputPath, JSON.stringify(payload, null, 2) + '\n', 'utf8');
+}
+
+function runMemoryIntegrityValidator() {
+  if (!exists(path.join(root, '.agent', 'memory', 'MEMORY.md'))) return { issues: [] };
+  const cliPath = process.env.CORTEX_AGENT_CLI;
+  const command = cliPath ? process.execPath : 'cortex-agent';
+  const args = cliPath
+    ? [cliPath, 'memory', 'validate', '--project', root, '--output', 'json']
+    : ['memory', 'validate', '--project', root, '--output', 'json'];
+  const result = spawnSync(command, args, { cwd: root, encoding: 'utf8' });
+  try {
+    const payload = JSON.parse(result.stdout || '{}');
+    return { issues: Array.isArray(payload.issues) ? payload.issues : [] };
+  } catch (_) {
+    return { issues: [{ kind: 'validator-error', detail: (result.stderr || 'memory validator returned invalid JSON').trim() }] };
+  }
 }
 
 // 集成 validate-frontmatter.js: 调用其 --json 模式, 把必填字段硬校验结果并入报告
@@ -425,6 +442,7 @@ function run() {
   const architectureDocMismatches = collectArchitectureDocMismatches();
   const frontmatterViolations = collectFrontmatterViolations();
   const requiredFieldViolations = runFrontmatterValidator();
+  const memoryIntegrity = runMemoryIntegrityValidator();
 
   const summary = {
     markdown_files_scanned: markdownFiles.length,
@@ -435,6 +453,7 @@ function run() {
     architecture_doc_mismatches: architectureDocMismatches.length,
     frontmatter_violations: frontmatterViolations.length,
     required_field_violations: requiredFieldViolations ? requiredFieldViolations.summary.total_violations : 0,
+    memory_integrity_issues: memoryIntegrity.issues.length,
   };
 
   const payload = {
@@ -450,6 +469,7 @@ function run() {
       architecture_doc_mismatches: architectureDocMismatches,
       frontmatter_violations: frontmatterViolations,
       required_field_violations: requiredFieldViolations ? requiredFieldViolations.violations : [],
+      memory_integrity: memoryIntegrity.issues,
     },
   };
 

@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const { spawnSync } = require('child_process');
 
 const root = process.cwd();
 const metricsDir = path.join(root, '.agent', 'metrics');
@@ -312,7 +313,8 @@ function computeHealthScore(summary) {
     summary.broken_anchors * 6 +
     summary.missing_readmes * 8 +
     summary.plan_issues * 10 +
-    summary.architecture_doc_mismatches * 7;
+    summary.architecture_doc_mismatches * 7 +
+    summary.memory_integrity_issues * 10;
 
   return Math.max(0, 100 - penalty);
 }
@@ -322,12 +324,29 @@ function writeOutput(payload) {
   fs.writeFileSync(outputPath, JSON.stringify(payload, null, 2) + '\n', 'utf8');
 }
 
+function runMemoryIntegrityValidator() {
+  if (!exists(path.join(root, '.agent', 'memory', 'MEMORY.md'))) return { issues: [] };
+  const cliPath = process.env.CORTEX_AGENT_CLI;
+  const command = cliPath ? process.execPath : 'cortex-agent';
+  const args = cliPath
+    ? [cliPath, 'memory', 'validate', '--project', root, '--output', 'json']
+    : ['memory', 'validate', '--project', root, '--output', 'json'];
+  const result = spawnSync(command, args, { cwd: root, encoding: 'utf8' });
+  try {
+    const payload = JSON.parse(result.stdout || '{}');
+    return { issues: Array.isArray(payload.issues) ? payload.issues : [] };
+  } catch (_) {
+    return { issues: [{ kind: 'validator-error', detail: (result.stderr || 'memory validator returned invalid JSON').trim() }] };
+  }
+}
+
 function run() {
   const markdownFiles = internalDocRoots.flatMap((dir) => listMarkdownFiles(dir));
   const { brokenLinks, brokenAnchors } = collectBrokenLinks(markdownFiles);
   const missingReadmes = collectMissingReadmes();
   const planIssues = collectPlanIssues();
   const architectureDocMismatches = collectArchitectureDocMismatches();
+  const memoryIntegrity = runMemoryIntegrityValidator();
 
   const summary = {
     markdown_files_scanned: markdownFiles.length,
@@ -336,6 +355,7 @@ function run() {
     missing_readmes: missingReadmes.length,
     plan_issues: planIssues.length,
     architecture_doc_mismatches: architectureDocMismatches.length,
+    memory_integrity_issues: memoryIntegrity.issues.length,
   };
 
   const payload = {
@@ -349,6 +369,7 @@ function run() {
       missing_readmes: missingReadmes,
       plan_issues: planIssues,
       architecture_doc_mismatches: architectureDocMismatches,
+      memory_integrity: memoryIntegrity.issues,
     },
   };
 

@@ -60,6 +60,56 @@ test("memory-cli: memory --help exits 0 with usage", () => {
   assert.ok(/Usage:/.test(result.stdout));
   assert.ok(/memory recall/.test(result.stdout));
   assert.ok(/memory distill/.test(result.stdout));
+  assert.ok(/memory validate/.test(result.stdout));
+});
+
+test("memory-cli: memory validate honors --project and emits one JSON document", () => {
+  const root = mkProject();
+  const caller = mkProject();
+  try {
+    for (const type of ["user", "feedback", "project", "reference"]) {
+      fs.mkdirSync(path.join(root, ".agent", "memory", type), { recursive: true });
+    }
+    fs.writeFileSync(path.join(root, ".agent", "memory", "MEMORY.md"), [
+      "# Memory", "", "## user (0/10)", "", "## feedback (0/30)", "",
+      "## project (0/20)", "", "## reference (0/50)", "",
+    ].join("\n"));
+    const result = spawnSync("node", [
+      path.join(repoRoot, "bin/cli.js"), "memory", "validate",
+      "--project", root, "--output", "json",
+    ], { cwd: caller, encoding: "utf8" });
+    assert.equal(result.status, 0, result.stderr);
+    const payload = JSON.parse(result.stdout);
+    assert.equal(payload.memoryRoot, path.join(root, ".agent", "memory"));
+    assert.deepEqual(payload.issues, []);
+  } finally {
+    rmProject(root);
+    rmProject(caller);
+  }
+});
+
+test("memory-cli: memory validate --fix --yes emits one parseable JSON result", () => {
+  const root = mkProject();
+  try {
+    for (const type of ["user", "feedback", "project", "reference"]) {
+      fs.mkdirSync(path.join(root, ".agent", "memory", type), { recursive: true });
+    }
+    fs.writeFileSync(path.join(root, ".agent", "memory", "user", "reply.md"),
+      "---\nname: reply\ndescription: preference\ntype: user\ncreated: 2026-08-13\ntags: [reply]\n---\nbody\n");
+    fs.writeFileSync(path.join(root, ".agent", "memory", "MEMORY.md"), [
+      "# Memory", "", "## user (0/10)", "", "## feedback (0/30)", "",
+      "## project (0/20)", "", "## reference (0/50)", "",
+    ].join("\n"));
+    const result = spawnSync("node", [
+      path.join(repoRoot, "bin/cli.js"), "memory", "validate", "--project", root,
+      "--fix", "--yes", "--output", "json",
+    ], { encoding: "utf8" });
+    assert.equal(result.status, 2, result.stderr);
+    const payload = JSON.parse(result.stdout);
+    assert.equal(payload.apply.applied, 2);
+    assert.equal("newText" in payload.apply, false);
+    assert.deepEqual(payload.after.issues, []);
+  } finally { rmProject(root); }
 });
 
 test("memory-cli: memory recall missing query exits 2 with usage", () => {
