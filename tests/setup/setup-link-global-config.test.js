@@ -205,3 +205,155 @@ test("linkGlobalConfig: post-condition — created symlink resolves immediately"
   const raw = fs.readlinkSync(linkPath);
   assert.ok(!path.isAbsolute(raw), `target must remain relative, got ${raw}`);
 });
+
+// ---------------------------------------------------------------------------
+// T-ISSUE-3 follow-up: linkGlobalConfig now also creates 4 additional
+// relative-path symlinks under .cursor/ and .claude/ AND auto-appends the
+// entries to .gitignore (or .git/info/exclude when useLocalExclude is true).
+// ---------------------------------------------------------------------------
+
+// 7. .cursor/global-rules, .cursor/global-commands, .claude/global-commands
+//    are created with *relative* targets.
+test("linkGlobalConfig: creates cursor + claude global links as relative symlinks", (t) => {
+  const { project, realHomeAgent } = withHomeAndProject(t);
+
+  setup.linkGlobalConfig({ cwd: project, lang: "en" });
+
+  const expected = [
+    { rel: ".cursor/global-rules", targetName: "rules" },
+    { rel: ".cursor/global-commands", targetName: "workflows" },
+    { rel: ".claude/global-commands", targetName: "workflows" },
+  ];
+  for (const { rel, targetName } of expected) {
+    const linkPath = path.join(project, rel);
+    assert.ok(fs.existsSync(linkPath), `${rel} must exist after linkGlobalConfig`);
+    const raw = fs.readlinkSync(linkPath);
+    assert.ok(
+      !path.isAbsolute(raw),
+      `${rel} must use a relative target (got ${raw})`
+    );
+    const resolved = fs.realpathSync(linkPath);
+    assert.equal(
+      resolved,
+      path.join(realHomeAgent, targetName),
+      `${rel} must resolve to ~/.agent/${targetName}`
+    );
+  }
+});
+
+// 8. Auto-appends created symlink entries to .gitignore.
+test("linkGlobalConfig: appends created symlinks to .gitignore by default", (t) => {
+  const { project, root } = withHomeAndProject(t);
+
+  setup.linkGlobalConfig({ cwd: project, lang: "en" });
+
+  const gitignorePath = path.join(project, ".gitignore");
+  assert.ok(
+    fs.existsSync(gitignorePath),
+    ".gitignore must be created when symlinks are written"
+  );
+  const content = fs.readFileSync(gitignorePath, "utf8");
+  assert.match(content, /\.agent\/global/);
+  assert.match(content, /\.cursor\/global-rules/);
+  assert.match(content, /\.cursor\/global-commands/);
+  assert.match(content, /\.claude\/global-commands/);
+
+  t.after(() => {
+    fs.rmSync(root, { recursive: true, force: true });
+  });
+});
+
+// 9. Idempotent: re-running linkGlobalConfig does not duplicate entries.
+test("linkGlobalConfig: re-running is idempotent on .gitignore", (t) => {
+  const { project, root } = withHomeAndProject(t);
+
+  setup.linkGlobalConfig({ cwd: project, lang: "en" });
+  const beforeContent = fs.readFileSync(path.join(project, ".gitignore"), "utf8");
+  const beforeCount = (beforeContent.match(/\.agent\/global\b/g) || []).length;
+
+  setup.linkGlobalConfig({ cwd: project, lang: "en" });
+  const afterContent = fs.readFileSync(path.join(project, ".gitignore"), "utf8");
+  const afterCount = (afterContent.match(/\.agent\/global\b/g) || []).length;
+
+  assert.equal(
+    afterCount,
+    beforeCount,
+    ".agent/global must appear exactly the same number of times after re-run"
+  );
+
+  t.after(() => {
+    fs.rmSync(root, { recursive: true, force: true });
+  });
+});
+
+// 10. useLocalExclude: writes to .git/info/exclude instead of .gitignore.
+test("linkGlobalConfig: useLocalExclude routes entries to .git/info/exclude", (t) => {
+  const { project, root } = withHomeAndProject(t);
+  // We need an existing .git/ for .git/info/exclude to make sense.
+  fs.mkdirSync(path.join(project, ".git", "info"), { recursive: true });
+
+  setup.linkGlobalConfig({ cwd: project, lang: "en", useLocalExclude: true });
+
+  const excludePath = path.join(project, ".git", "info", "exclude");
+  const excludeContent = fs.readFileSync(excludePath, "utf8");
+  assert.match(excludeContent, /\.agent\/global/);
+  assert.match(excludeContent, /\.cursor\/global-rules/);
+
+  // .gitignore must NOT have been auto-written when useLocalExclude is set.
+  const gitignorePath = path.join(project, ".gitignore");
+  if (fs.existsSync(gitignorePath)) {
+    const gitignoreContent = fs.readFileSync(gitignorePath, "utf8");
+    assert.ok(
+      !/\.agent\/global\b/.test(gitignoreContent),
+      ".gitignore must not receive entries when useLocalExclude is true"
+    );
+  }
+
+  t.after(() => {
+    fs.rmSync(root, { recursive: true, force: true });
+  });
+});
+
+// 11. updateGitignore:false skips the .gitignore update entirely.
+test("linkGlobalConfig: updateGitignore=false skips .gitignore entirely", (t) => {
+  const { project, root } = withHomeAndProject(t);
+
+  setup.linkGlobalConfig({
+    cwd: project,
+    lang: "en",
+    updateGitignore: false,
+  });
+
+  const gitignorePath = path.join(project, ".gitignore");
+  assert.equal(
+    fs.existsSync(gitignorePath),
+    false,
+    ".gitignore must not be created when updateGitignore is false"
+  );
+
+  t.after(() => {
+    fs.rmSync(root, { recursive: true, force: true });
+  });
+});
+
+// 12. Target outside os.homedir() → skip + warning (no symlink created).
+test("linkGlobalConfig: skips when ~/.agent is missing (no-op)", (t) => {
+  const { project, fakeHome } = withHomeAndProject(t);
+  fs.rmSync(path.join(fakeHome, ".agent"), { recursive: true, force: true });
+
+  setup.linkGlobalConfig({ cwd: project, lang: "en" });
+
+  for (const rel of [
+    ".agent/global",
+    ".agent/global-shared-skills",
+    ".cursor/global-rules",
+    ".cursor/global-commands",
+    ".claude/global-commands",
+  ]) {
+    assert.equal(
+      fs.existsSync(path.join(project, rel)),
+      false,
+      `${rel} must not be created when ~/.agent is missing`
+    );
+  }
+});

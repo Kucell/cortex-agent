@@ -168,7 +168,79 @@ test("doctor: setup-portability section is always printed (even with no .agent/g
   }
   assert.match(out, /\[setup-portability\]/);
   // "missing" status appears when no .agent/global link is present.
-  assert.match(out, /\.agent\/global status:\s*missing/);
+  assert.match(out, /\.agent\/global:\s*missing/);
   // The remedy line is printed for the missing branch.
   assert.match(out, /remedy/);
+});
+
+// T-ISSUE-3 follow-up: setup-portability now also covers the four additional
+// symlinks linkGlobalConfig manages: .agent/global-shared-skills,
+// .cursor/global-rules, .cursor/global-commands, .claude/global-commands.
+test("doctor: setup-portability covers all 5 linkGlobalConfig-managed symlinks", async () => {
+  const root = mkRoot();
+  fs.mkdirSync(path.join(root, ".agent"), { recursive: true });
+  const ctx = {
+    cwd: root,
+    lang: "en",
+    templateDir: path.join(root, "no-such-template"),
+    options: {},
+  };
+  const { restore: restoreOut } = captureStdout();
+  const { restore: restoreErr } = captureStderr();
+  let out = "";
+  try {
+    await doctor(ctx);
+  } finally {
+    out = restoreOut();
+    restoreErr();
+  }
+  for (const rel of [
+    ".agent/global",
+    ".agent/global-shared-skills",
+    ".cursor/global-rules",
+    ".cursor/global-commands",
+    ".claude/global-commands",
+  ]) {
+    const re = new RegExp(`${rel.replace(/\./g, "\\.")}:\\s*missing`);
+    assert.match(out, re, `${rel} must be reported as missing`);
+  }
+});
+
+// T-ISSUE-3 follow-up: when a setup-portability symlink is ok, doctor prints
+// the path and does not flag a remedy.
+test("doctor: setup-portability prints path detail for an ok symlink", async () => {
+  const root = mkRoot();
+  fs.mkdirSync(path.join(root, ".agent"), { recursive: true });
+  // Pre-create a valid relative symlink: .agent/global → a sibling fake
+  // ~/.agent under project. We need a fake HOME so realpathSync() matches.
+  const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-doc-home-"));
+  fs.mkdirSync(path.join(fakeHome, ".agent", "rules"), { recursive: true });
+  fs.mkdirSync(path.join(fakeHome, ".agent", "workflows"), { recursive: true });
+  const realHomeAgent = fs.realpathSync(path.join(fakeHome, ".agent"));
+  const realAgentDir = fs.realpathSync(path.join(root, ".agent"));
+  const rel = path.relative(realAgentDir, realHomeAgent);
+  fs.symlinkSync(rel, path.join(realAgentDir, "global"));
+
+  const originalHome = process.env.HOME;
+  process.env.HOME = fakeHome;
+  const ctx = {
+    cwd: root,
+    lang: "en",
+    templateDir: path.join(root, "no-such-template"),
+    options: {},
+  };
+  const { restore: restoreOut } = captureStdout();
+  const { restore: restoreErr } = captureStderr();
+  let out = "";
+  try {
+    await doctor(ctx);
+  } finally {
+    out = restoreOut();
+    restoreErr();
+    process.env.HOME = originalHome;
+    fs.rmSync(fakeHome, { recursive: true, force: true });
+  }
+  // ok status is reported and a path detail is printed (no remedy line for ok).
+  assert.match(out, /\.agent\/global:\s*ok/);
+  assert.match(out, /path:\s+\S+\/global/);
 });
