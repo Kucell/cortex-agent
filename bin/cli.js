@@ -108,6 +108,7 @@ const { eventBusCommand } = require("../lib/event-bus/cli");
 // bin/cli.js (not lib/commands.js) so M-001 shadow-init's invariant
 // "lib/commands.js has 0 changes vs base f8a1d38" stays intact.
 const { stateSync, installStateGithooks, fireAndForgetSync } = require("../lib/state-sync/index.js");
+const { shouldAutoSyncCoordination } = require("../lib/commands/management/coordination.js");
 
 // ─── Context ──────────────────────────────────────────────────────────────────
 
@@ -503,7 +504,13 @@ async function initModeGeneral() {
     case "inbox":       inbox(ctx); fireAndForgetSync(l1Ctx).catch(() => {}); break;
     case "waitpoints":  waitpoints(ctx); fireAndForgetSync(l1Ctx).catch(() => {}); break;
     case "task":
-    case "event":       coordination(ctx); fireAndForgetSync(l1Ctx).catch(() => {}); break;
+    case "event": {
+      const result = coordination(ctx);
+      if (shouldAutoSyncCoordination(ctx.args, result)) {
+        fireAndForgetSync(l1Ctx).catch(() => {});
+      }
+      break;
+    }
     case "lease":       lease(ctx); break;
     case "notification": await notification(ctx); break;
     case "mcp":         await mcp(ctx); break;

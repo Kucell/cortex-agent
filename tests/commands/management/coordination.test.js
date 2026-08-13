@@ -17,7 +17,11 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
-const { coordination } = require("../../../lib/commands/management/coordination");
+const {
+  coordination,
+  isCoordinationWriteRequest,
+  shouldAutoSyncCoordination,
+} = require("../../../lib/commands/management/coordination");
 
 function mkRoot() {
   return fs.mkdtempSync(path.join(os.tmpdir(), "cortex-coordination-test-"));
@@ -29,6 +33,32 @@ function captureStdout() {
   process.stdout.write = (chunk) => { chunks.push(String(chunk)); return true; };
   return { chunks, restore: () => { process.stdout.write = orig; return chunks.join(""); } };
 }
+
+test("coordination: help is read-only and never creates runtime state", () => {
+  const root = mkRoot();
+  const { restore } = captureStdout();
+  let output;
+  try {
+    const result = coordination({
+      args: ["task", "create", "--help"], cwd: root, options: {}, lang: "en",
+    });
+    assert.equal(result.ok, true);
+    assert.equal(result.command, "task.help");
+  } finally {
+    output = restore();
+  }
+  assert.match(output, /task <create\|assign/);
+  assert.equal(fs.existsSync(path.join(root, ".agent-runtime")), false);
+});
+
+test("coordination: auto-sync is limited to successful writes", () => {
+  assert.equal(isCoordinationWriteRequest(["task", "create", "--help"]), false);
+  assert.equal(isCoordinationWriteRequest(["task", "status", "--task", "T-1"]), false);
+  assert.equal(isCoordinationWriteRequest(["event", "list"]), false);
+  assert.equal(isCoordinationWriteRequest(["task", "create", "--event-json", "{}"]), true);
+  assert.equal(shouldAutoSyncCoordination(["task", "create"], { ok: false }), false);
+  assert.equal(shouldAutoSyncCoordination(["task", "create"], { ok: true }), true);
+});
 
 // ─── Read path: query ─────────────────────────────────────────────────────────
 
