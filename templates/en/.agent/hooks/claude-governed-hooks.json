@@ -26,6 +26,19 @@
         "description": "Governed PostToolUse: rate-limited, redacted, mapped to task.progress / task.testing"
       }
     ],
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit|MultiEdit|Bash|Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cortex-agent hook claude PreToolUse",
+            "timeout": 10
+          }
+        ],
+        "description": "Governed PreToolUse (T-AGR-001): worktree-shared .agent path authorization; business code paths deferred; unauthorized .agent read/write denied"
+      }
+    ],
     "Notification": [
       {
         "hooks": [

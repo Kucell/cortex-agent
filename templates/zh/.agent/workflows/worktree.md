@@ -47,6 +47,29 @@ status: stable
 - 若 Management API 存在，worktree 创建、锁获取、提交、合并、验证都必须写入 Run journal。
 - worktree 创建或进入后调用 `cortex-agent dashboard ensure --project . --reason worktree`；shared `.agent` 必须复用已绑定 owner 的同一 Supervisor。
 
+## .agent 路径授权（T-AGR-001）
+
+**适用范围**：`.agent/` 仅适用于已接入 Cortex Agent 的项目。未接入项目没有 `.agent/`，不得创建或推断。
+
+**授权检测**：
+- worktree 的 `.agent/` 目录必须存在且为目录
+- 必须包含 `rules/` 和 `workflows/` 子目录（canonical Cortex 标志）
+- 满足以上条件的工作区被识别为"已管理项目"，governed launch 自动授予共享 `.agent` 的读权限
+
+**PreToolUse 门控**：
+- 业务代码路径（不涉及共享 `.agent/`）：由 Claude 自行判断（defer）
+- 共享 `.agent/` 路径：无写权限时 deny；Bash 直接操作共享 `.agent/` 默认 deny（运行时更新走 Cortex 公共 CLI/API）
+- 路径必须 canonicalize 到最近存在的父目录（防止 symlink/不存在文件逃逸）
+
+**授权传播**：
+- 受管父 Agent → 子 Agent 时，子 Agent 的读写授权必须是父级 `grant.delegate` 对应集合的子集
+- 父上下文无 delegation 时 fail closed
+- 绝对授权路径永不泄漏到公共 Task event/receipt
+
+**手动 --add-dir 限制**：
+- governed launch 仅自动投影 `--add-dir=<canonical .agent>` 到子进程
+- 调用方手工传入的任意外部 `--add-dir` 均被拒绝
+
 ## PLAN
 
 在创建 worktree 前：
