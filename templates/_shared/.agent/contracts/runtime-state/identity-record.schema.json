@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cortex-agent.local/schemas/runtime-state/identity-record.schema.json",
+  "title": "Runtime Layout Identity Record",
+  "description": "Frozen identity envelope for project, repository, workspace, machine, and workspace-instance identities. Equality, dedupe, lease scope, and fencing tokens MUST compare on the `value` string alone — never on resolved absolute paths.",
+  "type": "object",
+  "required": ["kind", "value"],
+  "additionalProperties": false,
+  "properties": {
+    "kind": {
+      "type": "string",
+      "enum": [
+        "project_id",
+        "repository_id",
+        "workspace_id",
+        "machine_id",
+        "workspace_instance_id"
+      ]
+    },
+    "value": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "description": "Stable identity string. Must not be derived from or include any resolved absolute path, hostname, username, or IPv4 literal."
+    }
+  }
+}

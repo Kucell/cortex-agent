@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cortex-agent.local/schemas/workspace/runtime-layout.schema.json",
+  "title": "Cortex Agent Workspace Runtime Layout",
+  "description": "Frozen descriptor of the runtime layout slice visible to a single workspace identity. Mirrors the resolver output for that workspace: project-level portable namespaces, the per-host binding slot, and the per-instance slice. Two workspaces with equal `workspace_id` MUST describe the same logical structure; per-host absolute paths are confined to `host_binding_ref` and may legitimately differ across machines.",
+  "type": "object",
+  "required": [
+    "workspace_id",
+    "repository_id",
+    "project_id",
+    "machine_id",
+    "workspace_instance_id",
+    "runtime_dir",
+    "host_binding_ref",
+    "worktree_instance_ref",
+    "portable_namespaces",
+    "created_at",
+    "updated_at"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "workspace_id": {
+      "type": "string",
+      "pattern": "^WS-[A-Za-z0-9][A-Za-z0-9._-]*$"
+    },
+    "repository_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "project_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "mission_id": { "type": ["string", "null"], "maxLength": 128 },
+    "machine_id": { "type": "string", "minLength": 1, "maxLength": 64 },
+    "workspace_instance_id": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "runtime_dir": {
+      "type": "string",
+      "const": "runtime",
+      "description": "Logical segment inside `.agent/`. Combined with `workspace_id` to form the portable-runtime slice."
+    },
+    "portable_namespaces": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "enum": ["coordination", "dispatch", "cross-project", "continuity", "evidence"]
+      }
+    },
+    "host_binding_ref": {
+      "type": "string",
+      "const": "runtime/hosts/<machine_id>/bindings.local.json",
+      "description": "Logical reference to the local binding record. The `<machine_id>` placeholder is intentional — the absolute filesystem path stays inside the binding file."
+    },
+    "worktree_instance_ref": {
+      "type": "string",
+      "const": "runtime/worktrees/<workspace_instance_id>",
+      "description": "Logical reference to the per-instance slice. The `<workspace_instance_id>` placeholder keeps the per-instance location stable across hosts."
+    },
+    "legacy_root_ref": {
+      "type": "string",
+      "const": ".agent-runtime",
+      "description": "Read-only reference to the legacy runtime root. Writers MUST NOT target this path once the new layout is activated."
+    },
+    "created_at": { "type": "string", "format": "date-time" },
+    "updated_at": { "type": "string", "format": "date-time" }
+  }
+}

@@ -8,6 +8,7 @@ This directory defines the stable data boundary for Cortex Agent workspace orche
 - `hook-lifecycle.schema.json`: setup, run, and teardown attempts with explicit ownership, authorization, timeout, redaction, evidence, retry, and compensation state.
 - `resource-lease.schema.json`: local resource claims and adapter-backed namespaces with conflict, stale, release, and external-side-effect gates.
 - `composite-workspace.schema.json`: two or more independent repositories correlated under one task without pretending their Git histories or merges are atomic.
+- `runtime-layout.schema.json`: frozen descriptor of the runtime layout slice visible to one workspace identity. Mirrors the resolver output — portable namespaces, the per-host binding slot, and the per-instance slice — so workspaces can be reasoned about without consulting absolute paths.
 
 ## Ownership and safety
 
