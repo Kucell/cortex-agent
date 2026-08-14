@@ -1,6 +1,12 @@
 ---
 name: arch-design
 description: Produce implementation-ready architecture proposals and finalize exact revisions through durable approval evidence.
+type: procedure
+applicable_to:
+  - all
+owner: Kucell
+last_verified: 2026-08-06
+status: stable
 ---
 
 # Architecture Design Workflow (/arch-design)
@@ -24,6 +30,8 @@ For a large or related-project proposal, use the project proposal structure unde
 Write an implementation-ready proposal with status `draft`, explicit phases or milestones, acceptance criteria, risks, rollback guidance, and an execution carrier pending approval. Review the complete document with the user before finalization.
 
 ## 4. Review and Decision
+
+Run the `.agent/skills/architecture-guard` skill to audit the proposal before requesting approval.
 
 Bind the exact proposal or Artifact Bus revision as:
 

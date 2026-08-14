@@ -1,5 +1,11 @@
 ---
 description: 审查代码改动的工作流
+type: procedure
+applicable_to:
+  - all
+owner: Kucell
+last_verified: 2026-08-06
+status: stable
 ---
 
 # 代码审查工作流 (/code-review)
@@ -13,7 +19,7 @@ description: 审查代码改动的工作流
 - **读取所有规则**: 在开始审查前，**必须首先读取** `.agent/rules/` 目录下的所有规则文件（`architecture-design.md`, `code-standards.md` 等），以获得最全面的审查上下文。
 
 ## 2. 架构合规性审查
-- 调用 `architecture-audit` 技能验证代码变动是否符合项目定义的层级结构。
+- 调用 `architecture-guard` 技能验证代码变动是否符合项目定义的层级结构。
 - 检查职责划分是否合理，是否存在逻辑越层（Layer Violations）。
 - 验证改动是否符合既定的设计模式或抽象准则。
 

@@ -11,6 +11,7 @@ const VARIANTS = {
   zh: path.join(ROOT, "templates", "zh", ".agent", "workflows"),
   en: path.join(ROOT, "templates", "en", ".agent", "workflows"),
 };
+const SHARED_CODE_REVIEW = path.join(ROOT, "templates", "_shared", ".agent", "workflows", "code-review.md");
 
 function read(variant, workflow) {
   return fs.readFileSync(path.join(VARIANTS[variant], `${workflow}.md`), "utf8");
@@ -60,6 +61,20 @@ test("architecture approval binds action and revision digest", () => {
       /--owner-workflow \/arch-design/,
     ]);
   }
+});
+
+test("architecture workflows reference the installed architecture-guard skill", () => {
+  for (const variant of Object.keys(VARIANTS)) {
+    const workflow = read(variant, "arch-design");
+    const skill = path.join(ROOT, "templates", variant, ".agent", "skills", "architecture-guard", "SKILL.md");
+    assert.match(workflow, /architecture-guard/);
+    assert.doesNotMatch(workflow, /architecture-audit/);
+    assert.ok(fs.existsSync(skill), `${variant}: architecture-guard skill must exist`);
+  }
+
+  const codeReview = fs.readFileSync(SHARED_CODE_REVIEW, "utf8");
+  assert.match(codeReview, /architecture-guard/);
+  assert.doesNotMatch(codeReview, /architecture-audit/);
 });
 
 test("release candidate exists and is validated before approval", () => {

@@ -60,7 +60,7 @@ When you have new architectural ideas or need to refactor existing modules, foll
 
 ## 3. Architectural Comparison and Evaluation
 
-- **Call Audit Skill**: Use the `.agent/skills/architecture-audit` skill to audit the new proposal.
+- **Call Audit Skill**: Use the `.agent/skills/architecture-guard` skill to audit the new proposal.
 - **In-depth Comparison**: Produce a solution comparison table, comparing the Status Quo with the Proposal across these dimensions:
   - Architectural compliance
   - Scalability and maintenance cost
