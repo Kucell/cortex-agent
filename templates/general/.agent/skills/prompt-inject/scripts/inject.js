@@ -42,6 +42,8 @@ function flag(name) {
 function readLayer(root, layer, lang) {
   const suffix = lang === "zh" ? ".zh.md" : ".md";
   const candidates = [
+    path.join(root, ".agent", "general", "prompts", `system-prompt-${layer}${suffix}`),
+    path.join(root, ".agent", "general", "prompts", `system-prompt-${layer}.md`),
     path.join(root, ".agent", "prompts", `system-prompt-${layer}${suffix}`),
     path.join(root, ".agent", "prompts", `system-prompt-${layer}.md`),
   ];
