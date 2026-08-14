@@ -141,3 +141,124 @@ test("runs tokens: relations accumulate session_ids + task_ids idempotently", ()
   // last event reflects most recent report
   assert.equal(stored.last_event.source, "claude-code");
 });
+
+test("runs tokens: legacy command also writes an idempotent receipt", () => {
+  const cwd = project();
+  const args = ["runs", "tokens", "--gate", "agent", "--run-id", "R-legacy-receipt",
+    "--attempt-id", "TA-legacy", "--receipt-id", "TR-legacy", "--source", "codex",
+    "--model", "model-legacy", "--input", "40", "--output", "8"];
+  const first = okPayload(run(cwd, args));
+  assert.equal(first.duplicate, false);
+  assert.equal(first.receipt_id, "TR-legacy");
+  const replay = okPayload(run(cwd, args));
+  assert.equal(replay.duplicate, true);
+
+  const queried = okPayload(run(cwd, ["query", "token-attempts", "--run-id", "R-legacy-receipt"]));
+  assert.equal(queried.receipts.length, 1);
+  assert.equal(queried.receipts[0].attempt_id, "TA-legacy");
+  const runRecord = JSON.parse(fs.readFileSync(path.join(cwd, ".agent", "runs", "R-legacy-receipt.json"), "utf8"));
+  assert.equal(runRecord.token_usage.totals.input_tokens, 40, "duplicate receipt must not double-count legacy run totals");
+  assert.deepEqual(runRecord.token_usage.receipt_ids, ["TR-legacy"]);
+});
+
+test("runs tokens: duplicate orphan receipt is applied to Run exactly once", () => {
+  const cwd = project();
+  okPayload(run(cwd, ["runs", "tokens", "receipt", "--gate", "agent",
+    "--attempt-id", "TA-orphan-legacy", "--receipt-id", "TR-orphan-legacy",
+    "--run-id", "R-orphan-legacy", "--source", "codex", "--input", "25"]));
+  const legacyArgs = ["runs", "tokens", "--gate", "agent", "--run-id", "R-orphan-legacy",
+    "--attempt-id", "TA-orphan-legacy", "--receipt-id", "TR-orphan-legacy",
+    "--source", "codex", "--input", "25"];
+  const recovered = okPayload(run(cwd, legacyArgs));
+  assert.equal(recovered.duplicate, false, "receipt duplicate is not yet an applied Run duplicate");
+  const replay = okPayload(run(cwd, legacyArgs));
+  assert.equal(replay.duplicate, true);
+  const runRecord = JSON.parse(fs.readFileSync(path.join(cwd, ".agent", "runs", "R-orphan-legacy.json"), "utf8"));
+  assert.equal(runRecord.token_usage.totals.input_tokens, 25);
+  assert.deepEqual(runRecord.token_usage.receipt_ids, ["TR-orphan-legacy"]);
+});
+
+test("runs tokens receipt: public CLI is idempotent and queryable without receipt bodies", () => {
+  const cwd = project();
+  const args = ["runs", "tokens", "receipt", "--gate", "agent", "--attempt-id", "TA-1",
+    "--receipt-id", "TR-1", "--source", "pi", "--task-id", "T-1", "--model", "model-a",
+    "--input", "100", "--output", "20"];
+  const first = okPayload(run(cwd, args));
+  assert.equal(first.action, "runs tokens receipt");
+  assert.equal(first.duplicate, false);
+  const replay = okPayload(run(cwd, args));
+  assert.equal(replay.duplicate, true);
+
+  const queried = okPayload(run(cwd, ["query", "token-attempts", "--task-id", "T-1"]));
+  assert.equal(queried.receipts.length, 1);
+  assert.equal(queried.receipts[0].attempt_id, "TA-1");
+  assert.equal(queried.receipts[0].usage, undefined);
+  const persisted = fs.readFileSync(path.join(cwd, ".agent", "token-attempts", "ledger-index.json"), "utf8");
+  assert.equal(persisted.includes("prompt"), false);
+});
+
+test("runs tokens receipt: payload schema rejects unknown fields", () => {
+  const cwd = project();
+  const result = run(cwd, ["runs", "tokens", "receipt", "--gate", "agent", "--payload-json",
+    JSON.stringify({ attempt_id: "TA-2", receipt_id: "TR-2", source: "pi", prompt: "private" })]);
+  assert.notEqual(result.status, 0);
+  assert.equal(JSON.parse(result.stdout).error, "invalid_receipt_payload");
+});
+
+test("runs tokens receipt: omitted CLI fields remain unknown", () => {
+  const cwd = project();
+  const result = okPayload(run(cwd, ["runs", "tokens", "receipt", "--gate", "agent",
+    "--attempt-id", "TA-partial-cli", "--receipt-id", "TR-partial-cli",
+    "--source", "codex", "--input", "10"]));
+  assert.equal(result.receipt.usage.host_reported_input_tokens, 10);
+  assert.equal(result.receipt.usage.host_reported_output_tokens, "unknown");
+  assert.equal(result.receipt.usage.host_reported_cache_creation_input_tokens, "unknown");
+  assert.equal(result.receipt.usage.host_reported_cache_read_input_tokens, "unknown");
+  assert.equal(result.receipt.usage.host_reported_cache_tokens, "unknown");
+});
+
+test("runs tokens: legacy sparse report preserves omitted receipt fields as unknown", () => {
+  const cwd = project();
+  okPayload(run(cwd, ["runs", "tokens", "--gate", "agent", "--run-id", "R-partial-legacy",
+    "--attempt-id", "TA-partial-legacy", "--receipt-id", "TR-partial-legacy",
+    "--source", "codex", "--input", "15"]));
+  const ledgerDir = path.join(cwd, ".agent", "token-attempts", "receipts");
+  const receiptFile = path.join(ledgerDir, fs.readdirSync(ledgerDir)[0]);
+  const persisted = JSON.parse(fs.readFileSync(receiptFile, "utf8")).receipt;
+  assert.equal(persisted.usage.host_reported_input_tokens, 15);
+  assert.equal(persisted.usage.host_reported_output_tokens, "unknown");
+  assert.equal(persisted.usage.host_reported_cache_tokens, "unknown");
+});
+
+test("capabilities omit token-attempts when its query helper is absent", () => {
+  const cwd = project();
+  fs.cpSync(path.join(ROOT, "templates", "_shared", ".agent"), path.join(cwd, ".agent"), { recursive: true });
+  const scripts = path.join(cwd, ".agent", "skills", "management-api", "scripts");
+  fs.unlinkSync(path.join(scripts, "query-token-attempts.js"));
+  const execute = (args) => spawnSync(process.execPath, [path.join(scripts, "index.js"), ...args], {
+    cwd,
+    encoding: "utf8",
+  });
+  const capabilities = okPayload(execute(["query", "capabilities"]));
+  assert.equal(capabilities.projections.some((entry) => entry.name === "token-attempts"), false);
+  const unavailable = execute(["query", "token-attempts"]);
+  assert.notEqual(unavailable.status, 0);
+  assert.equal(JSON.parse(unavailable.stdout).error, "unsupported_projection");
+});
+
+test("runs tokens recover-lock: explicit user gate recovers dead owner", () => {
+  const cwd = project();
+  const ledgerDir = path.join(cwd, ".agent", "token-attempts");
+  fs.mkdirSync(ledgerDir, { recursive: true });
+  fs.writeFileSync(path.join(ledgerDir, ".ledger-write.lock"), JSON.stringify({
+    pid: 99999999,
+    token: "dead-owner",
+    acquired_at: "2026-08-13T00:00:00.000Z",
+  }), "utf8");
+  const denied = run(cwd, ["runs", "tokens", "recover-lock", "--gate", "agent"]);
+  assert.notEqual(denied.status, 0);
+  const recovered = okPayload(run(cwd, ["runs", "tokens", "recover-lock", "--gate", "user"]));
+  assert.equal(recovered.recovered, true);
+  assert.equal(fs.existsSync(path.join(ledgerDir, ".ledger-write.lock")), false);
+  assert.ok(fs.existsSync(path.join(ledgerDir, "recovery-events.jsonl")));
+});

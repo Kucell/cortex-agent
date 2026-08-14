@@ -159,6 +159,14 @@
       "data_field": null,
       "filters": [],
       "read_only": true
+    },
+    {
+      "name": "token-attempts",
+      "kind": "collection",
+      "exact_lookup": false,
+      "data_field": "receipts",
+      "filters": ["attempt-id", "run-id", "task-id", "session-id", "host", "model", "status", "from", "to", "limit", "offset", "order", "stats"],
+      "read_only": true
     }
   ]
 }
