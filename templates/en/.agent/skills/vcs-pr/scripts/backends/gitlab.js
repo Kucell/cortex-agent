@@ -50,10 +50,11 @@ function projectUrl({ org, repo }, config) {
 async function createPR(opts) {
   const { config, token, head, base, title, body } = opts;
   const pid = projectUrl(opts, config);
+  const draftTitle = /^(?:Draft:|WIP:)/i.test(title || "") ? title : `Draft: ${title || ""}`;
   const res = await send("POST", config.host, `/api/v4/projects/${pid}/merge_requests`, token, {
     source_branch: head,
     target_branch: base || "main",
-    title,
+    title: draftTitle,
     description: body || "",
   });
   if (res.status !== 201) throw new Error(`gitlab_create_failed: HTTP ${res.status} ${res.raw?.slice(0, 200)}`);
@@ -79,6 +80,78 @@ async function getStatus(opts) {
     url: res.body.web_url,
     title: res.body.title,
     raw: res.body,
+  };
+}
+
+function isDraftMergeRequest(mr) {
+  return mr.draft === true || mr.work_in_progress === true || /^(?:Draft:|WIP:)/i.test(mr.title || "");
+}
+
+function normalizePipelineStatus(status) {
+  switch (status) {
+    case "success": return "Succeeded";
+    case "failed":
+    case "canceled":
+    case "skipped": return "Failed";
+    case "running": return "Running";
+    case "created":
+    case "waiting_for_resource":
+    case "preparing":
+    case "waiting_for_callback":
+    case "pending":
+    case "canceling":
+    case "manual":
+    case "scheduled": return "Pending";
+    default: return "Missing";
+  }
+}
+
+async function getDeliveryStatus(opts) {
+  const { config, token, pr_number } = opts;
+  const pid = projectUrl(opts, config);
+  const mr = await send("GET", config.host, `/api/v4/projects/${pid}/merge_requests/${pr_number}`, token);
+  if (mr.status !== 200) {
+    throw new Error(`gitlab_status_failed: HTTP ${mr.status} ${mr.raw?.slice(0, 200)}`);
+  }
+
+  const pipelines = await send(
+    "GET",
+    config.host,
+    `/api/v4/projects/${pid}/merge_requests/${pr_number}/pipelines?per_page=20`,
+    token
+  );
+  if (pipelines.status !== 200 || !Array.isArray(pipelines.body)) {
+    throw new Error(`gitlab_pipelines_failed: HTTP ${pipelines.status} ${pipelines.raw?.slice(0, 200)}`);
+  }
+
+  const authoritative = pipelines.body
+    .filter((pipeline) => pipeline && pipeline.source === "merge_request_event")
+    .sort((left, right) => Number(right.id || 0) - Number(left.id || 0))[0] || null;
+  // GitLab exposes the current source-branch HEAD as `sha`. `diff_refs` is
+  // populated asynchronously and may still describe the previous diff.
+  const headSha = mr.body.sha || mr.body.diff_refs?.head_sha || null;
+  return {
+    number: mr.body.iid,
+    url: mr.body.web_url,
+    state: mr.body.state,
+    head: mr.body.source_branch,
+    base: mr.body.target_branch,
+    head_sha: headSha,
+    draft: isDraftMergeRequest(mr.body),
+    ready: mr.body.state === "opened" && !isDraftMergeRequest(mr.body),
+    reviewers: (mr.body.reviewers || []).map((reviewer) => ({
+      id: reviewer.id,
+      username: reviewer.username,
+    })),
+    pipeline: authoritative ? {
+      id: authoritative.id,
+      sha: authoritative.sha,
+      status: authoritative.status,
+      normalized_status: normalizePipelineStatus(authoritative.status),
+      source: authoritative.source,
+      url: authoritative.web_url || null,
+      current_head: Boolean(headSha) && authoritative.sha === headSha,
+    } : null,
   };
 }
 
@@ -156,4 +229,16 @@ async function list(opts) {
   })) : [];
 }
 
-module.exports = { backend: "gitlab", createPR, getStatus, updatePR, merge, list, _send: send, _projectUrl: projectUrl };
+module.exports = {
+  backend: "gitlab",
+  createPR,
+  getStatus,
+  getDeliveryStatus,
+  updatePR,
+  merge,
+  list,
+  _send: send,
+  _projectUrl: projectUrl,
+  _isDraftMergeRequest: isDraftMergeRequest,
+  _normalizePipelineStatus: normalizePipelineStatus,
+};

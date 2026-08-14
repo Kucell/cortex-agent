@@ -27,6 +27,9 @@ node .agent/skills/vcs-pr/scripts/index.js create \
 node .agent/skills/vcs-pr/scripts/index.js status \
   --pr-number 5 [--backend gitea] --gate agent
 
+node .agent/skills/vcs-pr/scripts/index.js delivery-status \
+  --pr-number 5 --gate agent
+
 node .agent/skills/vcs-pr/scripts/index.js merge \
   --pr-number 5 [--commit-message "..."] --gate user
 
@@ -95,7 +98,7 @@ default:
 
 - **零依赖**:纯 stdlib + 3 backend 各 ~80 行
 - **不接触 token**:orchestrator 拿 token 后只进 HTTP header,stdout 不输出值(redact.js 二道防护)
-- **写 gate**:`merge` 必须 `--gate user`;`create / status / list` 任意 gate
+- **写 gate**:`create / update / merge` 必须 `--gate user`;`status / delivery-status / list` 可用只读 gate
 - **可审计**:每条 PR 事件写 `runs/<id>.json#events[]`(Phase 1 基础设施复用)
 - **可分发**:L1 双语 template;init/upgrade 自动落用户项目
 

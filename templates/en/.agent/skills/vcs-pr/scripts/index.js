@@ -19,7 +19,7 @@ const { spawnSync } = require("child_process");
 const AGENT_ROOT = path.join(process.cwd(), ".agent");
 
 const BACKENDS = new Set(["gitea", "github", "gitlab"]);
-const GATE_USER_ONLY = new Set(["update", "merge"]);
+const GATE_USER_ONLY = new Set(["create", "update", "merge"]);
 
 function flag(name, argv) {
   const i = argv.indexOf(name);
@@ -201,8 +201,8 @@ function loadBody(opts) {
 async function main() {
   const argv = process.argv.slice(2);
   const [command] = argv;
-  if (!command || !["create", "update", "status", "merge", "list"].includes(command)) {
-    fail("unknown_command", "Usage: vcs-pr create|update|status|merge|list [...opts]");
+  if (!command || !["create", "update", "status", "delivery-status", "merge", "list"].includes(command)) {
+    fail("unknown_command", "Usage: vcs-pr create|update|status|delivery-status|merge|list [...opts]");
   }
   const cfg = loadConfig();
   if (!cfg || !cfg.backend) {
@@ -263,6 +263,17 @@ async function main() {
   if (command === "status") {
     const result = await backend.getStatus({ ...optsBase, pr_number: Number(flag("--pr-number", argv)) });
     emit({ ok: true, action: "status", ...result });
+    return;
+  }
+  if (command === "delivery-status") {
+    if (typeof backend.getDeliveryStatus !== "function") {
+      fail("capability_unavailable", `${cfg.backend} backend does not support delivery-status.`);
+    }
+    const result = await backend.getDeliveryStatus({
+      ...optsBase,
+      pr_number: Number(flag("--pr-number", argv)),
+    });
+    emit({ ok: true, action: "delivery-status", ...result });
     return;
   }
   if (command === "update") {
