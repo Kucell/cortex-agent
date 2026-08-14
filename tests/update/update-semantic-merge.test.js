@@ -226,3 +226,21 @@ test("update merges projection registry by name while preserving local projectio
   assert.ok(names.includes("local-custom"));
   assert.equal(registry.projections.filter((entry) => entry.name === "runs").length, 1);
 });
+
+test("projection merge does not advertise token-attempts before the handler is installed", (t) => {
+  const cwd = createRegistryProject();
+  t.after(() => fs.rmSync(cwd, { recursive: true, force: true }));
+  const scripts = path.join(cwd, ".agent", "skills", "management-api", "scripts");
+  fs.writeFileSync(path.join(scripts, "index.js"), [
+    '"use strict";',
+    'const QUERY_HANDLERS = Object.freeze({ runs: () => ({ ok: true }) });',
+    'module.exports = { QUERY_HANDLERS };',
+    "",
+  ].join("\n"), "utf8");
+
+  const { ensureProjectionRegistry } = require("../../lib/setup");
+  ensureProjectionRegistry({ cwd, lang: "en" });
+  const registry = JSON.parse(fs.readFileSync(path.join(scripts, "projection-registry.json"), "utf8"));
+  assert.equal(registry.projections.some((entry) => entry.name === "token-attempts"), false);
+  assert.doesNotMatch(fs.readFileSync(path.join(scripts, "index.js"), "utf8"), /tokenAttemptsProjection/);
+});

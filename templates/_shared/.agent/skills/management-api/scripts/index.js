@@ -1419,6 +1419,29 @@ const TOKEN_USAGE_SOURCES = new Set([
   "claude-code", "cursor", "codex", "openai", "anthropic", "unknown",
 ]);
 
+function tokenLedger() {
+  return require("./token-attempt-ledger.js");
+}
+
+function tokenAttemptQuery() {
+  return require("./query-token-attempts.js");
+}
+
+function sparseTokenUsagePayload(payload) {
+  const fields = [
+    ["--input", "input_tokens"],
+    ["--output", "output_tokens"],
+    ["--cache-create", "cache_creation_input_tokens"],
+    ["--cache-read", "cache_read_input_tokens"],
+  ];
+  const result = {};
+  for (const [flagName, field] of fields) {
+    if (args.includes(flagName)) result[field] = option(flagName);
+    else if (Object.prototype.hasOwnProperty.call(payload, field)) result[field] = payload[field];
+  }
+  return result;
+}
+
 function runsTokens() {
   const gate = requireGate(["agent", "user", "mission"]);
   const payload = parsePayload();
@@ -1428,12 +1451,8 @@ function runsTokens() {
     // Allow unknown / future hosts but warn — never reject on unknown source
     // (host names evolve; framework stays forward-compatible).
   }
-  const tokenUsage = normalizeTokenUsage({
-    input_tokens: option("--input", payload.input_tokens),
-    output_tokens: option("--output", payload.output_tokens),
-    cache_creation_input_tokens: option("--cache-create", payload.cache_creation_input_tokens),
-    cache_read_input_tokens: option("--cache-read", payload.cache_read_input_tokens),
-  });
+  const rawTokenUsage = sparseTokenUsagePayload(payload);
+  const tokenUsage = normalizeTokenUsage(rawTokenUsage);
   const runIdRaw = String(option("--run-id", payload.run_id || "")).trim();
   const sessionIdRaw = String(option("--session-id", payload.session_id || "")).trim();
   const taskIdRaw = String(option("--task-id", payload.task_id || "")).trim();
@@ -1480,6 +1499,51 @@ function runsTokens() {
     const costNum = Number(costUsdRaw);
     if (Number.isFinite(costNum) && costNum >= 0) next.cost_usd = costNum;
   }
+  const attemptId = String(option("--attempt-id", payload.attempt_id || `legacy:${runId}:${source}`)).trim();
+  const ledgerAvailable = fs.existsSync(path.join(__dirname, "token-attempt-ledger.js"));
+  const { generateReceiptId, submitTokenUsage } = ledgerAvailable ? tokenLedger() : {};
+  const receiptId = ledgerAvailable ? String(option(
+    "--receipt-id",
+    payload.receipt_id || generateReceiptId(attemptId, source, next.samples),
+  )).trim() : null;
+  const receiptResult = ledgerAvailable ? submitTokenUsage(
+    path.join(agentRoot, "token-attempts"),
+    attemptId,
+    source,
+    rawTokenUsage,
+    {
+      receipt_id: receiptId,
+      run_id: runId,
+      task_id: taskIdRaw || null,
+      session_id: sessionIdRaw || null,
+      model: modelRaw || null,
+      status: "host_reported",
+    },
+  ) : { ok: true, isDuplicate: false };
+  if (!receiptResult.ok && !receiptResult.isDuplicate) {
+    fail(receiptResult.error, receiptResult.reason);
+  }
+  const appliedReceiptIds = Array.isArray(existing.token_usage?.receipt_ids)
+    ? existing.token_usage.receipt_ids
+    : [];
+  if (receiptResult.isDuplicate && appliedReceiptIds.includes(receiptId)) {
+    printJson({
+      ok: true,
+      action: "runs tokens",
+      duplicate: true,
+      source,
+      run_id: runId,
+      path: rel(file),
+      token_usage: tokenUsage,
+      totals_run: existing.token_usage?.totals || {
+        input_tokens: 0, output_tokens: 0,
+        cache_creation_input_tokens: 0, cache_read_input_tokens: 0,
+      },
+      by_source: bySource,
+      receipt_id: receiptId,
+    });
+    return;
+  }
   bySource[source] = next;
 
   const totals = Object.values(bySource).reduce((acc, s) => ({
@@ -1508,7 +1572,12 @@ function runsTokens() {
   const events = Array.isArray(existing.events) ? existing.events : [];
   const nextRun = {
     ...existing,
-    token_usage: { by_source: bySource, totals, updated_at: timestamp },
+    token_usage: {
+      by_source: bySource,
+      totals,
+      receipt_ids: receiptId ? [...appliedReceiptIds, receiptId] : appliedReceiptIds,
+      updated_at: timestamp,
+    },
     relations,
     events: [...events, event].slice(-200),
     last_event: event,
@@ -1524,6 +1593,97 @@ function runsTokens() {
     token_usage: tokenUsage,
     totals_run: totals,
     by_source: bySource,
+    receipt_id: receiptId,
+    duplicate: false,
+  });
+}
+
+function tokenReceipt() {
+  requireGate(["agent", "user", "mission"]);
+  if (!fs.existsSync(path.join(__dirname, "token-attempt-ledger.js"))) {
+    fail("token_receipt_unavailable", "Token receipt helper is not installed; run cortex-agent update.");
+  }
+  const { submitTokenUsage } = tokenLedger();
+  const payload = parsePayload();
+  const allowedPayload = new Set([
+    "attempt_id", "receipt_id", "run_id", "task_id", "session_id",
+    "source", "host", "model", "status", "status_reason",
+    "input_tokens", "output_tokens", "cache_creation_input_tokens",
+    "cache_read_input_tokens",
+  ]);
+  const unknown = Object.keys(payload).filter((key) => !allowedPayload.has(key));
+  if (unknown.length > 0) {
+    fail("invalid_receipt_payload", `Unknown receipt fields: ${unknown.sort().join(", ")}`);
+  }
+  const attemptId = String(option("--attempt-id", payload.attempt_id || "")).trim();
+  const source = String(option("--source", payload.source || payload.host || "")).trim().toLowerCase();
+  if (!attemptId) fail("attempt_id_required", "--attempt-id is required.");
+  if (!source) fail("invalid_source", "--source is required.");
+  const result = submitTokenUsage(
+    path.join(agentRoot, "token-attempts"),
+    attemptId,
+    source,
+    sparseTokenUsagePayload(payload),
+    {
+      receipt_id: option("--receipt-id", payload.receipt_id),
+      run_id: option("--run-id", payload.run_id),
+      task_id: option("--task-id", payload.task_id),
+      session_id: option("--session-id", payload.session_id),
+      model: option("--model", payload.model),
+      status: option("--status", payload.status || "host_reported"),
+      status_reason: option("--status-reason", payload.status_reason),
+    },
+  );
+  if (!result.ok && !result.isDuplicate) fail(result.error, result.reason);
+  printJson({
+    ok: true,
+    action: "runs tokens receipt",
+    duplicate: Boolean(result.isDuplicate),
+    receipt: result.entry ? result.entry.receipt : null,
+  });
+}
+
+function tokenLedgerRecoverLock() {
+  const gate = requireGate(["user", "mission"]);
+  if (!fs.existsSync(path.join(__dirname, "token-attempt-ledger.js"))) {
+    fail("token_receipt_unavailable", "Token receipt helper is not installed; run cortex-agent update.");
+  }
+  const { recoverLedgerLock } = tokenLedger();
+  const result = recoverLedgerLock(path.join(agentRoot, "token-attempts"), { recoveredBy: gate });
+  if (!result.ok) fail(result.error, result.reason);
+  printJson({
+    ok: true,
+    action: "runs tokens recover-lock",
+    recovered: result.recovered,
+    reason: result.reason || null,
+    audit_status: result.audit_status || null,
+    warning: result.warning || null,
+    event: result.event || null,
+  });
+}
+
+function tokenAttemptsProjection() {
+  if (!fs.existsSync(path.join(__dirname, "query-token-attempts.js"))) {
+    return { ok: false, error: "token_attempt_query_unavailable", reason: "Run cortex-agent update." };
+  }
+  const { queryTokenAttempts, queryTokenAttemptStats } = tokenAttemptQuery();
+  const filters = {
+    attempt_id: option("--attempt-id"),
+    run_id: option("--run-id"),
+    task_id: option("--task-id"),
+    session_id: option("--session-id"),
+    host: option("--host"),
+    model: option("--model"),
+    status: option("--status"),
+    since: option("--from"),
+    until: option("--to"),
+  };
+  for (const key of Object.keys(filters)) if (!filters[key]) delete filters[key];
+  if (flag("--stats")) return queryTokenAttemptStats(root, filters);
+  return queryTokenAttempts(root, filters, {
+    limit: Number(option("--limit", 100)),
+    offset: Number(option("--offset", 0)),
+    order: option("--order", "desc"),
   });
 }
 
@@ -1800,6 +1960,7 @@ const QUERY_HANDLERS = Object.freeze({
   triggers: triggersProjection,
   "governed-attempt-progress": governedAttemptProgressProjection,
   "governed-attempt-diagnostics": governedAttemptDiagnosticsProjection,
+  "token-attempts": tokenAttemptsProjection,
 });
 
 function availableProjections() {
@@ -1807,7 +1968,9 @@ function availableProjections() {
   if (!registry || registry.schema_version !== 1 || !Array.isArray(registry.projections)) {
     fail("projection_registry_unavailable", "projection-registry.json is missing or invalid.", 2);
   }
-  return registry.projections.filter((entry) => entry && typeof QUERY_HANDLERS[entry.name] === "function");
+  return registry.projections.filter((entry) => entry
+    && typeof QUERY_HANDLERS[entry.name] === "function"
+    && (entry.name !== "token-attempts" || fs.existsSync(path.join(__dirname, "query-token-attempts.js"))));
 }
 
 function queryCapabilities() {
@@ -1842,6 +2005,14 @@ function main() {
   }
   if (command === "runs" && query === "checkpoint") {
     checkpointRun();
+    return;
+  }
+  if (command === "runs" && query === "tokens" && args[2] === "receipt") {
+    tokenReceipt();
+    return;
+  }
+  if (command === "runs" && query === "tokens" && args[2] === "recover-lock") {
+    tokenLedgerRecoverLock();
     return;
   }
   if (command === "runs" && query === "tokens") {
@@ -1916,7 +2087,7 @@ function main() {
   printJson({
     ok: false,
     error: "unsupported_command",
-    usage: "node .agent/skills/management-api/scripts/index.js query capabilities|dashboard-state|dispatch-state|dispatch-plan|triggers|runs|queues|sessions|inbox|decisions|waitpoints|activity|context-trajectories|operations|readiness|authorizations|checkpoints | runs upsert|event|checkpoint|tokens | queues upsert|item | sessions open|heartbeat|pause|close | decisions request|resolve|supersede | inbox send|transition | waitpoints create|release|cancel",
+    usage: "node .agent/skills/management-api/scripts/index.js query capabilities|dashboard-state|dispatch-state|dispatch-plan|triggers|runs|queues|sessions|inbox|decisions|waitpoints|activity|context-trajectories|operations|readiness|authorizations|checkpoints|token-attempts | runs upsert|event|checkpoint|tokens|tokens receipt|tokens recover-lock | queues upsert|item | sessions open|heartbeat|pause|close | decisions request|resolve|supersede | inbox send|transition | waitpoints create|release|cancel",
   });
   process.exitCode = 2;
 }
