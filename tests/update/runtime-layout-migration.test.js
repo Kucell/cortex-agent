@@ -45,6 +45,7 @@ const {
   rollbackMigration,
   buildMigrationReport,
   inspectLegacyRuntime,
+  inspectLegacySchemas,
   isUnderLegacyRuntime,
   isAllowedNewLayoutPath,
   scanProjectState,
@@ -692,6 +693,184 @@ describe("VC-010: Security and Content Protection", { concurrency: 1 }, () => {
     assert.ok(!isAllowedNewLayoutPath("/test/project/package.json"));
   });
 });
+
+
+// ─── Legacy Schemas in .agent/runtime/ → .agent/contracts/runtime-state/ ──────
+
+describe("Legacy .agent/runtime/ Schema Migration", { concurrency: 1 }, () => {
+  const fixtures = [];
+
+  function createLegacySchemaFixture(root) {
+    // Create legacy runtime with portable namespaces
+    const legacyDir = path.join(root, LEGACY_RT_SEGMENT);
+    fs.mkdirSync(legacyDir, { recursive: true });
+    fs.mkdirSync(path.join(legacyDir, "coordination"), { recursive: true });
+    fs.writeFileSync(path.join(legacyDir, "coordination", "tasks.json"), JSON.stringify({ tasks: [] }));
+
+    // Create .agent/ directory and put old Schemas in .agent/runtime/
+    const agentDir = path.join(root, AGENT_DIR_SEGMENT);
+    const runtimeDir = path.join(agentDir, RUNTIME_DIR);
+    fs.mkdirSync(runtimeDir, { recursive: true });
+    fs.writeFileSync(path.join(runtimeDir, "authorization.schema.json"), "{\"a\":1}");
+    fs.writeFileSync(path.join(runtimeDir, "evidence-ref.schema.json"), "{\"e\":1}");
+    fs.writeFileSync(path.join(runtimeDir, "runtime-state-projection.schema.json"), "{\"r\":1}");
+    return root;
+  }
+
+  afterEach(() => {
+    for (const fixture of fixtures) {
+      try { fs.rmSync(fixture, { recursive: true, force: true }); } catch {}
+    }
+    fixtures.length = 0;
+  });
+
+  it("inspectLegacySchemas detects known legacy Schema files", () => {
+    const fixtureRoot = fs.mkdtempSync(path.join(require("node:os").tmpdir(), "legacy-schema-"));
+    fixtures.push(fixtureRoot);
+    createLegacySchemaFixture(fixtureRoot);
+    const result = inspectLegacySchemas(fixtureRoot);
+    assert.ok(result.exists, "must detect legacy schemas");
+    assert.strictEqual(result.files.length, 3, "must find 3 legacy schemas");
+    const names = result.files.map((f) => f.name);
+    assert.ok(names.includes("authorization.schema.json"));
+    assert.ok(names.includes("evidence-ref.schema.json"));
+    assert.ok(names.includes("runtime-state-projection.schema.json"));
+  });
+
+  it("inspectLegacySchemas returns empty when .agent/runtime/ has no legacy files", () => {
+    const fixtureRoot = fs.mkdtempSync(path.join(require("node:os").tmpdir(), "legacy-schema-empty-"));
+    fixtures.push(fixtureRoot);
+    fs.mkdirSync(path.join(fixtureRoot, AGENT_DIR_SEGMENT, RUNTIME_DIR), { recursive: true });
+    const result = inspectLegacySchemas(fixtureRoot);
+    assert.strictEqual(result.exists, false);
+    assert.strictEqual(result.files.length, 0);
+  });
+
+  it("migration plan includes MOVE_LEGACY_SCHEMAS actions when legacy Schemas exist", () => {
+    const fixtureRoot = fs.mkdtempSync(path.join(require("node:os").tmpdir(), "legacy-schema-plan-"));
+    fixtures.push(fixtureRoot);
+    createLegacySchemaFixture(fixtureRoot);
+    const ctx = { cwd: fixtureRoot };
+    const plan = buildMigrationPlan(ctx, { dryRun: true });
+    assert.strictEqual(plan.is_noop, false);
+    const moveActions = plan.actions.filter((a) => a.type === "move_legacy_schemas");
+    assert.strictEqual(moveActions.length, 3, "must have 3 move_legacy_schemas actions");
+    const targets = moveActions.map((a) => a.target_ref).sort();
+    assert.deepStrictEqual(targets, [
+      ".agent/contracts/runtime-state/authorization.schema.json",
+      ".agent/contracts/runtime-state/evidence-ref.schema.json",
+      ".agent/contracts/runtime-state/runtime-state-projection.schema.json",
+    ]);
+  });
+
+  it("apply moves legacy Schemas byte-identically to .agent/contracts/runtime-state/", () => {
+    const fixtureRoot = fs.mkdtempSync(path.join(require("node:os").tmpdir(), "legacy-schema-apply-"));
+    fixtures.push(fixtureRoot);
+    createLegacySchemaFixture(fixtureRoot);
+    const ctx = { cwd: fixtureRoot };
+    const plan = buildMigrationPlan(ctx, { dryRun: false });
+    const result = applyMigration(ctx, plan);
+    assert.ok(result.ok, "apply must succeed: " + JSON.stringify(result.errors));
+
+    // Source must be gone
+    assert.ok(!fs.existsSync(path.join(fixtureRoot, ".agent/runtime/authorization.schema.json")));
+    assert.ok(!fs.existsSync(path.join(fixtureRoot, ".agent/runtime/evidence-ref.schema.json")));
+    assert.ok(!fs.existsSync(path.join(fixtureRoot, ".agent/runtime/runtime-state-projection.schema.json")));
+
+    // Target must exist
+    const aPath = path.join(fixtureRoot, ".agent/contracts/runtime-state/authorization.schema.json");
+    const ePath = path.join(fixtureRoot, ".agent/contracts/runtime-state/evidence-ref.schema.json");
+    const rPath = path.join(fixtureRoot, ".agent/contracts/runtime-state/runtime-state-projection.schema.json");
+    assert.ok(fs.existsSync(aPath));
+    assert.ok(fs.existsSync(ePath));
+    assert.ok(fs.existsSync(rPath));
+
+    // Target content byte-identical to original
+    assert.strictEqual(fs.readFileSync(aPath, "utf8"), "{\"a\":1}");
+    assert.strictEqual(fs.readFileSync(ePath, "utf8"), "{\"e\":1}");
+    assert.strictEqual(fs.readFileSync(rPath, "utf8"), "{\"r\":1}");
+  });
+
+  it("second update after legacy Schema move is a true no-op", () => {
+    const fixtureRoot = fs.mkdtempSync(path.join(require("node:os").tmpdir(), "legacy-schema-noop-"));
+    fixtures.push(fixtureRoot);
+    createLegacySchemaFixture(fixtureRoot);
+    const ctx = { cwd: fixtureRoot };
+
+    const plan1 = buildMigrationPlan(ctx, { dryRun: false });
+    const result1 = applyMigration(ctx, plan1);
+    assert.ok(result1.ok);
+
+    const plan2 = buildMigrationPlan(ctx, { dryRun: true });
+    assert.ok(plan2.is_noop, "second plan must be noop after legacy Schema move");
+
+    const result2 = applyMigration(ctx, plan2);
+    assert.ok(result2.ok && result2.noop, "second apply must succeed and be noop");
+  });
+
+  it("conflict on target file: backs up existing and moves source on top", () => {
+    const fixtureRoot = fs.mkdtempSync(path.join(require("node:os").tmpdir(), "legacy-schema-conflict-"));
+    fixtures.push(fixtureRoot);
+    createLegacySchemaFixture(fixtureRoot);
+
+    // Pre-create a conflicting target file
+    const contractsDir = path.join(fixtureRoot, ".agent/contracts/runtime-state");
+    fs.mkdirSync(contractsDir, { recursive: true });
+    const conflictPath = path.join(contractsDir, "authorization.schema.json");
+    fs.writeFileSync(conflictPath, "{\"existing\":true}");
+    const originalTargetContent = fs.readFileSync(conflictPath, "utf8");
+    const originalSourceContent = fs.readFileSync(
+      path.join(fixtureRoot, ".agent/runtime/authorization.schema.json"),
+      "utf8",
+    );
+
+    const ctx = { cwd: fixtureRoot };
+    const plan = buildMigrationPlan(ctx, { dryRun: false });
+    const result = applyMigration(ctx, plan);
+    assert.ok(result.ok, "apply must succeed: " + JSON.stringify(result.errors));
+
+    // Source must be gone
+    assert.ok(!fs.existsSync(path.join(fixtureRoot, ".agent/runtime/authorization.schema.json")));
+
+    // Target now holds the new (moved) source content
+    const movedContent = fs.readFileSync(conflictPath, "utf8");
+    assert.strictEqual(movedContent, originalSourceContent);
+
+    // A timestamped backup of the pre-existing target must exist
+    const files = fs.readdirSync(contractsDir);
+    const backups = files.filter((f) => f.startsWith("authorization.schema.json.bak."));
+    assert.strictEqual(backups.length, 1, "exactly one timestamped backup must exist");
+    const backupPath = path.join(contractsDir, backups[0]);
+    assert.strictEqual(fs.readFileSync(backupPath, "utf8"), originalTargetContent);
+  });
+
+  it("same-digest target keeps existing file (no-op cleanup of stale source)", () => {
+    const fixtureRoot = fs.mkdtempSync(path.join(require("node:os").tmpdir(), "legacy-schema-same-"));
+    fixtures.push(fixtureRoot);
+    createLegacySchemaFixture(fixtureRoot);
+
+    // Mirror the source file content into the target so digests match
+    const srcPath = path.join(fixtureRoot, ".agent/runtime/authorization.schema.json");
+    const tgtDir = path.join(fixtureRoot, ".agent/contracts/runtime-state");
+    fs.mkdirSync(tgtDir, { recursive: true });
+    const tgtPath = path.join(tgtDir, "authorization.schema.json");
+    fs.writeFileSync(tgtPath, fs.readFileSync(srcPath, "utf8"));
+
+    const ctx = { cwd: fixtureRoot };
+    const plan = buildMigrationPlan(ctx, { dryRun: false });
+    const result = applyMigration(ctx, plan);
+    assert.ok(result.ok);
+
+    // Source must be gone (stale duplicate removed)
+    assert.ok(!fs.existsSync(srcPath));
+    // Target stays put, no backup created
+    assert.ok(fs.existsSync(tgtPath));
+    const files = fs.readdirSync(tgtDir);
+    const backups = files.filter((f) => f.startsWith("authorization.schema.json.bak."));
+    assert.strictEqual(backups.length, 0, "no backup created when digests match");
+  });
+});
+
 
 // ─── Helper Functions ────────────────────────────────────────────────────────
 
