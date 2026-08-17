@@ -7,6 +7,7 @@ const path = require("node:path");
 const test = require("node:test");
 
 const outbox = require("../../lib/cross-project/outbox");
+const { resolveRuntimePaths } = require("../../lib/runtime-layout");
 
 function mkRoot() {
   return fs.mkdtempSync(path.join(os.tmpdir(), "cortex-bridge-outbox-"));
@@ -142,13 +143,17 @@ test("readEvents lists events in propagated_at order", withRoot((t, root) => {
   assert.deepEqual(result.events.map((e) => e.bridge_event_id), ["BR-EVT-p006-b", "BR-EVT-p006-a", "BR-EVT-p006-c"]);
 }));
 
+// MS-003: Updated to use correct runtime path based on activation state
 test("readEvents since filter excludes older mtimes", withRoot((t, root) => {
   const base = { source_project_id: "cortex-agent", event_type: "task.state_changed", summary: {} };
   // Write the older event first, then capture `since` from a moment after the
   // older event was written but before the new one — using fs.utimesSync so
   // mtime is deterministic for the old file.
-  const olderFile = path.join(root, ".agent-runtime", "cross-project", "outbox", "cortex-agent", "BR-EVT-p006-old.json");
+  // MS-003: Use the correct outbox path based on the runtime layout
   outbox.writeEvent(root, { ...base, bridge_event_id: "BR-EVT-p006-old", propagated_at: "2026-08-12T00:00:00.000Z" });
+  const paths = resolveRuntimePaths(root);
+  const outboxDir = path.join(paths["cross-project"].new, "outbox", "cortex-agent");
+  const olderFile = path.join(outboxDir, "BR-EVT-p006-old.json");
   fs.utimesSync(olderFile, new Date("2026-01-01T00:00:00Z"), new Date("2026-01-01T00:00:00Z"));
   const since = new Date(Date.now() - 1000).toISOString();
   outbox.writeEvent(root, { ...base, bridge_event_id: "BR-EVT-p006-new", propagated_at: new Date().toISOString() });

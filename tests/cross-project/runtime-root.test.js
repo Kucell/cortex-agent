@@ -23,6 +23,7 @@ const subscriptions = require("../../lib/cross-project/subscriptions");
 const inboxStore = require("../../lib/cross-project/inbox-store");
 const outbox = require("../../lib/cross-project/outbox");
 const bridgeSync = require("../../lib/cross-project/bridge-sync");
+const { resolveRuntimePaths, LEGACY_RUNTIME_SEGMENT } = require("../../lib/runtime-layout");
 
 const RUNTIME_GITIGNORE_BODY = "*\n!.gitignore\n";
 const RUNTIME_GITIGNORE_MODE = 0o600;
@@ -39,16 +40,33 @@ function withRoot(prefix, fn) {
   };
 }
 
+// MS-003: Updated to check the correct runtime path based on activation state.
+// During compat window with no legacy: new path is used.
+// After activation: new path is used.
+// The test reflects the new-first behavior per VC-012.
 function assertRuntimeGitignore(root) {
-  const target = path.join(root, ".agent-runtime", ".gitignore");
-  assert.equal(fs.existsSync(target), true,
-    `.agent-runtime/.gitignore must exist after first Bridge write into ${root}`);
-  const stat = fs.statSync(target);
+  const paths = resolveRuntimePaths(root);
+
+  // Determine which path should have the .gitignore
+  // During compat window with legacy: prefer legacy
+  // Otherwise: use new
+  let expectedRoot;
+  let expectedPath;
+  if (paths.legacyExists && !paths.activated) {
+    expectedRoot = paths.legacyRuntimeDir;
+  } else {
+    expectedRoot = paths.newRuntimeDir;
+  }
+  expectedPath = path.join(expectedRoot, ".gitignore");
+
+  assert.equal(fs.existsSync(expectedPath), true,
+    `${expectedPath} must exist after first Bridge write into ${root}`);
+  const stat = fs.statSync(expectedPath);
   // mask off type bits so we only compare permission bits.
   assert.equal(stat.mode & 0o777, RUNTIME_GITIGNORE_MODE,
-    `.agent-runtime/.gitignore must be mode 0o600, got 0o${(stat.mode & 0o777).toString(8)}`);
-  assert.equal(fs.readFileSync(target, "utf8"), RUNTIME_GITIGNORE_BODY,
-    `.agent-runtime/.gitignore must contain exactly "*\\n!.gitignore\\n"`);
+    `${expectedPath} must be mode 0o600, got 0o${(stat.mode & 0o777).toString(8)}`);
+  assert.equal(fs.readFileSync(expectedPath, "utf8"), RUNTIME_GITIGNORE_BODY,
+    `${expectedPath} must contain exactly "*\\n!.gitignore\\n"`);
 }
 
 function mkEvent(overrides = {}) {

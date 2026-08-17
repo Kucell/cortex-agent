@@ -7,6 +7,7 @@ const path = require("node:path");
 const test = require("node:test");
 
 const subscriptions = require("../../lib/cross-project/subscriptions");
+const { resolveRuntimePaths } = require("../../lib/runtime-layout");
 
 function withRoot(fn) {
   return (t) => {
@@ -29,11 +30,11 @@ function event(overrides = {}) {
 
 // ─── path / read ──────────────────────────────────────────────────────────
 
+// MS-003: Updated to use correct runtime path based on activation state
 test("subscriptionsPath follows the P-003 §3.3 layout", withRoot((t, root) => {
-  assert.equal(
-    subscriptions.subscriptionsPath(root),
-    path.join(root, ".agent-runtime", "cross-project", "subscriptions.json"),
-  );
+  const paths = resolveRuntimePaths(root);
+  const expectedPath = path.join(paths["cross-project"].new, "subscriptions.json");
+  assert.equal(subscriptions.subscriptionsPath(root), expectedPath);
 }));
 
 test("readSubscriptions returns an empty list when no file exists", withRoot((t, root) => {
@@ -41,8 +42,10 @@ test("readSubscriptions returns an empty list when no file exists", withRoot((t,
   assert.deepEqual(result, { subscriptions: [] });
 }));
 
+// MS-003: Updated to use correct runtime path based on activation state
 test("readSubscriptions parses an existing valid file", withRoot((t, root) => {
-  const dir = path.join(root, ".agent-runtime", "cross-project");
+  const paths = resolveRuntimePaths(root);
+  const dir = paths["cross-project"].new;
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(
     path.join(dir, "subscriptions.json"),
@@ -55,8 +58,10 @@ test("readSubscriptions parses an existing valid file", withRoot((t, root) => {
   assert.equal(result.subscriptions[0].source_project_id, "cortex-agent");
 }));
 
+// MS-003: Updated to use correct runtime path based on activation state
 test("readSubscriptions rejects a corrupt file with a structured error", withRoot((t, root) => {
-  const dir = path.join(root, ".agent-runtime", "cross-project");
+  const paths = resolveRuntimePaths(root);
+  const dir = paths["cross-project"].new;
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(dir, "subscriptions.json"), "not json");
   assert.throws(
@@ -65,8 +70,10 @@ test("readSubscriptions rejects a corrupt file with a structured error", withRoo
   );
 }));
 
+// MS-003: Updated to use correct runtime path based on activation state
 test("readSubscriptions rejects a file that does not match the schema", withRoot((t, root) => {
-  const dir = path.join(root, ".agent-runtime", "cross-project");
+  const paths = resolveRuntimePaths(root);
+  const dir = paths["cross-project"].new;
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(dir, "subscriptions.json"), JSON.stringify({ subscriptions: [{ source_project_id: "x" }] }));
   assert.throws(
@@ -117,9 +124,11 @@ test("addSubscription rejects an entry missing source_project_id", withRoot((t, 
   );
 }));
 
+// MS-003: Updated to use correct runtime path based on activation state
 test("addSubscription persists atomically (no temp files after success)", withRoot((t, root) => {
   subscriptions.addSubscription(root, { source_project_id: "cortex-agent", event_types: ["task.state_changed"] });
-  const dir = path.join(root, ".agent-runtime", "cross-project");
+  const paths = resolveRuntimePaths(root);
+  const dir = paths["cross-project"].new;
   const stragglers = fs.readdirSync(dir).filter((n) => n.includes(".tmp."));
   assert.equal(stragglers.length, 0, `unexpected temp files: ${stragglers.join(",")}`);
 }));

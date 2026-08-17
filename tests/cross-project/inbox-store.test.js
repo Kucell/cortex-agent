@@ -7,6 +7,7 @@ const path = require("node:path");
 const test = require("node:test");
 
 const inboxStore = require("../../lib/cross-project/inbox-store");
+const { resolveRuntimePaths } = require("../../lib/runtime-layout");
 
 function mkRoot() {
   return fs.mkdtempSync(path.join(os.tmpdir(), "cortex-bridge-inbox-"));
@@ -32,9 +33,12 @@ function mkEvent(overrides = {}) {
   };
 }
 
+// MS-003: Updated to use correct runtime path based on activation state
 test("inboxDirFor and inboxEntryPath follow the P-003 §3.1 layout", withRoot((t, root) => {
+  const paths = resolveRuntimePaths(root);
+  const expectedDir = path.join(paths["cross-project"].new, "inbox", "cortex-agent");
   const dir = inboxStore.inboxDirFor(root, "cortex-agent");
-  assert.equal(dir, path.join(root, ".agent-runtime", "cross-project", "inbox", "cortex-agent"));
+  assert.equal(dir, expectedDir);
   const file = inboxStore.inboxEntryPath(root, "cortex-agent", "BR-EVT-001");
   assert.equal(file, path.join(dir, "BR-EVT-001.json"));
 }));

@@ -9,6 +9,7 @@ const test = require("node:test");
 const bridgeSync = require("../../lib/cross-project/bridge-sync");
 const subscriptions = require("../../lib/cross-project/subscriptions");
 const inboxStore = require("../../lib/cross-project/inbox-store");
+const { resolveRuntimePaths } = require("../../lib/runtime-layout");
 
 function mkDir(prefix) {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
@@ -45,16 +46,19 @@ function seedOutbox(sourceRoot, sourceProjectId, events) {
   }
 }
 
+// MS-003: Updated to use correct runtime path based on activation state
 // ─── sourceOutboxDir / cursorsPath ────────────────────────────────────────
 
 test("sourceOutboxDir and cursorsPath follow the agreed layout", withRoots((t, target, source) => {
+  const sourcePaths = resolveRuntimePaths(source);
+  const targetPaths = resolveRuntimePaths(target);
   assert.equal(
     bridgeSync.sourceOutboxDir(source, "cortex-agent"),
-    path.join(source, ".agent-runtime", "cross-project", "outbox", "cortex-agent"),
+    path.join(sourcePaths["cross-project"].new, "outbox", "cortex-agent"),
   );
   assert.equal(
     bridgeSync.cursorsPath(target),
-    path.join(target, ".agent-runtime", "cross-project", "cursors.json"),
+    path.join(targetPaths["cross-project"].new, "cursors.json"),
   );
 }));
 
@@ -262,13 +266,15 @@ test("syncForProject: schema-invalid event reports validation errors in skipped_
   assert.match(joined, /payload/);
 }));
 
+// MS-003: Updated to use correct runtime path based on activation state
 // ─── cursor persistence is atomic ────────────────────────────────────────
 
 test("syncForProject: cursor file is written atomically (no temp files)", withRoots((t, target, source) => {
   subscriptions.addSubscription(target, { source_project_id: "cortex-agent", event_types: ["task.state_changed"] });
   seedOutbox(source, "cortex-agent", [event({ bridge_event_id: "BR-EVT-001" })]);
   bridgeSync.syncForProject(target, { sourceProjectId: "cortex-agent", sourceRoot: source });
-  const dir = path.join(target, ".agent-runtime", "cross-project");
+  const targetPaths = resolveRuntimePaths(target);
+  const dir = targetPaths["cross-project"].new;
   const stragglers = fs.readdirSync(dir).filter((n) => n.includes(".tmp."));
   assert.equal(stragglers.length, 0, `unexpected temp files: ${stragglers.join(",")}`);
 }));
