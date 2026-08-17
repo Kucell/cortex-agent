@@ -9,6 +9,7 @@ const test = require("node:test");
 const bridgeSync = require("../../lib/cross-project/bridge-sync");
 const subscriptions = require("../../lib/cross-project/subscriptions");
 const topologyRegistry = require("../../lib/topology");
+const { resolveRuntimePaths } = require("../../lib/runtime-layout");
 
 function mkDir(prefix) {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
@@ -88,8 +89,10 @@ test("syncFromTopology syncs every subscription with topology-resolved host_root
   assert.equal(reachable.result.matched, 1);
   assert.equal(reachable.result.written, 1);
 
+  // MS-003: Updated to use correct runtime path based on activation state
   // Inbox file was written for the reachable source
-  const inboxFile = path.join(target, ".agent-runtime", "cross-project", "inbox", "hmi-platform", "BR-EVT-auto-001.json");
+  const targetPaths = resolveRuntimePaths(target);
+  const inboxFile = path.join(targetPaths["cross-project"].new, "inbox", "hmi-platform", "BR-EVT-auto-001.json");
   assert.ok(fs.existsSync(inboxFile), "inbox file should exist for reachable source");
 
   // Idempotent: a second call should not re-write because cursor advanced
