@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cortex-agent.local/schemas/runtime-state/local-binding.schema.json",
+  "title": "Runtime Layout Local Binding",
+  "description": "Per-host binding envelope persisted at .agent/runtime/hosts/<machine-id>/bindings.local.json. This is the only legitimate carrier of absolute filesystem paths in the runtime layout. Local bindings MUST NOT participate in identity equality, dedupe, lease-scope, or fencing decisions.",
+  "type": "object",
+  "required": ["schema_version", "machine_id", "bindings", "updated_at"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "type": "string", "minLength": 1 },
+    "machine_id": { "type": "string", "minLength": 1, "maxLength": 64 },
+    "bindings": {
+      "type": "array",
+      "maxItems": 256,
+      "items": {
+        "type": "object",
+        "required": ["workspace_id", "absolute_path", "captured_at"],
+        "additionalProperties": false,
+        "properties": {
+          "workspace_id": {
+            "type": "string",
+            "pattern": "^WS-[A-Za-z0-9][A-Za-z0-9._-]*$"
+          },
+          "workspace_instance_id": {
+            "type": ["string", "null"],
+            "maxLength": 256
+          },
+          "absolute_path": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4096,
+            "description": "Absolute POSIX path, Windows drive path, or UNC path. Bindings never cross to another machine."
+          },
+          "captured_at": { "type": "string", "maxLength": 64 }
+        }
+      }
+    },
+    "updated_at": { "type": "string", "minLength": 1, "maxLength": 64 }
+  }
+}
