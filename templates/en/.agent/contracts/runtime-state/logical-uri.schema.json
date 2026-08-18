@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cortex-agent.local/schemas/runtime-state/logical-uri.schema.json",
+  "title": "Runtime Layout Logical URI",
+  "description": "Frozen logical URI envelope used for portable state references. Schemes: project, repo, workspace, agent, runtime, artifact. Identities used for equality, dedupe, lease-scope or fencing MUST remain on the logical URI side; absolute paths only appear inside local-binding records.",
+  "type": "object",
+  "required": ["scheme", "path"],
+  "additionalProperties": false,
+  "properties": {
+    "scheme": {
+      "type": "string",
+      "enum": ["project", "repo", "workspace", "agent", "runtime", "artifact"]
+    },
+    "path": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2048,
+      "description": "Forward-slash separated segments using NFC normalisation and percent-encoding for reserved characters. Must not contain '.', '..', drive letters, or absolute-path-looking inputs."
+    }
+  }
+}
