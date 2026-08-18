@@ -1687,6 +1687,26 @@ function tokenAttemptsProjection() {
   });
 }
 
+function taskStateProjection() {
+  if (!fs.existsSync(path.join(__dirname, "query-task-state.js"))) {
+    return { ok: false, error: "task_state_query_unavailable", reason: "Run cortex-agent update." };
+  }
+  const { queryTaskState } = require("./query-task-state.js");
+  const result = queryTaskState(root, { task: option("--task") });
+  if (!result.ok) process.exitCode = 2;
+  return result;
+}
+
+function runStateProjection() {
+  if (!fs.existsSync(path.join(__dirname, "query-run-state.js"))) {
+    return { ok: false, error: "run_state_query_unavailable", reason: "Run cortex-agent update." };
+  }
+  const { queryRunState } = require("./query-run-state.js");
+  const result = queryRunState(root, { run: option("--run") });
+  if (!result.ok) process.exitCode = 2;
+  return result;
+}
+
 function checkpointRun() {
   const payload = parsePayload();
   const runId = safeId(option("--run-id", payload.run_id), "R");
@@ -1961,6 +1981,8 @@ const QUERY_HANDLERS = Object.freeze({
   "governed-attempt-progress": governedAttemptProgressProjection,
   "governed-attempt-diagnostics": governedAttemptDiagnosticsProjection,
   "token-attempts": tokenAttemptsProjection,
+  "task-state": taskStateProjection,
+  "run-state": runStateProjection,
 });
 
 function availableProjections() {
