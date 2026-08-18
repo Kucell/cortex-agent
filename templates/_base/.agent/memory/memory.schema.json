@@ -53,8 +53,8 @@
     },
     "scope": {
       "type": "string",
-      "enum": ["user", "project", "global"],
-      "description": "user = private to a user; project = shared within project; global = cross-project."
+      "enum": ["user", "project", "skill", "runtime", "global"],
+      "description": "P-007 §3.1: user = private preferences; project = project context; skill = skill-owned (e.g. evaluator output); runtime = session/workflow state; global = cross-project. Old entries without scope default to 'project' on read for back-compat."
     },
     "expires_at": {
       "type": ["string", "null"],
