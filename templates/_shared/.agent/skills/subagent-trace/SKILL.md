@@ -1,6 +1,8 @@
 ---
 name: subagent-trace
 description: Receiver for sub-agent fan-out lifecycle events.  Hosts (Claude Code / Cursor / Codex) push spawned / progress / completed / cancelled via `emit`; this skill appends to runs/<id>.json#subagent_fanout[] AND #events[].  Use `list` / `tree` to reconstruct the fan-out tree.
+area: agent-tuning
+summary: Receiver for sub-agent fan-out lifecycle events.  Hosts (Claude Code / Cursor / Codex) push spawned / progress / completed / cancelled via `emit`; this skill appends to runs/<id>.json#subagent_fanout[
 ---
 
 # subagent-trace (L1 — fan-out 接收器)

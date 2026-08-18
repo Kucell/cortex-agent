@@ -7,6 +7,8 @@ source:
   ref: main
   file: CLAUDE.md
   synced_from: 2026-08-11
+area: swe
+summary: Behavioral guidelines to reduce common LLM coding mistakes — Think Before Coding, Simplicity First, Surgical Changes, Goal-Driven Execution. Inspired by Andrej Karpathy's observations on LLM coding pi
 ---
 
 # Karpathy-Inspired Coding Behavior Guidelines

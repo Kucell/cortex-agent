@@ -1,6 +1,8 @@
 ---
 name: dependency-analysis
 description: Parallel task dependency and conflict analysis. Used by /sync-plans and /parallel to detect file-level conflicts, shared interface dependencies, blockers, and duplicate work across concurrent tasks before dispatching or merging workers.
+area: swe
+summary: Parallel task dependency and conflict analysis. Used by /sync-plans and /parallel to detect file-level conflicts, shared interface dependencies, blockers, and duplicate work across concurrent tasks be
 ---
 
 # Dependency Analysis Skill

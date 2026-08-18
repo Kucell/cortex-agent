@@ -1,6 +1,8 @@
 ---
 name: secrets
 description: 凭据存储抽象 — 用 `secret://<ref>` 语义引用代替明文 token;支持 macOS Keychain、Linux Secret Service、gpg-encrypted file、env 4 个可插拔后端;agent 永不接触明文值,由框架代为取 + 注入。
+area: aiapp
+summary: 凭据存储抽象 — 用 `secret://<ref>` 语义引用代替明文 token;支持 macOS Keychain、Linux Secret Service、gpg-encrypted file、env 4 个可插拔后端;agent 永不接触明文值,由框架代为取 + 注入。
 ---
 
 # secrets (L1 secrets-vcs)

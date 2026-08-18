@@ -1,6 +1,8 @@
 ---
 name: sync-global
 description: Synchronize workflows and skills from the global ~/.agent directory to the current project using symbolic links.
+area: aiapp
+summary: Synchronize workflows and skills from the global ~/.agent directory to the current project using symbolic links.
 ---
 
 # Global Sync Skill

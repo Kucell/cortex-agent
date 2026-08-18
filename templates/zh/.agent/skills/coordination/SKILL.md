@@ -1,6 +1,8 @@
 ---
 name: coordination
 description: 通过 Cortex Agent 公共 CLI 上报和查询厂商无关的多 Agent 任务协调状态。
+area: aiapp
+summary: 通过 Cortex Agent 公共 CLI 上报和查询厂商无关的多 Agent 任务协调状态。
 ---
 
 # Agent Coordination

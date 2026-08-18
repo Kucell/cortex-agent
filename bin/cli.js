@@ -41,6 +41,7 @@ const {
   topology,
   automation,
   localPublishValidate,
+  skillBrowse,
 } = require("../lib/commands");
 
 // M-013 P0 C2: Governed manual dispatch CLI surface.
@@ -501,6 +502,7 @@ async function initModeGeneral() {
     case "topology":    topology(l1Ctx); break;
     case "automation":  automation(l1Ctx); break;
     case "local-publish-validate": localPublishValidate(ctx); break;
+    case "skill":        skillBrowse(ctx); break;
     case "runs":        runs(ctx); break;
     case "queues":      queues(ctx); break;
     case "sessions":    sessions(ctx); break;

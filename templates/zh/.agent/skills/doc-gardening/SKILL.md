@@ -1,6 +1,8 @@
 ---
 name: doc-gardening
 description: 基于 knowledge-health.json 生成文档整理建议，输出 doc-gardening-report.json，帮助团队持续做低风险知识维护。
+area: aiapp
+summary: 基于 knowledge-health.json 生成文档整理建议，输出 doc-gardening-report.json，帮助团队持续做低风险知识维护。
 ---
 
 # Doc-Gardening

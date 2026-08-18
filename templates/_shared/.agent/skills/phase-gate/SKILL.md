@@ -1,6 +1,8 @@
 ---
 name: phase-gate
 description: State machine gate checker for workflow phase transitions. Ensures hard preconditions are met before moving to next phase.
+area: agent-tuning
+summary: State machine gate checker for workflow phase transitions. Ensures hard preconditions are met before moving to next phase.
 ---
 # Phase Gate Skill
 

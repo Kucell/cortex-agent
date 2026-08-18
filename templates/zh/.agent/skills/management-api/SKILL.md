@@ -1,6 +1,8 @@
 ---
 name: management-api
 description: Cortex Agent dashboard、runs、queues、sessions、inbox、decisions 和 waitpoints 的本地管理查询与受控运行态写入器。
+area: aiapp
+summary: Cortex Agent dashboard、runs、queues、sessions、inbox、decisions 和 waitpoints 的本地管理查询与受控运行态写入器。
 ---
 
 # Management API Skill

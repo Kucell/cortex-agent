@@ -1,6 +1,8 @@
 ---
 name: weekly-report
 description: Automatically generates weekly reports based on Git commit records and supports global/local storage management.
+area: aiapp
+summary: Automatically generates weekly reports based on Git commit records and supports global/local storage management.
 ---
 
 # Weekly Report Skill

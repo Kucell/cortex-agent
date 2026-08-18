@@ -1,6 +1,8 @@
 ---
 name: management-api
 description: Local management query and controlled runtime-state writer for Cortex Agent dashboard, runs, queues, sessions, inbox, decisions, and waitpoints.
+area: aiapp
+summary: Local management query and controlled runtime-state writer for Cortex Agent dashboard, runs, queues, sessions, inbox, decisions, and waitpoints.
 ---
 
 # Management API Skill

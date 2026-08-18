@@ -1,6 +1,8 @@
 ---
 name: cleanup-debug
 description: 清理 .agent/debug 下的临时调试产物（截图、日志等），可按保留天数与类型筛选；可选清理本机 Playwright MCP 缓存目录。
+area: aiapp
+summary: 清理 .agent/debug 下的临时调试产物（截图、日志等），可按保留天数与类型筛选；可选清理本机 Playwright MCP 缓存目录。
 ---
 
 # 清理调试文件技能 (Cleanup Debug)

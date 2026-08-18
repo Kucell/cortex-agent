@@ -1,6 +1,8 @@
 ---
 name: resource-ingest
 description: 外部资源自动灌入（受 OpenViking `client.add_resource` 启发）。把 URL / 文件 / git 仓库自动写入 `.agent/resources/external/`，自动生成 L0/L1 + 注册到 context-index.json + uri-map.json + MANIFEST.json。零 LLM 依赖，纯确定性。
+area: swe
+summary: 外部资源自动灌入（受 OpenViking `client.add_resource` 启发）。把 URL / 文件 / git 仓库自动写入 `.agent/resources/external/`，自动生成 L0/L1 + 注册到 context-index.json + uri-map.json + MANIFEST.json。零 LLM 依赖，纯确定性。
 ---
 
 # 资源灌入 (Resource Ingest)

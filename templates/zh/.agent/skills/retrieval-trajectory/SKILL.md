@@ -1,6 +1,8 @@
 ---
 name: retrieval-trajectory
 description: 记录与回放检索轨迹（受 OpenViking observable-retrieval 启发）。每次 context-budget / knowledge-retrieval / skill-selector 执行后写入 `.agent/runtime-evidence/trajectory/{task-id}_{ts}.jsonl`，支持回放 + URI 解析验证 + fixture 导出。
+area: agent-tuning
+summary: 记录与回放检索轨迹（受 OpenViking observable-retrieval 启发）。每次 context-budget / knowledge-retrieval / skill-selector 执行后写入 `.agent/runtime-evidence/trajectory/{task-id}_{ts}.jsonl`，支持回放 + URI 解析验证 + fixture 导出。
 ---
 
 # 检索轨迹 (Retrieval Trajectory)

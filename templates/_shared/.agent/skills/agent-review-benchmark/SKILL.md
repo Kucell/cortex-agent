@@ -1,6 +1,8 @@
 ---
 name: agent-review-benchmark
 description: Generate evidence-linked Guided Review artifacts and deterministic local Agent benchmark summaries. Use when reviewing Agent-produced diffs by intent, recording structured follow-ups, comparing multiple Agent/model/configuration runs against versioned repository assertions, or preparing reproducible review and benchmark evidence for /ship or Mission validation.
+area: agent-tuning
+summary: Generate evidence-linked Guided Review artifacts and deterministic local Agent benchmark summaries. Use when reviewing Agent-produced diffs by intent, recording structured follow-ups, comparing multip
 ---
 
 # Agent Review Benchmark

@@ -1,6 +1,8 @@
 ---
 name: context-budget
 description: 基于 L0/L1/L2 分层摘要的上下文预算控制（受 OpenViking 启发）。从 `.agent/references/` 中按 L0 关键词筛选、L1 排序、最后才加载 L2 全文，将注入量控制在模型上下文窗口的 40% 以内。零额外 token（前端启发式），输出 context-manifest.json + retrieval trajectory。
+area: agent-tuning
+summary: 基于 L0/L1/L2 分层摘要的上下文预算控制（受 OpenViking 启发）。从 `.agent/references/` 中按 L0 关键词筛选、L1 排序、最后才加载 L2 全文，将注入量控制在模型上下文窗口的 40% 以内。零额外 token（前端启发式），输出 context-manifest.json + retrieval trajectory。
 ---
 
 # 上下文预算控制 (Context Budget Skill) — L0/L1/L2 版

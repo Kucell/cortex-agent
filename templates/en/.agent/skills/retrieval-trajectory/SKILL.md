@@ -1,6 +1,8 @@
 ---
 name: retrieval-trajectory
 description: Record and replay retrieval trajectories (inspired by OpenViking's observable retrieval). After every context-budget / knowledge-retrieval / skill-selector execution, writes `.agent/runtime-evidence/trajectory/{task-id}_{ts}.jsonl`. Supports replay, URI resolution verification, and fixture export.
+area: agent-tuning
+summary: Record and replay retrieval trajectories (inspired by OpenViking's observable retrieval). After every context-budget / knowledge-retrieval / skill-selector execution, writes `.agent/runtime-evidence/t
 ---
 
 # Retrieval Trajectory

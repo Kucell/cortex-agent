@@ -1,6 +1,8 @@
 ---
 name: sync-global
 description: 将全局 ~/.agent 下的工作流和技能一键同步(Link)到当前项目。
+area: aiapp
+summary: 将全局 ~/.agent 下的工作流和技能一键同步(Link)到当前项目。
 ---
 
 # Global Sync Skill

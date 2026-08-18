@@ -7,6 +7,8 @@ tools:
   - Bash
   - Grep
   - Glob
+area: swe
+summary: Governed-tool adapter for the locally installed MiniMax CLI (`mmx`). Exposes a closed-set capability snapshot (text/image/video/speech/music/vision/search), portable Skill discovery across Claude Code
 ---
 
 # minimax-cli (governed-tool adapter, M-011 / ARI P-005)

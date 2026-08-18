@@ -1,6 +1,8 @@
 ---
 name: resource-ingest
 description: External resource ingestion (inspired by OpenViking's `client.add_resource`). Pull URL / file / git repo into `.agent/resources/external/`, auto-generate L0/L1, register in context-index.json + uri-map.json + MANIFEST.json. Zero LLM dependency.
+area: swe
+summary: External resource ingestion (inspired by OpenViking's `client.add_resource`). Pull URL / file / git repo into `.agent/resources/external/`, auto-generate L0/L1, register in context-index.json + uri-ma
 ---
 
 # Resource Ingest

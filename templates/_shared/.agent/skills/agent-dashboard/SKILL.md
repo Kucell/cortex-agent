@@ -1,6 +1,8 @@
 ---
 name: agent-dashboard
 description: Generate a local HTML dashboard for task progress, worktree collaboration, active agents, locks, handoffs, and recommended next actions.
+area: aiapp
+summary: Generate a local HTML dashboard for task progress, worktree collaboration, active agents, locks, handoffs, and recommended next actions.
 ---
 
 # Agent Dashboard Skill

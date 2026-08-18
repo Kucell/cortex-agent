@@ -1,6 +1,8 @@
 ---
 name: handoff
 description: 创建或恢复人可读与机器可读的轻量任务交接产物，用于在不同 Agent、会话或 sub-agent 之间转移工作，同时避免复制大型产物。
+area: aiapp
+summary: 创建或恢复人可读与机器可读的轻量任务交接产物，用于在不同 Agent、会话或 sub-agent 之间转移工作，同时避免复制大型产物。
 ---
 
 # Handoff Skill

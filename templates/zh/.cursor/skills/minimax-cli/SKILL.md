@@ -7,6 +7,8 @@ tools:
   - Bash
   - Grep
   - Glob
+area: swe
+summary: MiniMax CLI (`mmx`) 受治理工具适配。在 Claude Code 插件路径下注册；与 .agent/skills/minimax-cli 共享同一 frozen schema / 3 类 probe 白名单 / auth_state=unknown / fail-closed 网关。仅 mmx --version、mmx --help、mmx <resource> --help 
 ---
 
 # minimax-cli (Claude Code 插件，ARI P-005 / M-011)

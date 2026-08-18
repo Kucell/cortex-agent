@@ -1,6 +1,8 @@
 ---
 name: evolution-pipeline
 description: OpenViking-style async self-evolution pipeline. After a session archive, worker classifies observations and writes them to `.agent/memory/{feedback,project,experiences}/`. v1 = deterministic, zero tokens.
+area: agent-tuning
+summary: OpenViking-style async self-evolution pipeline. After a session archive, worker classifies observations and writes them to `.agent/memory/{feedback,project,experiences}/`. v1 = deterministic, zero tok
 ---
 
 # Self-Evolution Pipeline (Phase 2.2)

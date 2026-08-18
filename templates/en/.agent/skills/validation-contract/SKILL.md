@@ -1,6 +1,8 @@
 ---
 name: validation-contract
 description: Create, check, and summarize executable validation contracts for Mission Lite milestones and high-risk tasks before implementation begins.
+area: agent-tuning
+summary: Create, check, and summarize executable validation contracts for Mission Lite milestones and high-risk tasks before implementation begins.
 ---
 
 # Validation Contract Skill

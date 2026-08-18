@@ -1,6 +1,8 @@
 ---
 name: runtime-evidence
 description: Initialize and maintain runtime verification evidence files for /briefing, /ship, and validation-contract checks.
+area: aiapp
+summary: Initialize and maintain runtime verification evidence files for /briefing, /ship, and validation-contract checks.
 ---
 
 # Runtime Evidence

@@ -1,6 +1,8 @@
 ---
 name: architecture-guard
 description: Guards project architecture through automated audits and manual reviews. Ensures code changes comply with architectural principles defined in `.agent/rules/architecture-design.md`.
+area: agent-tuning
+summary: Guards project architecture through automated audits and manual reviews. Ensures code changes comply with architectural principles defined in `.agent/rules/architecture-design.md`.
 ---
 # Architecture Guard Skill
 

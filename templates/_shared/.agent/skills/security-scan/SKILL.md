@@ -1,6 +1,8 @@
 ---
 name: security-scan
 description: 对代码变更进行安全扫描，覆盖依赖漏洞、危险 API 使用、供应链风险和常见安全反模式。由 code-reviewer 在 /code-review 和 /ship 流程中自动调用。
+area: agent-tuning
+summary: 对代码变更进行安全扫描，覆盖依赖漏洞、危险 API 使用、供应链风险和常见安全反模式。由 code-reviewer 在 /code-review 和 /ship 流程中自动调用。
 ---
 
 # 安全扫描技能 (security-scan)

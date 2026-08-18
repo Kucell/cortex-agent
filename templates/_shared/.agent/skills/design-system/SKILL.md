@@ -10,6 +10,8 @@ description: |
   any visual output.
 
   Don't use when: pure backend / data / logic work with no visual surface.
+area: swe
+summary: |
 ---
 
 # Design System

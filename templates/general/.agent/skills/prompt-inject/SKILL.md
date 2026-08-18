@@ -1,6 +1,8 @@
 ---
 name: prompt-inject
 description: Assemble the general-mode system prompt from P-006 layered templates (core/domain) plus project memory and conversation summary. Zero dependency; used at session_start / per_turn / on_demand per general-config.yaml.
+area: agent-tuning
+summary: Assemble the general-mode system prompt from P-006 layered templates (core/domain) plus project memory and conversation summary. Zero dependency; used at session_start / per_turn / on_demand per gener
 ---
 
 # prompt-inject (P-006 template-side injection)

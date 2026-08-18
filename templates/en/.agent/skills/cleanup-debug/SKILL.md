@@ -1,6 +1,8 @@
 ---
 name: cleanup-debug
 description: Clean temporary debug artifacts under .agent/debug (screenshots, logs, etc.) with age filters; optional .playwright-mcp cleanup.
+area: aiapp
+summary: Clean temporary debug artifacts under .agent/debug (screenshots, logs, etc.) with age filters; optional .playwright-mcp cleanup.
 ---
 
 # Cleanup Debug Skill

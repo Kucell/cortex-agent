@@ -1,6 +1,8 @@
 ---
 name: superpowers
 description: 20+ 个经实战验证的工程技巧，覆盖 TDD 工作流、调试策略、Git 操作和代码审查模式。由 implementer 在复杂任务中按需调用。
+area: agent-tuning
+summary: 20+ 个经实战验证的工程技巧，覆盖 TDD 工作流、调试策略、Git 操作和代码审查模式。由 implementer 在复杂任务中按需调用。
 ---
 
 # 工程超能力技能 (superpowers)

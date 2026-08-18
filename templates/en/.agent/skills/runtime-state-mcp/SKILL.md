@@ -1,6 +1,8 @@
 ---
 name: runtime-state-mcp
 description: Expose one explicit Cortex Agent project through the standard, read-only Management API MCP stdio adapter.
+area: aiapp
+summary: Expose one explicit Cortex Agent project through the standard, read-only Management API MCP stdio adapter.
 ---
 
 # Runtime State MCP

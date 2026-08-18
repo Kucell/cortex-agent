@@ -1,6 +1,8 @@
 ---
 name: runtime-state-integration
 description: Assess whether a feature is stateful or exempt, create and check its seven-part Runtime State Integration Contract, and summarize validation gaps. Use during architecture, planning, Mission, implementation review, or shipping of features with lifecycle, persistence, side effects, recovery, query surfaces, or durable evidence.
+area: aiapp
+summary: Assess whether a feature is stateful or exempt, create and check its seven-part Runtime State Integration Contract, and summarize validation gaps. Use during architecture, planning, Mission, implement
 ---
 
 # Runtime State Integration

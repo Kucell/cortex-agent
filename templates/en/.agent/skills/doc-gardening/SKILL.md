@@ -1,6 +1,8 @@
 ---
 name: doc-gardening
 description: Turn knowledge-health.json into low-risk documentation maintenance recommendations and emit doc-gardening-report.json.
+area: aiapp
+summary: Turn knowledge-health.json into low-risk documentation maintenance recommendations and emit doc-gardening-report.json.
 ---
 
 # Doc-Gardening

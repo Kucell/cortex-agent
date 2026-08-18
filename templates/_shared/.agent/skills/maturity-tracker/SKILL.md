@@ -1,6 +1,8 @@
 ---
 name: maturity-tracker
 description: Harness 组件成熟度追踪。在 /ship CLEAN 阶段收集各组件表现指标，写入 metrics/component-health.json，供 /briefing 展示成熟度看板和退化决策依据。
+area: agent-tuning
+summary: Harness 组件成熟度追踪。在 /ship CLEAN 阶段收集各组件表现指标，写入 metrics/component-health.json，供 /briefing 展示成熟度看板和退化决策依据。
 ---
 
 # Maturity Tracker Skill

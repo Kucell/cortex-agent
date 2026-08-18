@@ -1,6 +1,8 @@
 ---
 name: knowledge-lint
 description: 对仓库知识结构做确定性检查，发现断链、缺 README、计划生命周期异常和架构文档引用失配，并输出 knowledge-health.json。
+area: agent-tuning
+summary: 对仓库知识结构做确定性检查，发现断链、缺 README、计划生命周期异常和架构文档引用失配，并输出 knowledge-health.json。
 ---
 
 # Knowledge Lint

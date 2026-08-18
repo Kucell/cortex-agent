@@ -1,6 +1,8 @@
 ---
 name: runtime-evidence
 description: 初始化和维护运行时验证证据文件，供 /briefing、/ship 和 validation-contract 判断验证状态。
+area: aiapp
+summary: 初始化和维护运行时验证证据文件，供 /briefing、/ship 和 validation-contract 判断验证状态。
 ---
 
 # Runtime Evidence

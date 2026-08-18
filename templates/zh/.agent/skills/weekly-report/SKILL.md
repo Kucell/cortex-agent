@@ -1,6 +1,8 @@
 ---
 name: weekly-report
 description: 根据 Git 提交记录自动生成周报，并支持全局/本地存储管理。
+area: aiapp
+summary: 根据 Git 提交记录自动生成周报，并支持全局/本地存储管理。
 ---
 
 # Weekly Report Skill

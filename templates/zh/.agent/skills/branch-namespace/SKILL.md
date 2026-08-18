@@ -1,6 +1,8 @@
 ---
 name: branch-namespace
 description: 当多个 clone 或 worktree 共享同一份 .agent 时，可选地将分支本地 plans、missions、handoffs 和 incidents 路由到防碰撞命名空间。
+area: aiapp
+summary: 当多个 clone 或 worktree 共享同一份 .agent 时，可选地将分支本地 plans、missions、handoffs 和 incidents 路由到防碰撞命名空间。
 ---
 
 # 分支命名空间

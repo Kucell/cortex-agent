@@ -1,6 +1,8 @@
 ---
 name: dashboard-supervisor
 description: Manual and opt-in supervisor for the Cortex Agent Dashboard. Default disabled; `auto enable` makes the supervisor opt into lifecycle management.
+area: aiapp
+summary: Manual and opt-in supervisor for the Cortex Agent Dashboard. Default disabled; `auto enable` makes the supervisor opt into lifecycle management.
 ---
 
 # Dashboard Supervisor

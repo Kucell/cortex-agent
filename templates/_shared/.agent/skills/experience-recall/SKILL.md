@@ -1,6 +1,8 @@
 ---
 name: experience-recall
 description: 检索与当前任务相关的历史经验教训，避免重复犯错。基于标签、关键词和文件路径的混合匹配，返回 Top-K 相关经验及防复发检查项。
+area: agent-tuning
+summary: 检索与当前任务相关的历史经验教训，避免重复犯错。基于标签、关键词和文件路径的混合匹配，返回 Top-K 相关经验及防复发检查项。
 ---
 
 # Experience Recall

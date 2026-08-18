@@ -1,6 +1,8 @@
 ---
 name: code-evaluation
 description: A structured skill for evaluating the quality, reliability, and performance of a proposed code implementation. Invoked automatically when analyzing complex changes, refactoring, or introducing heavy dependencies.
+area: agent-tuning
+summary: A structured skill for evaluating the quality, reliability, and performance of a proposed code implementation. Invoked automatically when analyzing complex changes, refactoring, or introducing heavy d
 ---
 # 代码实现评估技能 (SKILL)
 

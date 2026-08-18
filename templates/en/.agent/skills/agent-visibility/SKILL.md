@@ -1,6 +1,8 @@
 ---
 name: agent-visibility
 description: Manages the visibility of the .agent directory in Git, resolving conflicts between plugin menu recognition and version control.
+area: agent-tuning
+summary: Manages the visibility of the .agent directory in Git, resolving conflicts between plugin menu recognition and version control.
 ---
 
 # Agent Visibility Manager

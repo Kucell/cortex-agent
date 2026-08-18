@@ -1,6 +1,8 @@
 ---
 name: uri-resolver
 description: Resolve `cortex://` URIs and `.agent/` filesystem paths bidirectionally. Audits `.agent/` markdown for relative references. Inspired by OpenViking's `viking://` protocol. All new `.agent/` documentation should prefer `cortex://` form so cross-project copies don't require path rewrites.
+area: aiapp
+summary: Resolve `cortex://` URIs and `.agent/` filesystem paths bidirectionally. Audits `.agent/` markdown for relative references. Inspired by OpenViking's `viking://` protocol. All new `.agent/` documentati
 ---
 
 # URI Resolver

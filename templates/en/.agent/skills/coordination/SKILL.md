@@ -1,6 +1,8 @@
 ---
 name: coordination
 description: Report and inspect vendor-neutral multi-agent task coordination through the public Cortex Agent CLI.
+area: aiapp
+summary: Report and inspect vendor-neutral multi-agent task coordination through the public Cortex Agent CLI.
 ---
 
 # Agent Coordination

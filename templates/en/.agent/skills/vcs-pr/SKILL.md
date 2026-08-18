@@ -1,6 +1,8 @@
 ---
 name: vcs-pr
 description: VCS Pull Request 创建 / 状态 / 合并 — 通过 secret://<ref> 间接 token,框架代为取 + 注入 Authorization header;agent 永不接触明文。可插拔 backend:gitea / github / gitlab。
+area: swe
+summary: VCS Pull Request 创建 / 状态 / 合并 — 通过 secret://<ref> 间接 token,框架代为取 + 注入 Authorization header;agent 永不接触明文。可插拔 backend:gitea / github / gitlab。
 ---
 
 # vcs-pr (L1 secrets-vcs)

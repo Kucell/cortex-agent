@@ -1,6 +1,8 @@
 ---
 name: session-triage
 description: Decide whether to open a Mission + Run based on session signals (turns, debug keywords, tool failures). Open, observe, record-tool. Keeps active-task persistence automatic per `runtime-state-required`.
+area: aiapp
+summary: Decide whether to open a Mission + Run based on session signals (turns, debug keywords, tool failures). Open, observe, record-tool. Keeps active-task persistence automatic per `runtime-state-required`
 ---
 
 # session-triage (L1 audit-trail — Phase 1)

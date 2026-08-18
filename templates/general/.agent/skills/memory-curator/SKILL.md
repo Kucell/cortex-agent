@@ -5,6 +5,8 @@ mode: general
 schema_version: 1
 authoritative_subagent: sub-agents/memory-curator.md
 related_workflow: workflows/memory-distill.md
+area: aiapp
+summary: Distill raw session / conversation state into structured memory records across 3 categories (episodic / semantic / procedural). Wraps the memory-curator sub-agent for callable use from host agents (Cl
 ---
 
 # memory-curator (L1 — general 模式记忆蒸馏 CLI shell)

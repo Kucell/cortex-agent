@@ -1,6 +1,8 @@
 ---
 name: github-repo-research
 description: Research public GitHub repositories efficiently by using DeepWiki as a codebase map, then verify important claims against the repository's current primary sources. Use for architecture research, unfamiliar repository analysis, dependency evaluation, implementation comparisons, or when a user supplies a GitHub or DeepWiki repository URL.
+area: swe
+summary: Research public GitHub repositories efficiently by using DeepWiki as a codebase map, then verify important claims against the repository's current primary sources. Use for architecture research, unfam
 ---
 
 # GitHub Repository Research

@@ -1,6 +1,8 @@
 ---
 name: handoff
 description: Create or resume compact human-readable and machine-readable task handoff artifacts for transferring work between agents, sessions, or sub-agents without copying bulky artifacts.
+area: aiapp
+summary: Create or resume compact human-readable and machine-readable task handoff artifacts for transferring work between agents, sessions, or sub-agents without copying bulky artifacts.
 ---
 
 # Handoff Skill

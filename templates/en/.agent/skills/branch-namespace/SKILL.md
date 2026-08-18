@@ -1,6 +1,8 @@
 ---
 name: branch-namespace
 description: Optionally route branch-local plans, missions, handoffs, and incidents into collision-safe namespaces when clones or worktrees share one .agent tree.
+area: aiapp
+summary: Optionally route branch-local plans, missions, handoffs, and incidents into collision-safe namespaces when clones or worktrees share one .agent tree.
 ---
 
 # Branch Namespace

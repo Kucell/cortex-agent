@@ -1,6 +1,8 @@
 ---
 name: session-triage
 description: 决定是否开 Mission + Run (基于会话信号:turns / debug 关键词 / 工具失败)。open / observe / record-tool / step 四个动作。让活跃任务持久化按 `runtime-state-required` 自动执行。
+area: aiapp
+summary: 决定是否开 Mission + Run (基于会话信号:turns / debug 关键词 / 工具失败)。open / observe / record-tool / step 四个动作。让活跃任务持久化按 `runtime-state-required` 自动执行。
 ---
 
 # session-triage (L1 audit-trail — Phase 1)

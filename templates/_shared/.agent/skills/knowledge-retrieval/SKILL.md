@@ -1,6 +1,8 @@
 ---
 name: knowledge-retrieval
 description: Cross-store hybrid lexical retrieval, bidirectional [[wikilink]] backlinks, and rename-tracking over the .agent/ knowledge bases. Zero dependency. Use to find relevant knowledge across memory/experiences/references/decisions, discover who links to a note, or safely rewrite links after renaming a note.
+area: aiapp
+summary: Cross-store hybrid lexical retrieval, bidirectional [[wikilink]] backlinks, and rename-tracking over the .agent/ knowledge bases. Zero dependency. Use to find relevant knowledge across memory/experien
 ---
 
 # Knowledge Retrieval Skill

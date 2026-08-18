@@ -1,6 +1,8 @@
 ---
 name: activity-recording
 description: Validate and atomically store immutable project activity events and receipts, then rebuild the derived activity index.
+area: aiapp
+summary: Validate and atomically store immutable project activity events and receipts, then rebuild the derived activity index.
 ---
 
 # Activity Recording

@@ -1,6 +1,8 @@
 ---
 name: validation-contract
 description: 在实现开始前，为 Mission Lite milestone 和高风险任务创建、检查、压缩可执行验证契约。
+area: agent-tuning
+summary: 在实现开始前，为 Mission Lite milestone 和高风险任务创建、检查、压缩可执行验证契约。
 ---
 
 # Validation Contract Skill

@@ -1,6 +1,8 @@
 ---
 name: agent-visibility
 description: 管理 .agent 目录在 Git 中的可见性，解决插件菜单识别与版本控制之间的冲突。
+area: agent-tuning
+summary: 管理 .agent 目录在 Git 中的可见性，解决插件菜单识别与版本控制之间的冲突。
 ---
 
 # Agent Visibility Manager

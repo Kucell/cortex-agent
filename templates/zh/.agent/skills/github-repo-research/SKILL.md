@@ -1,6 +1,8 @@
 ---
 name: github-repo-research
 description: 使用 DeepWiki 快速建立公开 GitHub 仓库的代码地图，再用仓库当前的一手源码核验关键结论。适用于架构调研、陌生仓库分析、依赖评估、实现对比，以及用户提供 GitHub 或 DeepWiki 项目链接的场景。
+area: swe
+summary: 使用 DeepWiki 快速建立公开 GitHub 仓库的代码地图，再用仓库当前的一手源码核验关键结论。适用于架构调研、陌生仓库分析、依赖评估、实现对比，以及用户提供 GitHub 或 DeepWiki 项目链接的场景。
 ---
 
 # GitHub 项目调研

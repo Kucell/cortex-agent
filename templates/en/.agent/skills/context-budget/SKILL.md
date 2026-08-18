@@ -1,6 +1,8 @@
 ---
 name: context-budget
 description: L0/L1/L2 layered context budget (inspired by OpenViking). Filter references by L0, rerank by L1, load L2 only when budget allows. Caps injection at 40% of the model window. Zero external tokens (deterministic). Emits context-manifest.json and a retrieval trajectory.
+area: agent-tuning
+summary: L0/L1/L2 layered context budget (inspired by OpenViking). Filter references by L0, rerank by L1, load L2 only when budget allows. Caps injection at 40% of the model window. Zero external tokens (deter
 ---
 
 # Context Budget — L0/L1/L2 Edition

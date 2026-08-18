@@ -1,6 +1,8 @@
 ---
 name: evolution-pipeline
 description: OpenViking 风格的异步自我进化管线。Session 归档 (`runtime-continuity/archive`) 后自动 enqueue，worker 后台提取 observation 写入 `.agent/memory/{feedback,project,experiences}/`。零 LLM 依赖（v1）。
+area: agent-tuning
+summary: OpenViking 风格的异步自我进化管线。Session 归档 (`runtime-continuity/archive`) 后自动 enqueue，worker 后台提取 observation 写入 `.agent/memory/{feedback,project,experiences}/`。零 LLM 依赖（v1）。
 ---
 
 # Self-Evolution Pipeline (Phase 2.2)

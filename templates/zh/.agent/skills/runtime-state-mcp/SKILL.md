@@ -1,6 +1,8 @@
 ---
 name: runtime-state-mcp
 description: 通过标准、只读的 Management API MCP stdio adapter 暴露一个明确的 Cortex Agent 项目。
+area: aiapp
+summary: 通过标准、只读的 Management API MCP stdio adapter 暴露一个明确的 Cortex Agent 项目。
 ---
 
 # Runtime State MCP

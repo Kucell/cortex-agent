@@ -1,6 +1,8 @@
 ---
 name: uri-resolver
 description: 解析 cortex:// URI 协议与 .agent/ 文件系统路径互转，审计 .agent/ 中相对路径引用，受 OpenViking viking:// 启发。所有 `.agent/` 文档引用应优先使用 cortex:// 形式，复现项目时无需改路径。
+area: aiapp
+summary: 解析 cortex:// URI 协议与 .agent/ 文件系统路径互转，审计 .agent/ 中相对路径引用，受 OpenViking viking:// 启发。所有 `.agent/` 文档引用应优先使用 cortex:// 形式，复现项目时无需改路径。
 ---
 
 # URI 解析器 (URI Resolver)

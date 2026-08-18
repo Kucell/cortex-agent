@@ -1,6 +1,8 @@
 ---
 name: runtime-continuity
 description: session-manager protocol plus Runtime Continuity v2 as a CLI: assess / log / checkpoint / archive / restore / status / warm / host-switch / resume-bundle / list-contexts. Writes transferable work state to .agent/runtime-continuity/ and readable archives to ~/.agent/contexts/<project>/.
+area: aiapp
+summary: session-manager protocol plus Runtime Continuity v2 as a CLI: assess / log / checkpoint / archive / restore / status / warm / host-switch / resume-bundle / list-contexts. Writes transferable work stat
 ---
 
 # runtime-continuity (L1 — session-manager CLI shell + Runtime Continuity v2)

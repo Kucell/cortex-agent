@@ -1,6 +1,8 @@
 ---
 name: graphify
 description: 查询当前项目的 Graphify 知识图谱。支持 query（关键词检索）、path（两文件最短路径）、explain（节点解释）、extract（子图提取）。需要 graphify-out/graph.json 存在。
+area: swe
+summary: 查询当前项目的 Graphify 知识图谱。支持 query（关键词检索）、path（两文件最短路径）、explain（节点解释）、extract（子图提取）。需要 graphify-out/graph.json 存在。
 ---
 
 # Graphify Skill

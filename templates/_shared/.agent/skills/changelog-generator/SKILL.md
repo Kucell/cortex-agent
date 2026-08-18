@@ -1,6 +1,8 @@
 ---
 name: changelog-generator
 description: 从 Git 提交记录自动生成用户友好的 CHANGELOG，按 Conventional Commits 分类归组，支持版本号推断。由 documenter 在 /ship 流程中调用。
+area: swe
+summary: 从 Git 提交记录自动生成用户友好的 CHANGELOG，按 Conventional Commits 分类归组，支持版本号推断。由 documenter 在 /ship 流程中调用。
 ---
 
 # 变更日志生成技能 (changelog-generator)

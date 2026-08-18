@@ -1,6 +1,8 @@
 ---
 name: graphify
 description: Query the Graphify knowledge graph for the current project. Supports query, path, explain, and subgraph extraction. Requires graphify-out/graph.json to be present.
+area: swe
+summary: Query the Graphify knowledge graph for the current project. Supports query, path, explain, and subgraph extraction. Requires graphify-out/graph.json to be present.
 ---
 
 # Graphify Skill
