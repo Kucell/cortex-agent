@@ -841,7 +841,8 @@ As of MS-004 (per Eric 拍板 2026-08-04 18:20), the list of valid
 
 - `VALID_ADAPTER_TYPES` (M-002 strict, unchanged) — `claude-code`, `cortex`,
   `codex`, `codey`, `pi`, `custom`.
-- `VALID_ADAPTER_TYPES_EXT` (M-003+ additive) — `minimax`, plus future
+- `VALID_ADAPTER_TYPES_EXT` (M-003+ additive) — `minimax`, `dsh` (M-029 /
+  P-006, DeepSeek Harness first-class adapter, 2026-08-19), plus future
   M-003+ adapters as they ship.
 - `VALID_ADAPTER_TYPES_ALL` (frozen union) — the canonical list for
   callers that need to accept all known types.
@@ -861,6 +862,46 @@ What this means for 3rd-party adapters:
 - If you ship a new adapter type, you can add it to
   `VALID_ADAPTER_TYPES_EXT` (in a future MS-004+ commit) without touching
   M-002's `lib/agents/registry.js`.
+
+### 9.5 DSH (DeepSeek Harness) first-class adapter (M-029 / P-006, 2026-08-19)
+
+DSH was promoted from a Token Control Plane shadow host
+(`D-TCP-004-add-dsh-host`, usage measurement only) to a first-class dispatch
+adapter by architecture decision `D-ARI-P006-promote-dsh-firstclass` (user
+approved 2026-08-19). Reference implementation:
+`lib/agents/adapters/dsh.js` (~650 lines) + opt-in bootstrap
+`lib/agents/adapters/dsh-bootstrap.js`.
+
+**Registration path (differs from 3rd-party guidance on purpose)**
+
+- `lib/agents/adapters/index.js#_seed()` registers `"dsh"` via try/catch
+  (same additive pattern as `codex`). This is a **framework-owned** seed,
+  not a 3rd-party side-effect — M-029 changed the seed tail in a strictly
+  additive way (no existing statement modified).
+- `lib/agents/registry-adapter-types.js#VALID_ADAPTER_TYPES_EXT` adds `"dsh"`
+  (additive extension file; `lib/agents/registry.js` stays zero-modify).
+- `lib/coordination/adapter-core.js#REGISTERED_ADAPTER_IDS` adds `dsh.local`
+  and `dsh.dev` for the coordination runtime handshake surface.
+- `lib/agents/adapters/dsh-bootstrap.js` mirrors `codey-pi-bootstrap.js`
+  for environments that prefer explicit `--require` opt-in over the seed.
+
+**Capability descriptor**
+
+`discover().capability_descriptor` declares P-001 frozen vocabulary levels:
+`session.boundary = explicit`, `turn.boundary = adapter`,
+`message.boundary = unobservable`, `tool.before.observe = unsupported`,
+`tool.before.block = unsupported` (until M-018 verifies real DSH hooks),
+`tool.update = unobservable`, `context.render.observe = unsupported`.
+It passes `validateCapabilityDescriptor` from
+`lib/runtime-adapters/capability-contract.js`.
+
+**Security boundary**
+
+The dispatch adapter never reads `~/.dsh/sessions/` (session envelope
+backfill is owned by `scripts/dsh-usage-sync.js`). Fail-closed when the DSH
+CLI is absent: `health()` → `ready: false`, `invoke()` →
+`ERR_ADAPTER_SPAWN`. DSH_BIN env override mirrors `PI_BIN` / `CODEX_BIN` /
+`CLAUDE_CODE_BIN` / `MINIMAX_BIN`.
 
 ---
 

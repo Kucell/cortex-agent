@@ -87,6 +87,7 @@
 | **Roo Code** | `.roorules` / `.roo/rules/` | 指令文件 + 符号链接 | 支持多模式（Architect/Code/Debug/Ask），双路径集成 |
 | **Amazon Q** | `.amazonq/rules/cortex.md` | 指令文件 | AWS 官方 AI 助手，从 `.amazonq/rules/*.md` 注入规则到每次对话上下文 |
 | **Qoder CLI CN** | `AGENTS.md` + `.qoder/` | 指令文件 + 符号链接 | `qoderclicn` 自动读取根目录 `AGENTS.md`（`/init` 生成）；`cortex-agent add qoderclicn` 会创建 `.qoder/commands`→`.agent/workflows/`、`.qoder/agents`→`.agent/sub-agents/`、`.qoder/skills`→`.agent/skills/` 符号链接，分别映射为原生斜杠命令、子代理与 Skill。注意：与 Qoder 内置命令同名的工作流（如 `/plan`、`/review`）会被 Qoder 自动重命名（如 `/plan1`），属宿主自身冲突处理行为 |
+| **DSH (DeepSeek Harness)** | `AGENTS.md` + `.dsh/` | 指令文件 + 符号链接 + first-class dispatch adapter | `cortex-agent add dsh` 生成 `.dsh/settings.json`（merge）、`.dsh/README.md`、`.dsh/AGENTS.md`，并创建 `.dsh/skills`→`.agent/skills/`、`.dsh/workflows`→`.agent/workflows/` 符号链接；`lib/agents/adapters/dsh.js` 提供 `discover/health/invoke/cancel/report` 五方法，`agent dispatch-execute dsh:<id>` 执行派发（`D-ARI-P006-promote-dsh-firstclass` 批准，2026-08-19）。能力边界与限制见 [DSH 集成指南](./host-dsh-integration.md) |
 
 ---
 
@@ -173,6 +174,7 @@
 # 添加平台集成
 cortex-agent add cline
 cortex-agent add roo
+cortex-agent add dsh
 
 # 移除平台集成
 cortex-agent remove cline
