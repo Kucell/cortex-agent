@@ -1,0 +1,236 @@
+{
+  "type": "validation_contract",
+  "mission_id": "M-029",
+  "proposal_revision": "proposal:.agent/plans/proposals/projects/agent-runtime-interoperability/proposals/P-006-dsh-host-adapter-proposal.md",
+  "approval_decision": "D-ARI-P006-promote-dsh-firstclass",
+  "source_waitpoint": "WP-ari-p006-impl",
+  "scope": {
+    "feature": "dsh-host-adapter",
+    "proposal_acceptance_criteria": [
+      "AC-01 注册可见",
+      "AC-02 健康检查",
+      "AC-03 dispatch 成功",
+      "AC-04 失败模式完整",
+      "AC-05 cancel 工作",
+      "AC-06 report 工作",
+      "AC-07 模板可下发",
+      "AC-08 文档齐备",
+      "AC-09 双语同步",
+      "AC-10 零依赖",
+      "AC-11 纯加法",
+      "AC-12 影子兼容",
+      "AC-13 协调注册",
+      "AC-14 capability snapshot",
+      "AC-15 决策与 Waitpoint",
+      "AC-16 测试 baseline"
+    ],
+    "files": [
+      "lib/agents/adapters/dsh.js",
+      "lib/agents/adapters/dsh-bootstrap.js",
+      "lib/agents/registry-adapter-types.js",
+      "lib/agents/adapters/index.js",
+      "lib/coordination/adapter-core.js",
+      "lib/runtime-adapters/host-runtime-snapshots.js",
+      "templates/zh/integrations/dsh/",
+      "templates/en/integrations/dsh/",
+      "docs/platform-integration.md",
+      "docs/host-dsh-integration.md",
+      "docs/architecture/adapter-authoring.md",
+      "tests/agent/agent-adapter-dsh.test.js"
+    ]
+  },
+  "milestones": [
+    {
+      "milestone_id": "MS-001",
+      "feature_id": "F-014",
+      "title": "DSH capability snapshot + discover/health/report",
+      "assertions": [
+        {
+          "id": "VC-029-001-01",
+          "type": "api",
+          "assertion": "DshAdapter extends BaseAdapter and implements discover() returning adapter_type='dsh' with non-empty capabilities and maturity='stable'",
+          "evidence": "tests/agent/agent-adapter-dsh.test.js (discover unit)",
+          "blocking": true
+        },
+        {
+          "id": "VC-029-001-02",
+          "type": "test",
+          "command": "node --test tests/agent/agent-adapter-dsh.test.js",
+          "assertion": "health() returns ready=true when DSH_BIN points to a fake dsh binary; ready=false with ERR_ADAPTER_SPAWN when bin absent",
+          "blocking": true
+        },
+        {
+          "id": "VC-029-001-03",
+          "type": "api",
+          "assertion": "host-runtime-snapshots exposes a DSH capability snapshot row with capabilities, limits, evidence, received_at",
+          "evidence": "lib/runtime-adapters/host-runtime-snapshots.js + unit test",
+          "blocking": true
+        },
+        {
+          "id": "VC-029-001-04",
+          "type": "security",
+          "assertion": "DSH adapter never reads ~/.dsh/sessions/ storage; only envelope metadata",
+          "blocking": true
+        }
+      ]
+    },
+    {
+      "milestone_id": "MS-002",
+      "feature_id": "F-015",
+      "title": "DSH registry / _seed() / adapter-core.js 注册",
+      "assertions": [
+        {
+          "id": "VC-029-002-01",
+          "type": "test",
+          "command": "node --test tests/agent/agent-adapter-dsh.test.js tests/agent/agent-registry.test.js",
+          "assertion": "adapters.list() includes 'dsh' after dsh-bootstrap is required; ad-hoc register('dsh', DshAdapter) makes it visible to dispatch",
+          "blocking": true
+        },
+        {
+          "id": "VC-029-002-02",
+          "type": "api",
+          "assertion": "VALID_ADAPTER_TYPES_EXT contains 'dsh'; isKnownAdapterType('dsh') === true; validateAdapterTypeExt('dsh') does not throw ERR_INVALID_ADAPTER_TYPE",
+          "evidence": "tests/agent/agent-registry.test.js (adapter-types unit)",
+          "blocking": true
+        },
+        {
+          "id": "VC-029-002-03",
+          "type": "api",
+          "assertion": "lib/coordination/adapter-core.js#register('dsh', ...) succeeds; list() includes dsh when DSH host exists; absent-safe when DSH missing",
+          "blocking": true
+        },
+        {
+          "id": "VC-029-002-04",
+          "type": "security",
+          "assertion": "_seed() modification remains try/catch additive; registry.js zero-modify preserved",
+          "blocking": true
+        }
+      ]
+    },
+    {
+      "milestone_id": "MS-003",
+      "feature_id": "F-016",
+      "title": "DSH dispatch evidence sink + 6 类失败模式",
+      "assertions": [
+        {
+          "id": "VC-029-003-01",
+          "type": "test",
+          "command": "node --test tests/agent/agent-adapter-dsh.test.js",
+          "assertion": "invoke() happy path: fake dsh returns JSON-RPC; request.json + result.json atomic write; report() returns the concatenated record",
+          "blocking": true
+        },
+        {
+          "id": "VC-029-003-02",
+          "type": "test",
+          "command": "node --test tests/agent/agent-adapter-dsh.test.js",
+          "assertion": "Six failure modes all covered: ERR_ADAPTER_SPAWN, ERR_DISPATCH_FAILED (non-zero exit), ERR_DISPATCH_TIMEOUT, ERR_JSONRPC_PARSE, rollback-failed.json + notify_parent=true, cancel mid-flight via SIGTERM",
+          "blocking": true
+        },
+        {
+          "id": "VC-029-003-03",
+          "type": "api",
+          "assertion": "Cancel of completed run is no-op with structured result; report() of missing journal returns not_found structure",
+          "blocking": true
+        },
+        {
+          "id": "VC-029-003-04",
+          "type": "security",
+          "assertion": "DSH adapter does not write to ~/.dsh/sessions/, does not auto-approve, fails closed when DSH host absent",
+          "blocking": true
+        }
+      ]
+    },
+    {
+      "milestone_id": "MS-004",
+      "feature_id": "F-017",
+      "title": "DSH 双语模板 + add dsh CLI + 文档同步",
+      "assertions": [
+        {
+          "id": "VC-029-004-01",
+          "type": "doc",
+          "assertion": "templates/{zh,en}/integrations/dsh/ exist with README.md, AGENTS.md, settings.json; structural parity",
+          "blocking": true
+        },
+        {
+          "id": "VC-029-004-02",
+          "type": "test",
+          "command": "node --test tests/cli/add-host-dsh.test.js",
+          "assertion": "cortex-agent add dsh --dry-run materializes the dual-language templates without writing to the project root",
+          "blocking": true
+        },
+        {
+          "id": "VC-029-004-03",
+          "type": "doc",
+          "assertion": "docs/platform-integration.md contains a DSH row matching the schema used for claude/codex/pi/minimax",
+          "blocking": true
+        },
+        {
+          "id": "VC-029-004-04",
+          "type": "doc",
+          "assertion": "docs/host-dsh-integration.md has four sections (install / register / dispatch / limits) matching docs/host-claude-code-integration.md parity",
+          "blocking": true
+        },
+        {
+          "id": "VC-029-004-05",
+          "type": "doc",
+          "assertion": "docs/architecture/adapter-authoring.md §9 contains a DSH register pattern entry",
+          "blocking": true
+        }
+      ]
+    },
+    {
+      "milestone_id": "MS-005",
+      "feature_id": "F-018",
+      "title": "DSH tool gate + context pilot (optional)",
+      "optional": true,
+      "assertions": [
+        {
+          "id": "VC-029-005-01",
+          "type": "doc",
+          "assertion": "If DSH exposes tool-before hook, integrate with P-001 gate contract; otherwise mark unsupported and report readiness.warning|blocked",
+          "blocking": false
+        },
+        {
+          "id": "VC-029-005-02",
+          "type": "doc",
+          "assertion": "If MS-005 is waived, document the rationale and ship 'first-class dispatch only' as the supported posture",
+          "blocking": false
+        }
+      ]
+    }
+  ],
+  "global_assertions": [
+    {
+      "id": "VC-029-G01",
+      "type": "security",
+      "assertion": "bin/cli.js + dsh.js + dsh-bootstrap.js use only Node.js stdlib (no npm imports)",
+      "blocking": true
+    },
+    {
+      "id": "VC-029-G02",
+      "type": "test",
+      "command": "node --test tests/agent/*.test.js tests/host-adapter/shadow-usage/*.test.js tests/scripts/dsh-usage-sync.test.js",
+      "assertion": "Test baseline >= 287 (per docs/releases/v1.13.0-rc.3.md) does not regress; DSH shadow 24/24 + dsh-usage-sync 11/11 + 5 adapter parity",
+      "blocking": true
+    },
+    {
+      "id": "VC-029-G03",
+      "type": "test",
+      "command": "node .agent/skills/architecture-guard/scripts/index.js",
+      "assertion": "Architecture-guard passes zero violations on dsh.js + dsh-bootstrap.js + index.js (try/catch)",
+      "blocking": true
+    },
+    {
+      "id": "VC-029-G04",
+      "type": "doc",
+      "assertion": "templates/zh and templates/en both include integrations/dsh/ (dual-language parity)",
+      "blocking": true
+    },
+    {
+      "id": "VC-029-G05",
+      "type": "runtime",
+      "assertion": "WP-ari-p006-impl released by mission-coordinator after MS-001 acceptance",
+      "blocking": true
+    }
+  ]
+}
