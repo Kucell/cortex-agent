@@ -337,3 +337,358 @@ test("dsh adapter: index.js _seed() remains try/catch additive and survives rese
   assert.ok(list.includes("codex"));
   assert.ok(list.includes("dsh"));
 });
+
+// ─── MS-003: invoke() + cancel() + report() happy path + 6 failure modes ──────
+
+// Fake DSH binary. Mirrors codex / pi fake-binary pattern: a Node script
+// driven by FAKE_DSH_MODE env var, installed once per test process with
+// chmod +x so spawn(this.bin, ...) executes it via shebang.
+const FAKE_DSH_BODY = `#!/usr/bin/env node
+'use strict';
+// Minimal mock of the DSH CLI for tests. Driven by env vars:
+//   FAKE_DSH_MODE = success | empty | badjson | framed | error-envelope |
+//                   hang | exitcode | stderr
+//   FAKE_DSH_DELAY_MS (optional) — sleep before responding (for hang mode)
+
+const mode = process.env.FAKE_DSH_MODE || "success";
+const delayMs = parseInt(process.env.FAKE_DSH_DELAY_MS || "0", 10);
+
+function emit(plain) {
+  process.stdout.write(plain + "\\n");
+}
+function emitFramed(plain) {
+  const body = Buffer.byteLength(plain, "utf8");
+  process.stdout.write("Content-Length: " + body + "\\r\\n\\r\\n" + plain);
+}
+function bail(code, msg) {
+  process.stderr.write(msg);
+  process.exit(code);
+}
+
+let drained = 0;
+process.stdin.on("data", (c) => { drained += c.length; });
+process.stdin.on("end", () => { drained += 0; });
+
+if (mode === "hang") {
+  setTimeout(() => emit(JSON.stringify({ jsonrpc: "2.0", id: 1, result: { too_late: true } })), Math.max(delayMs, 30000));
+  return;
+}
+
+if (delayMs > 0) setTimeout(() => {}, delayMs);
+
+switch (mode) {
+  case "empty":
+    process.exit(0);
+    break;
+  case "badjson":
+    emit("this is { not valid json at all");
+    process.exit(0);
+    break;
+  case "framed":
+    emitFramed(JSON.stringify({ jsonrpc: "2.0", id: 1, result: { text: "framed-ok", count: 42 } }));
+    process.exit(0);
+    break;
+  case "error-envelope":
+    emit(JSON.stringify({ jsonrpc: "2.0", id: 1, error: { code: -32001, message: "rate_limited" } }));
+    process.exit(0);
+    break;
+  case "stderr":
+    process.stderr.write("warning: deprecated flag --foo\\n");
+    emit(JSON.stringify({ jsonrpc: "2.0", id: 1, result: { text: "ok-with-warnings" } }));
+    process.exit(0);
+    break;
+  case "exitcode":
+    bail(7, "fatal: bad config\\n");
+    break;
+  case "success":
+  default:
+    emit(JSON.stringify({ jsonrpc: "2.0", id: 1, result: { text: "hello from fake dsh", task_received: true, drained_bytes: drained } }));
+    process.exit(0);
+    break;
+}
+`;
+
+let _fakeDshPath = null;
+function installFakeDsh() {
+  if (_fakeDshPath) return _fakeDshPath;
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "m029-dsh-fakebin-"));
+  const file = path.join(dir, "fake-dsh.js");
+  fs.writeFileSync(file, FAKE_DSH_BODY, "utf8");
+  fs.chmodSync(file, 0o755);
+  _fakeDshPath = file;
+  return _fakeDshPath;
+}
+
+function journalFile(root, runId, name) {
+  return path.join(root, ".agent", "runtime", "dispatch", runId, name);
+}
+function readJournal(root, runId, name) {
+  const file = journalFile(root, runId, name);
+  if (!fs.existsSync(file)) return null;
+  return JSON.parse(fs.readFileSync(file, "utf8"));
+}
+
+function runWithMode(mode) {
+  const fake = installFakeDsh();
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "m029-dsh-"));
+  const prevMode = process.env.FAKE_DSH_MODE;
+  process.env.FAKE_DSH_MODE = mode;
+  try {
+    return { fake, dir, restore: () => {
+      fs.rmSync(dir, { recursive: true, force: true });
+      if (prevMode === undefined) delete process.env.FAKE_DSH_MODE;
+      else process.env.FAKE_DSH_MODE = prevMode;
+    }};
+  } catch (err) {
+    fs.rmSync(dir, { recursive: true, force: true });
+    throw err;
+  }
+}
+
+// VC-029-003-01: invoke() happy path
+test("dsh adapter: invoke() success writes request + result + rollback + returns ok", async () => {
+  const ctx = runWithMode("success");
+  try {
+    const adapter = new DshAdapter({ bin: ctx.fake, shell: false });
+    const result = await adapter.invoke(
+      { task: "review this" },
+      { projectRoot: ctx.dir, runId: "R-dsh-ok-1" },
+    );
+    assert.equal(result.status, "ok");
+    // invoke() returns the resultRecord shape (snake_case) — same as codex / pi.
+    assert.equal(result.run_id, "R-dsh-ok-1");
+    assert.match(result.result.text, /hello from fake dsh/);
+    assert.ok(fs.existsSync(journalFile(ctx.dir, "R-dsh-ok-1", "request.json")));
+    assert.ok(fs.existsSync(journalFile(ctx.dir, "R-dsh-ok-1", "result.json")));
+    assert.ok(fs.existsSync(journalFile(ctx.dir, "R-dsh-ok-1", "rollback.json")));
+    const rb = readJournal(ctx.dir, "R-dsh-ok-1", "rollback.json");
+    assert.equal(rb.status, "completed");
+    const req = readJournal(ctx.dir, "R-dsh-ok-1", "request.json");
+    assert.equal(req.adapter_type, "dsh");
+    assert.equal(req.payload.task, "review this");
+  } finally { ctx.restore(); }
+});
+
+// VC-029-003-01: invoke() with Content-Length framed JSON-RPC response
+test("dsh adapter: invoke() accepts Content-Length framed JSON-RPC response", async () => {
+  const ctx = runWithMode("framed");
+  try {
+    const adapter = new DshAdapter({ bin: ctx.fake, shell: false });
+    const result = await adapter.invoke({}, { projectRoot: ctx.dir, runId: "R-dsh-framed-1" });
+    assert.equal(result.status, "ok");
+    assert.equal(result.run_id, "R-dsh-framed-1");
+    assert.equal(result.result.text, "framed-ok");
+    assert.equal(result.result.count, 42);
+  } finally { ctx.restore(); }
+});
+
+// VC-029-003-02: failure mode 1 — ERR_ADAPTER_SPAWN (missing binary)
+test("dsh adapter: invoke() on missing binary writes ERR_ADAPTER_SPAWN + error + rollback", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "m029-dsh-spawn-"));
+  try {
+    const adapter = new DshAdapter({ bin: "/no/such/dsh/binary/xyz", shell: false });
+    const result = await adapter.invoke({ task: "x" }, { projectRoot: dir, runId: "R-dsh-spawn-fail" });
+    assert.equal(result.status, "failed");
+    assert.equal(result.run_id, "R-dsh-spawn-fail");
+    assert.equal(result.error.code, "ERR_ADAPTER_SPAWN");
+    assert.ok(fs.existsSync(journalFile(dir, "R-dsh-spawn-fail", "error.json")));
+    assert.ok(fs.existsSync(journalFile(dir, "R-dsh-spawn-fail", "rollback.json")));
+    const rb = readJournal(dir, "R-dsh-spawn-fail", "rollback.json");
+    assert.equal(rb.status, "rolled_back");
+    assert.equal(rb.original_error.code, "ERR_ADAPTER_SPAWN");
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+// VC-029-003-02: failure mode 2 — ERR_DISPATCH_FAILED (non-zero exit)
+test("dsh adapter: invoke() on non-zero exit writes ERR_DISPATCH_FAILED + rollback with stderr excerpt", async () => {
+  const ctx = runWithMode("exitcode");
+  try {
+    const adapter = new DshAdapter({ bin: ctx.fake, shell: false });
+    const result = await adapter.invoke({ task: "x" }, { projectRoot: ctx.dir, runId: "R-dsh-exit-fail" });
+    assert.equal(result.status, "failed");
+    assert.equal(result.error.code, "ERR_DISPATCH_FAILED");
+    assert.equal(result.error.exit_code, 7);
+    assert.equal(result.error.signal, null);
+    assert.ok(typeof result.stderr === "string");
+    assert.ok(result.stderr.includes("fatal: bad config"));
+    assert.ok(fs.existsSync(journalFile(ctx.dir, "R-dsh-exit-fail", "error.json")));
+    assert.ok(fs.existsSync(journalFile(ctx.dir, "R-dsh-exit-fail", "rollback.json")));
+  } finally { ctx.restore(); }
+});
+
+// VC-029-003-02: failure mode 3 — ERR_DISPATCH_TIMEOUT
+test("dsh adapter: invoke() on timeout writes ERR_DISPATCH_TIMEOUT + rollback", async () => {
+  const fake = installFakeDsh();
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "m029-dsh-timeout-"));
+  const prevMode = process.env.FAKE_DSH_MODE;
+  process.env.FAKE_DSH_MODE = "hang";
+  try {
+    const adapter = new DshAdapter({ bin: fake, shell: false, defaultTimeout: 1 });
+    const result = await adapter.invoke({ task: "x" }, { projectRoot: dir, runId: "R-dsh-timeout-1", timeout: 1 });
+    assert.equal(result.status, "timeout");
+    assert.equal(result.error.code, "ERR_DISPATCH_TIMEOUT");
+    assert.match(result.error.message, /timed out after 1s/);
+    assert.ok(fs.existsSync(journalFile(dir, "R-dsh-timeout-1", "error.json")));
+    assert.ok(fs.existsSync(journalFile(dir, "R-dsh-timeout-1", "rollback.json")));
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+    if (prevMode === undefined) delete process.env.FAKE_DSH_MODE;
+    else process.env.FAKE_DSH_MODE = prevMode;
+  }
+});
+
+// VC-029-003-02: failure mode 4 — ERR_JSONRPC_PARSE (bad stdout)
+test("dsh adapter: invoke() on bad JSON writes ERR_JSONRPC_PARSE + stdout excerpt", async () => {
+  const ctx = runWithMode("badjson");
+  try {
+    const adapter = new DshAdapter({ bin: ctx.fake, shell: false });
+    const result = await adapter.invoke({ task: "x" }, { projectRoot: ctx.dir, runId: "R-dsh-badjson-1" });
+    assert.equal(result.status, "failed");
+    assert.equal(result.error.code, "ERR_JSONRPC_PARSE");
+    assert.ok(typeof result.stdout_excerpt === "string");
+    assert.ok(result.stdout_excerpt.includes("not valid json"));
+    assert.ok(fs.existsSync(journalFile(ctx.dir, "R-dsh-badjson-1", "error.json")));
+  } finally { ctx.restore(); }
+});
+
+// VC-029-003-02: failure mode 5 — ERR_JSONRPC_PARSE (empty stdout)
+test("dsh adapter: invoke() on empty stdout writes ERR_JSONRPC_PARSE + rollback", async () => {
+  const ctx = runWithMode("empty");
+  try {
+    const adapter = new DshAdapter({ bin: ctx.fake, shell: false });
+    const result = await adapter.invoke({ task: "x" }, { projectRoot: ctx.dir, runId: "R-dsh-empty-1" });
+    assert.equal(result.status, "failed");
+    assert.equal(result.error.code, "ERR_JSONRPC_PARSE");
+    assert.match(result.error.message, /empty stdout from dsh CLI/);
+    assert.ok(fs.existsSync(journalFile(ctx.dir, "R-dsh-empty-1", "error.json")));
+  } finally { ctx.restore(); }
+});
+
+// VC-029-003-02: failure mode 6 — JSON-RPC error envelope (rate_limited)
+test("dsh adapter: invoke() on JSON-RPC error envelope maps to ERR_DSH_RATE_LIMITED + rollback", async () => {
+  const ctx = runWithMode("error-envelope");
+  try {
+    const adapter = new DshAdapter({ bin: ctx.fake, shell: false });
+    const result = await adapter.invoke({ task: "x" }, { projectRoot: ctx.dir, runId: "R-dsh-rpc-err-1" });
+    assert.equal(result.status, "failed");
+    // Note: code = -32001; codex adapter prefixes with ERR_CODEX_, dsh with ERR_DSH_.
+    assert.equal(result.error.code, "ERR_DSH_-32001");
+    assert.equal(result.error.message, "rate_limited");
+    assert.ok(fs.existsSync(journalFile(ctx.dir, "R-dsh-rpc-err-1", "error.json")));
+  } finally { ctx.restore(); }
+});
+
+// VC-029-003-02: rollback-failed.json — synthesize via EISDIR on rollback path
+test("dsh adapter: invoke() rollback write failure produces rollback-failed.json + notify_parent=true", async () => {
+  // Strategy: pre-create rollback.json as a DIRECTORY (not a file). The
+  // adapter's atomic write does `.tmp → rename`; renaming a file onto a
+  // directory fails with EISDIR. The adapter's _writeErrorAndRollback then
+  // falls through to the rollback-failed.json branch with notify_parent=true.
+  const fake = installFakeDsh();
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "m029-dsh-rbfail-"));
+  const prevMode = process.env.FAKE_DSH_MODE;
+  process.env.FAKE_DSH_MODE = "exitcode";
+  try {
+    const runId = "R-dsh-rbfail-1";
+    const rbPath = journalFile(dir, runId, "rollback.json");
+    fs.mkdirSync(path.dirname(rbPath), { recursive: true });
+    // Create rollback.json as a directory to trigger EISDIR on rename.
+    fs.mkdirSync(rbPath);
+
+    const adapter = new DshAdapter({ bin: fake, shell: false });
+    const result = await adapter.invoke({ task: "x" }, { projectRoot: dir, runId });
+
+    assert.equal(result.status, "failed");
+    // error.json should have been written successfully.
+    assert.ok(fs.existsSync(journalFile(dir, runId, "error.json")));
+    // rollback.json is the directory blocker; rollback-failed.json is the
+    // fallback artifact.
+    assert.ok(fs.existsSync(journalFile(dir, runId, "rollback-failed.json")));
+    const rbf = readJournal(dir, runId, "rollback-failed.json");
+    assert.equal(rbf.status, "rollback_failed");
+    assert.equal(rbf.notify_parent, true);
+    assert.equal(rbf.primary_error.code, "ERR_DISPATCH_FAILED");
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+    if (prevMode === undefined) delete process.env.FAKE_DSH_MODE;
+    else process.env.FAKE_DSH_MODE = prevMode;
+  }
+});
+
+// VC-029-003-03: cancel() in-flight — start a hanging fake then cancel
+test("dsh adapter: cancel() mid-flight sends SIGTERM to the running subprocess", async () => {
+  const fake = installFakeDsh();
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "m029-dsh-cancel-"));
+  const prevMode = process.env.FAKE_DSH_MODE;
+  process.env.FAKE_DSH_MODE = "hang";
+  try {
+    const adapter = new DshAdapter({ bin: fake, shell: false, defaultTimeout: 30 });
+    const invokePromise = adapter.invoke(
+      { task: "long" },
+      { projectRoot: dir, runId: "R-dsh-cancel-1", timeout: 30 },
+    );
+    // Give the child a moment to actually start.
+    await new Promise((r) => setTimeout(r, 50));
+    const cancelResult = await adapter.cancel("R-dsh-cancel-1");
+    assert.equal(cancelResult.runId, "R-dsh-cancel-1");
+    assert.equal(cancelResult.cancelled, true);
+    assert.equal(cancelResult.error, null);
+    // Drain the invoke promise — it should resolve as a structured failure.
+    const finalResult = await invokePromise;
+    assert.equal(finalResult.status, "failed");
+    assert.ok(
+      finalResult.error.code === "ERR_DISPATCH_ERROR" || finalResult.error.code === "ERR_DISPATCH_FAILED",
+      `expected ERR_DISPATCH_ERROR or ERR_DISPATCH_FAILED, got ${finalResult.error.code}`,
+    );
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+    if (prevMode === undefined) delete process.env.FAKE_DSH_MODE;
+    else process.env.FAKE_DSH_MODE = prevMode;
+  }
+});
+
+// VC-029-003-03: cancel() for unknown runId returns structured no-op
+test("dsh adapter: cancel() of unknown runId returns ERR_NO_RUNNING_SUBPROCESS", async () => {
+  const adapter = new DshAdapter({ bin: "/bin/true", shell: false });
+  const result = await adapter.cancel("R-not-tracked-2026-08-19");
+  assert.equal(result.cancelled, false);
+  assert.equal(result.error.code, "ERR_NO_RUNNING_SUBPROCESS");
+});
+
+// VC-029-003-03: report() happy path — reads back request + result + rollback
+test("dsh adapter: report() reads back a successful journal and surfaces latency_ms", async () => {
+  const ctx = runWithMode("success");
+  try {
+    const adapter = new DshAdapter({ bin: ctx.fake, shell: false });
+    await adapter.invoke({ task: "audit me" }, { projectRoot: ctx.dir, runId: "R-dsh-report-1" });
+    const report = await adapter.report("R-dsh-report-1", { projectRoot: ctx.dir });
+    assert.equal(report.runId, "R-dsh-report-1");
+    assert.equal(report.status, "ok");
+    assert.equal(report.adapter_type, "dsh");
+    assert.ok(report.result);
+    // report.result is the full result.json envelope; the JSON-RPC result
+    // sits under report.result.result.
+    assert.ok(report.result.result);
+    assert.match(report.result.result.text, /hello from fake dsh/);
+    assert.ok(typeof report.latency_ms === "number");
+    assert.ok(report.latency_ms >= 0);
+  } finally { ctx.restore(); }
+});
+
+// VC-029-003-04: security — adapter never reads ~/.dsh/sessions/ during dispatch
+test("dsh adapter: invoke() does not touch ~/.dsh/sessions/ at runtime", async () => {
+  // Use FAKE_DSH_MODE=success; the fake script never reads ~/.dsh/sessions/
+  // and the adapter code path doesn't either (verified by source scan in MS-001).
+  const ctx = runWithMode("success");
+  try {
+    const adapter = new DshAdapter({ bin: ctx.fake, shell: false });
+    const result = await adapter.invoke({ task: "x" }, { projectRoot: ctx.dir, runId: "R-dsh-secure-1" });
+    assert.equal(result.status, "ok");
+    // The journal must NOT contain session.jsonl or .dsh/sessions references.
+    const req = readJournal(ctx.dir, "R-dsh-secure-1", "request.json");
+    const res = readJournal(ctx.dir, "R-dsh-secure-1", "result.json");
+    const serialized = JSON.stringify({ req, res });
+    assert.ok(!serialized.includes(".dsh/sessions"));
+    assert.ok(!serialized.includes("session.jsonl"));
+  } finally { ctx.restore(); }
+});
