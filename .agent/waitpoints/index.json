@@ -1,0 +1,349 @@
+{
+  "waitpoints": [
+    {
+      "waitpoint_id": "WP-rsl-p003-pilot-validation-20260819",
+      "path": ".agent/waitpoints/WP-rsl-p003-pilot-validation-20260819.json",
+      "status": "released",
+      "linked_decision": "D-rsl-p003-pilot-validation-20260819"
+    },
+    {
+      "waitpoint_id": "WP-M026-MS004-launch",
+      "path": ".agent/waitpoints/WP-M026-MS004-launch.json",
+      "status": "released",
+      "linked_decision": "D-M026-MS004-launch"
+    },
+    {
+      "waitpoint_id": "WP-M026-freeze-window",
+      "path": ".agent/waitpoints/WP-M026-freeze-window.json",
+      "status": "released",
+      "owner_workflow": "/mission",
+      "decision_id": "D-M026-freeze-window",
+      "superseded_by_decision_id": "D-M026-MS004-R1-close",
+      "supersede_note": "原 decision D-M026-freeze-window 已 superseded; waitpoint 保持在 released 终态,语义由 D-M026-MS004-R1-close 接管;FREEZE 范围释放",
+      "updated_at": "2026-08-19T00:35:00.000Z"
+    },
+    {
+      "waitpoint_id": "WP-rsl-p001-p002-p003-impl-20260819",
+      "path": ".agent/waitpoints/WP-rsl-p001-p002-p003-impl-20260819.json",
+      "status": "released",
+      "owner_workflow": "/mission",
+      "decision_id": "D-rsl-p001-p002-p003-impl-20260819",
+      "release_note": "User authorized '三个都推进到 approved-implementation';P-001/P-002 实现已合并,P-003 implementation 落地但 release eligible 仍需 MS-005 Pilot 验证。",
+      "updated_at": "2026-08-19T01:38:00.000Z"
+    },
+    {
+      "waitpoint_id": "WP-M025-MS003-phaseB-observation-240294f00e6d",
+      "path": ".agent/waitpoints/WP-M025-MS003-phaseB-observation-240294f00e6d.json",
+      "status": "released",
+      "owner_workflow": "/mission",
+      "decision_id": "D-M025-MS003-phaseB-observation-240294f00e6d",
+      "updated_at": "2026-08-14T07:25:39.302Z"
+    },
+    {
+      "waitpoint_id": "WP-M025-integrate-MS003-925508397fa1",
+      "path": ".agent/waitpoints/WP-M025-integrate-MS003-925508397fa1.json",
+      "status": "released",
+      "owner_workflow": "/worktree",
+      "decision_id": "D-M025-integrate-MS003-925508397fa1",
+      "updated_at": "2026-08-14T07:24:42.269Z"
+    },
+    {
+      "waitpoint_id": "WP-M025-MS003-pi-launch-225bc4b7",
+      "path": ".agent/waitpoints/WP-M025-MS003-pi-launch-225bc4b7.json",
+      "status": "released",
+      "owner_workflow": "/mission",
+      "decision_id": "D-M025-MS003-pi-launch-225bc4b7",
+      "updated_at": "2026-08-14T03:55:03.074Z"
+    },
+    {
+      "waitpoint_id": "WP-M025-integrate-MS002-f147b865",
+      "path": ".agent/waitpoints/WP-M025-integrate-MS002-f147b865.json",
+      "status": "released",
+      "owner_workflow": "/mission",
+      "decision_id": "D-M025-integrate-MS002-f147b865",
+      "updated_at": "2026-08-14T03:42:56.502Z"
+    },
+    {
+      "waitpoint_id": "WP-M026-pi-launch-ae0f9dd8",
+      "path": ".agent/waitpoints/WP-M026-pi-launch-ae0f9dd8.json",
+      "status": "released",
+      "owner_workflow": "/mission",
+      "decision_id": "D-M026-pi-launch-ae0f9dd8",
+      "updated_at": "2026-08-14T02:32:40.402Z"
+    },
+    {
+      "waitpoint_id": "WP-arch-runtime-state-layout-c8e0f022",
+      "path": ".agent/waitpoints/WP-arch-runtime-state-layout-c8e0f022.json",
+      "status": "released",
+      "owner_workflow": "/arch-design",
+      "decision_id": "D-arch-runtime-state-layout-c8e0f022",
+      "updated_at": "2026-08-14T02:05:40.880Z"
+    },
+    {
+      "waitpoint_id": "WP-TCP-002",
+      "path": ".agent/waitpoints/WP-TCP-002.json",
+      "status": "canceled",
+      "owner_workflow": "/arch-design",
+      "decision_id": "D-TCP-002",
+      "updated_at": "2026-08-13T07:09:49.466Z"
+    },
+    {
+      "waitpoint_id": "WP-TCP-001",
+      "path": ".agent/waitpoints/WP-TCP-001.json",
+      "status": "canceled",
+      "owner_workflow": "/arch-design",
+      "decision_id": "D-TCP-001",
+      "updated_at": "2026-08-13T05:51:30.273Z"
+    },
+    {
+      "waitpoint_id": "WP-worktree-ISSUE-4-48612b7-78c6f43-f56cf58d",
+      "path": ".agent/waitpoints/WP-worktree-ISSUE-4-48612b7-78c6f43-f56cf58d.json",
+      "status": "released",
+      "owner_workflow": "/worktree",
+      "decision_id": "D-worktree-ISSUE-4-48612b7-78c6f43-f56cf58d",
+      "updated_at": "2026-08-13T05:49:44.819Z"
+    },
+    {
+      "waitpoint_id": "WP-issue-4-publish-48612b7-78c6f43-0d6f89a4",
+      "path": ".agent/waitpoints/WP-issue-4-publish-48612b7-78c6f43-0d6f89a4.json",
+      "status": "released",
+      "owner_workflow": "/worktree",
+      "decision_id": "D-issue-4-publish-48612b7-78c6f43-0d6f89a4",
+      "updated_at": "2026-08-13T05:34:01.822Z"
+    },
+    {
+      "waitpoint_id": "WP-worktree-ISSUE-2-cea0c12-6b39ae6-ee67057b",
+      "path": ".agent/waitpoints/WP-worktree-ISSUE-2-cea0c12-6b39ae6-ee67057b.json",
+      "status": "released",
+      "owner_workflow": "/worktree",
+      "decision_id": "D-worktree-ISSUE-2-cea0c12-6b39ae6-ee67057b",
+      "updated_at": "2026-08-13T04:30:00.569Z"
+    },
+    {
+      "waitpoint_id": "WP-worktree-ISSUE-3-1d22040-f10624d-39991de8",
+      "path": ".agent/waitpoints/WP-worktree-ISSUE-3-1d22040-f10624d-39991de8.json",
+      "status": "released",
+      "owner_workflow": "/worktree",
+      "decision_id": "D-worktree-ISSUE-3-1d22040-f10624d-39991de8",
+      "updated_at": "2026-08-13T03:48:54.097Z"
+    },
+    {
+      "waitpoint_id": "WP-worktree-T-RUNTIME-IGNORE-001-2ed6e0e-09408cd-243ecb9b",
+      "path": ".agent/waitpoints/WP-worktree-T-RUNTIME-IGNORE-001-2ed6e0e-09408cd-243ecb9b.json",
+      "status": "released",
+      "owner_workflow": "/worktree",
+      "decision_id": "D-worktree-T-RUNTIME-IGNORE-001-2ed6e0e-09408cd-243ecb9b",
+      "updated_at": "2026-08-13T03:10:54.063Z"
+    },
+    {
+      "waitpoint_id": "WP-worktree-T-RUNTIME-IGNORE-001-strategy-2ed6e0e-39bcec4-8a3f15b9",
+      "path": ".agent/waitpoints/WP-worktree-T-RUNTIME-IGNORE-001-strategy-2ed6e0e-39bcec4-8a3f15b9.json",
+      "status": "blocked",
+      "owner_workflow": "/worktree",
+      "decision_id": "D-worktree-T-RUNTIME-IGNORE-001-strategy-2ed6e0e-39bcec4-8a3f15b9",
+      "updated_at": "2026-08-13T02:57:12.121Z"
+    },
+    {
+      "waitpoint_id": "WP-RELEASE-1-12-0-RC10",
+      "path": ".agent/waitpoints/WP-RELEASE-1-12-0-RC10.json",
+      "status": "released",
+      "owner_workflow": "/release",
+      "decision_id": "D-RELEASE-1-12-0-RC10",
+      "updated_at": "2026-08-13T02:32:08.559Z"
+    },
+    {
+      "waitpoint_id": "WP-FBP-001-e9f88f7b-r2",
+      "path": ".agent/waitpoints/WP-FBP-001-e9f88f7b-r2.json",
+      "status": "released",
+      "owner_workflow": "/arch-design",
+      "decision_id": "D-FBP-001-e9f88f7b",
+      "updated_at": "2026-08-12T05:32:57.363Z"
+    },
+    {
+      "waitpoint_id": "WP-FBP-001-e9f88f7b",
+      "path": ".agent/waitpoints/WP-FBP-001-e9f88f7b.json",
+      "status": "canceled",
+      "owner_workflow": "/arch-design",
+      "decision_id": "D-FBP-001-e9f88f7b",
+      "updated_at": "2026-08-12T05:32:57.050Z"
+    },
+    {
+      "waitpoint_id": "WP-worktree-test-policy-strategy-0ff0bca-3f5bc66-1cb22b92",
+      "path": ".agent/waitpoints/WP-worktree-test-policy-strategy-0ff0bca-3f5bc66-1cb22b92.json",
+      "status": "released",
+      "owner_workflow": "/worktree",
+      "decision_id": "D-worktree-test-policy-strategy-0ff0bca-3f5bc66-1cb22b92",
+      "updated_at": "2026-08-11T12:02:48.755Z"
+    },
+    {
+      "waitpoint_id": "WP-ARI-P-005-ecbb9ef1",
+      "path": ".agent/waitpoints/WP-ARI-P-005-ecbb9ef1.json",
+      "status": "released",
+      "owner_workflow": "/arch-design",
+      "decision_id": "D-ARI-P-005-ecbb9ef1",
+      "updated_at": "2026-08-11T03:17:59.000Z"
+    },
+    {
+      "waitpoint_id": "WP-arch-plat-mem-boundary-001",
+      "path": ".agent/waitpoints/WP-arch-plat-mem-boundary-001.json",
+      "status": "blocked",
+      "owner_workflow": "/arch-design",
+      "decision_id": "D-arch-plat-mem-boundary-001",
+      "updated_at": "2026-08-06T03:15:31.093Z"
+    },
+    {
+      "waitpoint_id": "WP-arch-setup-symlink-001",
+      "path": ".agent/waitpoints/WP-arch-setup-symlink-001.json",
+      "status": "blocked",
+      "owner_workflow": "/arch-design",
+      "decision_id": "D-arch-setup-symlink-001",
+      "updated_at": "2026-08-06T03:15:30.983Z"
+    },
+    {
+      "waitpoint_id": "WP-arch-mem-integrity-001",
+      "path": ".agent/waitpoints/WP-arch-mem-integrity-001.json",
+      "status": "blocked",
+      "owner_workflow": "/arch-design",
+      "decision_id": "D-arch-mem-integrity-001",
+      "updated_at": "2026-08-06T03:15:30.874Z"
+    },
+    {
+      "waitpoint_id": "WP-M012-integrate-8fdd3400",
+      "path": ".agent/waitpoints/WP-M012-integrate-8fdd3400.json",
+      "status": "released",
+      "owner_workflow": "/mission",
+      "decision_id": "D-M012-integrate-8fdd3400",
+      "updated_at": "2026-07-29T05:21:13.053Z"
+    },
+    {
+      "waitpoint_id": "WP-M012-integrate-a3b46888",
+      "path": ".agent/waitpoints/WP-M012-integrate-a3b46888.json",
+      "status": "released",
+      "owner_workflow": "/mission",
+      "decision_id": "D-M012-integrate-a3b46888",
+      "updated_at": "2026-07-29T05:20:15.939Z"
+    },
+    {
+      "waitpoint_id": "WP-M012-ACN-P003-0d24fec7",
+      "path": ".agent/waitpoints/WP-M012-ACN-P003-0d24fec7.json",
+      "status": "released",
+      "owner_workflow": "/mission",
+      "decision_id": "D-M012-ACN-P003-0d24fec7",
+      "updated_at": "2026-07-29T03:57:13.960Z"
+    },
+    {
+      "waitpoint_id": "WP-release-1.8.0-21fbc4c",
+      "path": ".agent/waitpoints/WP-release-1.8.0-21fbc4c.json",
+      "status": "released",
+      "owner_workflow": "/release",
+      "decision_id": "D-release-1.8.0-21fbc4c",
+      "updated_at": "2026-07-29T02:25:49.045Z"
+    },
+    {
+      "waitpoint_id": "WP-M010-P006-c2e7b17a",
+      "path": ".agent/waitpoints/WP-M010-P006-c2e7b17a.json",
+      "status": "released",
+      "owner_workflow": "/mission",
+      "decision_id": "D-M010-P006-c2e7b17a",
+      "updated_at": "2026-07-29T01:12:27.292Z"
+    },
+    {
+      "waitpoint_id": "WP-ARI-004-2278cc16",
+      "path": ".agent/waitpoints/WP-ARI-004-2278cc16.json",
+      "status": "released",
+      "owner_workflow": "/arch-design",
+      "decision_id": "D-ARI-004-2278cc16",
+      "updated_at": "2026-07-28T12:19:10.604Z"
+    },
+    {
+      "waitpoint_id": "WP-ARI-ALL-febe5400",
+      "path": ".agent/waitpoints/WP-ARI-ALL-febe5400.json",
+      "status": "released",
+      "owner_workflow": "/mission",
+      "decision_id": "D-ARI-ALL-febe5400",
+      "updated_at": "2026-07-28T12:18:55.795Z"
+    },
+    {
+      "waitpoint_id": "WP-ARI-002-e2f4e5d3",
+      "path": ".agent/waitpoints/WP-ARI-002-e2f4e5d3.json",
+      "status": "released",
+      "owner_workflow": "/arch-design",
+      "decision_id": "D-ARI-002-e2f4e5d3",
+      "updated_at": "2026-07-28T11:44:59.859Z"
+    },
+    {
+      "waitpoint_id": "WP-ARI-001-2ab9375a",
+      "path": ".agent/waitpoints/WP-ARI-001-2ab9375a.json",
+      "status": "released",
+      "owner_workflow": "/arch-design",
+      "decision_id": "D-ARI-001-2ab9375a",
+      "updated_at": "2026-07-28T11:33:15.377Z"
+    },
+    {
+      "waitpoint_id": "WP-M008-architecture-92c686cebf1f",
+      "path": ".agent/waitpoints/WP-M008-architecture-92c686cebf1f.json",
+      "status": "released",
+      "owner_workflow": "/mission",
+      "decision_id": "D-M008-architecture-92c686cebf1f",
+      "updated_at": "2026-07-28T06:35:10.567Z"
+    },
+    {
+      "waitpoint_id": "WP-FAE-001",
+      "path": ".agent/waitpoints/WP-FAE-001.json",
+      "status": "released",
+      "owner_workflow": "/approve",
+      "decision_id": "D-FAE-001",
+      "updated_at": "2026-07-26T13:40:57.325Z"
+    },
+    {
+      "waitpoint_id": "WP-DASH-AUTO-001",
+      "path": ".agent/waitpoints/WP-DASH-AUTO-001.json",
+      "status": "released",
+      "owner_workflow": "/arch-design",
+      "decision_id": "D-DASH-AUTO-001",
+      "updated_at": "2026-07-23T05:32:39.187Z"
+    },
+    {
+      "waitpoint_id": "WP-P007-architecture-78088aa8",
+      "path": ".agent/waitpoints/WP-P007-architecture-78088aa8.json",
+      "status": "released",
+      "owner_workflow": "/approve",
+      "decision_id": "D-P007-architecture-78088aa8",
+      "updated_at": "2026-07-23T03:07:33.929Z"
+    },
+    {
+      "waitpoint_id": "WP-M005-architecture-cd9bb0a8",
+      "path": ".agent/waitpoints/WP-M005-architecture-cd9bb0a8.json",
+      "status": "released",
+      "owner_workflow": "/approve",
+      "decision_id": "D-M005-architecture-cd9bb0a8",
+      "updated_at": "2026-07-23T01:32:35.013Z"
+    },
+    {
+      "waitpoint_id": "WP-release-1.5.0",
+      "path": ".agent/waitpoints/WP-release-1.5.0.json",
+      "status": "released",
+      "owner_workflow": "/release",
+      "decision_id": "D-release-1.5.0",
+      "updated_at": "2026-07-20T08:43:49.352Z"
+    },
+    {
+      "waitpoint_id": "WP-M002-self-bootstrap",
+      "path": ".agent/waitpoints/WP-M002-self-bootstrap.json",
+      "status": "released",
+      "owner_workflow": "/approve",
+      "decision_id": "D-M002-self-bootstrap",
+      "updated_at": "2026-07-20T08:18:35.143Z"
+    },
+    {
+      "waitpoint_id": "WP-rsl-dsh-host-shadow-20260819",
+      "path": ".agent/waitpoints/WP-rsl-dsh-host-shadow-20260819.json",
+      "status": "released",
+      "owner_workflow": "/m-025-ms003-phaseB",
+      "gate_action": "architecture",
+      "resource_ref": "decision://D-TCP-004-add-dsh-host",
+      "decision_id": "D-TCP-004",
+      "updated_at": "2026-08-19T03:30:00.000Z"
+    }
+  ]
+}

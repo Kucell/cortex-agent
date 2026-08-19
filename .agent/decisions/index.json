@@ -1,0 +1,416 @@
+{
+  "decisions": [
+    {
+      "decision_id": "D-rsl-p003-pilot-validation-20260819",
+      "path": ".agent/decisions/D-rsl-p003-pilot-validation-20260819.json",
+      "type": "architecture",
+      "status": "approved",
+      "gate_action": "architecture",
+      "resource_ref": "architecture:runtime-state-layout#p003-pilot-validation-20260819"
+    },
+    {
+      "decision_id": "D-P006-host-activation-slim",
+      "path": ".agent/decisions/D-P006-host-activation-slim.json",
+      "type": "approval",
+      "status": "approved",
+      "gate_action": "external_side_effect",
+      "resource_ref": "file://~/.codex/cc-switch-model-catalog.json#gpt-5.6-terra.base_instructions+model_messages.instructions_template"
+    },
+    {
+      "decision_id": "D-M026-MS004-launch",
+      "path": ".agent/decisions/D-M026-MS004-launch.json",
+      "type": "approval",
+      "status": "approved",
+      "gate_action": "external_side_effect"
+    },
+    {
+      "decision_id": "D-M026-freeze-window",
+      "path": ".agent/decisions/D-M026-freeze-window.json",
+      "type": "approval",
+      "status": "superseded",
+      "gate_action": "external_side_effect",
+      "resource_ref": "mission://M-026/freeze-window?scope=.agent/*,.agent-runtime/*,lib/runtime-layout/**,lib/commands/upgrade.js,lib/commands/update/**,tests/runtime-layout/**,tests/update/runtime-layout-migration.test.js,templates/_shared/.agent/**,templates/{zh,en}/.agent/runtime/**&exceptions=MS-003-consumer-template-migration&valid_until=MS-004-validation-pass&base=9e6651bdf3a8aee77044f87c43e4d7bbe7a9ac4f",
+      "superseded_by_decision_id": "D-M026-MS004-R1-close",
+      "superseded_at": "2026-08-19T00:35:00.000Z",
+      "updated_at": "2026-08-19T00:35:00.000Z"
+    },
+    {
+      "decision_id": "D-M026-MS004-R1-close",
+      "path": ".agent/decisions/D-M026-MS004-R1-close.json",
+      "type": "approval",
+      "status": "approved",
+      "gate_action": "external_side_effect",
+      "resource_ref": "mission://M-026/freeze-window-close?scope=.agent/*,.agent-runtime/*,lib/runtime-layout/**,lib/commands/upgrade.js,lib/commands/update/**,tests/runtime-layout/**,tests/update/runtime-layout-migration.test.js,templates/_shared/.agent/**,templates/{zh,en}/.agent/runtime/**&base=bb694d1f6d2ef9ce17da4f3a8d8c7b0f59d2c5a8b6c8e4e8c5d2f1e8a4b6c8d",
+      "updated_at": "2026-08-19T00:35:00.000Z"
+    },
+    {
+      "decision_id": "D-rsl-p001-p002-p003-impl-20260819",
+      "path": ".agent/decisions/D-rsl-p001-p002-p003-impl-20260819.json",
+      "type": "architecture",
+      "status": "approved",
+      "gate_action": "architecture",
+      "resource_ref": "architecture:runtime-state-layout#p001-p002-p003-impl-status-flip-20260819",
+      "updated_at": "2026-08-19T01:38:00.000Z"
+    },
+    {
+      "decision_id": "D-M025-MS003-phaseB-observation-240294f00e6d",
+      "path": ".agent/decisions/D-M025-MS003-phaseB-observation-240294f00e6d.json",
+      "type": "approval",
+      "status": "approved",
+      "gate_action": "external_side_effect",
+      "resource_ref": "mission://M-025/MS-003/phase-b-observation?revision=240294f00e6ddd4a00841e610df8d048b54f445067bac44f0391537a1a475900&hosts=pi,codex&window=7d&synthetic=0&generated-cap=separate-decision",
+      "updated_at": "2026-08-14T07:25:39.302Z"
+    },
+    {
+      "decision_id": "D-M025-integrate-MS003-925508397fa1",
+      "path": ".agent/decisions/D-M025-integrate-MS003-925508397fa1.json",
+      "type": "approval",
+      "status": "approved",
+      "gate_action": "merge",
+      "resource_ref": "mission://M-025/MS-003/integrate-checkpoint-466b123?revision=6a4dafa8ff4993f8602c5f926ee2e4f0d30415559727ee3a274ed86c3c3535d1&base=b3f27ea&source=466b123&strategy=local-merge",
+      "updated_at": "2026-08-14T07:24:42.269Z"
+    },
+    {
+      "decision_id": "D-M025-MS003-pi-launch-225bc4b7",
+      "path": ".agent/decisions/D-M025-MS003-pi-launch-225bc4b7.json",
+      "type": "approval",
+      "status": "approved",
+      "gate_action": "external_side_effect",
+      "resource_ref": "mission://M-025/MS-003/passive-collector-pi?revision=sha256:71f66d19055bed4339adaae8f52ff6393c8064636c96620f0212a00e15eb491d&base=b3f27ea63651532e7ced65ed72b289f07bd6a377&task=T-TCP-MS003-PI&host=pi&mode=governed-one-shot&scope=phase-a-only",
+      "updated_at": "2026-08-14T03:55:03.074Z"
+    },
+    {
+      "decision_id": "D-M025-integrate-MS002-f147b865",
+      "path": ".agent/decisions/D-M025-integrate-MS002-f147b865.json",
+      "type": "merge",
+      "status": "approved",
+      "gate_action": "merge",
+      "resource_ref": "git:cortex-agent#integrate:agent/T-TCP-MS002-PI-shadow-hosts@1f04b164aa615c05e616756e551230e3f183a1a1->main@c5a9c0d9e3096ab8342995b327645bb74b7d30be#strategy:local-merge#digest:f147b865f7c8274225de031c9a314b7bcea3b8822e512c9008e5a05ed3abc45d",
+      "updated_at": "2026-08-14T03:42:56.502Z"
+    },
+    {
+      "decision_id": "D-M026-pi-launch-ae0f9dd8",
+      "path": ".agent/decisions/D-M026-pi-launch-ae0f9dd8.json",
+      "type": "approval",
+      "status": "approved",
+      "gate_action": "external_side_effect",
+      "resource_ref": "mission://M-026/MS-001/pi-launch?revision=sha256:ae0f9dd848115d2fd370a79cecdb3e69f24a4d68a006092bbd2f4ee1ffae3a8e&base=c5a9c0d9e3096ab8342995b327645bb74b7d30be",
+      "updated_at": "2026-08-14T02:32:40.317Z"
+    },
+    {
+      "decision_id": "D-arch-runtime-state-layout-c8e0f022",
+      "path": ".agent/decisions/D-arch-runtime-state-layout-c8e0f022.json",
+      "type": "architecture",
+      "status": "approved",
+      "gate_action": "architecture",
+      "resource_ref": "architecture:runtime-state-layout#c8e0f0226caca0499ae7a6fa48923b8b5d6e4160d269888115aa51311982c28a",
+      "updated_at": "2026-08-14T02:05:12.614Z"
+    },
+    {
+      "decision_id": "D-TCP-003",
+      "path": ".agent/decisions/D-TCP-003.json",
+      "type": "architecture",
+      "status": "approved",
+      "gate_action": "architecture",
+      "resource_ref": "proposal:.agent/plans/proposals/projects/token-control-plane/index.md@a70d089fef65a6c35e897313adac4cec1b71055c356900c3fec979c38a86f597",
+      "updated_at": "2026-08-13T07:09:49.428Z"
+    },
+    {
+      "decision_id": "D-TCP-002",
+      "path": ".agent/decisions/D-TCP-002.json",
+      "type": "architecture",
+      "status": "superseded",
+      "gate_action": "architecture",
+      "resource_ref": "architecture:token-control-plane",
+      "updated_at": "2026-08-13T07:09:49.396Z"
+    },
+    {
+      "decision_id": "D-TCP-001",
+      "path": ".agent/decisions/D-TCP-001.json",
+      "type": "architecture",
+      "status": "superseded",
+      "gate_action": "architecture",
+      "resource_ref": "architecture:token-control-plane",
+      "updated_at": "2026-08-13T05:51:30.243Z"
+    },
+    {
+      "decision_id": "D-worktree-ISSUE-4-48612b7-78c6f43-f56cf58d",
+      "path": ".agent/decisions/D-worktree-ISSUE-4-48612b7-78c6f43-f56cf58d.json",
+      "type": "merge",
+      "status": "approved",
+      "gate_action": "merge",
+      "resource_ref": "git:Kucell/cortex-agent#integrate:agent/ISSUE-4-memory-boundary-docs@48612b75f4703a76acd32cff75daf9cb1d76971f->main@78c6f438a855f0377ca2c655314a1c44824dbd2d#strategy:pr-handoff#pr:8#digest:f56cf58d98e57d7e3bff4d84b11052568d2a80cf94eea117198e037c067a2520",
+      "updated_at": "2026-08-13T05:49:44.819Z"
+    },
+    {
+      "decision_id": "D-issue-4-publish-48612b7-78c6f43-0d6f89a4",
+      "path": ".agent/decisions/D-issue-4-publish-48612b7-78c6f43-0d6f89a4.json",
+      "type": "approval",
+      "status": "approved",
+      "gate_action": "external_side_effect",
+      "resource_ref": "git:Kucell/cortex-agent#publish:agent/ISSUE-4-memory-boundary-docs@48612b75f4703a76acd32cff75daf9cb1d76971f->github:draft-pr(base=main@78c6f438a855f0377ca2c655314a1c44824dbd2d,closes=#4)#digest:0d6f89a49d1c81b087a4881170acc3f23608b8eefddc81a7d1045f82e2d4fbf5",
+      "updated_at": "2026-08-13T05:34:01.822Z"
+    },
+    {
+      "decision_id": "D-worktree-ISSUE-2-cea0c12-6b39ae6-ee67057b",
+      "path": ".agent/decisions/D-worktree-ISSUE-2-cea0c12-6b39ae6-ee67057b.json",
+      "type": "merge",
+      "status": "approved",
+      "gate_action": "merge",
+      "resource_ref": "git:Kucell/cortex-agent#integrate:agent/ISSUE-2-memory-integrity-validation@cea0c12fddaca0f0a0bbf65ca286125ff5ce173f->main@6b39ae6121231d0c111c1083f2c8dcad52739ccb#strategy:pr-handoff#digest:ee67057b0ebfd929a34f0525b0664f291d71c95c619f45e358f621d96a69c06d",
+      "updated_at": "2026-08-13T04:30:00.569Z"
+    },
+    {
+      "decision_id": "D-worktree-ISSUE-3-1d22040-f10624d-39991de8",
+      "path": ".agent/decisions/D-worktree-ISSUE-3-1d22040-f10624d-39991de8.json",
+      "type": "merge",
+      "status": "approved",
+      "gate_action": "merge",
+      "resource_ref": "git:Kucell/cortex-agent#integrate:agent/ISSUE-3-setup-symlink-portability@1d22040a59de3a6b7eb276107cfea85e9338d8ac->main@f10624d05d512bd129172809e65f0b987d7a0b5c#strategy:pr-handoff#digest:39991de8686110ed377c60c0fb4bd1bf6fb008f29a0e6698a38a46e45257691a",
+      "updated_at": "2026-08-13T03:48:10.612Z"
+    },
+    {
+      "decision_id": "D-worktree-T-RUNTIME-IGNORE-001-2ed6e0e-09408cd-243ecb9b",
+      "path": ".agent/decisions/D-worktree-T-RUNTIME-IGNORE-001-2ed6e0e-09408cd-243ecb9b.json",
+      "type": "merge",
+      "status": "approved",
+      "gate_action": "merge",
+      "resource_ref": "git:cortex-agent#integrate:agent/T-RUNTIME-IGNORE-001-runtime-root@2ed6e0e10393c7e33911ce4dfd86a04d305aafe4->main@09408cdf9dbf20dbdc7019d1a22ac32b50121e68#strategy:local-merge#digest:243ecb9b02aa27e5a5b1c7ccfcce1c053c4e6eb6480e98facc6556024fcc531f",
+      "updated_at": "2026-08-13T03:10:54.063Z"
+    },
+    {
+      "decision_id": "D-RELEASE-1-12-0-RC10",
+      "path": ".agent/decisions/D-RELEASE-1-12-0-RC10.json",
+      "type": "approval",
+      "status": "approved",
+      "gate_action": "release",
+      "resource_ref": "release:cortex-agent@687a18b0215e48479766f0fa814f6d5e3cff2682",
+      "updated_at": "2026-08-13T02:32:08.512Z"
+    },
+    {
+      "decision_id": "D-FBP-001-e9f88f7b",
+      "path": ".agent/decisions/D-FBP-001-e9f88f7b.json",
+      "type": "architecture",
+      "status": "approved",
+      "gate_action": "architecture",
+      "resource_ref": "proposal:.agent/plans/proposals/projects/feedback-pipeline/proposals/P-001-collection-proposal.md@sha256:e9f88f7b7fca20d382c68951b5d397bada93ba7deb249fff503d15f16a36a2c3",
+      "updated_at": "2026-08-12T05:32:57.286Z"
+    },
+    {
+      "decision_id": "D-worktree-test-policy-strategy-0ff0bca-3f5bc66-1cb22b92",
+      "path": ".agent/decisions/D-worktree-test-policy-strategy-0ff0bca-3f5bc66-1cb22b92.json",
+      "type": "merge",
+      "status": "approved",
+      "gate_action": "merge",
+      "resource_ref": "git:cortex-agent#integrate:feat/test-policy-compliance@0ff0bca->main@3f5bc66#strategy:fast-forward#digest:1cb22b92",
+      "updated_at": "2026-08-11T12:02:07.249Z"
+    },
+    {
+      "decision_id": "D-ARI-P-005-ecbb9ef1",
+      "path": ".agent/decisions/D-ARI-P-005-ecbb9ef1.json",
+      "type": "architecture",
+      "status": "approved",
+      "gate_action": "architecture",
+      "resource_ref": "architecture:agent-runtime-interoperability/proposals/P-005-governed-agent-semantic-progress-supervision-proposal",
+      "updated_at": "2026-08-11T03:17:59.000Z"
+    },
+    {
+      "decision_id": "D-pi-non-interactive-modes-001",
+      "path": ".agent/decisions/D-pi-non-interactive-modes-001.json",
+      "type": "approval",
+      "status": "approved",
+      "gate_action": "architecture",
+      "resource_ref": "architecture:workflow/launch-governed-agent.md#pi-invocation-modes",
+      "updated_at": "2026-08-10T09:27:59.000Z"
+    },
+    {
+      "decision_id": "D-arch-plat-mem-boundary-001",
+      "path": ".agent/decisions/D-arch-plat-mem-boundary-001.json",
+      "type": "approval",
+      "status": "open",
+      "gate_action": "architecture",
+      "resource_ref": "architecture:platform-integration/cortex-agent-platform-integration-memory-boundary-proposal",
+      "updated_at": "2026-08-06T03:15:24.349Z"
+    },
+    {
+      "decision_id": "D-arch-setup-symlink-001",
+      "path": ".agent/decisions/D-arch-setup-symlink-001.json",
+      "type": "approval",
+      "status": "open",
+      "gate_action": "architecture",
+      "resource_ref": "architecture:setup-portability/cortex-agent-setup-global-symlink-portability-proposal",
+      "updated_at": "2026-08-06T03:15:24.245Z"
+    },
+    {
+      "decision_id": "D-arch-mem-integrity-001",
+      "path": ".agent/decisions/D-arch-mem-integrity-001.json",
+      "type": "approval",
+      "status": "open",
+      "gate_action": "architecture",
+      "resource_ref": "architecture:memory/cortex-agent-memory-integrity-validation-proposal",
+      "updated_at": "2026-08-06T03:15:24.132Z"
+    },
+    {
+      "decision_id": "D-M012-integrate-8fdd3400",
+      "path": ".agent/decisions/D-M012-integrate-8fdd3400.json",
+      "type": "merge",
+      "status": "approved",
+      "gate_action": "merge",
+      "resource_ref": "git-range:codex/acn-host-neutral:019ae29464acfa0db4a91a2cdb02e84cc78364de..ab9eab94d97a28201e845cc97c47c0fef3b82ffb",
+      "updated_at": "2026-07-29T05:21:13.053Z"
+    },
+    {
+      "decision_id": "D-M012-integrate-a3b46888",
+      "path": ".agent/decisions/D-M012-integrate-a3b46888.json",
+      "type": "merge",
+      "status": "approved",
+      "gate_action": "merge",
+      "resource_ref": "git-range:codex/acn-host-neutral:019ae29b6d95a0a3b12fd3ae099ff21f79aa82cf..ab9eab94d97a28201e845cc97c47c0fef3b82ffb",
+      "updated_at": "2026-07-29T05:20:15.939Z"
+    },
+    {
+      "decision_id": "D-M012-ACN-P003-0d24fec7",
+      "path": ".agent/decisions/D-M012-ACN-P003-0d24fec7.json",
+      "type": "architecture",
+      "status": "approved",
+      "gate_action": "architecture",
+      "resource_ref": "proposal:P-003@sha256:0d24fec716854e8ec17d486177ff8907c11127c1fe45f86b3381bf19fd96b3a8",
+      "updated_at": "2026-07-29T03:57:13.836Z"
+    },
+    {
+      "decision_id": "D-release-1.8.0-21fbc4c",
+      "path": ".agent/decisions/D-release-1.8.0-21fbc4c.json",
+      "type": "approval",
+      "status": "approved",
+      "gate_action": "release",
+      "resource_ref": "release:cortex-agent@21fbc4c0ddda6dbc7753ff0ef9ae0824ffc46578",
+      "updated_at": "2026-07-29T02:25:49.002Z"
+    },
+    {
+      "decision_id": "D-M010-P006-c2e7b17a",
+      "path": ".agent/decisions/D-M010-P006-c2e7b17a.json",
+      "type": "architecture",
+      "status": "approved",
+      "gate_action": "architecture",
+      "resource_ref": "proposal:.agent/plans/proposals/projects/agent-workspace-orchestration/proposals/P-006-agent-operation-lifecycle-readiness-proposal.md@sha256:c2e7b17aa2c0cf21995da0bd4cb197bd6a8b1d514d2d66339558e03bc9ae16ca",
+      "updated_at": "2026-07-29T01:12:27.263Z"
+    },
+    {
+      "decision_id": "D-ARI-004-2278cc16",
+      "path": ".agent/decisions/D-ARI-004-2278cc16.json",
+      "type": "architecture",
+      "status": "approved",
+      "gate_action": "architecture",
+      "resource_ref": "proposal:.agent/plans/proposals/projects/agent-runtime-interoperability/proposals/P-004-capability-aware-execution-surface-dispatch-proposal.md@sha256:2278cc1680f7f74b5b0c3731cf9df3e8649a29c658346eae36ae1e7733e1c17b",
+      "updated_at": "2026-07-28T12:19:10.539Z"
+    },
+    {
+      "decision_id": "D-ARI-ALL-febe5400",
+      "path": ".agent/decisions/D-ARI-ALL-febe5400.json",
+      "type": "architecture",
+      "status": "approved",
+      "gate_action": "architecture",
+      "resource_ref": "proposal:.agent/plans/proposals/projects/agent-runtime-interoperability/index.md@sha256:febe54002b4613cb9b8c89e641be881568d8d769e2941f8ff4e0a179780b039b",
+      "updated_at": "2026-07-28T12:18:55.723Z"
+    },
+    {
+      "decision_id": "D-ARI-002-e2f4e5d3",
+      "path": ".agent/decisions/D-ARI-002-e2f4e5d3.json",
+      "type": "architecture",
+      "status": "approved",
+      "gate_action": "architecture",
+      "resource_ref": "proposal:.agent/plans/proposals/projects/agent-runtime-interoperability/index.md@sha256:e2f4e5d360e8faee2a37b3944ac7427cee58dd345e8b56ef02dddd1da843a79b",
+      "updated_at": "2026-07-28T11:44:50.407Z"
+    },
+    {
+      "decision_id": "D-ARI-001-2ab9375a",
+      "path": ".agent/decisions/D-ARI-001-2ab9375a.json",
+      "type": "architecture",
+      "status": "approved",
+      "gate_action": "architecture",
+      "resource_ref": "proposal:.agent/plans/proposals/projects/agent-runtime-interoperability/index.md@sha256:2ab9375aebf9ac7733f9ea8b6595efc36bcf31af6a15e3916dcb6f84f53a5491",
+      "updated_at": "2026-07-28T11:33:15.377Z"
+    },
+    {
+      "decision_id": "D-M008-architecture-92c686cebf1f",
+      "path": ".agent/decisions/D-M008-architecture-92c686cebf1f.json",
+      "type": "approval",
+      "status": "approved",
+      "gate_action": "architecture",
+      "resource_ref": "proposal:agent-coordination-notification/P-001@92c686cebf1f0c675d91d3017fac1767ec460c2fc3d9db8650fb984032936a49",
+      "updated_at": "2026-07-28T06:35:10.567Z"
+    },
+    {
+      "decision_id": "D-FAE-001",
+      "path": ".agent/decisions/D-FAE-001.json",
+      "type": "approval",
+      "status": "approved",
+      "gate_action": "architecture",
+      "resource_ref": "proposal:.agent/plans/proposals/projects/full-automation-evolution/proposals/FAE-001-dispatch-vocabulary.md@da93dd0f7e1b3115f5de9c6404201e854fe53d90b332e07f3ba218561a43b137",
+      "updated_at": "2026-07-26T13:29:41.660Z"
+    },
+    {
+      "decision_id": "D-DASH-AUTO-001",
+      "path": ".agent/decisions/D-DASH-AUTO-001.json",
+      "type": "architecture",
+      "status": "approved",
+      "gate_action": "architecture",
+      "resource_ref": "architecture:P-001-dashboard-auto-lifecycle@sha256:080538f6bcf9548face4ecf40776ce6725e263a90f027062da049f8d513c1465",
+      "updated_at": "2026-07-23T05:32:39.187Z"
+    },
+    {
+      "decision_id": "D-P007-architecture-78088aa8",
+      "path": ".agent/decisions/D-P007-architecture-78088aa8.json",
+      "type": "architecture",
+      "status": "approved",
+      "gate_action": "architecture",
+      "resource_ref": "proposal:.agent/plans/proposals/projects/agent-workspace-orchestration/proposals/P-007-project-activity-recording-contract-proposal.md@78088aa8174f1f8f157921d04feb0eb31695c37617ea00697b1a88540989dcc3",
+      "updated_at": "2026-07-23T03:07:33.929Z"
+    },
+    {
+      "decision_id": "D-M005-architecture-cd9bb0a8",
+      "path": ".agent/decisions/D-M005-architecture-cd9bb0a8.json",
+      "type": "architecture",
+      "status": "approved",
+      "gate_action": "architecture",
+      "resource_ref": "proposal:.agent/plans/proposals/projects/agent-management-interface/index.md@cd9bb0a8617fe991acf6243d4f27ff6212d06d53a339c9b710a581c1f68620f3",
+      "updated_at": "2026-07-23T01:32:35.013Z"
+    },
+    {
+      "decision_id": "D-approve-memory",
+      "path": ".agent/decisions/D-approve-memory.json",
+      "type": "approval",
+      "status": "approved",
+      "gate_action": "architecture",
+      "resource_ref": "proposal:plans/proposals/memory/cortex-agent-memory-proposal.md@402904cb1c5a620849ab2f2108c6aa0a20b143aa6e807f0c10a192a4b42d49d9",
+      "updated_at": "2026-07-21T11:50:00.000Z"
+    },
+    {
+      "decision_id": "D-release-1.5.0",
+      "path": ".agent/decisions/D-release-1.5.0.json",
+      "type": "approval",
+      "status": "approved",
+      "gate_action": "release",
+      "resource_ref": "release:cortex-agent@ed850ae3ddf02ce5bd2ffdcc31752dca98abecdd",
+      "updated_at": "2026-07-20T08:43:36.900Z"
+    },
+    {
+      "decision_id": "D-M002-self-bootstrap",
+      "path": ".agent/decisions/D-M002-self-bootstrap.json",
+      "type": "approval",
+      "status": "approved",
+      "gate_action": "architecture",
+      "resource_ref": "proposal:.agent/plans/proposals/agent-collaboration-runtime/cortex-agent-collaboration-runtime-proposal.md@6ad730b6afa81b7f8f5c4cf426184cd5e76180fcb81ad3a382d56bec1390924d",
+      "updated_at": "2026-07-20T08:18:30.090Z"
+    },
+    {
+      "decision_id": "D-TCP-004",
+      "path": ".agent/decisions/D-TCP-004-add-dsh-host.json",
+      "type": "architecture",
+      "status": "approved",
+      "gate_action": "architecture",
+      "resource_ref": "proposal:.agent/plans/proposals/projects/token-control-plane/index.md#ms003-phase-b-host-expansion-dsh",
+      "updated_at": "2026-08-19T03:30:00.000Z"
+    }
+  ]
+}

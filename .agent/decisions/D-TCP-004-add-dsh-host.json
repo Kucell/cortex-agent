@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "decision_id": "D-TCP-004",
+  "type": "architecture",
+  "status": "approved",
+  "requested_by": "cortex-agent",
+  "prompt": "批准将 DeepSeek Harness（DSH）作为 Token Control Plane 的第三个 governed Host 加入 shadow measurement，并通过 backfill 方式补齐已存在的 session.jsonl.zstd usage 事件？",
+  "options": [
+    "approve-add-dsh-shadow",
+    "defer-until-pi-parity",
+    "reject"
+  ],
+  "selected_option": "approve-add-dsh-shadow",
+  "resolved_by": "interactive-user",
+  "resolved_at": "2026-08-19T03:30:00.000Z",
+  "rationale": "DSH 是当前 production 治理 host 之一（与 Codex 同等地位），其 session.jsonl.zstd 已稳定记录 assistant/chunk usage 事件；MS-002 验收时 Pi 实际只走 schema/security 临时 ledger（见 WP-rsl-pi-ledger-audit-20260819），主 ledger 中 Pi receipt = 0；为不阻塞 Phase B 7-day observation window 的 '两个 Host' 前置条件，授权 DSH 作为第三个 governed Host 加入；DSH 与 Pi 同样只做 shadow measurement，不引入自动优化策略，不改变默认行为，不读取 Host 私有 transcript，不修改现有 scope；Phase C 评估时 DSH receipts 与 Codex 一样被纳入两个 Host 评测样本池",
+  "gate": {
+    "action": "architecture",
+    "resource_ref": "proposal:.agent/plans/proposals/projects/token-control-plane/index.md#ms003-phase-b-host-expansion-dsh"
+  },
+  "relations": {
+    "task_ids": [],
+    "mission_ids": ["M-025"],
+    "run_ids": [],
+    "queue_ids": [],
+    "session_ids": [],
+    "artifact_refs": [
+      ".agent/decisions/WP-rsl-dsh-host-shadow-20260819.json",
+      ".agent/missions/M-025/handoffs/dsh-shadow-host-readiness-20260819.md",
+      ".agent/missions/M-025/handoffs/pi-ledger-audit-20260819.md"
+    ],
+    "worktree_paths": []
+  },
+  "created_at": "2026-08-19T03:30:00.000Z",
+  "updated_at": "2026-08-19T03:30:00.000Z",
+  "workflow_gate": "user",
+  "supersedes": []
+}

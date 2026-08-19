@@ -1,0 +1,76 @@
+{
+  "schema_version": 1,
+  "waitpoint_id": "WP-rsl-dsh-host-shadow-20260819",
+  "linked_decision": "D-TCP-004",
+  "status": "released",
+  "gates_passed": [
+    "VC-021-dsh-shadow-adapter-schema-valid",
+    "VC-022-dsh-shadow-adapter-allowlist-enforced",
+    "VC-023-dsh-shadow-adapter-no-execution-policy-primitive",
+    "VC-024-dsh-usage-sync-mapping-canonical",
+    "VC-025-dsh-usage-sync-idempotent",
+    "VC-026-dsh-usage-sync-no-prompt-or-source-leak",
+    "VC-027-dsh-receipts-spanning-multiple-utc-days"
+  ],
+  "gates_pending": [],
+  "evidence": {
+    "test_files": [
+      "tests/host-adapter/shadow-usage/dsh-shadow.test.js",
+      "tests/scripts/dsh-usage-sync.test.js"
+    ],
+    "test_results": {
+      "dsh_shadow_adapter": "13/13 PASS",
+      "dsh_usage_sync": "11/11 PASS",
+      "regression_shadow_usage": "16/16 PASS",
+      "regression_capture_usage": "5/5 PASS",
+      "regression_passive_collector": "37/37 PASS",
+      "regression_opencodex_usage_sync": "verified",
+      "total": "102/102 PASS"
+    },
+    "ledger_state_after_backfill": {
+      "dsh_receipts": 832,
+      "dsh_utc_days": 2,
+      "dsh_first_recorded_at": "2026-08-18T11:21:47.008Z",
+      "dsh_latest_recorded_at": "2026-08-19T03:28:16.247Z",
+      "by_slug": {
+        "--Users-xueyq-myworks-cortex-agent--": 763,
+        "--Users-workspace-code-HMI--": 61,
+        "--Users-xueyq-myworks-dsh-sapce--": 8
+      },
+      "totals": {
+        "input_tokens": 3021160,
+        "output_tokens": 463915,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 84249719
+      }
+    },
+    "ledger_state_global": {
+      "total_receipts": 22397,
+      "by_host": {
+        "openai": 12353,
+        "minimax-cn": 6635,
+        "volcengine": 1815,
+        "deepseek": 401,
+        "combo": 224,
+        "qianwenai": 126,
+        "nvidia": 9,
+        "dsh": 832,
+        "codex": 2
+      },
+      "unique_attempts": 22397
+    }
+  },
+  "scope_guards": {
+    "measurement_only": true,
+    "no_default_policy_change": true,
+    "no_auto_compaction": true,
+    "no_auto_routing": true,
+    "no_host_private_transcript_read": true,
+    "no_estimated_to_confirmed_masquerading": true,
+    "host_count_after_authorization": 3,
+    "host_list": ["codex", "dsh", "pi-json"]
+  },
+  "next_state": "M-025 MS-003 Phase B continues observing organic traffic; DSH now contributes alongside Codex to the 7-day baseline; Phase C evaluation will lock cohort + revision + UTC window and compute P-002 vs baseline",
+  "released_at": "2026-08-19T03:30:00.000Z",
+  "released_by": "interactive-user"
+}

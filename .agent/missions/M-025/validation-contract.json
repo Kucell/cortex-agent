@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "mission_id": "M-025",
+  "proposal_ref": ".agent/plans/proposals/projects/token-control-plane/index.md",
+  "proposal_digest": "sha256:a70d089fef65a6c35e897313adac4cec1b71055c356900c3fec979c38a86f597",
+  "decision_ref": ".agent/decisions/D-TCP-003.json",
+  "created_at": "2026-08-13T07:14:17.000Z",
+  "milestones": {
+    "MS-001": {
+      "goal": "Implement a trustworthy token-attempt receipt and ledger contract without activating optimization policy",
+      "assertions": [
+        {"id":"VC-001","type":"contract","blocking":true,"description":"Versioned token-attempt receipt distinguishes estimated, render and host-reported usage states and preserves unknown/unavailable.","command":"node --test tests/management/token-attempt-ledger.test.js","expected":"exit 0"},
+        {"id":"VC-002","type":"test","blocking":true,"description":"The ledger is append-only and replaying attempt_id plus receipt_id is idempotent without double counting.","command":"node --test tests/management/token-attempt-ledger.test.js","expected":"exit 0"},
+        {"id":"VC-003","type":"test","blocking":true,"description":"Missing, partial, dirty, oversized and out-of-order receipts have deterministic results.","command":"node --test tests/management/token-attempt-ledger.test.js tests/norm/normalize-token-usage.test.js","expected":"exit 0"},
+        {"id":"VC-004","type":"security","blocking":true,"description":"Schema and persistence reject prompt, response, source body, credentials, private absolute paths and unknown payload fields.","command":"node --test tests/management/token-attempt-ledger.test.js","expected":"exit 0"},
+        {"id":"VC-005","type":"compatibility","blocking":true,"description":"Existing runs tokens behavior and aggregation remain backward compatible.","command":"node --test tests/management/management-api-tokens.test.js tests/norm/normalize-token-usage.test.js","expected":"exit 0"},
+        {"id":"VC-006","type":"test","blocking":true,"description":"Focused queries filter by task/run/status/host/model without scanning or returning receipt bodies.","command":"node --test tests/management/token-attempt-ledger.test.js","expected":"exit 0"},
+        {"id":"VC-007","type":"template","blocking":true,"description":"Tracked _shared, zh and en Management API projections remain semantically identical.","command":"node --test tests/management/token-attempt-template-parity.test.js","expected":"exit 0"},
+        {"id":"VC-008","type":"architecture","blocking":true,"description":"Implementation is additive, zero-dependency and does not create a new Task/Run state owner.","command":"node .agent/skills/architecture-guard/scripts/index.js","expected":"exit 0"},
+        {"id":"VC-009","type":"lint","blocking":true,"description":"Changed tracked files have no whitespace errors.","command":"git diff --check","expected":"exit 0"},
+        {"id":"VC-010","type":"scope","blocking":true,"description":"Diff contains no automatic compaction, routing, model downgrade, transcript crawling or policy activation.","command":"git diff --stat && git diff","expected":"independent review PASS"}
+      ]
+    },
+    "MS-002": {
+      "goal": "Collect real host receipts in shadow mode without private transcript access",
+      "assertions": [
+        {"id":"VC-011","type":"runtime","blocking":true,"description":"Two distinct governed Host adapters emit schema-valid receipts.","command":"host-specific shadow validation","expected":"real receipts from at least two Hosts"},
+        {"id":"VC-012","type":"security","blocking":true,"description":"Adapter receipts contain only allowlisted identifiers, counts, statuses, digests and reason codes.","command":"receipt persistence inspection","expected":"no private payload fields"},
+        {"id":"VC-013","type":"runtime","blocking":true,"description":"Unsupported usage fields remain unknown or unavailable and are never inferred from private storage.","command":"host capability fixture validation","expected":"PASS"},
+        {"id":"VC-014","type":"reliability","blocking":true,"description":"Retries, process restarts and duplicate delivery do not double count receipts.","command":"governed replay validation","expected":"PASS"},
+        {"id":"VC-015","type":"scope","blocking":true,"description":"All adapters remain shadow-only and cannot alter context, model, fan-out or stop behavior.","command":"configuration and diff review","expected":"PASS"}
+      ]
+    },
+    "MS-003": {
+      "goal": "Produce a reproducible seven-day baseline and quality/cost evaluation",
+      "assertions": [
+        {"id":"VC-016","type":"data","blocking":true,"description":"At least two Hosts each have 100 non-test receipts across seven consecutive days.","command":"token usage baseline query","expected":"sample gate satisfied"},
+        {"id":"VC-017","type":"quality","blocking":true,"description":"Task success, missing-context failure and reread/tool retry metrics are reported alongside tokens.","command":"evaluation report validation","expected":"all required dimensions present"},
+        {"id":"VC-018","type":"data","blocking":true,"description":"Measured savings exclude unknown usage and clearly label estimated cost projections.","command":"evaluation calculation audit","expected":"PASS"},
+        {"id":"VC-019","type":"reproducibility","blocking":true,"description":"Baseline cohort, policy revision, host/model dimensions and query window can be reproduced.","command":"evaluation rerun","expected":"same aggregate within documented tolerance"},
+        {"id":"VC-020","type":"governance","blocking":true,"description":"Any recommendation to activate P-002, P-003 or P-004 is a new resource-bound Decision, not an automatic action.","command":"decision and waitpoint audit","expected":"PASS"}
+      ]
+    }
+  }
+}
