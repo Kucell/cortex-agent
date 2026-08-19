@@ -238,3 +238,102 @@ test("dsh adapter: source code paths never read ~/.dsh/sessions/ storage", () =>
     "dsh adapter code must not parse session.jsonl[.zstd] (shadow usage lives in scripts/dsh-usage-sync.js)",
   );
 });
+
+// ─── MS-002: Registry / VALID_ADAPTER_TYPES_EXT / _seed() / bootstrap / ─────
+//      coordination REGISTERED_ADAPTER_IDS — required by VC-029-002-01..04. ───
+
+const adaptersRegistry = require("../../lib/agents/adapters");
+const {
+  VALID_ADAPTER_TYPES,
+  VALID_ADAPTER_TYPES_EXT,
+  VALID_ADAPTER_TYPES_ALL,
+  isKnownAdapterType,
+  validateAdapterTypeExt,
+} = require("../../lib/agents/registry-adapter-types");
+const dshBootstrap = require("../../lib/agents/adapters/dsh-bootstrap");
+const coordinationCore = require("../../lib/coordination/adapter-core");
+
+test("dsh adapter: VALID_ADAPTER_TYPES_EXT now contains 'dsh' (M-029 MS-002)", () => {
+  assert.ok(VALID_ADAPTER_TYPES_EXT.includes("dsh"));
+  assert.ok(VALID_ADAPTER_TYPES_ALL.includes("dsh"));
+  assert.ok(isKnownAdapterType("dsh"));
+  assert.doesNotThrow(() => validateAdapterTypeExt("dsh"));
+  // Ensure minimax stays in the union (regression guard for the additive path).
+  assert.ok(VALID_ADAPTER_TYPES_EXT.includes("minimax"));
+});
+
+test("dsh adapter: adapters.list() includes 'dsh' after dsh-bootstrap is required", () => {
+  // dsh-bootstrap side-effect imports dsh.js which registers via the
+  // bootstrap file's require chain. The base index.js seed also registers
+  // dsh via try/catch, so the registry already has 'dsh' before this test.
+  const list = adaptersRegistry.list();
+  assert.ok(list.includes("dsh"), `adapters.list()=${JSON.stringify(list)} must include 'dsh'`);
+  // Confirm the actual class behind the registration is the DshAdapter.
+  const Klass = adaptersRegistry.getClass("dsh");
+  assert.equal(typeof Klass, "function");
+  assert.equal(Klass.name, "DshAdapter");
+  const instance = adaptersRegistry.get("dsh");
+  assert.ok(instance instanceof Klass);
+  assert.equal(instance.bin, "dsh"); // DEFAULT_BIN
+});
+
+test("dsh adapter: dsh-bootstrap module exports the loaded marker", () => {
+  assert.equal(dshBootstrap.loaded, true);
+  assert.equal(typeof dshBootstrap.loadedAt, "string");
+  assert.deepEqual(dshBootstrap.adapters, ["dsh"]);
+});
+
+test("dsh adapter: coordination REGISTERED_ADAPTER_IDS includes dsh.local + dsh.dev", () => {
+  const ids = coordinationCore.REGISTERED_ADAPTER_IDS;
+  assert.ok(ids.includes("dsh.local"), `REGISTERED_ADAPTER_IDS=${JSON.stringify(ids)} must include 'dsh.local'`);
+  assert.ok(ids.includes("dsh.dev"), `REGISTERED_ADAPTER_IDS=${JSON.stringify(ids)} must include 'dsh.dev'`);
+  // All ids keep the canonical namespace suffix shape.
+  for (const id of ids) {
+    assert.match(id, /\.(local|dev|prod)$/, `adapter id ${id} should keep namespace suffix`);
+  }
+});
+
+test("dsh adapter: coordination createHostAdapter accepts dsh.local descriptor", () => {
+  // dsh.local descriptor mirrors the descriptor surface used by Codex /
+  // Claude Code / Cursor / etc. — capability list is empty because
+  // capability negotiation is governed by the dispatch discover() path,
+  // not the coordination adapter surface (per agent-runtime-interoperability
+  // P-001 §2).
+  const adapter = coordinationCore.createHostAdapter({
+    adapterId: "dsh.local",
+    capabilities: [],
+  });
+  assert.equal(adapter.adapterId, "dsh.local");
+  assert.equal(adapter.schemaVersion, "1.0");
+  assert.deepEqual(adapter.capabilities, []);
+  assert.equal(adapter.handshakeOk, false);
+  assert.equal(adapter.autoApprove, false);
+  assert.equal(adapter.sideEffects, false);
+});
+
+test("dsh adapter: coordination createHostAdapter accepts dsh.dev descriptor", () => {
+  const adapter = coordinationCore.createHostAdapter({
+    adapterId: "dsh.dev",
+    capabilities: [],
+  });
+  assert.equal(adapter.adapterId, "dsh.dev");
+  assert.equal(adapter.schemaVersion, "1.0");
+});
+
+test("dsh adapter: lib/agents/registry.js was not modified (M-002 frozen body)", () => {
+  // VC-029-002-04: the M-002 frozen file stays zero-modify; only
+  // VALID_ADAPTER_TYPES_EXT (additive extension file) carries the new
+  // 'dsh' entry. Sanity check: VALID_ADAPTER_TYPES must NOT include 'dsh'
+  // — the extension file owns the additive addition.
+  assert.ok(!VALID_ADAPTER_TYPES.includes("dsh"));
+  assert.ok(!VALID_ADAPTER_TYPES.includes("minimax"));
+});
+
+test("dsh adapter: index.js _seed() remains try/catch additive and survives reset()", () => {
+  // reset() must re-run _seed() and re-establish claude-code + codex + dsh.
+  adaptersRegistry.reset();
+  const list = adaptersRegistry.list();
+  assert.ok(list.includes("claude-code"));
+  assert.ok(list.includes("codex"));
+  assert.ok(list.includes("dsh"));
+});
