@@ -94,6 +94,17 @@
           }
         ],
         "description": "P-006 §3.5：自动从 topology 注册表中为每个订阅的 peer 项目解析 host_root 并把 outbox 拉入本地 inbox；无订阅的项目零读取；源不可达的 peer 仅报告、不阻断会话"
+      },
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cortex-agent memory validate --quiet 2>&1",
+            "timeout": 10
+          }
+        ],
+        "description": "Session start: silently validate .agent/memory/MEMORY.md integrity (drift/missing/schema/orphan/duplicate/over-cap); one-line summary printed to session context if issues exist"
       }
     ],
     "PermissionRequest": [
