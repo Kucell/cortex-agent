@@ -100,18 +100,25 @@ Promote DeepSeek Harness (DSH) from a Token Control Plane shadow host to a first
 
 ## Current State
 
-- State: SCOPE → PLAN → CONTRACT → EXECUTE_FEATURE（MS-001～MS-004 PASS）→ HANDOFF → VALIDATE_MILESTONE → COMPLETE（判定中）
-- Current milestone: MS-005（WAIVED-OPTIONAL）
-- Last updated: 2026-08-19
-- **Milestone 状态汇总**:
+- State: **COMPLETE**（2026-08-19 判定；mission-coordinator + user 确认）
+- Milestone 状态汇总:
   - MS-001 PASS（commit `7d877a8`）
   - MS-002 PASS（commit `005b59e`）
   - MS-003 PASS（commit `8c94bdf`）
   - MS-004 PASS（commit `0f65bd1`）
   - MS-005 WAIVED-OPTIONAL（无 DSH 真实 hook 证据，first-class dispatch only）
-- **Global assertions**:
-  - VC-029-G01（零 npm 依赖）PASS
-  - VC-029-G02（测试 baseline ≥ 287）PASS — 1131/1131
-  - VC-029-G03（architecture-guard）PASS
-  - VC-029-G04（双语模板对称）PASS — 6/6 文件
-  - VC-029-G05（WP-ari-p006-impl released）PASS
+  - Publish-docs PASS（commit `44a5862` — docs/architecture/dsh-host-adapter.md）
+- **Exit Criteria 核查**:
+  - [x] 所有 milestone PASS 或 explicit waiver（MS-001~004 PASS + MS-005 WAIVED）
+  - [x] Blocking assertions（VC-029-001~004 全 PASS）
+  - [x] Command log 记录必需命令退出码
+  - [x] Handoff 完成（跨 agent/session 传递由 handoffs/ 目录 + receipts 覆盖）
+  - [x] 双语模板（templates/zh + templates/en）结构一致（6/6 文件）
+  - [x] docs/host-dsh-integration.md 四节齐备
+  - [x] shadow usage sidecar（dsh-shadow.js + dsh-usage-sync.js）继续工作（82/82 测试不退化）
+  - [x] 测试 baseline ≥ 287 不退化（最终 1131/1131）
+  - [x] bin/cli.js 零依赖硬约束保持
+  - [x] 纯加法升级（upgrade 不覆盖用户改动）
+  - [x] Waitpoint WP-ari-p006-impl 已 released
+- Last updated: 2026-08-19
+- **Global assertions**: VC-029-G01（零依赖）PASS / G02（测试 baseline）PASS / G03（architecture-guard）PASS / G04（双语模板）PASS / G05（Waitpoint released）PASS

@@ -56,7 +56,7 @@
 | P-003 | [Pi Reference Adapter Pilot](./proposals/P-003-pi-reference-adapter-pilot-proposal.md) | contract pilot complete；live extension receipt pending | 用 Pi extension 验证 tool gate、事件和证据映射 |
 | P-004 | [Capability-aware Execution Surface Dispatch](./proposals/P-004-capability-aware-execution-surface-dispatch-proposal.md) | manual production pilot complete；automatic dispatch disabled | 按任务需求、实时能力、治理与 lease 选择和交接执行面 |
 | P-005 | [Governed Agent Semantic Progress Supervision](./proposals/P-005-governed-agent-semantic-progress-supervision-proposal.md) | draft | 区分 alive/active/productive/verified，接入宿主流、worktree 证据与可纠偏监督 |
-| P-006 | [DSH Host Adapter (first-class)](./proposals/P-006-dsh-host-adapter-proposal.md) | in-progress（M-029，MS-001 done） | 把 DeepSeek Harness 从 shadow usage 提升为与 Pi / Claude Code / Codex CLI 同等的 first-class dispatch adapter，补齐 5 方法契约、模板、文档、测试与注册 |
+| P-006 | [DSH Host Adapter (first-class)](./proposals/P-006-dsh-host-adapter-proposal.md) | done（M-029 COMPLETE，2026-08-19） | 把 DeepSeek Harness 从 shadow usage 提升为与 Pi / Claude Code / Codex CLI 同等的 first-class dispatch adapter，补齐 5 方法契约、模板、文档、测试与注册 |
 
 ## 4. 关联项目
 
@@ -254,5 +254,6 @@ Adapter 不得直接修改 Task、Run、Decision 或 Waitpoint 文件；它只�
 - [x] Mission M-010 已落地 P-006 owner，并以真实 Pi receipt、checkpoint、handoff 与安全第二宿主 blocker 完成手工 production pilot。
 - [ ] 真实 pilot 通过后再评估 daemon / 受控自动化升级；默认继续关闭。
 - [ ] 独立评审 P-005，并仅在精确 architecture Decision 批准后建立 M-013 执行载体。
-- [ ] 评审 P-006（DSH first-class adapter），批准后按 M-014～M-018 实施；M-018（tool gate / context pilot）作为可选 follow-up。
-- [ ] P-006 实施完成后由 `/publish-docs --architecture` 把 `docs/host-dsh-integration.md` 同步到公开 `docs/`。
+- [x] 评审 P-006（DSH first-class adapter），批准后按 M-014～M-018 实施；M-018（tool gate / context pilot）作为可选 follow-up。
+- [x] P-006 实施完成后由 `/publish-docs --architecture` 把 `docs/host-dsh-integration.md` 同步到公开 `docs/`。
+- [ ] DSH 真实 hook 能力证据出现后，单列 P-007 follow-up（tool gate + context pilot）。
