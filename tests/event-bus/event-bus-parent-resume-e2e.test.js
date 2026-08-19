@@ -126,7 +126,7 @@ test("VC-009 A3: 3 sub-agents completed → all 3 events reach P-003 inbox", () 
   }
 
   // Each sub-agent wrote 2 events: spawned + completed. Total 6 inbox entries for this mission.
-  const inboxDir = path.join(root, ".agent-runtime", "cross-project", "inbox", missionId);
+  const inboxDir = path.join(root, ".agent", "runtime", "cross-project", "inbox", missionId);
   const files = fs.readdirSync(inboxDir).filter((f) => f.endsWith(".json"));
   assert.equal(files.length, 6);
 });
@@ -340,7 +340,7 @@ test("VC-009 KEY: 7 key assertions — 父 FSM 5 状态 + P-003 inbox + bridge s
   // We wrote 4 sub-agents: sub-KEY-1 + sub-KEY-2 + sub-KEY-3. Each wrote 2 events (spawned + completed) = 8.
   // The spec says "1 个 event per sub" for the 3 parallel sub-agents (sub-KEY-1, sub-KEY-2, sub-KEY-3).
   // We assert 3 sub-agents have inbox entries:
-  const inboxDir = path.join(root, ".agent-runtime", "cross-project", "inbox", missionId);
+  const inboxDir = path.join(root, ".agent", "runtime", "cross-project", "inbox", missionId);
   const inboxFiles = fs.readdirSync(inboxDir).filter((f) => f.endsWith(".json"));
   assert.ok(inboxFiles.length >= 6); // at least 3 subs × 2 events (spawned + completed)
 

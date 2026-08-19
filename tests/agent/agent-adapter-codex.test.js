@@ -118,7 +118,7 @@ function rmProject(root) {
   try { fs.rmSync(root, { recursive: true, force: true }); } catch (_) { /* ignore */ }
 }
 function journalFile(root, runId, name) {
-  return path.join(root, ".agent-runtime", "dispatch", runId, name);
+  return path.join(root, ".agent", "runtime", "dispatch", runId, name);
 }
 function readJournal(root, runId, name) {
   const file = journalFile(root, runId, name);
@@ -591,7 +591,7 @@ test("codex: _writeErrorAndRollback writes rollback-failed.json if rollback.json
     };
     // Force a journal write error by writing a file at the run dir as a
     // directory blocker. Easiest: create the run dir as a file.
-    const blocked = path.join(root, ".agent-runtime", "dispatch", "R-cx-rb-fail");
+    const blocked = path.join(root, ".agent", "runtime", "dispatch", "R-cx-rb-fail");
     fs.mkdirSync(path.dirname(blocked), { recursive: true });
     fs.writeFileSync(blocked, "not a dir");
     const r = a._writeErrorAndRollback(root, "R-cx-rb-fail", errRec);

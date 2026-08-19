@@ -16,7 +16,22 @@ function copy(source, target) {
 function createProject() {
   const project = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-mcp-project-"));
   const management = path.join(project, ".agent", "skills", "management-api", "scripts");
-  for (const file of ["index.js", "normalize-token-usage.js", "projection-registry.json", "query-activity.js", "query-dispatch-state.js", "query-coordination.js", "query-governed-attempt.js"]) {
+  for (const file of [
+    "index.js",
+    "normalize-token-usage.js",
+    "projection-registry.json",
+    "query-activity.js",
+    "query-dispatch-state.js",
+    "query-coordination.js",
+    "query-governed-attempt.js",
+    // MS-004 R1: task-state / run-state / token-attempts projections are
+    // backed by dedicated query-* scripts (see lib/commands/management-api).
+    "query-task-state.js",
+    "query-run-state.js",
+    "query-token-attempts.js",
+    "token-attempt-ledger.js",
+    "token-attempt-receipt.js",
+  ]) {
     copy(path.join(ROOT, "templates", "_shared", ".agent", "skills", "management-api", "scripts", file), path.join(management, file));
   }
   copy(
@@ -31,6 +46,10 @@ function createProject() {
     fs.mkdirSync(path.join(project, ".agent", dir), { recursive: true });
   }
   fs.writeFileSync(path.join(project, ".agent", "runs", "R-1.json"), `${JSON.stringify({ run_id: "R-1", kind: "implement", status: "running", started_at: "2026-07-23T00:00:00.000Z", events: [] })}\n`);
+  // Seed minimal task-state and run-state fixtures so the exact-lookup
+  // projections (task-state, run-state) have a target during e2e.
+  fs.writeFileSync(path.join(project, ".agent", "tasks", "T-QUERY-EXACT.json"), `${JSON.stringify({ task_id: "T-QUERY-EXACT", title: "E2E fixture", status: "ready_for_review", acceptance_criteria: [], validation_commands: [] })}\n`);
+  fs.writeFileSync(path.join(project, ".agent", "runs", "R-QUERY-EXACT.json"), `${JSON.stringify({ run_id: "R-QUERY-EXACT", task_id: "T-QUERY-EXACT", kind: "implement", status: "running", started_at: "2026-07-23T00:00:00.000Z", events: [] })}\n`);
   return project;
 }
 

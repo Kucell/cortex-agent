@@ -1694,6 +1694,8 @@ function taskStateProjection() {
   const { queryTaskState } = require("./query-task-state.js");
   const result = queryTaskState(root, { task: option("--task") });
   if (!result.ok) process.exitCode = 2;
+  // MS-004 R1: queryTaskState now returns `{ok, task: {...}}` so the CLI's
+  // formatQueryPayload() can extract it via capability.data_field = "task".
   return result;
 }
 
@@ -1704,6 +1706,8 @@ function runStateProjection() {
   const { queryRunState } = require("./query-run-state.js");
   const result = queryRunState(root, { run: option("--run") });
   if (!result.ok) process.exitCode = 2;
+  // Same envelope rationale as taskStateProjection() — queryRunState now
+  // returns `{ok, run: {...}}` for capability.data_field = "run".
   return result;
 }
 

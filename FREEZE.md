@@ -42,6 +42,7 @@
 | Root 协调事件 | `.agent-runtime/coordination/...`（task/lease/event/journal/snapshot） | 仅 Root via `cortex-agent` CLI 操作；CORTEX_STATE_SYNC=off |
 | M-025 governance doc sync | `.agent/missions/M-025/**`、`.agent/missions/M-025/handoffs/**`、`.agent/plans/proposals/projects/token-control-plane/proposals/**`、`.agent/plans/task-progress.md` | Root 直接更新；仅文档/markdown 同步，不改 runtime / migration engine / templates；不影响 M-026 MS-004 byte-identical 验证目标 |
 | P-006 Host 侧激活治理记录（2026-08-18） | `.agent/skills/host-prompt-slim/**`、`.agent/decisions/D-P006-host-activation-slim.json`、`.agent/experiences/EXP-018-host-prompt-slim.md`、`.agent/skills/skill-index.json` | Root 一次性登记：仅治理/技能/经验/决策记录，不改 runtime / migration engine / templates；不影响 M-026 MS-004 byte-identical 验证目标 |
+| M-027 dsh-market-publishing doc-sync（2026-08-18） | `.agent/plans/proposals/projects/dsh-market-publishing/**`、`.agent/missions/M-027/**`、`.agent/missions/M-027/handoffs/**`、`.agent/plans/task-progress.md`、`.agent/decisions/D-M027-*.json`、`.agent/waitpoints/WP-M027-*.json` | Root 直接更新；纯 markdown 提案 / mission-plan / milestone / command-log / handoff / 决策/waitpoint 记录；不写 runtime / migration engine / templates / lib / tests；不影响 M-026 MS-004 byte-identical 验证目标 |
 
 ## 4. 不在冻结范围（继续允许改动）
 

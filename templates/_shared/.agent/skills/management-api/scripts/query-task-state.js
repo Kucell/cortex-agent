@@ -40,7 +40,7 @@ function project(projectRoot, taskId) {
   const t = result.task;
   const criteriaPreview = preview(t.acceptance_criteria, 3);
   const validationPreview = preview(t.validation_commands || [], 2);
-  return {
+  const taskSummary = {
     ok: true,
     task_id: t.task_id,
     title: t.title,
@@ -59,6 +59,9 @@ function project(projectRoot, taskId) {
     created_at: t.created_at,
     updated_at: t.updated_at,
   };
+  // MS-004 R1: wrap the projection body under a `task` key so the CLI's
+  // formatQueryPayload() can extract it via capability.data_field = "task".
+  return { ok: true, task: taskSummary };
 }
 
 function queryTaskState(projectRoot, args) {

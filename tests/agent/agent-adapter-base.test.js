@@ -115,9 +115,9 @@ test("adapter-base: report() with unknown runId returns status=not_found", async
 
 // ─── journal helpers ──────────────────────────────────────────────────────────
 
-test("adapter-base: dispatchDir returns .agent-runtime/dispatch/<runId>", () => {
+test("adapter-base: dispatchDir returns .agent/dispatch/<runId>", () => {
   const p = dispatchDir("/tmp/proj", "R-abc");
-  assert.equal(p, path.join("/tmp/proj", ".agent-runtime", "dispatch", "R-abc"));
+  assert.equal(p, path.join("/tmp/proj", ".agent", "runtime", "dispatch", "R-abc"));
 });
 
 test("adapter-base: dispatchDir throws without projectRoot or runId", () => {
@@ -125,7 +125,7 @@ test("adapter-base: dispatchDir throws without projectRoot or runId", () => {
   assert.throws(() => dispatchDir("/tmp", null), /runId required/);
 });
 
-test("adapter-base: writeDispatchArtifact writes JSON to .agent-runtime/dispatch/<runId>/", () => {
+test("adapter-base: writeDispatchArtifact writes JSON to .agent/runtime/dispatch/<runId>/", () => {
   const root = mkProject();
   try {
     const file = writeDispatchArtifact(root, "R-1", "result.json", { ok: true, n: 1 });
@@ -140,7 +140,7 @@ test("adapter-base: writeDispatchArtifact is atomic (.tmp + rename)", () => {
   try {
     writeDispatchArtifact(root, "R-2", "result.json", { v: 1 });
     // No leftover .tmp files
-    const dir = path.join(root, ".agent-runtime", "dispatch", "R-2");
+    const dir = path.join(root, ".agent", "runtime", "dispatch", "R-2");
     const files = fs.readdirSync(dir);
     const tmps = files.filter((f) => f.includes(".tmp-"));
     assert.equal(tmps.length, 0);
@@ -168,7 +168,7 @@ test("adapter-base: readDispatchArtifact round-trips through write", () => {
 test("adapter-base: readDispatchArtifact throws ERR_DISPATCH_ARTIFACT_PARSE on bad JSON", () => {
   const root = mkProject();
   try {
-    const dir = path.join(root, ".agent-runtime", "dispatch", "R-bad");
+    const dir = path.join(root, ".agent", "runtime", "dispatch", "R-bad");
     fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(path.join(dir, "result.json"), "{not json");
     assert.throws(
@@ -178,12 +178,12 @@ test("adapter-base: readDispatchArtifact throws ERR_DISPATCH_ARTIFACT_PARSE on b
   } finally { rmProject(root); }
 });
 
-test("adapter-base: ensureDispatchDir creates .agent-runtime/dispatch/<runId>/", () => {
+test("adapter-base: ensureDispatchDir creates .agent/runtime/dispatch/<runId>/", () => {
   const root = mkProject();
   try {
     const dir = ensureDispatchDir(root, "R-5");
     assert.ok(fs.existsSync(dir));
-    assert.equal(dir, path.join(root, ".agent-runtime", "dispatch", "R-5"));
+    assert.equal(dir, path.join(root, ".agent", "runtime", "dispatch", "R-5"));
   } finally { rmProject(root); }
 });
 

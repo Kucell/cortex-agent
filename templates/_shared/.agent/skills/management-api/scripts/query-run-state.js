@@ -40,7 +40,7 @@ function project(projectRoot, runId) {
   const r = result.run;
   const events = Array.isArray(r.events) ? r.events : [];
   const artifacts = Array.isArray(r.artifacts) ? r.artifacts : [];
-  return {
+  const runSummary = {
     ok: true,
     run_id: r.run_id,
     task_id: r.task_id || null,
@@ -62,6 +62,9 @@ function project(projectRoot, runId) {
     last_event: r.last_event || null,
     validation: r.validation || {},
   };
+  // MS-004 R1: wrap the projection body under a `run` key so the CLI's
+  // formatQueryPayload() can extract it via capability.data_field = "run".
+  return { ok: true, run: runSummary };
 }
 
 function queryRunState(projectRoot, args) {

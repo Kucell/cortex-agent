@@ -34,8 +34,12 @@ const {
 
 function freshRoot(label) {
   const base = path.join(os.tmpdir(), `consumer-registry-${label}-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
-  fs.mkdirSync(base, { recursive: true });
-  return path.join(base, ".agent-runtime");
+  // MS-003: ConsumerRegistry expects rootDir to be the coordination subdir under
+  // a valid runtime root (.agent-runtime/coordination or .agent/runtime/coordination).
+  // Earlier revisions of this test passed the bare .agent-runtime path, which
+  // now fails assertRuntimeScoped because the `coordination` segment is missing.
+  fs.mkdirSync(path.join(base, ".agent-runtime", "coordination"), { recursive: true });
+  return path.join(base, ".agent-runtime", "coordination");
 }
 
 function readPersisted(rootDir, projectId) {
@@ -404,11 +408,11 @@ test("CP-9: writes use atomic rename and refuse to traverse outside the root", (
 test("CP-9: registry refuses a symlinked ancestor above the runtime root", () => {
   const base = fs.mkdtempSync(path.join(os.tmpdir(), "registry-ancestor-"));
   const real = path.join(base, "real");
-  fs.mkdirSync(path.join(real, ".agent-runtime"), { recursive: true });
+  fs.mkdirSync(path.join(real, ".agent-runtime", "coordination"), { recursive: true });
   const linked = path.join(base, "linked");
   fs.symlinkSync(real, linked, "dir");
   assert.throws(
-    () => new ConsumerRegistry(path.join(linked, ".agent-runtime"), "project-a"),
+    () => new ConsumerRegistry(path.join(linked, ".agent-runtime", "coordination"), "project-a"),
     (error) => error.code === "ERR_REGISTRY_SCOPE" && error.details.reason === "symlink_in_path",
   );
 });

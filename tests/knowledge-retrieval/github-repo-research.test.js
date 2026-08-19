@@ -17,7 +17,8 @@ test('github-repo-research skill is complete in both templates', () => {
 
   for (const skillPath of skillPaths) {
     const content = read(skillPath);
-    assert.match(content, /^---\nname: github-repo-research\ndescription: .+\n---\n/);
+    // Allow optional area + summary frontmatter fields between description and closing ---
+    assert.match(content, /^---\nname: github-repo-research\ndescription: .+\n([a-z_-]+: .+\n)*---\n/);
     assert.doesNotMatch(content, /TODO/);
     assert.match(content, /DeepWiki/);
     assert.match(content, /commit/i);

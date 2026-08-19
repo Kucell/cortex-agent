@@ -45,6 +45,11 @@ function waitForExit(child, timeoutMs = 5000) {
 
 test("public CLI runs a persistent watch and supports status plus idempotent stop", async (t) => {
   const project = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-notification-e2e-"));
+  // MS-003: NotificationRuntime.assertStateScoped requires the project root
+  // to contain either `.agent-runtime/cross-project` (legacy) or
+  // `.agent/runtime/cross-project` (new). The legacy layout matches the
+  // NotificationRuntime.RUNTIME_SEGMENT constant so we seed that.
+  fs.mkdirSync(path.join(project, ".agent-runtime", "cross-project"), { recursive: true });
   const child = spawn(
     process.execPath,
     [

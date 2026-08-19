@@ -70,7 +70,7 @@ function rmProject(root) {
   try { fs.rmSync(root, { recursive: true, force: true }); } catch (_) {}
 }
 function journal(root, runId, name) {
-  return path.join(root, ".agent-runtime", "dispatch", runId, name);
+  return path.join(root, ".agent", "runtime", "dispatch", runId, name);
 }
 function readJournal(root, runId, name) {
   const file = journal(root, runId, name);
@@ -383,7 +383,7 @@ test("dispatch-execute: decision step that throws → defaults to rollback", asy
 test("dispatch-execute: writes rollback-failed.json when rollback.json write fails", async () => {
   const root = mkProject();
   // Pre-create the dispatch dir as a file (blocker).
-  const blocked = path.join(root, ".agent-runtime", "dispatch", "R-de-rb-fail");
+  const blocked = path.join(root, ".agent", "runtime", "dispatch", "R-de-rb-fail");
   fs.mkdirSync(path.dirname(blocked), { recursive: true });
   fs.writeFileSync(blocked, "not a dir");
   // Use a real URL that always 200s — but the journal write is blocked,

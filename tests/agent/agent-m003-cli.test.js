@@ -182,7 +182,7 @@ test("m003-cli: agent dispatch-execute end-to-end (real CLI, fake claude binary)
     // lib/agents/invoke.js convention; m003-cli spreads it unchanged).
     const runId = json.run_id;
     assert.ok(runId, "run_id field missing from dispatch result");
-    const runDir = path.join(root, ".agent-runtime", "dispatch", runId);
+    const runDir = path.join(root, ".agent", "runtime", "dispatch", runId);
     assert.ok(fs.existsSync(path.join(runDir, "request.json")), "request.json missing");
     assert.ok(fs.existsSync(path.join(runDir, "result.json")), "result.json missing");
     assert.ok(fs.existsSync(path.join(runDir, "rollback.json")), "rollback.json missing");
@@ -427,7 +427,7 @@ process.stdin.on("end", () => {
     assert.equal(json.dispatcher, "m003-cli (protocol.cli)");
     assert.match(JSON.stringify(json.result), /from CLI protocol/);
     // Journal artifacts
-    const runDir = path.join(root, ".agent-runtime", "dispatch", json.runId);
+    const runDir = path.join(root, ".agent", "runtime", "dispatch", json.runId);
     assert.ok(fs.existsSync(path.join(runDir, "request.json")));
     assert.ok(fs.existsSync(path.join(runDir, "result.json")));
     assert.ok(fs.existsSync(path.join(runDir, "rollback.json")));

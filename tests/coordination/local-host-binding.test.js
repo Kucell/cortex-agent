@@ -35,8 +35,11 @@ const {
 
 function freshRoot(label) {
   const base = path.join(os.tmpdir(), `local-host-binding-${label}-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
-  fs.mkdirSync(base, { recursive: true });
-  return path.join(base, ".agent-runtime");
+  // MS-003: store expects rootDir under .agent-runtime/coordination (or
+  // .agent/runtime/coordination). Bare .agent-runtime now fails
+  // assertRuntimeScoped because the `coordination` segment is missing.
+  fs.mkdirSync(path.join(base, ".agent-runtime", "coordination"), { recursive: true });
+  return path.join(base, ".agent-runtime", "coordination");
 }
 
 function baseBinding(overrides = {}) {
@@ -184,7 +187,9 @@ test("CP-9: store never writes outside the runtime root", () => {
 test("CP-9: symlinked bindings directory is refused at construction", () => {
   const base = path.join(os.tmpdir(), `symlink-bindings-${process.pid}-${Date.now()}`);
   fs.mkdirSync(base, { recursive: true });
-  const runtimeRoot = path.join(base, ".agent-runtime");
+  // MS-003: include the `coordination` segment so assertRuntimeScoped
+  // passes through to the symlink ancestor check.
+  const runtimeRoot = path.join(base, ".agent-runtime", "coordination");
   fs.mkdirSync(runtimeRoot, { recursive: true });
   // Replace the bindings/ dir with a symlink pointing elsewhere.
   const real = path.join(base, "real-target");
@@ -201,12 +206,12 @@ test("CP-9: symlinked runtime root segment is refused", () => {
   fs.mkdirSync(base, { recursive: true });
   // A symlink whose resolved path crosses the runtime segment.
   const real = path.join(base, "real-runtime");
-  fs.mkdirSync(real, { recursive: true });
+  fs.mkdirSync(path.join(real, "coordination"), { recursive: true });
   fs.symlinkSync(real, path.join(base, ".agent-runtime"));
   // Now point the store at the symlink itself. safeResolve() walks the
   // segments and refuses once any ancestor is a symlink.
   assert.throws(
-    () => new LocalHostBindingStore(path.join(base, ".agent-runtime"), "project-alpha"),
+    () => new LocalHostBindingStore(path.join(base, ".agent-runtime", "coordination"), "project-alpha"),
     /symlink/,
   );
 });
@@ -214,11 +219,11 @@ test("CP-9: symlinked runtime root segment is refused", () => {
 test("CP-9: symlinked ancestor above the runtime root is refused", () => {
   const base = fs.mkdtempSync(path.join(os.tmpdir(), "binding-ancestor-"));
   const real = path.join(base, "real");
-  fs.mkdirSync(path.join(real, ".agent-runtime"), { recursive: true });
+  fs.mkdirSync(path.join(real, ".agent-runtime", "coordination"), { recursive: true });
   const linked = path.join(base, "linked");
   fs.symlinkSync(real, linked, "dir");
   assert.throws(
-    () => new LocalHostBindingStore(path.join(linked, ".agent-runtime"), "project-a"),
+    () => new LocalHostBindingStore(path.join(linked, ".agent-runtime", "coordination"), "project-a"),
     (error) => error.code === "ERR_BINDING_SCOPE" && error.details.reason === "symlink_in_path",
   );
 });

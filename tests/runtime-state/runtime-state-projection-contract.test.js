@@ -9,7 +9,8 @@ const ROOT = path.resolve(__dirname, "..", "..");
 const QUERY_NAMES = ["runtime-state", "workspaces", "hook-runs", "resource-leases", "composite-workspaces", "resource-events", "guided-reviews", "benchmarks"];
 
 function schema(root) {
-  return JSON.parse(fs.readFileSync(path.join(root, "runtime", "runtime-state-projection.schema.json"), "utf8"));
+  // VC-017: schema migrated from <root>/runtime/ to <root>/contracts/runtime-state/
+  return JSON.parse(fs.readFileSync(path.join(root, "contracts", "runtime-state", "runtime-state-projection.schema.json"), "utf8"));
 }
 
 test("runtime projection query names and core response sections are frozen", () => {
@@ -34,7 +35,9 @@ test("projected resources preserve stable correlation, event, evidence, and next
 });
 
 test("projection schema remains byte-identical across local and distribution templates", () => {
-  const relative = path.join("runtime", "runtime-state-projection.schema.json");
+  // VC-017: schema migrated from .agent/runtime/ to .agent/contracts/runtime-state/
+  // (P-001 §2 / P-002 §5 Allowlist). Test must read from the new location.
+  const relative = path.join("contracts", "runtime-state", "runtime-state-projection.schema.json");
   const local = fs.readFileSync(path.join(ROOT, ".agent", relative), "utf8");
   assert.equal(fs.readFileSync(path.join(ROOT, "templates", "_shared", ".agent", relative), "utf8"), local);
 });

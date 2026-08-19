@@ -38,7 +38,7 @@ function rmProject(root) {
   try { fs.rmSync(root, { recursive: true, force: true }); } catch (_) { /* ignore */ }
 }
 function journalDir(root, runId) {
-  return path.join(root, ".agent-runtime", "dispatch", runId);
+  return path.join(root, ".agent", "runtime", "dispatch", runId);
 }
 function journalFile(root, runId, name) {
   return path.join(journalDir(root, runId), name);

@@ -126,8 +126,12 @@ test("bridge sync --auto resolves host_root from topology registry", () => {
   // Subscribe to hmi-platform
   cli.bridgeCommand({ cwd: target, args: ["bridge", "subscribe", "--source", "hmi-platform", "--types", "task.state_changed", "--json"], options: {} });
   // Seed an event into the source outbox
-  fs.mkdirSync(path.join(source, ".agent-runtime", "cross-project", "outbox", "hmi-platform"), { recursive: true });
-  fs.writeFileSync(path.join(source, ".agent-runtime", "cross-project", "outbox", "hmi-platform", "BR-EVT-p006-auto.json"), JSON.stringify({
+  // MS-003: cross-project outbox/inbox now lives under .agent/runtime/cross-project/
+  // (new layout per VC-012). The legacy .agent-runtime/cross-project/ path is
+  // only used during the compat window when the legacy dir exists and the
+  // project has not activated the new layout.
+  fs.mkdirSync(path.join(source, ".agent", "runtime", "cross-project", "outbox", "hmi-platform"), { recursive: true });
+  fs.writeFileSync(path.join(source, ".agent", "runtime", "cross-project", "outbox", "hmi-platform", "BR-EVT-p006-auto.json"), JSON.stringify({
     bridge_event_id: "BR-EVT-p006-auto",
     source_project_id: "hmi-platform",
     source_task_id: "T-001",
@@ -143,7 +147,7 @@ test("bridge sync --auto resolves host_root from topology registry", () => {
   assert.equal(parsed.mode, "auto");
   assert.equal(parsed.total, 1);
   assert.equal(parsed.reachable, 1);
-  const inboxFile = path.join(target, ".agent-runtime", "cross-project", "inbox", "hmi-platform", "BR-EVT-p006-auto.json");
+  const inboxFile = path.join(target, ".agent", "runtime", "cross-project", "inbox", "hmi-platform", "BR-EVT-p006-auto.json");
   assert.ok(fs.existsSync(inboxFile), "inbox file should be written via --auto");
 });
 
