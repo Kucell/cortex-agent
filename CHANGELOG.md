@@ -30,6 +30,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `volta install cortex-agent@file:...tgz` 后 install dir 的 `cortex-agent local-publish-validate --help` 正常工作
 - 跨源仓 (cortex-agent) 和 install dir (volta) 双路径都能调通
 
+## [1.12.0-rc.14] - 2026-08-19
+
+> **Pre-release**: rc.14 bridge rc.10 → rc.14 周期关键变更 (rc.11/rc.12/rc.13 当时未补 release notes),并完成 287/287 测试基线清零。
+> **基础**: `fdddd0c` (v1.12.0-rc.11, 2026-08-12) → 25 commits → `483bce7` (chore rc.14 version bump)
+> **测试基线**: 261 PASS + 26 baseline-failed → **287/287 PASS** (`d18b820` 关闭 25 baseline-failed + 1 regression)
+> **完整 release notes**: `docs/releases/v1.12.0-rc.14.md` (184 行中英双语)
+
+### Added
+
+- **M-026 runtime-state-layout MS-001 + MS-002 + MS-004 R1 收口** (`3113732` / `0792a85` / `afba0ef` / `bb694d1` / `60a030d`):
+  - 6 类 runtime root + 5 schema (runtime-layout / logical-uri / identity-record / local-binding / runtime-state-projection)
+  - 共享 resolver 迁移 (VC-011..VC-014)
+  - templates parity 同步 (VC-013/VC-016/VC-017)
+  - **FREEZE.md status: closed** (`D-M026-MS004-R1-close` at 2026-08-19T00:35:00Z)
+- **Memory Integrity Validation Phase 1 close-out** (`0f53702`)
+- **Token Control Plane MS005** — context-budget P-002/P-003/P-004 (`982935c` / `2858099`) + capture-usage (`5e63cf4`) + shadow receipt (`1f04b16`) + MS-003 PhaseA passive collector (`466b123`)
+- **M-019 context-budget prompt-inject 模板侧收口** (`2ebd85b` / `b7e9855` / `4266f27`)
+- **P-007 Memory scope 维度扩展 + §3.3/§3.4 投影** (`6b84ab0` / `3c5c542` / `3f769ee` + templates mirror `dfb73b5` / `7a3faf5`)
+- **Qoder CLI CN platform integration** (`f45e02e`)
+- **GitLab VCS PR 状态查询** (`9b94761`)
+- **Setup linkGlobalConfig 5 portable symlinks** (`1d22040`) — closes #3
+- **Memory integrity validator** (`48066fb`) — closes #2
+- **Memory boundary docs 强化** (`48612b7` / `8af1f8c` / `d350135`) — closes #4
+- **user-gated PR merge** (`f1b4c5f`) — PR #10
+- **`.agent-runtime` track/untrack lifecycle 对齐** (`8755326`)
+- **host prompt slim skill 三件套** (SKILL.md / scripts/index.js / scripts/rules.js + tests)
+- **Token-savings demo** (`docs/token-savings.md` + `scripts/token-savings-demo.js` + test)
+
+### Fixed
+
+- **`d18b820 fix(tests): close out 25 baseline-failed tests + 1 regression (287/287 PASS)`** — 本 rc 关键
+- **`8ff9ee2 fix(event-bus): correct parent-resume client runtime-layout require path`**
+- **`1a12043 fix(update): repair upgrade SyntaxError and migrate legacy .agent/runtime Schemas`**
+- **`0b5d2a7 fix(test): management-query-cli 补齐 MS-001 token-attempt 脚本文件清单`**
+- **`bfd01b2 fix(commands): 合并后清理 skillBrowse 重复行`**
+
+### Validation
+
+- **287/287 tests PASS** in 38257ms (8 workers parallel)
+- `docs/releases/v1.12.0-rc.14.md` 184 行 (canonical narrative)
+- 实战项目 Pilot: `csm-view-memory-rc10` upgrade + update 跑通 (5 updated / 2 protected / 0 failed / 7 verification PASS)
+- 7 legacy schemas 迁移到 `contracts/runtime-state/`
+
 ## [1.12.0-rc.9] - 2026-08-12
 
 > **Pre-release**:P-008B 双仓联动 + bridge event 白名单新增 `mission.completed`。**仅供 hmi-platform ↔ SamHMI 跨项目实战 + AI-Brain dogfooding 使用**,不建议生产使用。
