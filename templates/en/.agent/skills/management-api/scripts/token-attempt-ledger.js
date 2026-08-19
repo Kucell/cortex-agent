@@ -341,6 +341,164 @@ function appendReceipt(ledgerDir, receipt, options = {}) {
   }
 }
 
+// ─── Public API: append a batch of receipts to the ledger ───────────────────
+//
+// Batch variant of `appendReceipt`. Validates every receipt upfront, then
+// acquires the ledger lock ONCE and rewrites the index ONCE. This collapses
+// the per-receipt index load + temp-write + rename into a single round trip,
+// which is the difference between minutes and seconds for a 20k-row backfill.
+//
+// Behaviour (per receipt):
+//   - new         → written to receipts/<hash>.json + appended to index
+//   - duplicate   → skipped, returns isDuplicate=true
+//   - corrupt     → skipped, returns ledger_corrupt
+//   - conflict    → skipped, returns idempotency_conflict
+//   - out-of-order → skipped unless allowOutOfOrder=true
+//
+// Returns:
+//   { ok: true, results: [...], written, duplicates, errors, total }
+//   { ok: false, error, reason, index } on pre-flight validation failure
+function appendReceiptBatch(ledgerDir, receipts, options = {}) {
+  const {
+    allowOutOfOrder = false,
+    maxSizeBytes = 65536,
+  } = options;
+
+  if (!Array.isArray(receipts) || receipts.length === 0) {
+    return { ok: false, error: "invalid_batch", reason: "Receipts must be a non-empty array" };
+  }
+
+  // Step 1: Pre-validate every receipt (size, security, contract).
+  // We abort the whole batch on the first failure so partial writes can't
+  // produce a half-applied state that the caller has to reconcile.
+  const validated = [];
+  for (let i = 0; i < receipts.length; i += 1) {
+    const receipt = receipts[i];
+    if (!receipt || typeof receipt !== "object") {
+      return { ok: false, error: "invalid_receipt", reason: "Receipt must be an object", index: i };
+    }
+    const sizeCheck = validateReceiptSize(receipt, maxSizeBytes);
+    if (!sizeCheck.valid) {
+      return { ok: false, error: "oversized_receipt", reason: sizeCheck.reason, index: i };
+    }
+    const securityCheck = validateReceiptSecurity(receipt);
+    if (!securityCheck.valid) {
+      return { ok: false, error: "security_violation", reason: securityCheck.reason, index: i };
+    }
+    const contractCheck = validateReceiptContract(receipt);
+    if (!contractCheck.valid) {
+      return { ok: false, error: "invalid_receipt", reason: contractCheck.reason, index: i };
+    }
+    validated.push({ index: i, receipt });
+  }
+
+  // Step 2: Acquire lock once, read index once, write index once.
+  try {
+    return withLedgerLock(ledgerDir, () => {
+      const indexPath = path.join(ledgerDir, LEDGER_INDEX);
+      const index = readLedgerIndex(indexPath);
+      index.receipts = index.receipts || {};
+      index.entries = index.entries || [];
+
+      const results = [];
+      let writtenCount = 0;
+      let duplicateCount = 0;
+      let errorCount = 0;
+      let indexChanged = false;
+
+      for (const item of validated) {
+        const { index: receiptIndex, receipt } = item;
+        const key = computeIdempotencyKey(receipt);
+        const immutableFile = receiptFile(ledgerDir, receipt);
+
+        if (index.receipts[key] !== undefined) {
+          if (!fs.existsSync(immutableFile)) {
+            results.push({ ok: false, error: "ledger_corrupt", reason: "Indexed receipt body is missing", index: receiptIndex, isDuplicate: false });
+            errorCount += 1;
+            continue;
+          }
+          const persisted = JSON.parse(fs.readFileSync(immutableFile, "utf8"));
+          if (!equivalentReceiptBody(persisted.receipt, receipt)) {
+            results.push({ ok: false, error: "idempotency_conflict", reason: "Immutable receipt body does not match replay payload", index: receiptIndex, isDuplicate: false });
+            errorCount += 1;
+            continue;
+          }
+          results.push({ ok: false, error: "duplicate_receipt", reason: "Receipt already exists", index: receiptIndex, isDuplicate: true });
+          duplicateCount += 1;
+          continue;
+        }
+
+        if (!allowOutOfOrder && isOutOfOrderReceipt(receipt, index.entries)) {
+          results.push({ ok: false, error: "out_of_order_receipt", reason: "Receipt timestamp is older than existing entry", index: receiptIndex, isDuplicate: false });
+          errorCount += 1;
+          continue;
+        }
+
+        const entry = createLedgerEntry(receipt);
+        fs.mkdirSync(path.dirname(immutableFile), { recursive: true });
+        if (fs.existsSync(immutableFile)) {
+          const persisted = JSON.parse(fs.readFileSync(immutableFile, "utf8"));
+          if (!equivalentReceiptBody(persisted.receipt, receipt)) {
+            results.push({ ok: false, error: "idempotency_conflict", reason: "Immutable receipt body does not match replay payload", index: receiptIndex, isDuplicate: false });
+            errorCount += 1;
+            continue;
+          }
+        } else {
+          fs.writeFileSync(immutableFile, `${JSON.stringify(entry, null, 2)}\n`, {
+            encoding: "utf8",
+            flag: "wx",
+            mode: 0o600,
+          });
+        }
+
+        const summary = {
+          receipt_id: receipt.receipt_id,
+          attempt_id: receipt.attempt_id,
+          run_id: receipt.run_id || null,
+          task_id: receipt.task_id || null,
+          session_id: receipt.session_id || null,
+          host: receipt.host || "unknown",
+          model: receipt.model || null,
+          status: receipt.status,
+          measurement_source: receipt.measurement_source,
+          recorded_at: receipt.recorded_at,
+          appended_at: entry.metadata.appended_at,
+          usage: receipt.usage,
+        };
+        index.receipts[key] = summary;
+        index.entries.push(summary);
+        indexChanged = true;
+        writtenCount += 1;
+        results.push({ ok: true, entry, isDuplicate: false, index: receiptIndex });
+      }
+
+      if (indexChanged) {
+        index.updated_at = new Date().toISOString();
+        const tempPath = `${indexPath}.${process.pid}.${Date.now()}.tmp`;
+        try {
+          fs.writeFileSync(tempPath, `${JSON.stringify(index, null, 2)}\n`, "utf8");
+          fs.renameSync(tempPath, indexPath);
+        } finally {
+          if (fs.existsSync(tempPath)) {
+            try { fs.unlinkSync(tempPath); } catch { /* ignore */ }
+          }
+        }
+      }
+
+      return {
+        ok: true,
+        total: receipts.length,
+        written: writtenCount,
+        duplicates: duplicateCount,
+        errors: errorCount,
+        results,
+      };
+    });
+  } catch (error) {
+    return { ok: false, error: "ledger_write_failed", reason: error.message };
+  }
+}
+
 // ─── Public API: process raw host payload into receipt and append ─────────────
 //
 // This is the main entry point for host adapters to submit token usage.
@@ -555,6 +713,7 @@ module.exports = {
   readLedgerIndex,
   recoverLedgerLock,
   appendReceipt,
+  appendReceiptBatch,
   submitTokenUsage,
   queryReceipts,
   getLedgerStats,

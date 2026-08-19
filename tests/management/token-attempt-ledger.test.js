@@ -919,3 +919,167 @@ test("queryDistinctField returns unique values", () => {
   const models = queryModule.queryDistinctField(projectRoot, "model");
   assert.deepEqual(models.values.sort(), ["opus", "sonnet"]);
 });
+
+// ─── VC-007: appendReceiptBatch — focused tests for the batch API ───────────
+//
+// The batch API exists to support backfill ingestion (Phase B VC-016 sample
+// gate) where appending tens of thousands of receipts one-at-a-time is
+// prohibitively slow due to per-call index rewrites. Each test below
+// exercises a specific contract property the batch API must preserve.
+
+function batchFixture(overrides = {}) {
+  return receiptFixture({
+    receipt_id: `r-batch-${Math.random().toString(36).slice(2, 10)}`,
+    attempt_id: `a-batch-${Math.random().toString(36).slice(2, 10)}`,
+    run_id: "R-batch-001",
+    ...overrides,
+  });
+}
+
+test("VC-007: appendReceiptBatch writes all-new receipts and reports counts", () => {
+  const ledgerDir = makeTempLedger();
+  const receipts = [
+    batchFixture({ attempt_id: "batch-a-1", receipt_id: "rb-a-1" }),
+    batchFixture({ attempt_id: "batch-a-2", receipt_id: "rb-a-2" }),
+    batchFixture({ attempt_id: "batch-a-3", receipt_id: "rb-a-3" }),
+  ];
+  const result = ledgerModule.appendReceiptBatch(ledgerDir, receipts);
+  assert.equal(result.ok, true);
+  assert.equal(result.total, 3);
+  assert.equal(result.written, 3);
+  assert.equal(result.duplicates, 0);
+  assert.equal(result.errors, 0);
+  assert.equal(result.results.length, 3);
+  // Index must reflect all three
+  const stats = ledgerModule.getLedgerStats(ledgerDir);
+  assert.equal(stats.total_receipts, 3);
+});
+
+test("VC-007: appendReceiptBatch skips duplicates and reports them per-index", () => {
+  const ledgerDir = makeTempLedger();
+  const first = batchFixture({ attempt_id: "dup-1", receipt_id: "rb-dup-1" });
+  ledgerModule.appendReceipt(ledgerDir, first);
+  const second = batchFixture({ attempt_id: "dup-2", receipt_id: "rb-dup-2" });
+  const third = batchFixture({ attempt_id: "dup-1", receipt_id: "rb-dup-1" }); // duplicate of first
+  const result = ledgerModule.appendReceiptBatch(ledgerDir, [second, third]);
+  assert.equal(result.ok, true);
+  assert.equal(result.written, 1);
+  assert.equal(result.duplicates, 1);
+  assert.equal(result.results[0].isDuplicate, false);
+  assert.equal(result.results[1].isDuplicate, true);
+  assert.equal(result.results[1].index, 1);
+});
+
+test("VC-007: appendReceiptBatch fails closed on a single bad receipt", () => {
+  const ledgerDir = makeTempLedger();
+  const valid = batchFixture({ attempt_id: "batch-bad-1", receipt_id: "rb-bad-1" });
+  const invalid = batchFixture({
+    attempt_id: "batch-bad-2",
+    receipt_id: "rb-bad-2",
+    usage: { input_tokens: -5 }, // negative integers fail contract validation
+  });
+  const result = ledgerModule.appendReceiptBatch(ledgerDir, [valid, invalid]);
+  assert.equal(result.ok, false);
+  assert.equal(result.error, "invalid_receipt");
+  assert.equal(result.index, 1);
+  // The first valid receipt must NOT have been persisted (no partial state).
+  const stats = ledgerModule.getLedgerStats(ledgerDir);
+  assert.equal(stats.total_receipts, 0);
+});
+
+test("VC-007: appendReceiptBatch rejects empty / non-array input", () => {
+  const ledgerDir = makeTempLedger();
+  assert.equal(ledgerModule.appendReceiptBatch(ledgerDir, []).error, "invalid_batch");
+  assert.equal(ledgerModule.appendReceiptBatch(ledgerDir, null).error, "invalid_batch");
+  assert.equal(ledgerModule.appendReceiptBatch(ledgerDir, "nope").error, "invalid_batch");
+});
+
+test("VC-007: appendReceiptBatch with allowOutOfOrder writes older-after-newer", () => {
+  const ledgerDir = makeTempLedger();
+  // Same attempt_id, different timestamps — out-of-order rules apply.
+  const newer = batchFixture({
+    attempt_id: "order-shared",
+    receipt_id: "rb-order-newer",
+    recorded_at: "2026-08-15T12:00:00.000Z",
+  });
+  const older = batchFixture({
+    attempt_id: "order-shared",
+    receipt_id: "rb-order-older",
+    recorded_at: "2026-08-10T12:00:00.000Z",
+  });
+  // Without allowOutOfOrder: older (later in batch) should be rejected
+  const without = ledgerModule.appendReceiptBatch(ledgerDir, [newer, older], { allowOutOfOrder: false });
+  assert.equal(without.ok, true);
+  assert.equal(without.written, 1);
+  assert.equal(without.results[1].error, "out_of_order_receipt");
+
+  // With allowOutOfOrder: older should succeed too
+  const ledgerDir2 = makeTempLedger();
+  const withOrder = ledgerModule.appendReceiptBatch(ledgerDir2, [newer, older], { allowOutOfOrder: true });
+  assert.equal(withOrder.ok, true);
+  assert.equal(withOrder.written, 2);
+});
+
+test("VC-007: appendReceiptBatch persists across many rows without losing any", () => {
+  const ledgerDir = makeTempLedger();
+  const N = 250;
+  const receipts = [];
+  for (let i = 0; i < N; i += 1) {
+    receipts.push(batchFixture({
+      attempt_id: `bulk-${i}`,
+      receipt_id: `rb-bulk-${i}`,
+      recorded_at: new Date(Date.UTC(2026, 0, 1, 0, 0, i)).toISOString(),
+    }));
+  }
+  const result = ledgerModule.appendReceiptBatch(ledgerDir, receipts);
+  assert.equal(result.ok, true);
+  assert.equal(result.written, N);
+  const stats = ledgerModule.getLedgerStats(ledgerDir);
+  assert.equal(stats.total_receipts, N);
+});
+
+test("VC-007: appendReceiptBatch skips writes when every receipt is a duplicate", () => {
+  const ledgerDir = makeTempLedger();
+  const original = batchFixture({ attempt_id: "dup-all-1", receipt_id: "rb-dup-all-1" });
+  ledgerModule.appendReceipt(ledgerDir, original);
+  // Same content, same composite key — should all be detected as duplicates.
+  const dup1 = batchFixture({ attempt_id: "dup-all-1", receipt_id: "rb-dup-all-1" });
+  const dup2 = batchFixture({ attempt_id: "dup-all-1", receipt_id: "rb-dup-all-1" });
+  const result = ledgerModule.appendReceiptBatch(ledgerDir, [dup1, dup2]);
+  assert.equal(result.ok, true);
+  assert.equal(result.written, 0);
+  assert.equal(result.duplicates, 2);
+  // Index must remain unchanged.
+  const stats = ledgerModule.getLedgerStats(ledgerDir);
+  assert.equal(stats.total_receipts, 1);
+});
+
+test("VC-007: appendReceiptBatch idempotency_conflict is preserved for body drift", () => {
+  const ledgerDir = makeTempLedger();
+  const original = batchFixture({ attempt_id: "drift-1", receipt_id: "rb-drift-1" });
+  ledgerModule.appendReceipt(ledgerDir, original);
+  // Same attempt_id + receipt_id but different body (different token counts).
+  // We must keep the host_reported_* mirrors consistent so contract validation
+  // passes; only the *counts* should drift.
+  const drifted = batchFixture({
+    attempt_id: "drift-1",
+    receipt_id: "rb-drift-1",
+    usage: {
+      input_tokens: 999,
+      output_tokens: 999,
+      cache_creation_input_tokens: 0,
+      cache_read_input_tokens: 0,
+      samples: 1,
+      host_reported_input_tokens: 999,
+      host_reported_output_tokens: 999,
+      host_reported_cache_creation_input_tokens: 0,
+      host_reported_cache_read_input_tokens: 0,
+      host_reported_cache_tokens: 0,
+    },
+  });
+  const result = ledgerModule.appendReceiptBatch(ledgerDir, [drifted]);
+  assert.equal(result.ok, true);
+  assert.equal(result.written, 0);
+  assert.equal(result.errors, 1);
+  assert.equal(result.results[0].error, "idempotency_conflict");
+});
