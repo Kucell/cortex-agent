@@ -159,9 +159,47 @@ stateDiagram-v2
 | 文件 | 测试数 | 状态 |
 | :--- | :--- | :--- |
 | `tests/templates/pptx.test.js` | 20 | ✅ 全过 |
-| `tests/commands/deck.test.js` | 23 | ✅ 全过 |
+| `tests/commands/deck.test.js` | 30 | ✅ 全过 |
 | `tests/templates/html-deck.test.js`(future) | TBD | future P-003 §5 |
 | `tests/templates/md-deck.test.js`(future) | TBD | future P-003 §5 |
+| `tests/templates/pixso-deck-adapter.test.js` | 20 | ✅ 全过(路径 B) |
+
+---
+
+## 6.5 Pixso 稿 → deck 桥接(路径 B,2026-08-20)
+
+### 链路
+
+```text
+Pixso 稿 (get_node_dsl compact output: { roots: [...], refsIndex })
+  → lib/templates/pixso-deck-adapter.js  (pixsoDslToBrief / pixsoDslFileToBrief)
+  → deck-brief.json schema
+  → lib/templates/{pptx,html-deck,md-deck}.js
+```
+
+### CLI
+
+```bash
+cortex-agent deck <task-id> --from-pixso <dsl.json> [--format <html|pptx|md|all>]
+```
+
+`--from-pixso` 优先于 deck-brief.json(命令行显式指定最高优先级)。
+
+### 提取启发式(确定性,顺序无关)
+
+- 每个顶层 `roots[]` 中 type ∈ {FRAME, CANVAS, SECTION} 的节点 → 一张 slide
+- 帧内 TEXT 节点递归收集,按字号降序:
+  - 最大字号 → `slide.title`
+  - 第二个(单行 + ≤80 字符 + 字号 ≥20px)→ `slide.subtitle`
+  - 其余:短文本(≤80 字符)或含换行 → 拆行进 `bullets[]`;长文本 → `slide.body`
+- 帧无文本 → title 用 frame.name
+- `slide.notes` 带源 frame id(可溯源)
+
+### 边界
+
+- `roots` 缺失 / 空数组 → 抛错(exit 2)
+- DSL 文件不存在 / 非 JSON → 抛错(exit 2)
+- 无 FRAME → 单 slide,取第一个 root
 
 ---
 
@@ -172,6 +210,7 @@ stateDiagram-v2
 - PDF 输出依赖用户本地 Chrome `--print-to-Pdf` 或 LibreOffice `--convert-to pdf`(外部命令,不进 npm)
 - 不支持动画 / 视频嵌入(那是 `/motion` 工作流 + P-005)
 - 不接管 PowerPoint 模板 .potx(用户可手动在 PowerPoint 里套用)
+- Pixso → deck 是文本级桥接(title/bullets/body);位图 / 矢量图标暂不嵌入 slide(后续可 `get_export_image` 导出 SVG 进 HTML deck)
 
 ---
 

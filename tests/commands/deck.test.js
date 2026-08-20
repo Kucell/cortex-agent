@@ -287,3 +287,141 @@ test("deckCommand: produces byte-identical output for identical brief", async ()
   fs.rmSync(dir1, { recursive: true, force: true });
   fs.rmSync(dir2, { recursive: true, force: true });
 });
+// ─── --from-pixso (路径 B: Pixso 稿 → deck) ─────────────────────────────────
+
+function writePixsoDsl(dir, filename, roots) {
+  const file = path.join(dir, filename);
+  fs.writeFileSync(file, JSON.stringify({ stats: {}, roots, refsIndex: {} }), "utf8");
+  return file;
+}
+
+function pixsoText(id, name, content, fontSize) {
+  return { id, type: "TEXT", name, text: { content, fontSize }, box: { x: 0, y: 0, w: 100, h: 20 } };
+}
+
+function pixsoFrame(id, name, children) {
+  return { id, type: "FRAME", name, box: { x: 0, y: 0, w: 1440, h: 810 }, children: children || [] };
+}
+
+test("parseDeckArgs: --from-pixso resolves to absolute path", () => {
+  const opts = _internal.parseDeckArgs(["T", "--from-pixso", "./dsl.json"], "en");
+  assert.ok(path.isAbsolute(opts.fromPixso));
+  assert.match(opts.fromPixso, /dsl\.json$/);
+});
+
+test("parseDeckArgs: --from-pixso=inline form", () => {
+  const opts = _internal.parseDeckArgs(["T", "--from-pixso=/x/dsl.json"], "en");
+  assert.equal(opts.fromPixso, "/x/dsl.json");
+});
+
+test("deckCommand: --from-pixso builds deck from Pixso DSL (PPTX)", async () => {
+  const dir = makeTmpProject();
+  try {
+    const dslFile = writePixsoDsl(dir, "frame.json", [
+      pixsoFrame("f1", "Hero", [
+        pixsoText("t1", "Title", "Acme Launch", 48),
+        pixsoText("t2", "Sub", "Q3 2026", 24),
+      ]),
+      pixsoFrame("f2", "Features", [
+        pixsoText("t3", "Title", "核心能力", 40),
+        pixsoText("t4", "List", "A\nB\nC", 16),
+      ]),
+    ]);
+    const code = await deckCommand({
+      args: ["PX-DECK", "--from-pixso", dslFile, "--format", "pptx"],
+      cwd: dir,
+      lang: "zh",
+    });
+    assert.equal(code, 0);
+    const pptx = path.join(dir, ".agent", "artifacts", "PX-DECK", "deck", "deck.pptx");
+    assert.ok(fs.existsSync(pptx));
+    const buf = fs.readFileSync(pptx);
+    assert.equal(buf[0], 0x50); // PK
+    assert.equal(buf[1], 0x4b);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("deckCommand: --from-pixso produces all 3 formats", async () => {
+  const dir = makeTmpProject();
+  try {
+    const dslFile = writePixsoDsl(dir, "frame.json", [
+      pixsoFrame("f1", "Hero", [pixsoText("t1", "Title", "Hi", 48)]),
+    ]);
+    const code = await deckCommand({
+      args: ["PX-ALL", "--from-pixso", dslFile],
+      cwd: dir,
+      lang: "en",
+    });
+    assert.equal(code, 0);
+    const deckDir = path.join(dir, ".agent", "artifacts", "PX-ALL", "deck");
+    assert.ok(fs.existsSync(path.join(deckDir, "deck.html")));
+    assert.ok(fs.existsSync(path.join(deckDir, "deck.pptx")));
+    assert.ok(fs.existsSync(path.join(deckDir, "deck.md")));
+    const md = fs.readFileSync(path.join(deckDir, "deck.md"), "utf8");
+    assert.ok(md.includes("Hi"));
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("deckCommand: --from-pixso beats deck-brief.json (priority)", async () => {
+  const dir = makeTmpProject();
+  try {
+    // Existing deck-brief.json would be used without --from-pixso
+    fs.mkdirSync(path.join(dir, ".agent", "PX-PRIORITY"), { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, ".agent", "PX-PRIORITY", "deck-brief.json"),
+      JSON.stringify({ title: "Brief", slides: [{ title: "From Brief" }] }),
+      "utf8",
+    );
+    const dslFile = writePixsoDsl(dir, "frame.json", [
+      pixsoFrame("f1", "Hero", [pixsoText("t1", "Title", "From Pixso", 48)]),
+    ]);
+    const code = await deckCommand({
+      args: ["PX-PRIORITY", "--from-pixso", dslFile, "--format", "md"],
+      cwd: dir,
+      lang: "en",
+    });
+    assert.equal(code, 0);
+    const md = fs.readFileSync(
+      path.join(dir, ".agent", "artifacts", "PX-PRIORITY", "deck", "deck.md"),
+      "utf8",
+    );
+    assert.ok(md.includes("From Pixso"));
+    assert.equal(md.includes("From Brief"), false);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("deckCommand: --from-pixso with missing file → exit 2", async () => {
+  const dir = makeTmpProject();
+  try {
+    const code = await deckCommand({
+      args: ["PX-MISSING", "--from-pixso", path.join(dir, "nope.json")],
+      cwd: dir,
+      lang: "en",
+    });
+    assert.equal(code, 2);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("deckCommand: --from-pixso with invalid JSON → exit 2", async () => {
+  const dir = makeTmpProject();
+  try {
+    const bad = path.join(dir, "bad.json");
+    fs.writeFileSync(bad, "{ not json", "utf8");
+    const code = await deckCommand({
+      args: ["PX-BAD", "--from-pixso", bad],
+      cwd: dir,
+      lang: "en",
+    });
+    assert.equal(code, 2);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
