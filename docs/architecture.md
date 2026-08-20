@@ -454,7 +454,7 @@ T-C01A -> T-C02 -> T-C03/T-C04 -> T-C05/T-C06 -> T-C07/T-C08 -> T-C09/T-C10
 
 Agent Runtime Interoperability 把 Codex、Claude Code、Cursor 与 Pi 作为能力不同的执行宿主接入同一套 Cortex 治理控制面。任务描述仍是事实来源；调度只消费版本化的执行需求、宿主能力快照、治理决策、Readiness 与 ownership/lease，不按产品名称猜测能力。
 
-详细设计见 [Agent Runtime Interoperability 提案](../.agent/plans/proposals/projects/agent-runtime-interoperability/index.md)。ARI P-005（MiniMax CLI Governed-Tool Adapter）作为该项目的第 5 号子提案，是首个面向第三方工具能力提供者（governed-tool adapter）的实现；它复用了 P-001 capability 契约、P-006 Operation/Authorization/Readiness owner、capability-aware-dispatch + tool-gate + boundary-event + coordination lease 等既有 owner，safe-probe 白名单严格限制为 `mmx --version` / `mmx --help` / `mmx <resource> --help`，`auth_state` 固定为 `unknown`（`ready`/`blocked` 需另获授权）。
+详细设计见 [DSH Host Adapter 架构文档](./architecture/dsh-host-adapter.md)（Agent Runtime Interoperability 项目已发布的架构文档，覆盖 P-006 DSH first-class adapter 的决策、调用流、影响范围与回滚）。ARI P-005（MiniMax CLI Governed-Tool Adapter）作为该项目的第 5 号子提案，是首个面向第三方工具能力提供者（governed-tool adapter）的实现；它复用了 P-001 capability 契约、P-006 Operation/Authorization/Readiness owner、capability-aware-dispatch + tool-gate + boundary-event + coordination lease 等既有 owner，safe-probe 白名单严格限制为 `mmx --version` / `mmx --help` / `mmx <resource> --help`，`auth_state` 固定为 `unknown`（`ready`/`blocked` 需另获授权）。
 
 ```mermaid
 flowchart LR
