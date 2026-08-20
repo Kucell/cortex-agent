@@ -621,3 +621,31 @@ M-023 triage complete (2026-08-17 01:55Z): 9 Mode C/C2 tests from M-019/M-020 de
 >   - 改动: 2 文件（bin/cli.js +6 行 / lib/cli/contract.js +9 行 = 纯 additive）
 > - **未提交**: 用户未显式要求 commit；暂留 dirty，commit 等用户授权（避免 ai-behavior §7 §2 「防止未提交数据丢失」与 git 纪律冲突）。
 > **下一步**: (a) 用户授权 commit 后用 Conventional Commits `feat(deck): add /deck workflow (P-003 MS-001)` + `feat(pptx): add zero-dep OOXML constructor` + `docs(architecture): add deck-workflow-design.md` 三段式提交；(b) 继续 MS-002 (lib/catalog/* 重构 + lock schema v2)；(c) M-ODI-001 五个 MS 都 ship 后做 MS-004 pilot 验证（SamHMI / csm-view-memory）。
+>
+> **✅ 已 commit**: `02d4dd0 feat(deck): add /deck workflow (P-003 MS-001)` — 13 files, +2110 行（bin/cli.js 单 require + 11 新模块 + 1 docs）。
+
+> **2026-08-20 收口 (open-design-integration / M-ODI-001 / MS-002 catalog bridge 协议层)**:
+> - **授权执行**: 用户 "授权执行" 提交 MS-001 后,继续 "继续" → 进入 MS-002。
+> - **MS-002 范围**(本次聚焦协议层 / follow-up CLI 留后续 sprint):
+>   - ✅ lib/catalog/{kind-map,lockfile,registry,index}.js 4 文件 — 4 kind 通用 catalog 协议
+>   - ✅ lock schema v1 → v2 向后兼容(端到端迁移测试通过)
+>   - ✅ 设计-system 委托 lib/design/registry(T-OD-001 frozen,纯 additive)
+>   - ❌ 4 kind CLI subcommand、plugin converter、Brand-backed extract、Claude Design import — 留 MS-002 follow-up
+> - **新文件** · 8 个 · **+1,776 行**:
+>   - lib/catalog/kind-map.js (208 行) — 4 kind 元数据
+>   - lib/catalog/lockfile.js (175 行) — v2 multi-kind + v1→v2 迁移
+>   - lib/catalog/registry.js (224 行) — 4 kind catalog index 聚合
+>   - lib/catalog/index.js (38 行) — 统一 re-export
+>   - tests/catalog/kind-map.test.js (180 行 · 21 tests)
+>   - tests/catalog/lockfile-v2.test.js (251 行 · 26 tests)
+>   - tests/catalog/registry.test.js (175 行 · 17 tests)
+>   - docs/architecture/catalog-bridge.md (231 行)
+> - **零修改**: lib/design/* 主体文件(frozen) — 仅通过 require 复用
+> - **测试基线**: 新增 **64/64 PASS** + T-OD-001 **118/118 PASS** + MS-001 **66/66 PASS** = **248/248**
+> - **零回归**: architecture-guard 0 violation
+> - **端到端验证**(E2E):
+>   - 写 v1 design-systems.lock(2 systems) → readLockfile 自动迁移到 v2
+>   - upsertEntry × 3 (plugin + skill + template) → catalogs[]: 2 → 5
+>   - writeLockfile → 干净 v2(剥离 _migrated_from_v1)
+>   - 重读 → catalogs.length = 5,无迁移元数据
+> **下一步**: (a) 用户授权 commit 后 `feat(catalog): add 4-kind catalog bridge (P-001 MS-002)` 提交;(c) MS-002 follow-up: lib/catalog/{fetch,license,plugin-converter,extract}.js + 4 CLI subcommand;(d) MS-003 MCP bridge + 26 adapter;(e) MS-005 HyperFrames motion plane;(f) MS-004 pilot 验证。
