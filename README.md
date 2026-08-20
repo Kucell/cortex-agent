@@ -9,6 +9,7 @@
 - **上下文预算控制**：`context-budget` skill 按 Tier 0-3 分级裁剪上下文，将有效负载控制在窗口 40% 以内。
 - **推理三明治**：`/ship` 按 规划(premium) → 执行(standard) → 验证(standard) 分配模型算力，兼顾质量与成本。
 - **结构化交接**：`/handoff` 为跨 Agent、跨会话和 sub-agent 接力生成轻量交接文档，避免依赖对话记忆。
+- **提案包共享**：`/proposal-share` 将提案组（proposals + missions + topology + 双仓 peer 卷）打包为自包含 tar.gz，跨开发者/跨仓库共享提案目录；绝对路径 token 化 + 符号链接重建，与 `/handoff`（运行时状态）互补。
 - **长周期任务编排**：`/mission` 通过 milestone、验证契约和命令日志支撑多阶段任务稳定推进。
 - **协作运行时 (Communication Runtime)**：`management-api` 提供 inbox / decisions / waitpoints 三个通信对象，所有写入受 workflow gate（`mission` / `user` / `owner` / `requester` / `recipient` / `workflow`）约束；Dashboard、CLI 与可选的 MCP 只读适配器共享同一查询投影。详见 [协作运行时设计](docs/architecture/agent-collaboration-runtime.md)。
 - **熵治理闭环**：`entropy-scanner` 周期扫描知识库漂移，PostCommit Hook 自动修复，保持 `.agent/` 长期健康。
@@ -364,7 +365,7 @@ cortex-agent export-anchor --project /path/to/other-project
 ├── queues/          # 协作队列：依赖排序、并发限制、owning workflow
 ├── sessions/        # 会话生命周期：open/heartbeat/pause/close，closed 后不可再写
 ├── rules/           # 核心规则：架构约束、代码规范、语言规则
-├── workflows/       # 工作流：/start-task /ship /handoff /mission /configure 等斜杠命令
+├── workflows/       # 工作流：/start-task /ship /handoff /mission /proposal-share /configure 等斜杠命令
 ├── skills/          # 专项技能：architecture-guard / context-budget / validation-contract / self-check / management-api / agent-dashboard
 ├── sub-agents/      # 子代理：planner / implementer / researcher / coordinator 等
 ├── hooks/           # 钩子：PostToolUse Lint 检查 + PostCommit 熵清理

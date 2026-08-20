@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+<!-- 下一个版本的条目写在这里 -->
+
+## [1.13.0-rc.4] - 2026-08-20
+
+> **Pre-release**: 1.13.0 候选线首个实际发布版本（rc.1/rc.2/rc.3 为草稿未发布）。核心增量 = **proposal-share 提案包共享工作流**（T-H14 双仓联合提案场景）+ 构建目录规划。
+> **基础**: `483bce7` (v1.12.0-rc.14, 2026-08-19) → 3 commits → `305e067` (docs(release) rc.4 发布说明)
+> **安装**: `npm i -g cortex-agent@next`（= 1.13.0-rc.4，`dist-tags.next`）；已有项目 `cortex-agent update` 同步模板
+> **发布**: npmjs 2026-08-20；git tag `v1.13.0-rc.4`
+
 ### Added
 
 - **proposal-share 工作流（提案包共享三件套）** — 把「标准目录结构 + 文件可移植」变成一键操作：导出 / 导入可移植提案包（proposals + missions + topology + 双仓 peer 卷），用于跨开发者、跨仓库共享提案目录。
@@ -26,7 +35,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Validation
 
 - 真实场景验证：csm-view-1 `mobile-device-variable-cards` 双仓联合提案 export → verify → import 全链路通过（2 volumes / 6 missions / 1 symlink / 0 warnings）
+- **构建目录规划**: 本地构建/产物统一进 gitignored 的 `.build/{tarballs,proposal-packages,validation}/`（分类见 `.build/README.md`）；`bin/local-publish-validate.cjs` 的 `npm pack` 输出从仓库根目录改为 `.build/tarballs/`（`--pack-destination`），根目录不再堆 `cortex-agent-*.tgz`；历史 rc.10~rc.14 + rc.4 包已移入
 - fixture round-trip 通过：token 还原、符号链接重建、peer 卷映射合并（已有文件不被删除）
+- 文档同步: README 新增「提案包共享」条目 + 目录结构更新；新增 L3 参考 `.agent/references/build-artifacts.md`（构建产物分类）；release 工作流新增「产物落位」章节（zh/en 模板同步）
 
 - **local-publish-validate 工作流 (三件套)** — 本地发包 + 本地安装 + 可选目标项目升级的本地验证循环,用于 RC dogfooding / 跨项目模板更新验证。**永不 publish 到 npm**,只走 `volta install <pkg>@file:<tarball>` 协议。
   - **脚本**:`bin/local-publish-validate.cjs` (13811 bytes,在 npm tarball 中,跨机器/容器可移植)
@@ -632,5 +643,3 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [1.7.0]: https://github.com/Kucell/cortex-agent/compare/v1.5.0...v1.7.0
 [1.5.0]: https://github.com/Kucell/cortex-agent/compare/v1.4.1...v1.5.0
 [1.4.1]: https://github.com/Kucell/cortex-agent/compare/v1.1.0...v1.4.1
-[1.1.0]: https://github.com/Kucell/cortex-agent/compare/v1.0.0...v1.1.0
-[1.0.0]: https://github.com/Kucell/cortex-agent/releases/tag/v1.0.0
