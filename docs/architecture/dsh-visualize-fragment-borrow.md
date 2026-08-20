@@ -1,11 +1,15 @@
 # DSH Visualize Fragment Borrow — 架构提案
 
-> **Status**: draft
-> **Task**: `T-DVFB-001`（待创建于 `.agent/tasks/`，批准后落地）
+> **Status**: approved (2026-08-20)
+> **Approval**: user `/approve` — single-point proposal with 9 Phase rows, all completed pre-approval; routed `/plan` by size but no `/plan` dispatch needed (work fully landed in commit `868cd4b`)
+> **Execution carrier**: commit `868cd4b` on branch `feat/dsh-visualize-fragment-borrow`（worktree `cortex-agent-worktrees/feat-dsh-visualize-fragment-borrow`）
+> **Implementation summary**: 11 files / +1689 lines / 34 tests pass (0 fail)
 > **Upstream**: [Nagi-ovo/dsh-visualize](https://github.com/Nagi-ovo/dsh-visualize)（BSD-3-Clause，© 2026 Jesse Zhang）
 > **Audience**: cortex-agent maintainers + 输出 HTML 的 skill/workflow 作者
 > **Architecture constraint**: zero npm dependencies、additive-only、纯函数模块、CommonJS、与 `lib/design/lockfile.js` 风格一致
 > **Related**: `.agent/rules/proposal-structure.md`、`.agent/rules/architecture-design.md`、`.agent/rules/test-policy.md`、`docs/architecture/dsh-host-adapter.md`、`docs/architecture/design-system.md`
+
+> **Note on `/approve` deviation**: This proposal lives at `docs/architecture/` (outer cortex-agent repo) per the "需求开发在外层" guidance, not under `.agent/plans/proposals/` (the inner separate-repo where the standard frontmatter-driven `cortex-agent automation approve-and-launch` materialiser expects). Status update applied directly here; mission skeleton and task records intentionally not generated — work is already done in the carrier commit above and the change set is the single-point PR boundary described in §11.
 
 ---
 
