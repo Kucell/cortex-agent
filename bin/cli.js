@@ -98,6 +98,15 @@ const { designCommand } = require("../lib/commands/design");
 // lib/commands.js; the new case routes to lib/commands/deck.js.
 const { deckCommand } = require("../lib/commands/deck");
 
+// P-002 MS-003: MCP bridge CLI surface.
+// `cortex-agent mcp <serve|install|ping|list|uninstall>` is owned by
+// lib/commands/mcp.js (P-002 stdio MCP bridge over .agent/ design assets).
+// The legacy M-001 Management API `mcp serve --project <path>` surface
+// (lib/commands/surface/mcp.js) is preserved and routed inside
+// lib/commands/mcp.js, so this case replaces the previous `mcp` binding
+// without losing the old contract. Strictly additive for other commands.
+const { mcpCommand } = require("../lib/commands/mcp");
+
 // M-016 MS-002: Branch Management CLI surface.
 // `branch <create|list|show|sync|ready|merge|cleanup>` is owned by
 // lib/commands/branch.js. Strictly additive: no changes to lib/commands.js;
@@ -538,7 +547,7 @@ async function initModeGeneral() {
     }
     case "lease":       lease(ctx); break;
     case "notification": await notification(ctx); break;
-    case "mcp":         await mcp(ctx); break;
+    case "mcp":         await mcpCommand(ctx); break;
     case "query":       managementQuery(ctx); break;
     case "memory":      memoryCommand(ctx); break;
     case "dispatch":    await dispatchCommand(ctx); break;
