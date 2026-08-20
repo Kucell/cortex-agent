@@ -649,3 +649,47 @@ M-023 triage complete (2026-08-17 01:55Z): 9 Mode C/C2 tests from M-019/M-020 de
 >   - writeLockfile → 干净 v2(剥离 _migrated_from_v1)
 >   - 重读 → catalogs.length = 5,无迁移元数据
 > **下一步**: (a) 用户授权 commit 后 `feat(catalog): add 4-kind catalog bridge (P-001 MS-002)` 提交;(c) MS-002 follow-up: lib/catalog/{fetch,license,plugin-converter,extract}.js + 4 CLI subcommand;(d) MS-003 MCP bridge + 26 adapter;(e) MS-005 HyperFrames motion plane;(f) MS-004 pilot 验证。
+
+> **2026-08-20 收口 (open-design-integration / M-ODI-001 / MS-003 stdio MCP bridge + 26 runtime-adapter)**:
+> - **授权执行**: 用户 "可以继续" → fork 后台 subagent 做 MS-003(并行 MS-002 follow-up → 98eeef9 → 9009a69)。
+> - **MS-003 范围**(P-002 + P-004 并行 ship):
+>   - ✅ lib/mcp/{jsonrpc,server,install,ping}.js — stdio MCP server,11 tools + 4 resource URI
+>   - ✅ lib/commands/mcp.js — serve/install/ping/list/uninstall 5 subcommand dispatcher
+>   - ✅ bin/cli.js — 替换 case "mcp" 为 mcpCommand(legacy --project 路由保留)
+>   - ✅ .agent/references/runtime-adapters/ — README + _schema + _index.json + 26 <agent>.md(5 shipped / 21 reference)
+>   - ✅ docs/architecture/mcp-bridge.md + runtime-adapter.md
+>   - ✅ 77 新测试 + 5 既有测试集零回归
+> - **新文件** · 42 · **+5,109 / -2 行**:
+>   - lib/mcp/{jsonrpc,server,install,ping}.js (73+544+345+126 = 1,088 行)
+>   - lib/commands/mcp.js (252 行)
+>   - tests/mcp/{jsonrpc,server,install,ping,cli}.test.js (964 行 · 65 tests)
+>   - tests/runtime-adapters/index.test.js (169 行 · 12 tests)
+>   - .agent/references/runtime-adapters/{README,_schema,_index.json} + 26 <agent>.md (2,205 行)
+>   - docs/architecture/mcp-bridge.md (217) + runtime-adapter.md (165)
+> - **改动****: 2 文件 (bin/cli.js +11 / lib/cli/contract.js +7)
+> - **测试基线**: 新增 **77/77 PASS** + 既有 **335/335 PASS** = **412/412**
+> - **零回归**: architecture-guard 0 violation(570 files)· legacy Management API MCP (management-mcp-cli.test.js) 2/2 PASS
+> - **端到端验证**(stdio JSON-RPC over stdio):
+>   - `node bin/cli.js mcp serve` → `[cortex-agent mcp] serving /tmp/... (stdio, 11 tools)`
+>   - `initialize` → 响应 → `notifications/initialized` + `tools/list` → 11 tools 全到位
+>   - `tools/call design/list` → `{ok: true, installed: [...]}`
+>   - `tools/call skill/browse {name: "open-design-launch-checklist"}` → 1 scanned, frontmatter 解析正确
+> - **P-002 conflict 解决**: `mcp serve --project <path>` 路由到 legacy Management API MCP(M-001,cortex.query)·bare `mcp serve` 启新 P-002 design-asset MCP server。
+> **下一步**: (a) MS-005 HyperFrames motion 第 5 平面(P-005);(b) MS-002 follow-up round 2: lib/catalog/fetch.js 4 kind 通用 fetch;(c) MS-004 pilot 验证 SamHMI P0 用 `cortex-agent mcp install dsh` 实跑验收。
+
+> **2026-08-20 收口 (路径 B: Pixso 画稿 → 演示文稿桥接 · P-003 MS-001 follow-up)**:
+> - **用户提问**: "项目已有的 pixso 设计稿,后续可以生成演示文稿吗" → 分析:链路存在但缺 Pixso DSL → /deck brief 转换层
+> - **用户选择**: 路径 B(自动桥接,~0.5 天)
+> - **实现** (commit `401271e`):
+>   - ✅ lib/templates/pixso-deck-adapter.js (209 行) — get_node_dsl compact DSL → deck-brief.json
+>     · 顶层 FRAME/CANVAS/SECTION → 每帧一张 slide
+>     · TEXT 按字号降序: 最大 → title / 次大(单行+短+≥20px)→ subtitle / 短文本·多行 → bullets / 长文本 → body
+>     · notes 带源 frame id · text 字段容忍 {content} 与裸字符串 · 零依赖
+>   - ✅ lib/commands/deck.js — 新增 `--from-pixso <dsl.json>`(优先级压过 deck-brief.json,失败 exit 2)
+>   - ✅ tests/templates/pixso-deck-adapter.test.js (20 tests) + tests/commands/deck.test.js (+7 → 30)
+> - **测试**: 439/439 PASS(412 既有 + 27 新)· architecture-guard 0 violation · 零依赖维持
+> - **端到端**: `cortex-agent deck MY-PIXSO-DECK --from-pixso frame.json` → 3 格式全出,
+>   MD 验证 title+subtitle / title+bullets(3 行)/ title+body / speaker notes 带 frame id
+> - **链路现状**: Pixso 稿 (get_node_dsl) → --from-pixso → /deck (HTML/PPTX/MD) ✅ 全通
+> **下一步**: (a) MS-005 HyperFrames motion; (b) MS-002 round 2 fetch; (c) MS-004 pilot;
+> (d) 把 pixso-deck-adapter 接入 MCP prototype/show(让外部 agent 也能触发画稿→deck)

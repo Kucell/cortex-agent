@@ -425,3 +425,92 @@ test("deckCommand: --from-pixso with invalid JSON → exit 2", async () => {
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+// ─── --from-open-design (路径 C: Open Design 产物 → deck) ───────────────────
+
+const OD_HTML = `<!DOCTYPE html>
+<html lang="zh-CN"><head><title>SamHMI 画面编辑器</title></head><body>
+<div class="app">
+  <div class="screen">
+    <div class="ov-head">
+      <div class="ov-title">五个试点控件设计总览 v0.1</div>
+      <div class="ov-sub">统一视觉语言、状态语义与右侧工作台结构</div>
+    </div>
+    <div class="ctl card" data-ctl="rectangle">
+      <div class="card-title">矩形 / Rectangle</div>
+      <div class="card-note">默认 / 描边 / 编辑器选中态</div>
+    </div>
+    <div class="ctl card" data-ctl="button">
+      <div class="card-title">按钮 / Button</div>
+      <div class="card-note">默认 / 次要 / 危险 / 禁用</div>
+    </div>
+  </div>
+</div></body></html>`;
+
+test("parseDeckArgs: --from-open-design resolves to absolute path", () => {
+  const opts = _internal.parseDeckArgs(["T", "--from-open-design", "./a.html"], "en");
+  assert.ok(path.isAbsolute(opts.fromOpenDesign));
+  assert.match(opts.fromOpenDesign, /a\.html$/);
+});
+
+test("parseDeckArgs: --from-open-design=inline form", () => {
+  const opts = _internal.parseDeckArgs(["T", "--from-open-design=/x/a.html"], "en");
+  assert.equal(opts.fromOpenDesign, "/x/a.html");
+});
+
+test("deckCommand: --from-open-design builds deck from Open Design HTML", async () => {
+  const dir = makeTmpProject();
+  try {
+    const htmlFile = path.join(dir, "artifact.html");
+    fs.writeFileSync(htmlFile, OD_HTML, "utf8");
+    const code = await deckCommand({
+      args: ["OD-DECK", "--from-open-design", htmlFile],
+      cwd: dir,
+      lang: "zh",
+    });
+    assert.equal(code, 0);
+    const deckDir = path.join(dir, ".agent", "artifacts", "OD-DECK", "deck");
+    assert.ok(fs.existsSync(path.join(deckDir, "deck.html")));
+    assert.ok(fs.existsSync(path.join(deckDir, "deck.pptx")));
+    assert.ok(fs.existsSync(path.join(deckDir, "deck.md")));
+    const md = fs.readFileSync(path.join(deckDir, "deck.md"), "utf8");
+    // Overview slide + 2 control-card slides
+    assert.ok(md.includes("五个试点控件设计总览"));
+    assert.ok(md.includes("矩形 / Rectangle"));
+    assert.ok(md.includes("按钮 / Button"));
+    // Speaker note carries the ctl id
+    assert.ok(md.includes("rectangle"));
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("deckCommand: --from-open-design with missing file → exit 2", async () => {
+  const dir = makeTmpProject();
+  try {
+    const code = await deckCommand({
+      args: ["OD-MISSING", "--from-open-design", path.join(dir, "nope.html")],
+      cwd: dir,
+      lang: "en",
+    });
+    assert.equal(code, 2);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("deckCommand: --from-open-design with no extractable slides → exit 2", async () => {
+  const dir = makeTmpProject();
+  try {
+    const emptyFile = path.join(dir, "empty.html");
+    fs.writeFileSync(emptyFile, "<html><body></body></html>", "utf8");
+    const code = await deckCommand({
+      args: ["OD-EMPTY", "--from-open-design", emptyFile],
+      cwd: dir,
+      lang: "en",
+    });
+    assert.equal(code, 2);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
