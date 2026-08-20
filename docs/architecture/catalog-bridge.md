@@ -1,8 +1,8 @@
 # Catalog Bridge — 4-kind catalog architecture (P-001 MS-002)
 
 > **目的**:把 open-design 上游 4 planes (151 design-systems + 277 plugins + 100+ skills + 18 design-templates) 接入 cortex-agent,沿用 T-OD-001 的 content-addressed fetch + license ack + lock file 协议,扩展为 4 kind 通用 catalog。
-> **状态**: P-001 MS-002 foundation shipped (2026-08-20)
-> **版本**: v1.0
+> **状态**: P-001 MS-002 ship (协议层 0d57ffb) + MS-002 follow-up ship (CLI + license 4 kind + plugin converter + resolve 4 kind)
+> **版本**: v1.1
 > **关联**: [P-001-catalog-bridge-proposal.md](../../.agent/plans/proposals/projects/open-design-integration/proposals/P-001-catalog-bridge-proposal.md) · [MS-002.md](../../.agent/missions/M-ODI-001/milestones/MS-002.md)
 
 ---
@@ -24,159 +24,129 @@ open-design 上游提供 4 plane 大规模 catalog(plugin 277 + skill 100+ + tem
 
 ## 2. 目标
 
-| # | Goal |
-| :--- | :--- |
-| G1 | **4 kind 通用 catalog 协议** — 同一份 lock file 容纳 design-system / plugin / skill / template |
-| G2 | **lock schema v1 → v2 向后兼容** — T-OD-001 旧 lock 自动 migrate-to-v2,无信息丢失 |
-| G3 | **content-addressed fetch + license ack 复用** — 4 kind 共享 lib/design/{fetch,license}.js 已 ship 资产 |
-| G4 | **CLI 命令统一** — `cortex-agent design {system,plugin,skill,template} {list,install,...}`(MS-002 follow-up) |
-| G5 | **零依赖 + 纯加法** — 沿用 architecture-design §3 原则,lib/design/* 主体零修改 |
+| # | Goal | Status |
+| :--- | :--- | :--- |
+| G1 | **4 kind 通用 catalog 协议** — 同一份 lock file 容纳 design-system / plugin / skill / template | ✅ MS-002 协议层 |
+| G2 | **lock schema v1 → v2 向后兼容** — T-OD-001 旧 lock 自动 migrate-to-v2,无信息丢失 | ✅ MS-002 协议层 |
+| G3 | **content-addressed fetch + license ack 复用** — 4 kind 共享 lib/design/{fetch,license}.js 已 ship 资产 | ✅ MS-002 follow-up |
+| G4 | **CLI 命令统一** — `cortex-agent design {system,plugin,skill,template} {list,install,...}` | ✅ MS-002 follow-up(legacy 100% 兼容 + 4 kind 扩展) |
+| G5 | **plugin converter** — open-design.json → cortex-agent plugin manifest | ✅ MS-002 follow-up |
+| G6 | **零依赖 + 纯加法** — 沿用 architecture-design §3 原则,lib/design/* 主体零修改 | ✅ |
 
 ---
 
 ## 3. 非目标
 
-- ❌ plugin 转换器(open-design.json → cortex-agent plugin manifest)— 留给 MS-002 follow-up
-- ❌ Brand-backed extractor(open-design daemon)— 独立 sprint
-- ❌ Claude Design ZIP import — 独立 sprint
-- ❌ 真实网络拉取 — 测试用 mock,真实拉取留给 pilot
-- ❌ 修改 lib/design/* 主体行为
+- ❌ **Brand-backed extractor** (open-design daemon) — 独立 sprint(需要 daemon 启动)
+- ❌ **Claude Design ZIP import** — 独立 sprint(复杂 unzip + 转换)
+- ❌ **plugin / skill / template fetch 端到端实跑** — MS-002 follow-up round 2(本轮只 ship catalog / license / resolve / converter / CLI subcommand;fetch 留给下一轮)
+- ❌ **修改 lib/design/* 主体行为**
 
 ---
 
 ## 4. 核心设计
 
-### 4.1 模块清单
+### 4.1 模块清单(MS-002 + follow-up 完整)
 
 ```text
 lib/catalog/
-├── kind-map.js   # 4 kind 元数据 (kind → path/license 字段映射)
-├── lockfile.js   # 4-kind lock schema v2 + v1 → v2 迁移
-├── registry.js   # 4-kind catalog index(聚合 lib/design/registry.js + starter)
-└── index.js      # 统一导出
+├── kind-map.js          # 4 kind 元数据(MS-002)
+├── lockfile.js          # v2 multi-kind + v1→v2 迁移(MS-002)
+├── registry.js          # 4-kind catalog index(MS-002)
+├── index.js             # 统一 re-export(MS-002)
+├── resolve.js           # 4-kind resolve + readManifest + verifyInstall (MS-002 follow-up)
+├── license.js           # 4-kind license normalize/format/isAcceptable/promptAck (MS-002 follow-up)
+└── plugin-converter.js  # open-design.json → cortex-agent manifest (MS-002 follow-up)
+
+lib/commands/design.js   # 4-kind CLI dispatcher(MS-002 follow-up)
+bin/cli.js               # 单 require + 1 case line (MS-002 follow-up,additive)
+lib/cli/contract.js      # design 契约条目扩展 (MS-002 follow-up)
 ```
 
-| 模块 | 与 T-OD-001 关系 | 改动 |
+### 4.2 Resolve (`lib/catalog/resolve.js`)
+
+设计-system 委托 T-OD-001 `lib/design/resolve.resolveCascade`(4-level cascade 主体零修改),3 其他 kind 走单源(`<cwd>/.agent/<installDir>/<id>/<manifest>`):
+
+| API | 用途 |
+| :--- | :--- |
+| `checkInstalled(kind, id, cwd)` | 检查 <id> 是否安装,返回 root 或 null |
+| `readManifest(kind, id, cwd)` | 读 <id> 的 per-kind manifest(JSON 解析 / 文本原样返回) |
+| `resolveEffective(kind, id, cwd)` | design-system 走 4-level cascade,其他 3 kind 走 installed / missing |
+| `listInstalled(kind, cwd)` | 列所有已安装的 <id> |
+| `listAllInstalled(cwd)` | 跨 4 kind 列出 |
+| `verifyInstall(kind, id, cwd)` | 检查 installed 是否完整(present + missing[]) |
+
+### 4.3 License (`lib/catalog/license.js`)
+
+设计-system 委托 T-OD-001 `lib/design/license.formatLicenseWarning` + `isLicenseAcceptable`(license rule set 零漂移),3 其他 kind 走简化 prompt(无 brand category check):
+
+| API | 用途 |
+| :--- | :--- |
+| `normalizeLicense(kind, fileTree)` | 提取 `{value, source}`(走 kind-map licenseSources 顺序) |
+| `formatLicenseWarning(entry, kind)` | 返回 multi-line prompt text(string) |
+| `isAcceptable(entry, kind, opts)` | `{acceptable, reason}`,design-system 走 T-OD-001 |
+| `promptAck(entry, kind, opts)` | yes 跳过 / 否则 readline 交互 |
+
+### 4.4 Plugin converter (`lib/catalog/plugin-converter.js`)
+
+| Open-Design 字段 | Cortex-Agent 字段 | 说明 |
 | :--- | :--- | :--- |
-| `kind-map.js` | 新增 | 4 kind 元数据 |
-| `lockfile.js` | 新增(独立文件) | 不修改 lib/design/lockfile.js;v2 = 新 schema `{catalogs: []}`,v1 = lib/design/lockfile.js 的 `{systems: []}` 仍可读(自动迁移) |
-| `registry.js` | 扩展(委托) | 调 lib/design/registry.loadCatalog 拉 design-system;3 其他 kind 走 starter index |
-| `index.js` | 新增 | 统一 re-export |
+| `od.kind` | `taskKind`(fallback) | 仅 `plugin` / `skill` 支持,其他 reject |
+| `od.name` | `id`(`sanitize to kebab-case`) | 非 alphanumeric 结果 reject |
+| `od.version` | `version` | 必填 |
+| `od.mode` | `mode`(默认 `code`) | |
+| `od.capabilities[]` | `capabilities[]` | |
+| `od.inputs[]` | `inputs[]` | |
+| `od.repository` | `origin` | |
+| 顶层 `license` | `license`(default `Apache-2.0`) | 可被 override |
+| 未知 `od.*` | `x-open-design` 字典 | **lossless**:未知字段保留供 audit |
 
-### 4.2 Kind map 单一真理来源(`kind-map.js`)
+原 `open-design.json` 保留在 `<id>/open-design.json`(audit);转后 manifest 写入 `<id>/manifest.json`(cortex-agent runtime)。
 
-```jsonc
-{
-  "design-system": {
-    "upstreamSubdir": "design-systems",
-    "installDir": ".agent/design-systems",
-    "manifestFilename": "DESIGN.md",
-    "licenseSources": [
-      "manifest.json#/license",
-      "DESIGN.md#frontmatter/license"
-    ],
-    "schemaVersion": "od-design-system-project/v1",
-    "lockfileKindKey": "design-system",
-    "capabilitiesCascade": true   // 仅 design-system 走 4-level cascade
-  },
-  "plugin": {
-    "upstreamSubdir": "plugins",
-    "installDir": ".agent/plugins",
-    "manifestFilename": "manifest.json",
-    "licenseSources": [
-      "open-design.json#/license",
-      "SKILL.md#frontmatter/license"
-    ],
-    "schemaVersion": "od-plugin-project/v1",
-    "lockfileKindKey": "plugin",
-    "capabilitiesCascade": false,
-    "pluginConverter": "lib/catalog/plugin-converter.js"   // open-design.json → cortex-agent manifest
-  },
-  "skill": { ... },
-  "template": { ... }
-}
+### 4.5 4 kind CLI dispatcher (`lib/commands/design.js`)
+
+```bash
+# Legacy(100% 向后兼容,T-OD-001 不动):
+cortex-agent design list [--available|--installed|--all] [--json]
+cortex-agent design install <id>... [--yes] [--force] [--no-cache] [--json]
+cortex-agent design upgrade [<id>] [--yes] [--no-cache] [--json]
+cortex-agent design remove <id>... [--json]
+cortex-agent design show <id> [--json]
+cortex-agent design resolved [--json]
+cortex-agent design refresh-catalog
+
+# 新 4 kind:
+cortex-agent design system <sub> [opts]                 # alias of legacy
+cortex-agent design plugin list [--available|--installed] [--json]
+cortex-agent design plugin show <id> [--json]
+cortex-agent design skill list [--available|--installed] [--json]
+cortex-agent design skill show <id> [--json]
+cortex-agent design template list [--available|--installed|--mode <mode>] [--json]
+cortex-agent design template show <id> [--json]
 ```
 
-`capabilitiesCascade = true` 表示该 kind 走 4-level DESIGN.md cascade(仅 design-system);
-`pluginConverter` 表示该 kind fetch 后需要从 open-design schema 转 cortex-agent manifest(仅 plugin)。
+**退出码**:0 success / 1 generic / 2 user error / 3 network / 4 license rejected(T-OD-001 一致)。
 
-### 4.3 Lock schema v2
-
-```jsonc
-{
-  "lockfileVersion": 2,
-  "schemaVersion": "od-catalog-project/v1",
-  "fetched_at": "ISO-8601",
-  "upstream": "https://raw.githubusercontent.com/nexu-io/open-design/main",
-  "catalogs": [
-    { "kind": "design-system", "id": "linear-app", "sha256_manifest": "ab12...", "license": "Apache-2.0", ... },
-    { "kind": "plugin", "id": "od-figma-migration", "sha256_manifest": "...", "license": "Apache-2.0", "taskKind": "figma-migration", ... },
-    { "kind": "skill", "id": "open-design-launch-checklist", "sha256_skill_md": "...", "license": "Apache-2.0", ... },
-    { "kind": "template", "id": "saas-landing", "sha256_template": "...", "sha256_index_html": "...", "license": "Apache-2.0", "mode": "prototype", ... }
-  ]
-}
-```
-
-**v1 → v2 迁移**(`lockfile.js:migrateV1ToV2`):
-- 读 v1:解析 `systems[]`,每个 entry 加 `kind: "design-system"` 注入
-- 标 `_migrated_from_v1: true` + `_v1_migration_note`
-- 在 v2 写时剥离迁移元数据(干净 v2)
-- 旧 `design-systems.lock` 文件保留(不删),新 `catalog.lock` 写入同目录
-
-### 4.4 4 kind registry 聚合(`registry.js`)
-
-```js
-const idx = loadAllKinds();      // 同步,starter 兜底
-const idx = await loadAllKindsAsync();   // 异步,design-system 走真上游
-idx.kinds["design-system"]; // { entries: [{id, kind, ...}], source: "upstream" | "cache" | "starter" }
-idx.kinds.plugin;
-idx.kinds.skill;
-idx.kinds.template;
-```
-
-**design-system 委托**: `loadDesignSystemEntries({fetcher, cachePath, forceRefresh})` 调用 T-OD-001 的 `lib/design/registry.loadCatalog(...)`,返回 entries 数组(已 ship 资产复用),registry adapter 在每个 entry 注入 `kind: "design-system"`。
-
-**3 其他 kind starter 索引**(MS-002 follow-up 用真上游替换):
-- plugin: `od-figma-migration`, `od-claude-design-bridge`
-- skill: `open-design-launch-checklist`, `design-system-cascade`
-- template: `saas-landing`, `guizang-ppt`, `html-ppt-master`
-
-### 4.5 数据流
-
-```mermaid
-flowchart LR
-  UP[("open-design 上游")]
-  REG["registry.js"]
-  KM["kind-map.js"]
-  LCK["lockfile.js"]
-  DS_REG["lib/design/registry.js (T-OD-001)"]
-  SK["cortex-agent 设计版图"]
-  
-  UP -->|fetch| DS_REG
-  DS_REG -->|design-system entries| REG
-  KM -->|kind metadata| REG
-  REG -->|catalogs[]| LCK
-  LCK -->|.agent/catalog.lock| SK
-  KM -->|kindMap| SK
-```
+**plugin / skill / template MVP 范围**:本轮 ship catalog / list / show(走 `lib/catalog/{registry,resolve}`)。`install` 在 MS-002 follow-up round 2 落地(`lib/catalog/fetch.js` 4 kind 通用 fetch),目前 `install` 返回 exit 1 + stderr `fetch not yet implemented`。
 
 ---
 
-## 5. 验收(MS-002 VC 对应)
+## 5. 验收(MS-002 + MS-002 follow-up VC 对应 P-001 §6)
 
 | ID | 验证 | 状态 |
 | :--- | :--- | :--- |
-| VC-1 | T-OD-001 既有 118 tests 全绿(lib/design/* alias 不破坏) | ✅ |
-| VC-6 | lock schema v1 → v2 向后兼容(端到端迁移测试通过) | ✅ |
-| VC-9 | `bin/cli.js` 维持零依赖 | ✅(未触碰) |
-| VC-10 | `architecture-guard` 0 violation | ✅ |
-| VC-12 | catalog-cache 24h TTL(沿用 lib/design/registry,本 MS 不重新发明) | ✅ |
-| VC-3 | `cortex-agent design plugin install ...` | ⏸ MS-002 follow-up |
-| VC-4 | `cortex-agent design skill install ...` | ⏸ MS-002 follow-up |
-| VC-5 | `cortex-agent design template install ...` | ⏸ MS-002 follow-up |
-| VC-7 | `design system extract --from-url` | ⏸ MS-002 follow-up |
-| VC-8 | `design import claude-design` | ⏸ MS-002 follow-up |
-| VC-11 | license fail-closed + brand category 警示 | ⏸ MS-002 follow-up(已 ship 资产复用) |
+| VC-1 | T-OD-001 既有 118 tests 全绿 | ✅ |
+| VC-2 | `lib/templates/pptx.js` 零依赖(MS-001 已 ship,本提案不相关) | ✅ |
+| VC-3 | `cortex-agent design plugin install ...` | ⏸ MS-002 follow-up round 2 |
+| VC-4 | `cortex-agent design skill install ...` | ⏸ MS-002 follow-up round 2 |
+| VC-5 | `cortex-agent design template install ...` | ⏸ MS-002 follow-up round 2 |
+| VC-6 | lock schema v1 → v2 向后兼容 | ✅ |
+| VC-7 | `design system extract --from-url` | ⏸ 独立 sprint(需要 daemon) |
+| VC-8 | `design import claude-design` | ⏸ 独立 sprint |
+| VC-9 | `bin/cli.js` 维持零依赖 | ✅ |
+| VC-10 | `architecture-guard` 0 violation | ✅(inline check) |
+| VC-11 | license fail-closed + brand category 警示 | ✅(design-system 走 T-OD-001) |
+| VC-12 | catalog-cache 24h TTL(沿用 lib/design/registry) | ✅ |
 
 ---
 
@@ -184,52 +154,56 @@ flowchart LR
 
 | 文件 | 测试数 | 状态 |
 | :--- | :--- | :--- |
-| `tests/catalog/kind-map.test.js` | 21 | ✅ 全过 |
-| `tests/catalog/lockfile-v2.test.js` | 26 | ✅ 全过 |
-| `tests/catalog/registry.test.js` | 17 | ✅ 全过 |
-| **MS-002 新测试** | **64** | ✅ |
-| **既有 T-OD-001 回归** | **118** | ✅ |
-| **MS-001 既有 deck 测试** | **66** | ✅ |
-
-总基线: **248/248 PASS**(64 新 + 118 既有 design + 66 既有 deck)。
-
----
-
-## 7. 端到端验证(本次 E2E)
-
-```
-1. 写 v1 lock (legacy T-OD-001 format)
-   <cwd>/.agent/design-systems.lock → { lockfileVersion: 1, systems: [...] }
-2. readLockfile() → 自动迁移
-   - lockfileVersion: 1 → 2
-   - schemaVersion: od-design-system-project/v1 → od-catalog-project/v1
-   - systems[].kind: undefined → "design-system"
-   - _migrated_from_v1: true
-3. upsertEntry() × 3 (plugin + skill + template)
-   - catalogs[]: 2 → 5
-   - 4 kind 隔离正确
-4. writeLockfile() → 干净 v2
-   - 写入 <cwd>/.agent/catalog.lock
-   - 剥离 _migrated_from_v1 元数据
-5. readLockfile() → 重新读
-   - catalogs[]: 5 (no migration metadata)
-```
-
-✅ 通过。
+| `tests/catalog/kind-map.test.js` | 21 | ✅ |
+| `tests/catalog/lockfile-v2.test.js` | 26 | ✅ |
+| `tests/catalog/registry.test.js` | 17 | ✅ |
+| `tests/catalog/resolve.test.js` | 16 | ✅ |
+| `tests/catalog/license-4kind.test.js` | 24 | ✅ |
+| `tests/catalog/plugin-converter.test.js` | 23 | ✅ |
+| `tests/commands/design-4kind.test.js` | 22 | ✅ |
+| **MS-002 + follow-up** | **149** | ✅ |
+| T-OD-001 既有 design 测试 | 118 | ✅ |
+| MS-001 deck 测试 | 66 | ✅ |
+| **总基线** | **333/333 PASS** | |
 
 ---
 
-## 8. 后续(MS-002 follow-up)
+## 7. 端到端验证(E2E)
+
+```bash
+$ cortex-agent design plugin list --json
+{ "kind": "plugin", "source": "starter", "count": 2,
+  "entries": [{ "id": "od-figma-migration", ... }, { "id": "od-claude-design-bridge", ... }] }
+
+$ cortex-agent design template list
+template (3):
+    saas-landing
+    guizang-ppt
+    html-ppt-master
+(0 installed · 3 available upstream)
+
+$ cortex-agent design list                # legacy 设计-system 100% 兼容
+(Installed: none)
+
+$ cortex-agent design system list         # alias 也 100% 工作
+(Installed: none)
+
+$ cortex-agent design help
+Usage: cortex-agent design <subcommand|kind> [options]
+Kinds (P-001 MS-002): system / plugin / skill / template
+...
+```
+
+---
+
+## 8. 后续(MS-002 follow-up round 2)
 
 | Task | Owner | Estimate |
 | :--- | :--- | :--- |
 | `lib/catalog/fetch.js` 4 kind 通用 fetch | TBD | 0.5 周 |
-| `lib/catalog/license.js` 4 kind 字段归一化 | TBD | 0.3 周 |
-| `lib/catalog/resolve.js` 沿用 lib/design/resolve.js(只 design-system) | TBD | 0.1 周 |
-| `lib/catalog/plugin-converter.js` open-design.json → cortex-agent manifest | TBD | 0.5 周 |
-| `lib/catalog/extract.js` Brand-backed extractor thin wrapper | TBD | 0.3 周 |
-| `lib/catalog/claude-design-import.js` | TBD | 0.3 周 |
-| `lib/commands/design.js` 4 subcommand (`system\|plugin\|skill\|template`) | TBD | 0.5 周 |
+| `lib/catalog/extract.js` Brand-backed extractor(需要 daemon) | TBD | 0.3 周 |
+| `lib/catalog/claude-design-import.js` ZIP import | TBD | 0.3 周 |
+| `lib/commands/design.js` round 2:`<kind> install <id>...` 端到端 | TBD | 0.5 周 |
 | 完整 18 测试 + 文档 + pilot verification | TBD | 0.5 周 |
 
 ---
@@ -241,3 +215,4 @@ flowchart LR
 - [pilot-verification.md §3 SamHMI](../../.agent/plans/proposals/projects/open-design-integration/pilot-verification.md)
 - [T-OD-001 DESIGN.md cascade 已 ship 文档](../architecture/design-system.md)
 - [MS-001 deck-workflow-design.md](./deck-workflow-design.md)(已 ship,2026-08-20)
+- [D-ODI-002 lock schema v1→v2 向后兼容](../../.agent/plans/proposals/projects/open-design-integration/decisions/D-ODI-002.md)

@@ -80,7 +80,16 @@ const { agentM003Command } = require("../lib/agents/m003-cli");
 // owned by lib/design/cli.js (mirrors dispatch-cli.js pattern). Strictly
 // additive: no changes to lib/commands.js; the new subcommand is added
 // to the case dispatch below and registered in lib/cli-contract.js.
-const { designCommand } = require("../lib/design/cli");
+//
+// P-001 MS-002 follow-up: design now routes through lib/commands/design.js
+// (4-kind dispatcher) instead of lib/design/cli.js directly. The legacy
+// design-system surface is preserved verbatim via lib/design/cli.js wrapped
+// inside the new dispatcher. New 4-kind subcommands:
+//   design system <sub> [opts]      (alias of legacy)
+//   design plugin list|show         (MVP — catalog-only)
+//   design skill list|show          (MVP — catalog-only)
+//   design template list|show       (MVP — catalog-only)
+const { designCommand } = require("../lib/commands/design");
 
 // P-003 MS-001: `/deck` workflow CLI surface.
 // `cortex-agent deck <task-id> [--format <html|pptx|md|all>] [--template <id>] [--lang <zh|en>]`
