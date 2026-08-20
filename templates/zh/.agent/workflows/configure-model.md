@@ -1,6 +1,17 @@
 ---
 name: configure-model
-description: 交互式配置 AI 模型提供商、模型 ID 和每个 sub-agent 的角色分配。
+description: "交互式配置 AI 模型提供商、模型 ID 和每个 sub-agent 的角色分配。"
+type: procedure
+applicable_to:
+  - all
+inputs: []
+outputs: []
+linked_skills: []
+linked_rules: []
+linked_workflows: []
+owner: Kucell
+last_verified: 2026-08-06
+status: stable
 ---
 
 # 🤖 模型配置工作流 (/configure-model)
@@ -167,3 +178,15 @@ Sub-agent 模型变更：
 ──────────────────────────────
 ⚠️  注意：请确认 {api.api_key_env} 环境变量已在你的 shell 中设置。
 ```
+
+---
+
+## ⚖️ 校准提示（Recalibration Tip）
+
+> 切换 provider/model 后，建议运行 `/recalibrate` 重测基线。
+
+- **suggestion only**：仅为提示，不自动运行、不自动触发任何模型切换或配置升级。
+- 目的：换模型后能力边界可能漂移，用同一固化代表工作流（`/ship` REVIEW→COMMIT 链路或
+  最小可复现 benchmark 子集）重跑，产出质量/成本/时长三维对比，写入
+  `metrics/model-calibration.json`（模型维度唯一事实源）。
+- 相关：`.agent/workflows/recalibrate.md`（持续校准闭环，P-003）。

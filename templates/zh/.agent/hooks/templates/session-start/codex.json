@@ -1,0 +1,10 @@
+{
+  "_comment": "cortex-agent runtime-continuity SessionStart hook template (OpenAI Codex). Codex 官方 hooks 为 TOML 配置（见 github.com/openai/codex docs/hooks.md）：把 _install_as_toml 中的 [hooks] 段合并进 ~/.codex/config.toml（用户层）或 .codex/config.toml（项目层）。本 JSON 为等价镜像，便于审阅 / CI 校验。用途：新 host 会话启动时在既有 warm --auto 之后追加 resume-bundle --auto --inject，输出 [CORTEX-RESUME] 块（P-002 / MS-002）。graceful degrade：resume-bundle --auto 任何异常均 exit 0 + stderr 记录，绝不阻塞 SessionStart。command 用 ';' 串联（warm 失败不阻断 resume-bundle）。若 host 不支持 SessionStart stdout 注入，请把 resume-bundle 的 stdout 重定向到 fallback 文件 .agent/runtime-continuity/auto-resume.json 由 host 加载机制读取。",
+  "_install_as_toml": "[hooks]\nSessionStart = { command = 'CORTEX_SESSION_START=1 node .agent/skills/runtime-continuity/scripts/index.js warm --auto --project $(basename \"$PWD\") ; node .agent/skills/runtime-continuity/scripts/index.js resume-bundle --auto --inject --project $(basename \"$PWD\")', timeout = 10 }",
+  "hooks": {
+    "SessionStart": {
+      "command": "CORTEX_SESSION_START=1 node .agent/skills/runtime-continuity/scripts/index.js warm --auto --project $(basename \"$PWD\") ; node .agent/skills/runtime-continuity/scripts/index.js resume-bundle --auto --inject --project $(basename \"$PWD\")",
+      "timeout": 10
+    }
+  }
+}

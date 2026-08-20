@@ -1,0 +1,126 @@
+{
+  "version": "1.1.0",
+  "last_updated": "2026-08-19",
+  "total": 5,
+  "type_enum": [
+    "bug-fix",
+    "design-correction",
+    "boundary-signal"
+  ],
+  "experiences": [
+    {
+      "id": "EXP-001",
+      "title": "handoff JSON schema 与 artifact wrapper 不匹配",
+      "type": "bug-fix",
+      "severity": "high",
+      "category": "PRACT-EXP",
+      "date": "2026-06-12",
+      "tags": [
+        "schema",
+        "handoff",
+        "artifact-bus",
+        "wrapper",
+        "e2e",
+        "validation"
+      ],
+      "related_files": [
+        ".agent/handoffs/scripts/handoff-protocol.js",
+        ".agent/artifacts/scripts/artifact-bus.js",
+        ".agent/handoffs/schemas/handoff.schema.json"
+      ],
+      "key_lesson": "任何在多个存储位置间流转的结构化数据，必须在第一个版本就定义统一的 schema 适配层（extractor/adapter），而非让消费方各自假设格式。",
+      "path": ".agent/experiences/EXP-001.md",
+      "expires": "2026-12-12"
+    },
+    {
+      "id": "EXP-002",
+      "title": "self-check skill 误归类到通用框架模板（L1 vs L3 混淆）",
+      "type": "design-correction",
+      "severity": "medium",
+      "category": "RULE-EXP",
+      "date": "2026-06-12",
+      "tags": [
+        "agent-scope",
+        "L1",
+        "L3",
+        "template",
+        "self-check",
+        "ship",
+        "classification"
+      ],
+      "related_files": [
+        ".agent/rules/agent-scope.md",
+        ".agent/workflows/ship.md",
+        ".agent/skills/self-check/SKILL.md",
+        "templates/zh/.agent/skills/",
+        "templates/en/.agent/skills/"
+      ],
+      "key_lesson": "新增任何 .agent/ 能力前，必须先按 agent-scope.md 三层模型判断归属（L1/L2/L3）；L3 框架自举能力绝不进入用户可见的 templates/ 或标准工作流。",
+      "path": ".agent/experiences/EXP-002.md",
+      "expires": null
+    },
+    {
+      "id": "EXP-003",
+      "title": "文本验证状态被误判为任务阻塞",
+      "type": "bug-fix",
+      "severity": "medium",
+      "category": "PRACT-EXP",
+      "date": "2026-07-23",
+      "tags": [
+        "dashboard",
+        "task-state",
+        "validation",
+        "modularity",
+        "parser"
+      ],
+      "related_files": [
+        ".agent/tasks/scripts/task-state.js",
+        ".agent/skills/agent-dashboard/scripts/generate.js",
+        ".agent/skills/management-api/scripts/index.js"
+      ],
+      "key_lesson": "状态维度必须结构化分离，共享领域判定只能有一个实现。",
+      "path": ".agent/experiences/EXP-003.md",
+      "expires": "2027-01-19"
+    },
+    {
+      "id": "EXP-018",
+      "path": ".agent/experiences/EXP-018-host-prompt-slim.md",
+      "title": "Host 侧 system prompt 瘦身必须双字段同步，且启发式分类收益天花板有限",
+      "type": "design-correction",
+      "category": "RULE-EXP",
+      "date": "2026-08-18",
+      "tags": [
+        "host-prompt",
+        "base_instructions",
+        "catalog",
+        "token"
+      ]
+    },
+    {
+      "id": "EXP-004",
+      "path": ".agent/experiences/EXP-004.md",
+      "title": "spec 工作流在文档型任务上首次运行即全流程通过（unexpected-success 边界信号）",
+      "type": "boundary-signal",
+      "severity": "low",
+      "category": "CALIB-EXP",
+      "signal": "unexpected-success",
+      "model": "anthropic/claude-sonnet-4-6",
+      "config_hash": "c29604e412ec247befafedb1cfd9c791d1a004373038c984dc930afd26cd60df",
+      "date": "2026-08-19",
+      "tags": [
+        "boundary-signal",
+        "calibration",
+        "spec",
+        "model-capability",
+        "recalibrate"
+      ],
+      "related_files": [
+        ".agent/workflows/spec.md",
+        ".agent/workflows/recalibrate.md",
+        ".agent/config/reasoning-config.yml"
+      ],
+      "key_lesson": "当前模型（anthropic/claude-sonnet-4-6，balanced 模式）在结构化文档型任务上的能力边界超出预期：/spec 自举任务（draft-cross-host-handoff-index）一次跑通 CLARIFY→DELIVER 全链路、5/5 验收项通过，未暴露预期中的澄清缺口；记录为 unexpected-success 校准信号，模型切换后应经 /recalibrate 重测对比验证该边界是否保持。",
+      "expires": null
+    }
+  ]
+}

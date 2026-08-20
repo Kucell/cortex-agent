@@ -1,0 +1,10 @@
+{
+  "_comment": "cortex-agent runtime-continuity SessionEnd hook template (OpenAI Codex). Codex 官方 hooks 为 TOML 配置（见 github.com/openai/codex docs/hooks.md）：把 _install_as_toml 中的 [hooks] 段合并进 ~/.codex/config.toml（用户层）或 .codex/config.toml（项目层）。本 JSON 为等价镜像，便于审阅 / CI 校验。graceful degrade：pre-departure 任何异常均 exit 0，失败降级 archive，不阻塞会话退出。",
+  "_install_as_toml": "[hooks]\nSessionEnd = { command = 'node .agent/skills/runtime-continuity/scripts/index.js pre-departure --project $(basename \"$PWD\") --gate agent', timeout = 5 }",
+  "hooks": {
+    "SessionEnd": {
+      "command": "node .agent/skills/runtime-continuity/scripts/index.js pre-departure --project $(basename \"$PWD\") --gate agent",
+      "timeout": 5
+    }
+  }
+}

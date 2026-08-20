@@ -1,40 +1,53 @@
 ---
 name: parallel
-description: Schedule parallel tasks by analyzing dependencies and write scopes, selecting shared, locked, worktree, or serial isolation, dispatching sub-agents in batches, and closing results consistently.
+description: "并行任务调度工作流。分析依赖与写入范围，自动选择 shared、locked、worktree 或 serial 隔离，再分批派发 sub-agent 并统一收口。"
+type: procedure
+applicable_to:
+  - all
+inputs: []
+outputs: []
+linked_skills: []
+linked_rules: []
+linked_workflows: []
+owner: Kucell
+last_verified: 2026-08-06
+status: stable
 ---
 
-# 并行任务调度工作流 (/parallel)
+<!-- EN translation pending: structural English skeleton; detailed Chinese body below is the source of truth. TODO: translate the dependency-analysis prompt, isolation-decision rules, dispatch/Run-journal details, the downstream independent verification section, and the queue runtime writes fully into English. -->
 
-> **简化用法**：`/start-task T-001 T-002 T-003`（多任务 ID 空格分隔）会根据 `routing-defaults.yml` 自动并行派发，无需单独调用此 workflow。
-> 仅在需要**精细控制并行批次和依赖关系**时使用此完整 workflow。
+# Parallel Task Scheduling Workflow (/parallel)
 
-当有多个互不依赖的任务需要同时推进时，使用此工作流最大化执行效率。
+> **Simplified usage**: `/start-task T-001 T-002 T-003` (space-separated task IDs) dispatches automatically in parallel based on `routing-defaults.yml`; you do not need this full workflow.
+> Use this full workflow only when you need **fine-grained control over parallel batches and dependencies**.
 
-## 使用方式
+Use this workflow to maximize throughput when multiple independent tasks can advance at the same time.
+
+## Usage
 
 ```
 /parallel T-001 T-002 T-003
-/parallel --batch           （自动从 task-progress.md 选取所有可并行任务）
-/parallel T-001 T-002 --dry-run  （只展示调度计划，不执行）
+/parallel --batch           （auto-select all parallelizable tasks from task-progress.md）
+/parallel T-001 T-002 --dry-run  （show the dispatch plan only, do not execute）
 /parallel T-001 T-002 --isolation auto|shared|worktree
 ```
 
-## 核心原则
+## Core Principles
 
-- **互不依赖**：同一批次内的任务不能相互依赖
-- **上下文隔离**：每个 sub-agent 只拿到自己需要的上下文
-- **幂等收尾**：任意一个任务失败不影响其他任务结果
-- **规则优先**：调度前读取 `.agent/rules/task-decomposition.md`，按其中的并行判断规则决定批次
-- **Isolation preflight**: Default to `--isolation auto`; resolve every batch to a `shared`, `locked`, or `worktree` carrier before dispatch
-- **运行可观测**：若 Management API 存在，调度、子代理调用、完成/失败都必须写入 Run journal
+- **Mutual independence**: tasks in the same batch must not depend on each other
+- **Context isolation**: each sub-agent only receives the context it needs
+- **Idempotent wrap-up**: one task failing does not affect the others' results
+- **Rules first**: read `.agent/rules/task-decomposition.md` before dispatching; decide batches by its parallel-judgment rules
+- **Isolation preflight**: default to `--isolation auto`; before dispatch you must choose a `shared`, `locked`, or `worktree` carrier
+- **Runtime observability**: if a Management API exists, dispatch, sub-agent invocation, and completion/failure must be written to the Run journal
 
 ---
 
-## 执行步骤
+## Execution Steps
 
-### 第一步：依赖分析
+### Step 1: Dependency Analysis
 
-调用 `planner` sub-agent 分析指定任务的依赖关系：
+Invoke the `planner` sub-agent to analyze task dependencies:
 
 ```
 [planner] 请分析以下任务的依赖关系，输出可并行执行的批次：
@@ -74,20 +87,20 @@ Default to `--isolation auto`. After dependency analysis and before dispatch, em
 execution_isolation:
   requested: auto
   resolved: shared | locked | worktree | serial
-  reason: "Why this isolation level was selected"
+  reason: "选择该隔离级别的原因"
   tasks:
     - task_id: T-001
       access: read | write
       owned_files: ["src/auth/**"]
-      branch: "agent/T-001-auth" # worktree mode only
+      branch: "agent/T-001-auth" # 仅 worktree 模式
 ```
 
 Resolve in this order:
 
-1. Tasks edit the same file, public contract, migration, or shared type → `serial`. Do not use worktrees to hide a logical conflict; return to `/plan` and split the work again.
-2. Every task is read-only → `shared`.
-3. Write scopes are explicit and disjoint, with no isolated dev server, environment, or runtime-state requirement → `locked`; acquire task/file locks before dispatch.
-4. Two or more independent write tasks need true parallelism, isolated runtime state, or cannot be safely constrained in one working directory → `worktree`.
+1. Multiple tasks modify the same file, public contract, migration, or shared type → `serial`; do not use worktrees to mask a logical conflict; return to `/plan` and re-split.
+2. All tasks are read-only → `shared`.
+3. Write tasks exist, but write scopes are explicit and disjoint, with no need for an isolated dev server, environment, or runtime state → `locked`; acquire task/file locks before dispatch.
+4. Two or more independent write tasks need true parallelism, isolated runtime state, or write scopes that cannot be reliably constrained in one workspace → `worktree`.
 
 Explicit mode constraints:
 
@@ -97,9 +110,9 @@ Explicit mode constraints:
 
 When the result is `worktree`, automatically enter `/worktree plan <task-ids>` to produce branch, worktree path, owner, and file-scope assignments. `/parallel` must not run `git worktree add` directly; `/worktree create` owns creation after the plan is confirmed.
 
-### 第三步：为每个任务选择 sub-agent
+### Step 3: Select a sub-agent for each task
 
-根据任务类型自动匹配：
+Automatically match by task type:
 
 | 任务类型 | 分配给 |
 |---------|--------|
@@ -109,9 +122,9 @@ When the result is `worktree`, automatically enter `/worktree plan <task-ids>` t
 | 文档更新、注释补充 | `documenter` |
 | 测试编写 | `implementer`（含测试职责）|
 
-### 第四步：准备上下文包
+### Step 4: Prepare context packages
 
-为每个 sub-agent 准备独立的上下文包（避免信息污染）：
+Prepare an isolated context package per sub-agent (avoid information pollution):
 
 ```
 [T-001 上下文包]
@@ -124,11 +137,11 @@ When the result is `worktree`, automatically enter `/worktree plan <task-ids>` t
 约束: 不修改 src/user/ 下的任何文件
 ```
 
-上下文包必须包含该任务的验收标准、可写范围、不可写范围和冲突检查点。
+The context package must include the task's acceptance criteria, writable scope, non-writable scope, and conflict checkpoints.
 
-### 第五步：并行派发
+### Step 5: Parallel dispatch
 
-**同时**调用批次内所有 sub-agent（主代理不等待中间结果）：
+**Invoke all sub-agents in the batch simultaneously** (the main agent does not wait for intermediate results):
 
 ```
 → [implementer] 执行 T-001：实现 JWT token
@@ -136,7 +149,7 @@ When the result is `worktree`, automatically enter `/worktree plan <task-ids>` t
 （等待两者都完成）
 ```
 
-派发每个 sub-agent 前，为对应任务写入 Run journal：
+Before dispatching each sub-agent, write a Run journal entry for the task:
 
 ```bash
 cortex-agent runs checkpoint --project . \
@@ -152,7 +165,7 @@ cortex-agent runs checkpoint --project . \
   --message "Sub-agent dispatched"
 ```
 
-**跨平台说明：**
+**Cross-platform notes:**
 
 | 平台 | 并行方式 |
 |------|---------|
@@ -160,29 +173,41 @@ cortex-agent runs checkpoint --project . \
 | Cursor | 在同一上下文中顺序调用，但每个 sub-agent 上下文独立隔离 |
 | 其他平台 | 顺序执行，但保持上下文隔离，结果等效 |
 
-### 第六步：收集结果与冲突检测
+### Step 6: Collect results and detect conflicts
 
-所有 sub-agent 完成后，主代理：
+After all sub-agents complete, the main agent:
 
-1. 收集每个 sub-agent 的输出报告
-2. 检查是否有文件冲突（多个 agent 修改了同一文件）
-3. 若有冲突：暂停并提示用户手动决策
-4. 若无冲突：合并结果
-5. 对每个任务追加 `completed`、`failed` 或 `blocked` Run event，并在批次完成后更新 `R-parallel-<batch-id>`。
+1. Collect each sub-agent's output report
+2. Check for file conflicts (multiple agents modified the same file)
+3. If a conflict exists: pause and prompt the user for a manual decision
+4. If no conflict: merge the results
+5. Append `completed`, `failed`, or `blocked` Run events per task, and update `R-parallel-<batch-id>` after the batch completes.
 
-### 第七步：启动下一批次
+### Downstream Independent Verification
 
-批次 1 完成后，自动进入批次 2，重复第四步至第六步。
+当批次内存在跨 agent 依赖（下游任务采信上游任务的产出）时，下游 agent 采信上游产出前必须独立验证，禁止链式信任：
 
-### 第八步：批量更新进度
+1. **核对上游 command-log 的 exit code**：上游报告成功的命令必须在 command-log 中有对应的 exit code 0 记录，不能只看上游的总结文字。
+2. **核对 diff 或产物文件**：采信前检查上游实际写入的 diff 或产物文件（`git diff`、`git show`、产物内容抽样），确认产出真实存在且与声称一致。
+3. **验证后再依赖**：下游任务基于上游产出做假设时，先跑一次最小可验证动作（读取产物、运行针对性命令），通过后才把上游结论当作事实输入。
+4. **收口交叉复核**：批次收口（合并结果、更新 Run journal）时，对跨 agent 传递的结论做交叉复核；发现问题即回退到出错节点修复，而不是在错误基础上继续放大。
+5. **记录验证证据**：独立验证的动作与结果写入任务报告或 command-log，供后续 `/ship` REVIEW 与 mission VALIDATE 追溯。
 
-所有批次完成后，统一调用 `/done` 逻辑：
+> 参见 `.agent/rules/judgment-risks.md`（Cascade Failure 风险与针对性检查）。
 
-- 路线图批量 `[ ]→[x]`
-- 一次性更新整体进度百分比
-- 解锁新的可执行任务
+### Step 7: Start the next batch
 
-输出最终报告：
+After batch 1 completes, automatically enter batch 2, repeating Steps 4–6.
+
+### Step 8: Batch progress updates
+
+After all batches complete, uniformly call the `/done` logic:
+
+- Route-map batch `[ ]→[x]`
+- Update the overall progress percentage in one shot
+- Unlock new executable tasks
+
+Final report:
 
 ```
 🚀 并行执行完成
@@ -204,7 +229,7 @@ cortex-agent runs checkpoint --project . \
 
 ---
 
-## 💡 最佳实践
+## 💡 Best Practices
 
 | 场景 | 建议 |
 |------|------|
@@ -213,14 +238,14 @@ cortex-agent runs checkpoint --project . \
 | 代码写完要审查和写文档 | `code-reviewer` + `documenter` 并行 |
 | 任务太大难以拆分 | 先 `/plan` 拆解，再 `/parallel` 执行 |
 | 不确定能否并行 | 加 `--dry-run` 先看调度计划 |
-| Read-only tasks | `--isolation shared` |
-| Disjoint directory writes | Keep the default `auto`; it normally resolves to `locked` |
-| Independent implementations needing true parallelism | `auto` resolves to `worktree` and enters `/worktree plan` |
-| Shared contract or same-file edits | Run serially and return to `/plan` |
+| 只读任务 | `--isolation shared` |
+| 独立目录写入 | 默认 `auto`，通常解析为 `locked` |
+| 多个独立实现且需要真实并行 | 默认 `auto`，解析为 `worktree` 后自动进入 `/worktree plan` |
+| 修改共享契约或同一文件 | 串行执行，先 `/plan` 重新拆分 |
 
 ## Queue Runtime Writes
 
-- After dependency decomposition, `/parallel` creates the batch with `queues upsert --queue-id Q-<batch-id> --gate parallel --concurrency-limit <n>`.
-- Before dispatch, call `queues item --queue-id Q-<batch-id> --gate parallel --task-id <task-id> --state running --run-id R-<task-id> --agent-id <agent-id>`.
-- Completion, blocking, or validation failure updates the item to `done` or `blocked` and writes the matching Run checkpoint.
-- Dashboard may query the Queue but never update its items.
+- 依赖拆分完成后，由 `/parallel` 创建批次：`queues upsert --queue-id Q-<batch-id> --gate parallel --concurrency-limit <n>`。
+- 派发前写入：`queues item --queue-id Q-<batch-id> --gate parallel --task-id <task-id> --state running --run-id R-<task-id> --agent-id <agent-id>`。
+- 完成、阻塞或验证失败时更新对应 item 为 `done` 或 `blocked`，并同时写 Run checkpoint。
+- Dashboard 只能查询 Queue，不得代替 `/parallel` 更新 item。

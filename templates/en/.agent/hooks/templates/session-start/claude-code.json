@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "_comment": "cortex-agent runtime-continuity SessionStart hook template (Claude Code). 用途：新 host 会话启动时在既有 warm --auto 之后追加 resume-bundle --auto --inject，把 [CORTEX-RESUME] 块（上一次归档 / 待处理 handoffs / 当前 run / 当前 mission milestone）注入，让新 host 第一轮对话即接手（P-002 / MS-002）。graceful degrade：resume-bundle --auto 任何异常均 exit 0 + stderr 记录，绝不阻塞 SessionStart。注：Claude Code SessionStart hook 的 stdout 默认不自动进 system prompt —— 若你的 host 机制不支持 stdout 注入，请把 resume-bundle 的 stdout 重定向到 fallback 文件 .agent/runtime-continuity/auto-resume.json 由 host 加载机制读取（[CORTEX-RESUME] 块写该文件即可）。安装：把本文件的 hooks.SessionStart 块合并进 .claude/settings.json 或 .agent/hooks/claude-governed-hooks.json。",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "CORTEX_SESSION_START=1 node .agent/skills/runtime-continuity/scripts/index.js warm --auto --project $(basename \"$PWD\")",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "node .agent/skills/runtime-continuity/scripts/index.js resume-bundle --auto --inject --project $(basename \"$PWD\")",
+            "timeout": 5
+          }
+        ],
+        "description": "受治理 SessionStart：warm --auto 启动/续期连续性守护 + resume-bundle --auto --inject 输出 [CORTEX-RESUME] 注入块（失败 graceful degrade，不阻塞会话启动）"
+      }
+    ]
+  }
+}

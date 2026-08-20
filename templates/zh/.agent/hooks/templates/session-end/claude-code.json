@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "_comment": "cortex-agent runtime-continuity SessionEnd hook template (Claude Code). 用途：会话结束时自动调 pre-departure 写 checkpoint + host_switch_initiated 事件（P-001 / MS-001）。graceful degrade：pre-departure 任何异常均 exit 0，失败降级 archive，绝不阻塞会话关闭（正常退出 / 窗口关闭 / 断网 / crash 均适用）。安装：把本文件的 hooks.SessionEnd 块合并进 .claude/settings.json 或 .agent/hooks/claude-governed-hooks.json。",
+  "hooks": {
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .agent/skills/runtime-continuity/scripts/index.js pre-departure --project $(basename \"$PWD\") --gate agent",
+            "timeout": 5
+          }
+        ],
+        "description": "受治理 SessionEnd：调 runtime-continuity pre-departure 写 checkpoint + host_switch_initiated 事件（失败降级 archive，不阻塞会话关闭）"
+      }
+    ]
+  }
+}

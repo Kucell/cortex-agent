@@ -1,0 +1,9 @@
+{
+  "_comment": "cortex-agent runtime-continuity SessionStart hook template (Pi, earendil-works/pi-mono). Pi 为终端 AI 编码代理，官方无 SessionStart hooks 机制——等价事件为 agent 启动 / 会话开始，标 event_start_equivalent=true。建议在会话包装器 / 启动脚本中顺序调用下方 session_start_command 与 resume_bundle_command，或挂到等价 start 事件（见 .agent/references/subagent-invocation/pi-non-interactive-modes.md）。用途：新 host 会话启动时在既有 warm --auto 之后追加 resume-bundle --auto --inject，输出 [CORTEX-RESUME] 块（P-002 / MS-002）。graceful degrade：resume-bundle --auto 任何异常均 exit 0 + stderr 记录，绝不阻塞会话启动。若 Pi 不支持 stdout 注入，请把 resume_bundle_command 的 stdout 重定向到 fallback 文件 .agent/runtime-continuity/auto-resume.json 由 host 加载机制读取（pi 可通过 skills/prompts 引用该文件）。安装：把 skills / prompts / packages 字段并入 .pi/settings.json（合并时删除 _comment / event_start_equivalent / session_start_command / resume_bundle_command 键）。",
+  "event_start_equivalent": true,
+  "session_start_command": "CORTEX_SESSION_START=1 node .agent/skills/runtime-continuity/scripts/index.js warm --auto --project $(basename \"$PWD\")",
+  "resume_bundle_command": "node .agent/skills/runtime-continuity/scripts/index.js resume-bundle --auto --inject --project $(basename \"$PWD\")",
+  "skills": [".agent/skills", ".agents/skills"],
+  "prompts": [".agent/workflows"],
+  "packages": []
+}

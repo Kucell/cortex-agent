@@ -207,6 +207,17 @@ tools: Read, Write, Shell
 手工 `archive` 仍必须使用 `--gate user`。自动守护不得提交代码、停止 Dashboard、
 触碰业务源码，也不得并行启动第二个归档进程。
 
+### SessionStart 自动注入：[CORTEX-RESUME] 块（P-002 / MS-002）
+
+新 host 的 SessionStart hook 在 `warm --auto` 之后自动调
+`runtime-continuity resume-bundle --auto --inject`，把 `[CORTEX-RESUME]` JSON
+块注入 system prompt（或写入 fallback 文件
+`.agent/runtime-continuity/auto-resume.json` 由 host 加载机制读取）。agent
+应把该块视为 **"上一次会话状态摘要"**：可折叠、可忽略过期信息；若需完整
+上下文，主动调 `node .agent/skills/runtime-continuity/scripts/index.js
+resume-bundle --project <P>` 拉取完整 bundle（或 `restore --auto` 读 Markdown
+正文）。该块为自动产物，只含路径、摘要、指针，不含 host 私有状态。
+
 ---
 
 ## 约束

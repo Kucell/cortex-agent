@@ -1,6 +1,17 @@
 ---
 name: parallel
-description: 并行任务调度工作流。分析依赖与写入范围，自动选择 shared、locked、worktree 或 serial 隔离，再分批派发 sub-agent 并统一收口。
+description: "并行任务调度工作流。分析依赖与写入范围，自动选择 shared、locked、worktree 或 serial 隔离，再分批派发 sub-agent 并统一收口。"
+type: procedure
+applicable_to:
+  - all
+inputs: []
+outputs: []
+linked_skills: []
+linked_rules: []
+linked_workflows: []
+owner: Kucell
+last_verified: 2026-08-06
+status: stable
 ---
 
 # 并行任务调度工作流 (/parallel)
@@ -169,6 +180,18 @@ cortex-agent runs checkpoint --project . \
 3. 若有冲突：暂停并提示用户手动决策
 4. 若无冲突：合并结果
 5. 对每个任务追加 `completed`、`failed` 或 `blocked` Run event，并在批次完成后更新 `R-parallel-<batch-id>`。
+
+### 下游独立验证
+
+批次内存在跨 agent 依赖（下游任务采信上游任务的产出）时，下游 agent 采信上游产出前必须独立验证，禁止链式信任：
+
+1. **核对上游 command-log 的 exit code**：上游报告成功的命令必须在 command-log 中有对应的 exit code 0 记录，不能只看上游的总结文字。
+2. **核对 diff 或产物文件**：采信前检查上游实际写入的 diff 或产物文件（`git diff`、`git show`、产物内容抽样），确认产出真实存在且与声称一致。
+3. **验证后再依赖**：下游任务基于上游产出做假设时，先跑一次最小可验证动作（读取产物、运行针对性命令），通过后才把上游结论当作事实输入。
+4. **收口交叉复核**：批次收口（合并结果、更新 Run journal）时，对跨 agent 传递的结论做交叉复核；发现问题即回退到出错节点修复，而不是在错误基础上继续放大。
+5. **记录验证证据**：独立验证的动作与结果写入任务报告或 command-log，供后续 `/ship` REVIEW 与 mission VALIDATE 追溯。
+
+> 参见 `.agent/rules/judgment-risks.md`（Cascade Failure 风险与针对性检查）。
 
 ### 第七步：启动下一批次
 

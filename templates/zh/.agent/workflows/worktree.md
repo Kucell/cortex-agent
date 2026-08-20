@@ -47,29 +47,6 @@ status: stable
 - 若 Management API 存在，worktree 创建、锁获取、提交、合并、验证都必须写入 Run journal。
 - worktree 创建或进入后调用 `cortex-agent dashboard ensure --project . --reason worktree`；shared `.agent` 必须复用已绑定 owner 的同一 Supervisor。
 
-## .agent 路径授权（T-AGR-001）
-
-**适用范围**：`.agent/` 仅适用于已接入 Cortex Agent 的项目。未接入项目没有 `.agent/`，不得创建或推断。
-
-**授权检测**：
-- worktree 的 `.agent/` 目录必须存在且为目录
-- 必须包含 `rules/` 和 `workflows/` 子目录（canonical Cortex 标志）
-- 满足以上条件的工作区被识别为"已管理项目"，governed launch 自动授予共享 `.agent` 的读权限
-
-**PreToolUse 门控**：
-- 业务代码路径（不涉及共享 `.agent/`）：由 Claude 自行判断（defer）
-- 共享 `.agent/` 路径：无写权限时 deny；Bash 直接操作共享 `.agent/` 默认 deny（运行时更新走 Cortex 公共 CLI/API）
-- 路径必须 canonicalize 到最近存在的父目录（防止 symlink/不存在文件逃逸）
-
-**授权传播**：
-- 受管父 Agent → 子 Agent 时，子 Agent 的读写授权必须是父级 `grant.delegate` 对应集合的子集
-- 父上下文无 delegation 时 fail closed
-- 绝对授权路径永不泄漏到公共 Task event/receipt
-
-**手动 --add-dir 限制**：
-- governed launch 仅自动投影 `--add-dir=<canonical .agent>` 到子进程
-- 调用方手工传入的任意外部 `--add-dir` 均被拒绝
-
 ## PLAN
 
 在创建 worktree 前：
@@ -363,6 +340,18 @@ git diff --check
 4. check-out registry。
 5. 释放 locks。
 6. 清理或保留 worktree，按用户确认执行。
+
+## 下游独立验证
+
+跨 worktree / 跨 agent 传递的产出在采信前必须独立验证，禁止链式信任（Cascade Failure 阻断）：
+
+1. **核对上游 command-log 的 exit code**：采信上游 worktree 的产出前，核对上游 command-log 中对应命令的 exit code；只有 exit code 0 + 可见产物的结论才可作事实输入。
+2. **核对 diff 或产物文件**：检查上游实际写入的 diff / 产物文件（`git diff`、`git show`、产物内容抽样），确认产出真实存在且与声称一致。
+3. **验证后再依赖**：下游 worktree 基于上游产出做假设前，先跑最小验证动作（读取产物、运行针对性命令）。
+4. **收口交叉复核**：合并后的主线验证阶段，对跨 worktree 传递的结论做交叉复核；发现问题即回退到出错节点修复，而非在错误基础上继续合并或放大。
+5. **记录验证证据**：独立验证动作与结果写入 handoff、milestone 或 Run journal，与既有证据链一致。
+
+> 参见 `.agent/rules/judgment-risks.md`（Cascade Failure 风险与针对性检查）。本小节不改变本工作流的状态机与 Gate ownership。
 
 ## 与其他工作流的协作
 

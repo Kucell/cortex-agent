@@ -1,0 +1,6 @@
+{
+  "_comment": "cortex-agent runtime-continuity SessionStart hook template (Cursor). Cursor hooks 以 .cursor/hooks/<event>.json 文件命名事件，最接近的等价事件是 session-start（会话开始，见 cursor.com/docs/agent/hooks）。本模板挂在等价 start 事件并标 event_start_equivalent=true。command 用 ';' 串联：warm --auto（需 CORTEX_SESSION_START=1）失败也不阻断 resume-bundle --auto --inject；两者均 graceful（resume-bundle --auto 任何异常 exit 0 + stderr），绝不阻塞会话启动。stdout 会输出 [CORTEX-RESUME] 块；若你的 Cursor 版本/机制不支持 SessionStart stdout 注入，请把 resume-bundle 的 stdout 重定向到 fallback 文件 .agent/runtime-continuity/auto-resume.json 由 host 加载机制读取。安装：把本文件内容（可删除 _comment 键）另存为 .cursor/hooks/session-start.json。",
+  "event_start_equivalent": true,
+  "command": "CORTEX_SESSION_START=1 node .agent/skills/runtime-continuity/scripts/index.js warm --auto --project $(basename \"$PWD\") ; node .agent/skills/runtime-continuity/scripts/index.js resume-bundle --auto --inject --project $(basename \"$PWD\")",
+  "timeout": 10
+}

@@ -74,6 +74,9 @@ Required checks:
 10. Runtime claims must reference a runtime evidence source or template.
 11. Cross-machine or cross-process runtime assertions must require the log cursor to be captured from the target that produces the logs immediately before the action under test. Controller time is not an acceptable substitute.
 12. Time-filtered runtime assertions must require evidence for `target_id`, `timestamp_source`, `target_timestamp_utc`, and `log_filter_start_utc`; require a separate cursor for each target when more than one target produces logs.
+13. Milestones with 4 or more total assertions must include at least one `drift-check` assertion.
+
+The `drift-check` rule (item 13) applies only to **newly created** validation contracts. Existing contracts are not retroactively bound; if a legacy contract is otherwise valid but lacks a `drift-check`, it may be explicitly waived. Record the waiver with: reason, approver, and follow-up task (see Contract Rules below).
 
 Output a compact report:
 
@@ -112,6 +115,7 @@ The summary must include:
 | `runtime` | Logs, metrics, traces, browser verification, or manual runtime evidence |
 | `security` | Authentication, authorization, secret, supply-chain, or dangerous API check |
 | `manual` | Human verification that cannot yet be automated |
+| `drift-check` | Long-running task drift checkpoint: at a defined point (e.g., task midpoint or milestone boundary), re-read the initial Spec/requirement and verify the current output still matches its audience, scope, and non-goals; block on silent deviation |
 
 ## Contract Rules
 
@@ -146,6 +150,22 @@ Use a blocking assertion like this when evidence is filtered by time across mach
 ```
 
 The referenced evidence must identify each target separately. `timestamp_source` must identify a target-side source and must not be `controller`; `controller_timestamp_utc` and `clock_skew_ms` may be included as diagnostic metadata.
+
+## Drift-Check Assertion
+
+Use a `drift-check` assertion for long-running tasks that can silently drift from the initial requirement. The checkpoint re-reads the initial Spec/requirement (e.g., `.agent/specs/<spec-id>/spec.md`) at a defined point — task midpoint, milestone boundary, or before handoff — and verifies the current output still matches its audience, scope, and non-goals. Block on deviation rather than letting the task continue amplifying drift.
+
+```json
+{
+  "id": "VC-DRIFT-001",
+  "type": "drift-check",
+  "assertion": "任务进度过半时，产出与 .agent/specs/<spec-id>/spec.md 的受众/范围/非目标一致，无静默偏离。",
+  "evidence": ".agent/specs/<spec-id>/spec.md + 当前产出 diff",
+  "blocking": true
+}
+```
+
+A milestone with 4 or more assertions must include at least one `drift-check` (CHECK rule 13). This requirement binds only new contracts; legacy contracts may use an explicit waiver: reason + approver + follow-up task.
 
 ## Minimal Template
 

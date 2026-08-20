@@ -1,0 +1,6 @@
+{
+  "_comment": "cortex-agent runtime-continuity SessionEnd hook template (Cursor). Cursor 官方无 SessionEnd 事件；hooks 以 .cursor/hooks/<event>.json 文件命名事件，最接近的等价事件是 session-stop（会话结束，见 cursor.com/docs/agent/hooks）。本模板挂在等价 stop 事件并标 event_stop_equivalent=true。graceful degrade：pre-departure 任何异常均 exit 0，失败降级 archive，不阻塞会话退出。安装：把本文件内容（可删除 _comment 键）另存为 .cursor/hooks/session-stop.json。",
+  "event_stop_equivalent": true,
+  "command": "node .agent/skills/runtime-continuity/scripts/index.js pre-departure --project $(basename \"$PWD\") --gate agent",
+  "timeout": 5
+}

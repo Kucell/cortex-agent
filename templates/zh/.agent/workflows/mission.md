@@ -220,6 +220,18 @@ Release authorizes only the exact recorded resource. It does not transfer Task g
    - follow-up fix tasks, if any
 7. Move to `FIX_OR_ADVANCE`.
 
+## 下游独立验证
+
+多 milestone 或多 agent 参与的 mission，跨 agent 传递的结论在采信前必须独立验证，禁止链式信任：
+
+1. **核对上游 command-log 的 exit code**：采信上游产出前，核对上游 command-log 中对应命令的 exit code；只有 exit code 0 + 可见产物的结论才可作事实输入。
+2. **核对 diff 或产物文件**：检查上游实际写入的 diff / 产物文件，确认产出与声称一致，而不是只读总结文字。
+3. **验证后再依赖**：下游 milestone 或 agent 基于上游产出做假设前，先跑最小验证动作（读取产物、运行针对性命令）。
+4. **收口交叉复核**：VALIDATE 阶段对跨 milestone / 跨 agent 传递的结论做交叉复核；发现问题即回退到出错节点修复，而非继续放大（Cascade Failure 阻断）。
+5. **记录验证证据**：独立验证动作与结果写入 milestone 文件或 command-log，与既有证据链一致。
+
+> 参见 `.agent/rules/judgment-risks.md`（Cascade Failure 风险与针对性检查）。本小节不改变本工作流的状态机与 Gate ownership。
+
 ## FIX_OR_ADVANCE
 
 - If blocking assertions failed:

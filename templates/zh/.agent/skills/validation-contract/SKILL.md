@@ -74,6 +74,9 @@ Mission Lite milestone 必须使用本技能；高风险 `/start-task` 或 `/shi
 10. Runtime 断言必须引用 runtime evidence 来源或模板。
 11. 跨机器或跨进程 runtime 断言必须要求在被测动作开始前立即从产生日志的被测端获取日志游标。控制端时间不能作为替代值。
 12. 依赖时间过滤的 runtime 断言必须要求证据包含 `target_id`、`timestamp_source`、`target_timestamp_utc` 和 `log_filter_start_utc`；存在多个日志被测端时，每个被测端必须使用独立游标。
+13. 断言总数 ≥ 4 的 milestone 必须包含至少一条 `drift-check` assertion。
+
+`drift-check` 规则（第 13 条）仅适用于**新建**的 validation contract。既有契约不受追溯约束；如果旧契约其余部分有效但缺少 `drift-check`，可以显式 waiver。记录 waiver 时需包含：原因（reason）、批准者（approver）和 follow-up task（见下方"契约规则"）。
 
 输出紧凑报告：
 
@@ -112,6 +115,7 @@ Mission Lite milestone 必须使用本技能；高风险 `/start-task` 或 `/shi
 | `runtime` | 日志、指标、Trace、浏览器验证或人工运行时证据 |
 | `security` | 认证、授权、密钥、供应链或危险 API 检查 |
 | `manual` | 暂时无法自动化但必须确认的人工检查 |
+| `drift-check` | 长任务漂移检查点：在定义的时间点（如任务过半或 milestone 边界）回读初始 Spec/需求，验证当前产出仍与受众、范围、非目标一致；发现静默偏离时阻断 |
 
 ## 契约规则
 
@@ -146,6 +150,22 @@ Mission Lite milestone 必须使用本技能；高风险 `/start-task` 或 `/shi
 ```
 
 引用的证据必须分别标识每个被测端。`timestamp_source` 必须标识被测端时间源且不得为 `controller`；可以附加 `controller_timestamp_utc` 和 `clock_skew_ms` 作为诊断元数据。
+
+## 漂移检查断言（Drift-Check Assertion）
+
+长任务可能从初始需求静默漂移，为其使用 `drift-check` assertion。检查点会在定义的时间点（任务过半、milestone 边界或 handoff 前）回读初始 Spec/需求（如 `.agent/specs/<spec-id>/spec.md`），验证当前产出仍与受众、范围、非目标一致。发现偏离时阻断，而不是让任务继续放大漂移。
+
+```json
+{
+  "id": "VC-DRIFT-001",
+  "type": "drift-check",
+  "assertion": "任务进度过半时，产出与 .agent/specs/<spec-id>/spec.md 的受众/范围/非目标一致，无静默偏离。",
+  "evidence": ".agent/specs/<spec-id>/spec.md + 当前产出 diff",
+  "blocking": true
+}
+```
+
+断言总数 ≥ 4 的 milestone 必须包含至少一条 `drift-check`（CHECK 规则 13）。该要求仅约束新建契约；旧契约可以使用显式 waiver：原因 + 批准者 + follow-up task。
 
 ## 最小模板
 

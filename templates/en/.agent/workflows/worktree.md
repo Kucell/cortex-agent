@@ -1,157 +1,279 @@
 ---
 name: worktree
-description: Plan, create, inspect, and integrate isolated single-task worktrees with explicit ownership and protected merge approval.
+description: "使用 Git worktree 隔离多个 Agent 的并行开发，并通过 registry、locks、handoff 和 artifacts 做状态协调。"
+type: procedure
+applicable_to:
+  - all
+inputs: []
+outputs: []
+linked_skills: []
+linked_rules: []
+linked_workflows: []
+owner: Kucell
+last_verified: 2026-08-06
+status: stable
 ---
 
-# Worktree Workflow (/worktree)
+<!-- EN translation pending: structural English skeleton; detailed Chinese body below is the source of truth. TODO: translate the PLAN/CREATE/STATUS/HANDOFF/SYNC/COMMIT/MERGE/VALIDATE steps, the merge approval resource binding, the downstream independent verification section, and the runtime-state sections fully into English. -->
 
-Use worktrees to isolate parallel implementation while sharing the project's canonical `.agent` state. This workflow owns single-task branch integration only. It does not own project-level, multi-source Checkpoint integration.
+# Worktree Collaboration Workflow (/worktree)
 
-## Commands
+## Goal
+
+Use Git worktrees to provide each Agent with an isolated workspace while keeping task state, locks, handoffs, and merge order recoverable.
+
+`/worktree` does not replace `/parallel`, `/mission`, `/handoff`, or `/ship`. It adds workspace isolation and state synchronization between those workflows.
+
+## Usage
 
 ```text
-/worktree plan <task-ids...>
-/worktree create <task-id>
+/worktree plan T-001 T-002
+/worktree create T-001 --branch agent/T-001-auth
 /worktree status
-/worktree merge <task-id>
-/worktree cleanup <task-id>
+/worktree handoff T-001 --to ../project-T-001
+/worktree sync
+/worktree commit T-001
+/worktree merge T-001
+/worktree validate T-001
 ```
 
-## Planning and Creation
+## Core Rules
 
-After creating or entering a worktree, call `cortex-agent dashboard ensure --project . --reason worktree`; a shared `.agent` must reuse the owner-bound Supervisor.
+- 先读取 `.agent/rules/worktree-collaboration.md`。
+- 每个 worktree 对应一个任务、一个分支、一个 Agent owner。
+- 写入前必须获取 Progress Lock。
+- handoff 必须记录 worktree path、branch、base commit、HEAD commit 和 git status。
+- worktree 内完成一个可验证任务后必须及时 `/ship` 或 `/commit`。
+- 合并前必须确认 registry、locks、artifacts、handoff 和 git 状态一致。
+- 合并后必须在目标主线 worktree 重新验证功能。
+- 若 Management API 存在，worktree 创建、锁获取、提交、合并、验证都必须写入 Run journal。
+- worktree 创建或进入后调用 `cortex-agent dashboard ensure --project . --reason worktree`；shared `.agent` 必须复用已绑定 owner 的同一 Supervisor。
 
-1. Read the task plan, dependencies, file scopes, locks, repository policy, and active worktrees.
-2. Parallelize only independent tasks with non-overlapping write scopes. Shared files require explicit sequencing or ownership.
-3. Record the branch, worktree path, task ID, agent/session owner, expected files, validation command, and handoff target.
-4. Resolve the path with `.agent/workspaces/scripts/worktree-layout.js resolve`. By default create `<repo-parent>/<repo>-worktrees/<task-id>[-slug]`; do not add another flat `<repo>-<task-id>` directory beside unrelated projects.
-5. Create the container and worktree from the required base commit. Keep `.agent` as one shared source of truth through the repository-supported link strategy; never copy diverging coordination state into each worktree.
-6. Register Queue, Run, Session, lock, and handoff state through their owning APIs. A filesystem directory alone is not coordinator state.
+## PLAN
 
-Example resolution and creation:
+在创建 worktree 前：
 
-```bash
-node .agent/workspaces/scripts/worktree-layout.js resolve --repo "$(pwd)" --task-id T-001
-mkdir -p ../<repo>-worktrees
-git worktree add ../<repo>-worktrees/T-001 -b agent/T-001-<slug>
+1. 读取 `.agent/rules/task-decomposition.md` 和 `.agent/rules/worktree-collaboration.md`。
+2. 读取 `.agent/plans/task-progress.md` 或 mission plan。
+3. 判断哪些任务适合 worktree 并行。
+4. 输出计划：
+
+```text
+Worktree 计划：
+  T-001 → ../project-worktrees/T-001 → branch agent/T-001-auth → implementer
+  T-002 → ../project-worktrees/T-002 → branch agent/T-002-ui → implementer
+
+串行任务：
+  T-000 contract baseline，必须先完成
+
+共享风险：
+  src/types/api.ts，禁止多个 worktree 同时修改
 ```
 
-Before moving a legacy worktree, run the read-only `plan` command, check dirty state and active processes, then use `git worktree move`; never move it with Finder or `mv`.
+## CREATE
 
-### Naming and base for new worktrees (MS-003)
-
-**Resolve the proposal branch first.** The new worktree must branch off the active proposal branch in `.agent/branches/registry.json`, not off `main`:
+创建 worktree：
 
 ```bash
-current=$(git rev-parse --abbrev-ref HEAD)
-proposal_branch=$(node -e "
-  const r = require('./lib/branch-registry.js');
-  const cur = process.env.CUR || '';
-  if (cur) {
-    const e = r.getBranch('.', cur);
-    if (e.ok) { console.log(e.entry.name); process.exit(0); }
-  }
-  const l = r.listBranches('.', { status: 'active' });
-  if (l.ok && l.entries.length) { console.log(l.entries[0].name); process.exit(0); }
-  console.log('main');
-" CUR="$current")
-
-if ! git rev-parse --verify --quiet "$proposal_branch" >/dev/null; then
-  echo "[worktree] proposal branch not found: $proposal_branch" >&2
-  exit 2
-fi
-```
-
-**Derive the worktree branch name.** Format is `wt/<proposal-slug>/<task-id>-<slug>`, and the baseline is the proposal branch (not `main`):
-
-```bash
-proposal_slug=$(echo "$proposal_branch" | sed 's|^[^/]*/||')
-wt_branch="wt/${proposal_slug}/<task-id>-<slug>"
-
-if [[ ${#wt_branch} -gt 60 ]]; then
-  echo "[worktree] wt branch name exceeds 60 chars: $wt_branch" >&2
-  exit 2
-fi
-
 node .agent/workspaces/scripts/worktree-layout.js resolve --repo "$(pwd)" --task-id <task-id>
 mkdir -p ../<repo>-worktrees
-git worktree add ../<repo>-worktrees/<task-id> -b "$wt_branch" "$proposal_branch"
+git worktree add ../<repo>-worktrees/<task-id> -b agent/<task-id>-<slug>
 ```
 
-Naming examples:
+默认目录必须是 `<repo-parent>/<repo>-worktrees/<task-id>[-slug]`，不得继续在项目父目录平铺 `<repo>-<task-id>`。迁移旧 worktree 前先运行只读 `plan` 审计 dirty 状态和活动进程，然后使用 `git worktree move`，不得用 Finder 或 `mv`。
 
-| Proposal branch | task-id | worktree branch |
-| --- | --- | --- |
-| `feat/branch-management` | `T-CLI-001` | `wt/branch-management/T-CLI-001-create` |
-| `fix/dashboard-flicker` | `T-FIX-001` | `wt/dashboard-flicker/T-FIX-001-flk` |
-| `release/1-12-0` | `T-REL-002` | `wt/1-12-0/T-REL-002-prep` |
+然后在新 worktree 中：
 
-**Merge target change.** Worktrees merge into the proposal branch first; the proposal branch is later merged into `main` through `/mission COMPLETE`. The older `agent/<task-id>-<slug>` naming is still allowed for legacy worktrees (backward compatibility), but **new worktrees must use `wt/<slug>/<task-id>-<slug>`**.
+1. 将子 worktree 的 `.agent` 链接到主 worktree 的同一份 `.agent`：
 
-> Naming conventions and registry schema: see `.agent/rules/branch-management.md`.
+```bash
+rm -rf ../<repo>-worktrees/<task-id>/.agent
+ln -s "$(pwd)/.agent" ../<repo>-worktrees/<task-id>/.agent
+```
 
-Checkpoint runtime progress with the Management API, including the exact phase and evidence:
+2. 在子 worktree 中确认 `.agent` 指向共享目录：
+
+```bash
+test -L .agent && readlink .agent
+```
+
+3. 记录 `base_branch`、`base_commit`、`branch`、`worktree_path`、`agent_state_path`。
+4. 在 registry 中 check-in：
+
+```bash
+node .agent/registry/scripts/agent-registry.js check-in \
+  --agent-id <agent-id> \
+  --role <role> \
+  --model <model> \
+  --task-id <task-id> \
+  --owned-files <paths>
+```
+
+5. 获取任务锁：
+
+```bash
+node .agent/locks/scripts/progress-lock.js acquire \
+  --scope task:<task-id> \
+  --agent-id <agent-id> \
+  --ttl-seconds 3600 \
+  --metadata-json '{"worktree_path":"../repo-T-001","branch":"agent/T-001-auth","agent_state_path":"../repo/.agent"}'
+```
+
+6. 记录 worktree 创建和锁获取事件：
 
 ```bash
 cortex-agent runs checkpoint --project . \
-  --run-id R-<id> \
-  --gate worktree \
-  --payload-json '{"phase":"editing","task_id":"T-<id>","worktree_path":"<path>"}'
+  --run-id R-<task-id> \
+  --task-id <task-id> \
+  --agent-id <agent-id> \
+  --role <role> \
+  --kind implement \
+  --status running \
+  --phase acquiring_lock \
+  --type lock_acquired \
+  --worktree-path ../<repo>-<task-id> \
+  --branch agent/<task-id>-<slug> \
+  --activity "Worktree created and task lock acquired" \
+  --message "Task lock acquired for worktree"
 ```
 
-## Status and Handoff
+## STATUS
 
-`/worktree status` is read-only. Report branch/head, clean or dirty state, lock owner, Run phase, Session heartbeat, validation result, handoff readiness, and one recommended `next_action`. Never treat stale Dashboard data as authority over repository state.
+汇总所有 worktree 状态：
 
-Before handoff, the producing agent must record changed paths, validation commands and results, artifact refs, known risks, source commit, and remaining work. The receiving owner verifies the evidence before claiming the next write scope.
+1. `git worktree list --porcelain`
+2. 每个 worktree 的 `git status --short --branch`
+3. registry active agents
+4. held locks
+5. latest Artifact Bus state
+6. open handoffs
 
-## .agent Path Authorization (T-AGR-001)
+必须输出状态机结果，而不是固定建议：
 
-**Scope**: `.agent/` applies only to Cortex-managed projects. Projects that have not been initialized with Cortex Agent have no `.agent/` — do not create or infer one.
+| `worktree_state` | 判定条件 | `next_action` |
+| :--- | :--- | :--- |
+| `idle` | 没有非主 worktree、没有 active lock、没有 active agent | `/worktree plan <tasks>` |
+| `planned` | 已有任务拆分或计划，但尚未创建 worktree | `/worktree create <task-id>` |
+| `worktree_created` | worktree 已创建但无写入和无 lock | 获取 task/file lock 后 `/start-task` |
+| `in_progress` | worktree 有改动、active agent 或 held lock | 达到可验证点后 `/worktree commit <task-id>` |
+| `handoff_required` | 存在待接收 handoff 或状态不一致 | `/handoff resume <handoff>` |
+| `merge_ready` | 源 worktree 干净且已有提交，验证已记录 | `/worktree merge <task-id>` |
+| `merged` | 分支已合并但主线未验证 | `/worktree validate <task-id>` |
+| `validation_failed` | 主线验证失败 | 修复或创建 `/handoff` |
+| `validated` | 主线验证通过 | `/sync-plans`、`/update-refs` |
+| `closed` | 任务已关闭，locks 已释放 | 清理或保留 worktree |
 
-**Managed Project Detection**:
-- The worktree's `.agent/` directory must exist and be a directory
-- Must contain both `rules/` and `workflows/` subdirectories (canonical Cortex markers)
-- Both conditions satisfied → "managed project"; governed launch auto-grants shared `.agent` read access
+输出 JSON：
 
-**PreToolUse Gate**:
-- Business code paths (not touching shared `.agent/`): defer to Claude default
-- Shared `.agent/` paths: deny if no grant; Bash directly touching shared `.agent/` defaults deny (runtime updates go through Cortex public CLI/API)
-- Path must canonicalize to nearest existing parent (anti-symlink / non-existent file escape)
+```json
+{
+  "type": "worktree_coordination_report",
+  "worktree_state": "idle | planned | worktree_created | in_progress | handoff_required | merge_ready | merged | validation_failed | validated | closed",
+  "status": "ready | blocked | merge_ready | validated",
+  "worktrees": [],
+  "locks": [],
+  "handoffs": [],
+  "human_summary": "一句话说明当前进度",
+  "blocked_reasons": [],
+  "next_action": "唯一推荐下一步",
+  "next_actions": ["可选后续动作"]
+}
+```
 
-**Authorization Propagation**:
-- Managed parent → child: child's read/write must be subsets of parent's `grant.delegate` for the corresponding operation
-- Parent without delegation: fail closed
-- Absolute grant paths never leak to public Task events/receipts
+同时输出一段人类可读摘要，说明为什么给出该 next_action。
 
-**Manual --add-dir Restriction**:
-- Governed launch only auto-projects `--add-dir=<canonical .agent>` into the child process
-- Caller-supplied external `--add-dir` values are always rejected
+## HANDOFF
 
-## Single-Task Merge
+跨 worktree 交接时，先运行 `/handoff create`，并确保 Markdown 和 JSON payload 包含：
 
-### Preconditions
+- `source_worktree`
+- `target_worktree`
+- `branch`
+- `base_commit`
+- `head_commit`
+- `git_status`
+- `locks_to_release`
+- `locks_to_acquire`
+- `artifact_refs`
 
-- The source task is implementation-complete and has a clean, reviewable commit.
-- Required tests and diff checks pass, with evidence recorded.
-- No conflicting lock or unconsumed handoff exists.
-- Fetch or rebase, when required, is completed before freezing the merge candidate.
+交接完成后，来源 Agent 应释放不再持有的 lock，目标 Agent 在写入前重新获取 lock。
 
-`/worktree` owns only this single-task merge. Read repository policy and determine an approved integration strategy: `fast-forward`, `squash`, `local-merge`, or `pr-handoff`. Never select a strategy implicitly.
+## SYNC
 
-If the strategy is not already frozen by policy, create a separate merge Decision/Waitpoint for the proposed strategy before freezing the candidate. Bind the source branch/head, target branch/head, strategy, and digest in one exact resource:
+用于同步状态，不合并代码：
+
+1. 扫描 worktree 列表。
+2. 标记 stale registry entries。
+3. 清理过期 locks。
+4. 校验 handoff JSON。
+5. 对比 task-progress / mission state / artifacts。
+6. 输出需要人工处理的分歧。
+
+## COMMIT
+
+用于在 worktree 内及时收口一个可验证任务：
+
+1. 确认当前 worktree 对应的 `task_id`、`branch`、`base_commit`。
+2. 运行任务级验证命令，并把结果写入 Artifact Bus 或 mission milestone。
+3. 执行 `/ship <task-id>`；若只是中间检查点，执行 `/commit`。
+   - 验证命令开始/结束时追加 `command_started` / `command_finished`。
+   - 验证通过追加 `validation_passed`；失败追加 `validation_failed` 并保持 run `status=running` 或 `failed`（按任务是否还能继续决定）。
+4. 提交后记录：
+
+```text
+task_id: T-001
+worktree_path: ../repo-T-001
+branch: agent/T-001-auth
+commit: <HEAD>
+validation: <commands and exit codes>
+```
+
+5. 更新 handoff 或 coordination report，让 coordinator 知道该 worktree 已进入 `merge_ready` 或 `continue`。
+6. 更新 Run journal：
+
+```bash
+cortex-agent runs checkpoint --project . \
+  --run-id R-<task-id> \
+  --type command_finished \
+  --phase running_command \
+  --message "Worktree commit completed"
+```
+
+## MERGE
+
+合并前 gate：
+
+- 源 worktree 工作区干净；如果不干净，先回到 `COMMIT` 或创建 handoff 说明原因。
+- 源分支至少有一个清晰提交，且提交来自 `/ship` 或 `/commit`。
+- 任务 lock 由当前 Agent 持有，或已经释放/转移。
+- `/ship` 已完成或有明确豁免。
+- worktree 内验证命令已记录。
+- 没有未处理 handoff。
+- 已通过只读 diff/status 和必要的项目验证评估冲突风险；如果需要 fetch/rebase，必须在冻结合并候选前完成。
+
+### 资源绑定审批 (Resource-bound approval)
+
+`/worktree` 是单任务分支合并的 owning workflow。先读取仓库规则、分支保护与任务计划，确定已批准的 integration strategy：`fast-forward`、`squash`、`local-merge` 或 `pr-handoff`。不得自行默认为某一种策略。
+
+策略尚未冻结时，先提出一个明确策略并创建独立 Decision/Waitpoint；其 `resource_ref` 必须包含 proposed strategy、source/target branch 与当前 short SHA，ID 使用 `D-worktree-<task-id>-strategy-<source-short-sha>-<target-short-sha>-<resource-digest8>` 和对应 `WP-` ID。该请求使用 `type=merge`、`action=merge`，Waitpoint owner 为 `/worktree`。用户批准并由 `/worktree` 消费后，才把该策略作为本次候选的冻结输入。
+
+完成必要的同步和冲突处理并固定最终 source/target commit 后，计算完整资源摘要，生成精确资源引用：
 
 ```text
 git:<repository>#integrate:<source-branch>@<source-head>-><target-branch>@<target-head>#strategy:<integration-strategy>#digest:<resource-digest>
 ```
 
-IDs include source and target short SHAs plus the first 8-12 digest characters:
+用同一个 `resource_ref` 创建 Decision 和 blocking Waitpoint：
 
 ```bash
 cortex-agent decisions request --project . \
   --decision-id D-worktree-<task-id>-<source-short-sha>-<target-short-sha>-<resource-digest8> \
   --gate worktree \
-  --payload-json '{"type":"merge","requested_by":"/worktree","prompt":"Approve this exact single-task integration?","options":["approve","reject","revise"],"gate":{"action":"merge","resource_ref":"<resource-ref>"}}'
+  --type merge \
+  --requested-by worktree-coordinator \
+  --prompt "Approve this exact worktree merge?" \
+  --action merge \
+  --resource-ref "<resource-ref>"
 
 cortex-agent waitpoints create --project . \
   --waitpoint-id WP-worktree-<task-id>-<source-short-sha>-<target-short-sha>-<resource-digest8> \
@@ -163,9 +285,7 @@ cortex-agent waitpoints create --project . \
   --decision-id D-worktree-<task-id>-<source-short-sha>-<target-short-sha>-<resource-digest8>
 ```
 
-Stop and display `/approve decision <decision-id>`. Dashboard is read-only and cannot approve. On resume, recompute both heads, strategy, and digest. If any value changed, create new records; never reuse stale approval.
-
-Only `/worktree` may consume its matching Waitpoint:
+创建后停止，向用户显示包含本次资源摘要的 `/approve decision <decision-id>`。Dashboard 只能展示该请求，不能批准。用户解析后，由 `/worktree merge` 重新读取 Decision，确认状态为 `approved`、选项为 `approve`、用户解析证据完整，且 action/resource 与当前 source/target commit 和 integration strategy 完全一致，再消费 Waitpoint：
 
 ```bash
 cortex-agent waitpoints release --project . \
@@ -173,31 +293,90 @@ cortex-agent waitpoints release --project . \
   --gate owner \
   --owner-workflow /worktree \
   --decision-id D-worktree-<task-id>-<source-short-sha>-<target-short-sha>-<resource-digest8> \
-  --released-by /worktree \
+  --released-by worktree-coordinator \
   --release-note "Approved Decision matches commits, strategy and resource digest"
 ```
 
-After release, do not rebase or change source/target heads. Execute only the approved strategy:
+若任一 commit 或 strategy 已变化，旧 Decision 不得复用；使用新的 short SHA/resource digest 创建新 Decision/Waitpoint。阶段级、多来源集成只报告“项目级 Checkpoint 集成路由尚未批准”，不得调用尚不存在的工作流。
 
-| Strategy | Required behavior |
-| --- | --- |
-| `fast-forward` | Advance only when a fast-forward remains possible. |
-| `squash` | Create one candidate commit using `/commit`; preserve source evidence. |
-| `local-merge` | Use repository-configured merge arguments; do not hard-code a merge style. |
-| `pr-handoff` | Prepare and report the PR handoff; pushing/opening a PR needs its own external-side-effect authorization. |
+准备合并候选时可以运行只读检查：
 
-Run integration validation on the target branch and record before/after commits, source commit, strategy, commands, and results. Validation failure blocks completion and preserves evidence; never auto-reset or auto-revert.
+```bash
+git diff --check
+```
 
-## External and Destructive Operations
+`git status`、`git diff`、`git diff --check` 和本地日志读取是普通只读检查，不需要 Decision。`git fetch` 会访问远端但不重写工作区，应在执行前明确展示远端和目的，并创建 `external_side_effect` Decision/Waitpoint；rebase 会重写 source commits，必须单独走 `destructive` Decision/Waitpoint。二者都必须在 merge Decision 创建前完成。Waitpoint 释放后不得再 rebase 或改变 source/target HEAD。
 
-- Read-only `status`, `diff`, `diff --check`, and local log inspection need no Decision.
-- `fetch` requires a dedicated `action=external_side_effect` Decision/Waitpoint.
-- Rebase rewrites source commits and requires a dedicated `action=destructive` Decision/Waitpoint.
-- Push and PR creation require dedicated external-side-effect authorization.
+执行时只采用资源中已批准的仓库策略：
 
-## Routing Boundary
+| Strategy | 执行边界 |
+| :--- | :--- |
+| `fast-forward` | 使用仓库批准的 fast-forward 命令，并验证 target 正好推进到 approved source。 |
+| `squash` | 使用仓库批准的 squash 流程；生成提交时转入 `/commit`，不得隐式提交。 |
+| `local-merge` | 使用仓库配置的本地 merge 参数，不硬编码 `--no-ff` 或其他策略。 |
+| `pr-handoff` | 不在本地合并；创建 PR/handoff 所需证据，push 和创建 PR 分别遵循外部副作用审批。 |
 
-- `/plan` selects task splitting and worktree candidates.
-- `/ship` owns task delivery evidence.
-- `/mission` owns milestone validation.
-- At a phase-level or multi-source project integration boundary, report that the project-level Checkpoint integration route is pending approval. Do not name, invoke, or emulate an unapproved workflow.
+不得自动 reset、revert、push 或强推。合并前后分别追加 `merge_started` / `merge_completed` Run event；如果冲突或失败，追加 `failed` 或 `blocked`。
+
+## VALIDATE
+
+合并后必须在目标主线 worktree 重新验证：
+
+1. 运行项目关键测试、构建、lint 或用户指定验证命令。
+2. 对 UI/设备/跨机器项目，按领域验证 skill 或 validation-contract 收集运行证据。
+3. 运行 `git diff --check`。
+4. 若验证失败：
+   - 记录失败命令和证据
+   - 优先在目标主线 worktree 修复
+   - 若要回源 worktree 继续，创建 `/handoff`
+5. 若验证通过：
+   - 标记任务可关闭或已合并
+   - 更新 Artifact Bus / mission milestone
+   - 将 Run journal 更新为 `status=completed`、`phase=completed`，并追加 `completed` event。
+
+合并并验证通过后：
+
+1. 更新 `/sync-plans`。
+2. 运行 `/update-refs`。
+3. 必要时运行 `/publish-docs`。
+4. check-out registry。
+5. 释放 locks。
+6. 清理或保留 worktree，按用户确认执行。
+
+## Downstream Independent Verification
+
+跨 worktree / 跨 agent 传递的产出在采信前必须独立验证，禁止链式信任（Cascade Failure 阻断）：
+
+1. **核对上游 command-log 的 exit code**：采信上游 worktree 的产出前，核对上游 command-log 中对应命令的 exit code；只有 exit code 0 + 可见产物的结论才可作事实输入。
+2. **核对 diff 或产物文件**：检查上游实际写入的 diff / 产物文件（`git diff`、`git show`、产物内容抽样），确认产出真实存在且与声称一致。
+3. **验证后再依赖**：下游 worktree 基于上游产出做假设前，先跑最小验证动作（读取产物、运行针对性命令）。
+4. **收口交叉复核**：合并后的主线验证阶段，对跨 worktree 传递的结论做交叉复核；发现问题即回退到出错节点修复，而非在错误基础上继续合并或放大。
+5. **记录验证证据**：独立验证动作与结果写入 handoff、milestone 或 Run journal，与既有证据链一致。
+
+> 参见 `.agent/rules/judgment-risks.md`（Cascade Failure 风险与针对性检查）。本小节不改变本工作流的状态机与 Gate ownership。
+
+## 与其他工作流的协作 (Collaboration with Other Workflows)
+
+- `/plan`：决定任务拆分和 worktree 候选。
+- `/parallel`：可选择 worktree 作为并行执行载体。
+- `/mission`：每个 milestone 可映射到一个或多个 worktree。
+- `/handoff`：跨 worktree 转移上下文的唯一正式入口。
+- `/ship`：每个 worktree 的任务收口入口。
+- 项目级 Checkpoint、多来源排序集成：相关提案仍待批准；当前只报告待路由状态，不引用或执行不存在的工作流。
+
+## Queue / Session 运行态写入 (Queue / Session Runtime Writes)
+
+- `/worktree plan` 使用 `queues upsert --gate worktree` 建立批次；创建 worktree 并取得锁后，使用 `queues item --gate worktree` 写入 `running`、worktree path、agent 和 run。
+- `/worktree commit` 仅在验证证据已记录后把 item 更新为 `done`；失败时写 `blocked`，不得删除 item 隐藏失败。
+- 长时间持有 worktree 的 owner 可以 `sessions open` 并定期 heartbeat；handoff 或结束时通过 owner/handoff gate pause 或 close。
+- 每次 Queue/Session 写入必须与对应 Run checkpoint 和 lock 状态一致。
+
+## Communication Runtime Integration
+
+`/worktree merge` 必须在合并策略与精确资源所有权的 Checkpoint 待批准时通过 decisions / waitpoints gate：
+
+- 支持的 integration strategy：`fast-forward`、`squash`、`local-merge`、`pr-handoff`，每次合并必须记录 `#strategy:<integration-strategy>#digest:<resource-digest>` 作为资源指纹。
+- 合并前 `decisions request --gate mission --type approval --gate-action merge --resource-ref merge:<task-id>@<resource-digest>` 创建 open Decision，并立即 `waitpoints create --owner-workflow /worktree --reason "Merge approval required" --action merge --resource-ref merge:<task-id>@<resource-digest>`。
+- `waitpoints release --gate owner` 只能消费 matching approved Decision。
+- 单任务（single-task）合并：必须显式 lock + handoff，避免多任务并发合并导致资源所有权漂移；其余策略仅作为 fallback。
+- Checkpoint 状态挂在 Decision 的 `relations.task_ids` 上，pending approval 时标记 `Checkpoint`，用户批准后才进入合并步骤。

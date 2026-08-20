@@ -1,117 +1,199 @@
 ---
 name: mission
-description: Coordinate durable multi-milestone work with resumable state, independent validation, and explicit human Decisions.
+description: "Orchestrate long-running, multi-milestone work with scoped plans, validation contracts, structured handoffs, command logs, and independent validation."
+type: procedure
+applicable_to:
+  - all
+inputs: []
+outputs: []
+linked_skills: []
+linked_rules: []
+linked_workflows: []
+owner: Kucell
+last_verified: 2026-08-06
+status: stable
 ---
 
-# Mission Workflow (/mission)
+<!-- EN translation pending: structural English skeleton; the workflow body below is already English; the Chinese sections (Downstream Independent Verification, Mission Worktree Collaboration Notes, Communication Runtime Integration, Recording Points) retain the Chinese source text as the authoritative body. TODO: translate those Chinese sections fully into English. -->
 
-Use Mission for work spanning multiple phases, sessions, or independent validation gates.
+# Mission Lite Workflow (/mission)
 
-## Commands
+Use `/mission` for work that is too large for a single `/start-task` → `/ship` loop: multi-feature changes, multi-day work, or tasks that need milestone validation before advancing.
+
+Do not use Mission Lite for small fixes, single-file edits, or routine documentation updates. Use `/start-task`, `/ship`, `/bug-fix`, or `/handoff` instead.
+
+## Usage
 
 ```text
-/mission create --from-proposal <path>
-/mission status <mission-id>
-/mission run <mission-id>
-/mission validate <mission-id> <milestone-id>
-/mission resume <mission-id>
+/mission create "migrate auth module"
+/mission status M-001
+/mission resume M-001
+/mission validate M-001 MS-001
 ```
-
-Mission state lives under `.agent/missions/<mission-id>/` and includes `mission-plan.md`, `command-log.md`, milestone files, and a validation contract. Use the provided resource templates when creating these files.
-
-## Operating Rules
-
-- At mission create/resume/run boundaries, call `cortex-agent dashboard ensure --project . --reason mission`; it is a no-op unless the project explicitly enabled automation.
-- Every milestone has explicit acceptance criteria, validation evidence, dependencies, and an owner.
-- Read-only research, validation, and documentation may run in parallel. Mutating work requires non-overlapping ownership, locks, Queue/Run/Session state, and a handoff plan.
-- A user choice is durable only as a resource-bound Decision. `--gate approve`, Dashboard input, prior approval, or silence is not authorization.
-- Destructive operations, credentials, and external side effects always require a Decision plus blocking Waitpoint. Mission never automatically resets, reverts, pushes, deploys, publishes, or accesses credentials.
 
 ## State Machine
 
 ```text
-CREATE -> PLAN -> DISPATCH -> EXECUTE -> VALIDATE -> COMPLETE
-                     |          |           |
-                     +-> RESUME +-> HUMAN_DECISION
+SCOPE -> PLAN -> CONTRACT -> EXECUTE_FEATURE -> HANDOFF -> RESUME -> VALIDATE_MILESTONE -> FIX_OR_ADVANCE -> COMPLETE
 ```
 
-On every resume, first run `node .agent/skills/runtime-continuity/scripts/index.js resume-bundle --project "$(basename "$(pwd)")"`, then read the mission plan, active milestone, command log, Task/Run/Queue/Session state, locks, handoffs, Decisions, and Waitpoints. If a blocking Waitpoint exists, enter `HUMAN_DECISION` and stop the protected action.
+## Core Rules
 
-## CREATE and PLAN
+- Code changes are serial by default.
+- Parallel work is allowed for read-only research, validation, or documentation only.
+- Every milestone must have a validation contract before implementation begins.
+- Worker output is not proof. Validators must rely on the contract, diff, command output, runtime evidence, and necessary source files.
+- Failed validation creates a follow-up fix task or returns to planning; do not let a Worker self-repair indefinitely.
+- Record key commands with exit codes in `command-log.md`.
+- At mission create/resume/run boundaries, call `cortex-agent dashboard ensure --project . --reason mission`; it is a no-op unless the project explicitly enabled automation.
+- Handoff uses the T-C06 dual-artifact protocol: Markdown for humans, JSON for `AGENT_RESUME`, and Artifact Bus `kind: handoff` when available.
+- **Commits must follow the `/commit` workflow**: every commit made during a mission (per milestone or at completion) must go through Steps 1–5 of the commit workflow defined in `.agent/workflows/commit.md` — load context, analyze staged changes, generate a Conventional Commits message, get user confirmation, then execute.
+- A user choice is durable only when recorded as a resource-bound Decision. `--gate approve`, Dashboard input, prior approval, or silence is not authorization.
+- Destructive operations, credential use, and external side effects always require a Decision plus a blocking Waitpoint. Mission never automatically resets, reverts, pushes, deploys, publishes, or accesses credentials.
 
-1. Read the approved proposal and verify scope.
-2. Generate a stable Mission ID and create the mission directory from templates.
-3. Decompose the proposal into ordered milestones with acceptance criteria and explicit dependencies.
-4. Define the validation contract before implementation, including commands, independent validator expectations, required artifacts, and failure behavior.
-5. Mark safe parallel opportunities and exclusive write scopes.
+## Files
 
-### 5.5 Link the binding branch (MS-003)
+Create mission state under:
 
-Read `git rev-parse --abbrev-ref HEAD` and look it up in `.agent/branches/registry.json`:
-
-- If the current branch is a named branch (`feat/<slug>` / `fix/<slug>` / etc.) and the registry has a matching entry:
-  - Prepend a `Branch: <branch-name>` line to `mission-plan.md` for bidirectional mission ↔ branch linking
-  - Write the new Mission ID into the registry entry's `mission_id` field via `updateBranch` (the CLI's `branch sync` does not mutate `mission_id`; a small helper or direct registry write is needed)
-  - One-liner:
-    ```bash
-    current_branch=$(git rev-parse --abbrev-ref HEAD)
-    if cortex-agent branch show "$current_branch" --json >/dev/null 2>&1; then
-      sed -i.bak "1a\\
-    Branch: ${current_branch}
-    " .agent/missions/M-xxx/mission-plan.md
-    fi
-    ```
-- If the current branch is not in the registry (ad-hoc mission / not in a proposal context) → skip silently, no error
-- Idempotent: if `mission-plan.md` already has a `Branch:` line, keep the existing value (do not overwrite)
-
-### Mark `merge_ready` after a successful VALIDATE (MS-003)
-
-After `/mission validate M-xxx MS-xxx` passes, if the mission is bound to a named branch (Step 5.5 wrote `mission_id`), call `branch ready` to mark the branch as merge-eligible:
-
-```bash
-cortex-agent branch ready <current-branch> \
-  --validation-artifact .agent/missions/M-xxx/milestones/MS-xxx.md
+```text
+.agent/missions/M-xxx/
+├── mission-plan.md
+├── validation-contract.json
+├── command-log.md
+├── milestones/
+│   └── MS-001.md
+└── handoffs/
+    ├── YYYYMMDD-HHMMSS-{focus}.md
+    └── H-YYYYMMDD-HHMMSS-{focus}.json
 ```
 
-- Expected exit 0; the registry entry's status flips from `active` to `merge_ready`
-- Gate 1 (working tree clean) must pass; if the mission ends with unstaged changes, commit first
-- Gate 2 (`commits_ahead >= 0`) must pass; if behind, run `branch sync` once
-- Gate 3 (validation artifact exists) must pass; the milestone file must be on disk
-- On `/mission COMPLETE`, prompt the user to run `cortex-agent branch merge <current-branch> --to main`
+Use these templates when creating files:
 
-## DISPATCH and EXECUTE
+```text
+.agent/resources/templates/mission/mission-plan.md
+.agent/resources/templates/mission/command-log.md
+.agent/resources/templates/mission/milestone.md
+```
 
-Create Task, Run, Queue, Session, lock, Runtime Continuity checkpoint, and handoff records through their owning APIs. Keep one coordinator owner for mission transitions. Checkpoint meaningful phase changes; never infer progress from chat alone.
+## CREATE
 
-## VALIDATE
+1. Read project instructions and context:
+   - `AGENTS.md`
+   - `.agent/rules/core-principles.md`
+   - `.agent/rules/architecture-design.md`
+   - `.agent/rules/task-decomposition.md`
+   - `.agent/rules/code-standards.md`
+   - `.agent/plans/task-progress.md`
+   - `.agent/plans/context-manifest.json` when it exists
+2. Confirm the work belongs in Mission Lite:
+   - multiple features, multiple milestones, or multi-day scope
+   - non-trivial validation requirements
+   - cross-agent or cross-session continuation is likely
+3. Allocate the next mission ID (`M-001`, `M-002`, ...).
+4. Create `.agent/missions/M-xxx/` and child folders.
+5. Create `mission-plan.md` from `.agent/resources/templates/mission/mission-plan.md`, then fill:
+   - goal
+   - non-goals
+   - scope boundaries
+   - features
+   - milestones (use `.agent/resources/templates/task-breakdown.md` to reason about task size, dependencies, and parallel opportunities before finalizing)
+   - sequencing
+   - risks
+   - exit criteria
+6. Use the `validation-contract` skill in CREATE mode to write `validation-contract.json`.
+7. Create `command-log.md` from `.agent/resources/templates/mission/command-log.md`.
+8. Create the first milestone file from `.agent/resources/templates/mission/milestone.md`.
+9. Present the mission plan and contract summary for confirmation before implementation.
 
-Run the milestone's declared commands and independent semantic review. Record exact command, exit code, evidence refs, validator, and conclusion. A passing command without semantic acceptance evidence is insufficient. Failed validation keeps the milestone blocked and records the repair path.
+## STATUS
+
+1. Read `.agent/missions/M-xxx/mission-plan.md`.
+2. Read `validation-contract.json`.
+3. Read `command-log.md`.
+4. Read the latest milestone file under `milestones/`.
+5. Report:
+   - current state
+   - current milestone
+   - completed work
+   - failed or waived assertions
+   - commands run and latest exit codes
+   - next recommended action
+
+## RESUME
+
+1. Read project instructions and required rules.
+2. Run Runtime Continuity resume bundle:
+   ```bash
+   PROJECT_NAME=$(basename "$(pwd)")
+   node .agent/skills/runtime-continuity/scripts/index.js resume-bundle --project "$PROJECT_NAME"
+   ```
+3. Read the mission state files.
+4. If a JSON handoff exists, run `node .agent/handoffs/scripts/handoff-protocol.js resume-prompt --payload-file <handoff.json>`.
+5. Check `git status --short` before changing files.
+6. Compare the mission state, handoff payload, Runtime Continuity archive, Artifact Bus state, and current repository state.
+7. If stale, report the mismatch and propose a recovery step.
+8. Continue from the current state:
+   - if no contract exists, return to CONTRACT
+   - if a handoff is pending, go to RESUME and follow `next_action`
+   - if a blocking Waitpoint exists, go to HUMAN_DECISION and do not continue the protected action
+   - if worker output exists but no validation exists, go to VALIDATE_MILESTONE
+   - if validation failed, go to FIX_OR_ADVANCE
+   - if all milestones passed, go to COMPLETE
+
+## HANDOFF
+
+1. Record a Runtime Continuity checkpoint or archive for the current mission state:
+   ```bash
+   PROJECT_NAME=$(basename "$(pwd)")
+   node .agent/skills/runtime-continuity/scripts/index.js checkpoint \
+     --project "$PROJECT_NAME" \
+     --gate agent \
+     --phase handoff \
+     --message "Mission handoff for M-xxx"
+   ```
+2. Use `/handoff create` semantics to write Markdown and JSON handoff files.
+3. Validate the JSON payload:
+   ```bash
+   node .agent/handoffs/scripts/handoff-protocol.js validate --payload-file .agent/missions/M-xxx/handoffs/H-xxx.json
+   ```
+4. Publish the JSON payload to Artifact Bus when available:
+   ```bash
+   node .agent/handoffs/scripts/handoff-protocol.js publish --payload-file .agent/missions/M-xxx/handoffs/H-xxx.json --markdown-path .agent/missions/M-xxx/handoffs/xxx.md --agent-id coordinator
+   ```
+5. Record the handoff paths and Runtime Continuity event/archive paths in `command-log.md` or the current milestone.
+6. Release Progress Locks held by the handing-off agent, or let TTL expire if the agent is unavailable.
 
 ## HUMAN_DECISION
 
-1. Define the exact protected resource and select one supported action: `architecture`, `merge`, `release`, `destructive`, `credential`, or `external_side_effect`.
-2. Architecture approval uses `type=architecture`, `action=architecture`, and the exact proposal/artifact revision digest. It never authorizes destructive or external effects.
-3. Compute a stable resource digest and include its first 8-12 characters in both IDs.
-4. Create an open Decision and blocking Waitpoint owned by `/mission`:
+When architecture, risk, destructive behavior, credentials, merge/release, or an external side effect requires a human choice:
+
+1. Define the exact protected resource before asking. Use one supported action: `architecture`, `merge`, `release`, `destructive`, `credential`, or `external_side_effect`.
+2. Architecture approval uses `type=architecture`, `action=architecture`, and binds `resource_ref` to the exact proposal/artifact revision digest. It never grants destructive or external-side-effect permission; those consequences require separate Decisions.
+3. Compute a stable `resource-digest` from the complete resource reference. Include its first 8-12 characters in both the Decision and Waitpoint IDs so changed resources cannot collide with terminal records.
+4. Create an open Decision and a blocking Waitpoint owned by `/mission`:
 
    ```bash
    cortex-agent decisions request --project . \
      --decision-id D-<mission-id>-<choice>-<resource-digest8> \
      --gate mission \
-     --payload-json '{"type":"<type>","requested_by":"/mission","prompt":"<explicit choice>","options":["approve","reject","revise"],"gate":{"action":"<architecture|merge|release|destructive|credential|external_side_effect>","resource_ref":"<exact-resource-ref>"}}'
+     --type <architecture|risk|approval|merge|release> \
+     --requested-by mission-coordinator \
+     --prompt "<specific user choice>" \
+     --action <architecture|merge|release|destructive|credential|external_side_effect> \
+     --resource-ref "<exact-resource-ref>"
 
    cortex-agent waitpoints create --project . \
      --waitpoint-id WP-<mission-id>-<choice>-<resource-digest8> \
      --gate mission \
      --owner-workflow /mission \
-     --reason "<why human choice is required>" \
+     --reason "<why execution must stop>" \
      --action <same-action> \
      --resource-ref "<same-resource-ref>" \
      --decision-id D-<mission-id>-<choice>-<resource-digest8>
    ```
 
-5. Stop and direct the user to `/approve decision D-<mission-id>-<choice>-<resource-digest8>`.
-6. On resume, recompute the resource and reject stale, mismatched, rejected, or revision-requested Decisions.
+5. Stop the protected action and direct the user to `/approve decision D-<mission-id>-<choice>-<resource-digest8>`.
+6. On resume, recompute the resource and digest, read the Decision, and reject stale, mismatched, rejected, or revision-requested choices.
 7. Only `/mission` may release its Waitpoint:
 
    ```bash
@@ -120,32 +202,124 @@ Run the milestone's declared commands and independent semantic review. Record ex
      --gate owner \
      --owner-workflow /mission \
      --decision-id D-<mission-id>-<choice>-<resource-digest8> \
-     --released-by /mission
+     --released-by mission-coordinator
    ```
 
-Release authorizes only the exact recorded resource and does not transfer Task gate ownership.
+Release authorizes only the exact recorded resource. It does not transfer Task gate ownership. If a milestone reaches a multi-source project integration boundary, report that the project-level Checkpoint integration route is pending approval; do not invoke an unapproved or nonexistent workflow.
 
-## COMPLETE and Future Routing
+## VALIDATE
 
-Complete only when every milestone and validation gate passes, required artifacts exist, and the mission record contains final evidence. At a multi-source project integration boundary, report that the project-level Checkpoint integration route is pending approval. Do not name or invoke an unapproved or nonexistent workflow.
+1. Read `validation-contract.json`.
+2. Run `validation-contract` in CHECK mode.
+3. Read the relevant diff and command log.
+4. Run required commands from blocking assertions when safe.
+5. Use runtime evidence templates from `docs/reliability/` for runtime assertions.
+6. Write or update `milestones/MS-xxx.md` from `.agent/resources/templates/mission/milestone.md` with:
+   - assertions checked
+   - evidence
+   - command exit codes
+   - pass/fail status
+   - follow-up fix tasks, if any
+7. Move to `FIX_OR_ADVANCE`.
 
-Dashboard and read-only queries never perform Mission transitions, resolve Decisions, or release Waitpoints.
+## Downstream Independent Verification
 
-## Recording Points
+多 milestone 或多 agent 参与的 mission，跨 agent 传递的结论在采信前必须独立验证，禁止链式信任：
 
-`/mission` owns activity at every state transition. Record an event after milestone state changes and a delivery receipt after validation contract execution:
+1. **核对上游 command-log 的 exit code**：采信上游产出前，核对上游 command-log 中对应命令的 exit code；只有 exit code 0 + 可见产物的结论才可作事实输入。
+2. **核对 diff 或产物文件**：检查上游实际写入的 diff / 产物文件，确认产出与声称一致，而不是只读总结文字。
+3. **验证后再依赖**：下游 milestone 或 agent 基于上游产出做假设前，先跑最小验证动作（读取产物、运行针对性命令）。
+4. **收口交叉复核**：VALIDATE 阶段对跨 milestone / 跨 agent 传递的结论做交叉复核；发现问题即回退到出错节点修复，而非继续放大（Cascade Failure 阻断）。
+5. **记录验证证据**：独立验证动作与结果写入 milestone 文件或 command-log，与既有证据链一致。
+
+> 参见 `.agent/rules/judgment-risks.md`（Cascade Failure 风险与针对性检查）。本小节不改变本工作流的状态机与 Gate ownership。
+
+## FIX_OR_ADVANCE
+
+- If blocking assertions failed:
+  1. Create a follow-up fix task in `.agent/plans/task-progress.md` or the mission milestone file.
+  2. Return to `EXECUTE_FEATURE`.
+- If validation passed and more milestones remain:
+  1. **Commit milestone changes**: run `/commit` (follow `.agent/workflows/commit.md` Steps 1–5) to commit all staged changes before advancing.
+  2. Advance to the next milestone.
+  3. Ensure its validation contract exists.
+- If all milestones passed:
+  1. Move to `COMPLETE`.
+
+## COMPLETE
+
+1. Confirm all milestones passed or have explicit waivers.
+2. **Final commit**: if any changes remain unstaged or uncommitted, run `/commit` (follow `.agent/workflows/commit.md` Steps 1–5) before archiving.
+3. Archive or preserve mission state:
+   - keep `.agent/missions/M-xxx/` while active
+   - after completion, move stable summaries to `docs/exec-plans/completed/` when useful
+   - do not delete command logs or milestone evidence
+4. Run knowledge checks where applicable:
+   - `node .agent/skills/knowledge-lint/scripts/index.js`
+   - `node .agent/skills/doc-gardening/scripts/index.js`
+5. Update `.agent/plans/task-progress.md`.
+6. Summarize:
+   - mission outcome
+   - commits or changed files
+   - validation status
+   - remaining risks
+   - recommended next task
+
+## Quality Bar
+
+- Mission state must be recoverable without prior conversation context.
+- Validation contracts must exist before milestone implementation.
+- Command logs must include exit codes or a clear reason a command was not run.
+- Handoffs must reference existing artifacts by path instead of copying bulky content.
+- The workflow must remain template-driven and platform-independent.
+
+## Runtime State Writes
+
+- `CREATE` opens coordinator session `S-<mission-id>` and checkpoints Run `R-<mission-id>` with `phase=planning`.
+- `STATUS` and `RESUME` heartbeat the same owner session with the current milestone and activity.
+- Milestone execution may use `queues upsert/item --gate mission`; validation records `done` or `blocked` only after contract evidence exists.
+- `HANDOFF` pauses the source session through `--gate handoff`; `COMPLETE` closes it through `--gate mission` and completes the Run.
+- A read-only query or Dashboard render never performs these transitions.
+
+---
+
+## Mission Worktree 协同补充 (Mission Worktree Collaboration Notes)
+
+当 mission 的多个 milestone 可并行推进时，读取 `.agent/rules/worktree-collaboration.md`，并在 mission plan 中记录：
+
+- milestone 对应的 worktree path / branch / owner agent
+- 每个 worktree 的 base commit 和目标合并分支
+- handoff、Artifact Bus、locks 的状态引用
+- 每个 worktree 的及时提交点
+- 合并后的主线验证命令和证据要求
+
+mission 不能只因为子 worktree 验证通过就完成；必须在合并目标 worktree 重新验证后才能推进到 COMPLETE。
+
+## Communication Runtime Integration
+
+`/mission` 通过 HUMAN_DECISION 暴露人类决策但不接管 Task gate ownership：
+
+- 当子任务需要人类裁决时，`decisions request --gate mission` 创建 HUMAN_DECISION，绑定 `resource-digest` 与 `relations.mission_ids`。
+- 立即 `waitpoints create --owner-workflow /mission --reason "Mission decision required" --action <merge|release|risk> --resource-ref <resource>` 阻塞后续推进。
+- 用户通过 `decisions resolve --gate user` 批准后，`/mission` 调用 `waitpoints release --gate owner` 解锁下游 run。
+- `/mission` 不转移 Task gate ownership —— Task Pipeline 仍由 `/start-task`、`/ship` 等 owning workflow 持有；mission 只暴露与消费决策。
+- Checkpoint 状态挂在 Decision / Waitpoint 的 relations 上，pending approval 时标记 `Checkpoint`，其余 run 仍可推进到不依赖该决策的位置。
+
+## 录制节点 (Recording Points)
+
+`/mission` 在每次状态转换时拥有活动。里程碑状态变更后记录 event，验证契约执行后记录 delivery 收据：
 
 ```bash
-# After a milestone transition (PLAN -> CONTRACT, EXECUTE -> VALIDATE, etc.)
+# 里程碑转换后（PLAN -> CONTRACT、EXECUTE -> VALIDATE 等）
 node .agent/skills/activity-recording/scripts/index.js record-event \
   --kind coordination \
   --source /mission \
-  --summary "Mission <MISSION_ID> milestone <MS-XXX> -> <next-state>" \
+  --summary "Mission <MISSION_ID> 里程碑 <MS-XXX> -> <next-state>" \
   --actor-type workflow \
   --actor-id /mission \
   --dedupe-key "mission:<MISSION_ID>:<MS-XXX>:transition"
 
-# After validation contract execution
+# 验证契约执行后
 node .agent/skills/activity-recording/scripts/index.js record-receipt \
   --kind delivery \
   --source /mission \
@@ -155,4 +329,4 @@ node .agent/skills/activity-recording/scripts/index.js record-receipt \
   --dedupe-key "mission:<MISSION_ID>:<MS-XXX>:validate:receipt"
 ```
 
-If the helper is missing or recording is unavailable, continue with the legacy workflow behavior and skip the call. Do not invent receipts.
+如果 helper 缺失或录制不可用，保持原工作流行为并跳过调用，不得编造收据。

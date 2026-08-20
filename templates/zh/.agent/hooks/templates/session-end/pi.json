@@ -1,0 +1,8 @@
+{
+  "_comment": "cortex-agent runtime-continuity SessionEnd hook template (Pi, earendil-works/pi-mono). Pi 为终端 AI 编码代理，官方无 SessionEnd hooks 机制——等价事件为 agent 退出 / 会话结束，标 --event-stop-equivalent。建议在会话包装器 / 退出脚本中调用下方 pre_departure_command，或挂到等价 stop 事件（见 .agent/references/subagent-invocation/pi-non-interactive-modes.md）。graceful degrade：pre-departure 任何异常均 exit 0，失败降级 archive，不阻塞退出。安装：把 skills / prompts / packages 字段并入 .pi/settings.json（合并时删除 _comment / event_stop_equivalent / pre_departure_command 键）。",
+  "event_stop_equivalent": true,
+  "pre_departure_command": "node .agent/skills/runtime-continuity/scripts/index.js pre-departure --project $(basename \"$PWD\") --gate agent",
+  "skills": [".agent/skills", ".agents/skills"],
+  "prompts": [".agent/workflows"],
+  "packages": []
+}
