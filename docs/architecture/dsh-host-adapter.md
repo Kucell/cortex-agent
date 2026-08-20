@@ -89,7 +89,7 @@ flowchart LR
 ## 7. 后续任务
 
 - [ ] DSH 真实 hook 能力证据出现后，单列 P-007 follow-up（tool gate + context pilot），把 `tool.before.*` / `context.render.observe` 从 `unsupported` 提升。
-- [ ] `docs/architecture.md` 既有对 ARI 提案的本地治理目录路径引用（§457 行）属于历史遗留，随下次架构文档整理一并迁移为 docs 相对链接。
+- [x] `docs/architecture.md` 既有对 ARI 提案的本地治理目录路径引用已迁移为 docs 相对链接（commit `95052e8`）。
 - [ ] 完整 CLI e2e（`cortex-agent agent dispatch-execute dsh:<id>` 真实 agent 条目）可选补充。
 
 ---
