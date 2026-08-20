@@ -1,3 +1,16 @@
+---
+title: Proposal Directory Structure
+description: "The .agent/plans/proposals/ tree must support standalone proposals, project-level proposal groups, and related-project architecture programs at a glance: which project or topic a proposal belongs to, how child proposals relate, and which entry /approve, /plan, /mission, and /publish-docs should read."
+type: rule
+scope: L1
+applicable_to:
+  - all
+linked_workflows: []
+linked_skills: []
+owner: Kucell
+last_verified: 2026-08-06
+status: stable
+---
 # Proposal Directory Structure
 
 ## Goal
@@ -63,6 +76,29 @@ A project-level `index.md` should include:
 ## Current Decisions
 ## Next Steps
 ```
+
+## Cross-Repository / Cross-Developer Sharing
+
+Project proposal groups (`projects/<project-slug>/`) are self-contained directories and can be
+shared as a whole with another developer or repository: once placed at the standard path
+`.agent/plans/proposals/projects/<slug>/` on the receiving side, `/approve`, `/plan`,
+`/mission`, and `/publish-docs` recognize them directly.
+
+Notes (especially for dual-repo joint proposals):
+
+- `.agent/` is usually gitignored, so **git clone/push cannot transport it**; use tar/zip
+  packaging or direct directory copy.
+- A dual-repo joint proposal must share BOTH volumes (the backend repo and the mobile repo
+  `projects/<slug>/`).
+- Absolute paths in `cross_project_peers`, `relations.md`, `index.md`, and topology
+  `host_root` must be rewritten to local paths on the new machine.
+- Shared decisions mirrored via symlinks (e.g. `decisions/D-xxx`) are flattened by packaging and
+  must be re-linked after handover.
+
+For one-command packaging / import use `/proposal-share` (`.agent/workflows/proposal-share.md`):
+it collects proposals + missions + validation-contract + topology + peer volumes, tokenizes absolute
+paths and rebuilds symlinks; runtime state (locks, branches, unmerged commits,
+Decisions/Waitpoints/Runs) travels via the dual-format `/handoff` artifacts.
 
 ## Forbidden
 

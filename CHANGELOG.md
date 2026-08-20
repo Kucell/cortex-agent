@@ -9,6 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **proposal-share 工作流（提案包共享三件套）** — 把「标准目录结构 + 文件可移植」变成一键操作：导出 / 导入可移植提案包（proposals + missions + topology + 双仓 peer 卷），用于跨开发者、跨仓库共享提案目录。
+  - **引擎脚本**: `.agent/scripts/proposal-share.js`（export / import / verify 三子命令；绝对路径 `@ROOT:<repo>@` token 化、符号链接解引用与重建、MANIFEST v1.0、结构校验、导入合并不删文件）
+  - **工作流文档**: `.agent/workflows/proposal-share.md`（中文真源）+ `templates/en/.agent/workflows/proposal-share.md`（英文）
+  - **模板分发**: `templates/zh|en/_shared/.agent/scripts/proposal-share.js`（四处 sha256 一致）
+  - **CLI 入口**: `cortex-agent proposal-share <export|import|verify>`（`lib/commands/proposal-share.js` + `bin/cli.js` case + `lib/cli/contract.js` contract）
+  - **source-command 适配**: `.agents/skills/source-command-proposal-share/SKILL.md`（命令发现；真源回归到 `.agent/workflows/proposal-share.md`）
+  - **规则更新**: `.agent/rules/proposal-structure.md` 新增「跨仓库 / 跨开发者共享」章节（zh/en 模板同步）
+  - **测试**: `tests/proposal-share/export-import.test.js`（6 子测试：双仓 fixture export → verify → import round-trip、token 还原、符号链接重建、peer 卷映射合并、dry-run 零写入）
+  - **支持选项**: `--slug` / `--root` / `--out` / `--peers` / `--no-peers` / `--missions` / `--all-missions` / `--handoff` / `--with-topology` / `--package` / `--root-map` / `--dry-run` / `--force` / `--skip-missions` / `--skip-topology` / `--keep-tmp`
+  - **使用示例**:
+    - `cortex-agent proposal-share export --slug mobile-device-variable-cards --root .`（打包主卷 + M-mdvc-* missions + topology + samkoonyun-mobile peer 卷）
+    - `cortex-agent proposal-share import --package xxx.tar.gz --root . --root-map 'samkoonyun-mobile=/new/path'`（接收侧恢复 + 符号链接重建）
+    - `cortex-agent proposal-share verify --package xxx.tar.gz`（分发前校验）
+
+### Validation
+
+- 真实场景验证：csm-view-1 `mobile-device-variable-cards` 双仓联合提案 export → verify → import 全链路通过（2 volumes / 6 missions / 1 symlink / 0 warnings）
+- fixture round-trip 通过：token 还原、符号链接重建、peer 卷映射合并（已有文件不被删除）
+
 - **local-publish-validate 工作流 (三件套)** — 本地发包 + 本地安装 + 可选目标项目升级的本地验证循环,用于 RC dogfooding / 跨项目模板更新验证。**永不 publish 到 npm**,只走 `volta install <pkg>@file:<tarball>` 协议。
   - **脚本**:`bin/local-publish-validate.cjs` (13811 bytes,在 npm tarball 中,跨机器/容器可移植)
   - **CLI 模块**:`lib/commands/local-publish-validate.js` (包装脚本)

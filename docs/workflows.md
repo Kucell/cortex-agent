@@ -100,6 +100,7 @@ PLAN → EXECUTE → LINT → REVIEW → COMMIT → DONE → CONTEXT_CLEANUP →
 | `/done` | 轻量版完成标记：更新路线图 `[ ]→[x]`，刷新进度百分比 | `/done T-001 T-002` |
 | `/update-refs` | 检测变更模块，增量更新 `.agent/references/`，保持知识库与代码同步 | `/update-refs` |
 | `/publish-docs` | 将 `.agent/references/` 和已完成架构提案中的知识脱敏发布到 `docs/` | `/publish-docs auth` |
+| `/proposal-share` | 导出 / 导入可移植提案包（proposals + missions + topology + 双仓 peer 卷），跨开发者、跨仓库共享提案目录；绝对路径 token 化 + 符号链接重建，配合 `/handoff` 交接 | `/proposal-share export mobile-device-variable-cards` |
 
 > 对有特殊运行时、设备、桌面端或跨机器验证要求的项目，建议用 `.agent/resources/templates/domain-validation-skill.md` 创建 `.agent/skills/validate-<domain>/SKILL.md`，并在 `validation-contract` 中引用该领域验证证据。
 

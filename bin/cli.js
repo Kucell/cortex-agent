@@ -41,6 +41,7 @@ const {
   topology,
   automation,
   localPublishValidate,
+  proposalShare,
   skillBrowse,
 } = require("../lib/commands");
 
@@ -502,6 +503,7 @@ async function initModeGeneral() {
     case "topology":    topology(l1Ctx); break;
     case "automation":  automation(l1Ctx); break;
     case "local-publish-validate": localPublishValidate(ctx); break;
+    case "proposal-share": proposalShare(ctx); break;
     case "skill":        skillBrowse(ctx); break;
     case "runs":        runs(ctx); break;
     case "queues":      queues(ctx); break;
