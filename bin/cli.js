@@ -82,6 +82,13 @@ const { agentM003Command } = require("../lib/agents/m003-cli");
 // to the case dispatch below and registered in lib/cli-contract.js.
 const { designCommand } = require("../lib/design/cli");
 
+// P-003 MS-001: `/deck` workflow CLI surface.
+// `cortex-agent deck <task-id> [--format <html|pptx|md|all>] [--template <id>] [--lang <zh|en>]`
+// produces slide deck artifacts at .agent/artifacts/<task-id>/deck/ via
+// lib/templates/{pptx,html-deck,md-deck}. Strictly additive: no changes to
+// lib/commands.js; the new case routes to lib/commands/deck.js.
+const { deckCommand } = require("../lib/commands/deck");
+
 // M-016 MS-002: Branch Management CLI surface.
 // `branch <create|list|show|sync|ready|merge|cleanup>` is owned by
 // lib/commands/branch.js. Strictly additive: no changes to lib/commands.js;
@@ -574,6 +581,7 @@ async function initModeGeneral() {
     }
     case "hook":        hook(ctx); break;
     case "design":      await designCommand(ctx); break;
+    case "deck":        await deckCommand(ctx); break;
     case "branch":      branchCommand(ctx); break;
     case "pr":          prCommand(ctx); break;
     case "event-bus":   eventBusCommand(ctx); break;

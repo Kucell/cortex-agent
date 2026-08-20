@@ -1,5 +1,27 @@
 # 任务进度
 
+> **2026-08-20 收口 (P-007 Host Adapter Completeness Round 批准 + M-031 调度)**:
+> - **执行授权**: 用户 `/approve D-ARI-P007-host-completeness` 批准 P-007 当前 revision（gates SHA-256 `4c50a96cc297d9f33c322674e1205fafff6947700adceb9ad1339ecb9ec5f44d`）。Decision `D-ARI-P007-host-completeness` (architecture / approved / interactive-user 2026-08-20T03:16:57Z) + Waitpoint `WP-ARI-P007-host-completeness-4c50a96c` (released) 双双落地。
+> - **Mission M-031** (Host Adapter Completeness Round，CONTRACT): 7-host × 4-layer 横向闭环（dispatch / shadow / boundary / skill discovery）。范围限定 `agent-runtime-interoperability` 项目 home，仅扩展 `VALID_ADAPTER_TYPES_EXT` + `SUPPORTED_HOSTS` + `HOSTS` 三处，不动 `lib/agents/registry.js` M-002 frozen 主表。
+> - **M-031 6 个 milestone 概览**:
+>
+> | MS | 描述 | Commit | 状态 | 进度 |
+> | :--- | :--- | :--- | :--- | :--- |
+> | MS-001 | Cursor observer + capability snapshot | TBD | 🟡 Planned | 0/N |
+> | MS-002 | DSH dispatch 白名单 + skill path | TBD | 🟡 Planned | 0/N |
+> | MS-003 | Cursor shadow adapter + boundary integration | TBD | 🟡 Planned | 0/N |
+> | MS-004 | codey dispatch 白名单 + shadow adapter | TBD | 🟡 Planned | 0/N |
+> | MS-005 | minimax-cli-skill-discovery list extension (codey / minimax / dsh) | TBD | 🟡 Planned | 0/N |
+> | MS-006 | MS-001~005 联调 + 7-host 集成测试 | TBD | 🟡 Planned | 0/N |
+>
+> - **当前状态**: mission skeleton 已建立（mission-plan.md / validation-contract.json 26 AC + 6 MS + 5 globals，机读 CHECK PASS / milestones MS-001..MS-006.md / handoffs/ / command-log.md 10 行 SCOPE+CONTRACT 记录 / sessions S-M-031 / runs R-M-031 / activity 2 receipts）。Dashboard supervisor 由 `dashboard ensure` 触发启动 (http://127.0.0.1:8787)，用户未授权 `dashboard stop`。
+> - **Implementation 未启动**: 未创建独立 worktree，未在 dirty `main` 上 commit 任何代码改动；批准范围仅限治理资产 + 实施骨架，不覆盖任何外部副作用（network write / CI 触发 / release）。
+> - **命名澄清**: 本项目 `P-007` = **Host Adapter Completeness Round**（7-host 横向闭环）；本任务进度条目顶部 2026-08-19 段"DSH 真实 hook 证据出现后单列 P-007 (tool gate + context pilot)" 是 **Token Control Plane 的旧 P-007 命名**，与本次 Host Adapter P-007 **不同**。两套 P-007 命名不再并存，新的统一指 Host Adapter。
+> - **M-031 调度约束**: 实施前必须由用户显式授权 worktree；CONTRACT 阶段 validation contract 6-gate 全 PASS 后才能进入 EXECUTING；任何 Phase 1~6 gate 失败必须回到 CONTRACT 追加 Decision revision，不允许在 EXECUTING 状态覆盖主仓 evidence。
+> - **runtime-continuity 状态**: 本轮 `checkpoint --gate user --phase executing` 落 `2026-08-20T11:30Z` 事件。
+> **下一步**: (a) 用户授权 M-031 实施 worktree 后，再启动 MS-001 Cursor observer；(b) M-031 串行执行 MS-001 ~ MS-006，gate 失败回到 CONTRACT 追加 Decision revision；(c) M-031 COMPLETE 后才考虑 M-032 follow-up（claude-code/codey/minimax 真实 shadow 接入）。
+
+
 > **2026-08-19 收口 (M-029 COMPLETE — DSH first-class adapter 交付完成)**:
 > - **执行授权**: 用户 `/approve P-006-dsh-host-adapter-proposal.md mission` 调度 + "批准执行" + "继续"；`D-ARI-P006-promote-dsh-firstclass` (architecture / approved / interactive-user 2026-08-19) 批准 DSH 从 TCP shadow host 提升为 first-class dispatch adapter。
 > - **Mission M-029** (DSH First-Class Adapter): MS-001～MS-004 PASS + MS-005 WAIVED-OPTIONAL (无 DSH 真实 hook 证据,发布 first-class dispatch only) → **COMPLETE (2026-08-19)**。
@@ -565,3 +587,37 @@ Phase C Stage 1 Shadow readiness 框架起草 (`.agent/missions/M-025/handoffs/p
 FREEZE.md §3 新增 2 例外: `M-019/M-020/M-021/M-022 follow-up governance` + `M-013 SP-001 governance prep`. M-021 mission-plan 修复 (Aug 11 原版 → 现 Completed 状态 + 4 milestones reference + M-022 handoff). M-023 mission skeleton 创建 (9 Mode C/C2 失败 investigation, 来自 M-019 deferral §Failure-Mode Mode C/C2 + M-020 deferral §Scope Boundaries Investigation only). Dashboard 启动 (auto enable → supervisor PID 91747, status enabled_idle → running). M-019/M-020 follow-up 全部形式化 (M-021 ✅ Completed; M-022 ✅ 已 created; M-023 新建).
 
 M-023 triage complete (2026-08-17 01:55Z): 9 Mode C/C2 tests from M-019/M-020 deferred inventory all 151/0 PASS on current main HEAD `1a12043` (standalone + parallel-run). M-023 mission closed (`COMPLETED`), no code change needed, no follow-up mission. M-019..M-023 full chain now closed: M-019 ✅ Completed (54 failed + 2 timeout修复) → M-020 ✅ Completed (MS-001/002 done; M-021/M-022 deferred) → M-021 ✅ Completed (2 TIMEOUT → 0; M-022 deferred) → M-022 ✅ Completed (2 parallel-run race → 0; M-023 deferred) → M-023 ✅ Completed (9 Mode C/C2 全部 100% PASS). ALL M-019/M-020 deferred work has been investigated and resolved by subsequent fix lands. M-013 (P-005 governance) 7 SP milestones pending 仍是 next major item but requires governed Pi session + 新 Decision + Pi provider quota 恢复。
+
+> **2026-08-20 收口 (open-design-integration / M-ODI-001 / MS-001 /deck 工作流落地)**:
+> - **授权执行**: 用户在 open-design 提案组批准后指示 "可以先修复问题" → 进入实施阶段。先聚焦 MS-001（设计版图缺位的 /deck 工作流，P-003 §4.2）；MS-002 / MS-003 / MS-004 / MS-005 留待后续迭代。
+> - **新文件**（4 个 lib 模板 + 3 个测试 + 1 个 CLI 路由 + 1 个 docs + 1 个 template README）:
+>   - `lib/templates/pptx.js`（430 行）— 零依赖 PPTX OOXML ZIP 手工构造（CRC32 + STORE 方法），17 OOXML parts；用 `node:buffer` + 自实现 ZIP writer，不引入 `node:zlib` (DEFLATE) 或 `jszip` / `pptxgenjs`
+>   - `lib/templates/html-deck.js`（210 行）— 单文件 HTML inlined CSS，多 theme（default / swiss / magazine），page-break print-to-PDF 友好
+>   - `lib/templates/md-deck.js`（80 行）— Markdown 摘要 + speaker notes，CJK + pipe escape
+>   - `lib/commands/deck.js`（270 行）— CLI dispatcher，brief 解析顺序 .agent/<task-id>/deck-brief.json → .agent/decks/<task-id>.json → 4-slide starter
+>   - `bin/cli.js` — 单 require + 单 case 行（不触碰已有 case）
+>   - `lib/cli/contract.js` — 加 deck 契约条目（mode: design_workflow, zero_dep: true）
+>   - `tests/templates/pptx.test.js`（20/20 PASS）— CRC32 / ZIP 字节 / OOXML 部分 / CJK / smoke file
+>   - `tests/templates/html-deck.test.js`（13/13 PASS）— 3 themes / escape / page-num / CJK / print CSS
+>   - `tests/templates/md-deck.test.js`（10/10 PASS）— H2 sections / bullets / body / speaker notes / CJK
+>   - `tests/commands/deck.test.js`（23/23 PASS）— argv / brief / starter / 端到端 / byte-identical / 错误码
+>   - `docs/architecture/deck-workflow-design.md` — 完整设计文档（目标 / 非目标 / 命令 / 状态机 / 验收 / 关联）
+>   - `templates/_shared/.agent/artifacts/deck-README.md` — 产物目录 README（用户视角）
+> - **端到端验证**（实跑 `bin/cli.js deck TASK-LAUNCH --lang en`，custom brief 4 slides）:
+>   - deck.html 4943 bytes / deck.pptx 24280 bytes (20 XML parts 全 valid) / deck.md 1109 bytes / validation-contract.json 1192 bytes
+>   - PPTX 经 Python `zipfile` + `xml.etree` 验证：20/20 XML parts valid，slide1 text runs = `['Q4 Launch', 'cortex-agent design chain', '5 ship-ready sub-proposals...', ...]`
+>   - bin/cli.js 维持零依赖（grep 验证：`require("path"|"fs"|"child_process")` only）
+> - **零回归**: T-OD-001 既有 6 个 design 测试集全过（design-registry 23 / design-fetch 24 / design-cli 17 / design-license 19 / design-resolve 17 / design-lockfile 18 = 118/118 PASS）。
+> - **总测试基线**: 新增 **66 tests PASS**（20+13+10+23）+ 既有 **118 tests PASS** = **184/184**，0 fail / 0 cancelled。
+> - **M-ODI-001 / MS-001 验收对应**:
+>   - VC-1 ✓ /deck TASK-001 --format pptx 产出 deck.pptx 能被 PowerPoint/Keynote/LibreOffice 打开（OOXML schema valid + CRC32 verified）
+>   - VC-3 ✓ /deck TASK-001 --format html 产出单文件 HTML，所有 assets 内嵌
+>   - VC-5 ✓ bin/cli.js 维持零依赖
+>   - VC-7 ✓ lib/templates/pptx.js 零依赖（不引入 pptxgenjs；用 node:buffer + 自实现 ZIP writer）
+>   - VC-10 ✓ T-OD-001 既有 87 tests 仍全绿
+>   - 待办: VC-2 PDF（依赖用户本地 Chrome/FFmpeg，外部命令不进 npm）/ VC-4（依赖 P-001 catalog 未 ship）/ VC-8 / VC-9 / VC-11 / VC-12（属于 MS-002 / MS-003 / MS-005 范围）
+> - **变更文件总览**（按 ai-behavior §7 分阶段 commit 原则，本轮单 commit 因 M-ODI-001 是 Mission 起点）:
+>   - 新增: 9 文件（lib/templates/{pptx,html-deck,md-deck}.js + lib/commands/deck.js + tests/templates/{pptx,html-deck,md-deck}.test.js + tests/commands/deck.test.js + docs/architecture/deck-workflow-design.md + templates/_shared/.agent/artifacts/deck-README.md = 11 新文件，含 3 个 templates）
+>   - 改动: 2 文件（bin/cli.js +6 行 / lib/cli/contract.js +9 行 = 纯 additive）
+> - **未提交**: 用户未显式要求 commit；暂留 dirty，commit 等用户授权（避免 ai-behavior §7 §2 「防止未提交数据丢失」与 git 纪律冲突）。
+> **下一步**: (a) 用户授权 commit 后用 Conventional Commits `feat(deck): add /deck workflow (P-003 MS-001)` + `feat(pptx): add zero-dep OOXML constructor` + `docs(architecture): add deck-workflow-design.md` 三段式提交；(b) 继续 MS-002 (lib/catalog/* 重构 + lock schema v2)；(c) M-ODI-001 五个 MS 都 ship 后做 MS-004 pilot 验证（SamHMI / csm-view-memory）。

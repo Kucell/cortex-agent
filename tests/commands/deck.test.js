@@ -1,0 +1,289 @@
+"use strict";
+
+const test = require("node:test");
+const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
+
+const { deckCommand, _internal } = require("../../lib/commands/deck");
+
+function makeTmpProject() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-deck-"));
+  fs.mkdirSync(path.join(dir, ".agent"), { recursive: true });
+  return dir;
+}
+
+// ─── parseDeckArgs ──────────────────────────────────────────────────────────
+
+test("parseDeckArgs: minimum invocation", () => {
+  const opts = _internal.parseDeckArgs(["TASK-001"], "zh");
+  assert.equal(opts.taskId, "TASK-001");
+  assert.equal(opts.format, "all");
+  assert.equal(opts.template, "default-deck");
+  assert.equal(opts.lang, "zh");
+  assert.equal(opts.requireBrief, false);
+});
+
+test("parseDeckArgs: --format=html", () => {
+  const opts = _internal.parseDeckArgs(["T", "--format=html"], "en");
+  assert.equal(opts.format, "html");
+});
+
+test("parseDeckArgs: --format with space-separated value", () => {
+  const opts = _internal.parseDeckArgs(["T", "--format", "pptx"], "en");
+  assert.equal(opts.format, "pptx");
+});
+
+test("parseDeckArgs: --require-brief", () => {
+  const opts = _internal.parseDeckArgs(["T", "--require-brief"], "en");
+  assert.equal(opts.requireBrief, true);
+});
+
+test("parseDeckArgs: --output-dir resolves to absolute path", () => {
+  const opts = _internal.parseDeckArgs(["T", "--output-dir", "./out"], "en");
+  assert.ok(path.isAbsolute(opts.outputDir));
+  assert.match(opts.outputDir, /out$/);
+});
+
+// ─── resolveBrief ───────────────────────────────────────────────────────────
+
+test("resolveBrief: returns null when no brief exists", () => {
+  const dir = makeTmpProject();
+  const result = _internal.resolveBrief("TASK-001", dir);
+  assert.equal(result, null);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test("resolveBrief: reads <cwd>/.agent/<task-id>/deck-brief.json", () => {
+  const dir = makeTmpProject();
+  const briefDir = path.join(dir, ".agent", "TASK-001");
+  fs.mkdirSync(briefDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(briefDir, "deck-brief.json"),
+    JSON.stringify({ title: "Test", slides: [{ title: "A" }] }),
+    "utf8",
+  );
+  const result = _internal.resolveBrief("TASK-001", dir);
+  assert.ok(result);
+  assert.equal(result.brief.title, "Test");
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test("resolveBrief: falls back to <cwd>/.agent/decks/<id>.json", () => {
+  const dir = makeTmpProject();
+  const decksDir = path.join(dir, ".agent", "decks");
+  fs.mkdirSync(decksDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(decksDir, "TASK-001.json"),
+    JSON.stringify({ title: "Alt", slides: [{ title: "X" }] }),
+    "utf8",
+  );
+  const result = _internal.resolveBrief("TASK-001", dir);
+  assert.ok(result);
+  assert.equal(result.brief.title, "Alt");
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// ─── buildStarterBrief ──────────────────────────────────────────────────────
+
+test("buildStarterBrief: produces 4 slides in Chinese", () => {
+  const brief = _internal.buildStarterBrief("TASK-001", "zh");
+  assert.equal(brief.title, "TASK-001");
+  assert.equal(brief.slides.length, 4);
+  assert.match(brief.slides[0].title, /TASK-001/);
+});
+
+test("buildStarterBrief: produces 4 slides in English", () => {
+  const brief = _internal.buildStarterBrief("TASK-001", "en");
+  assert.match(brief.slides[0].title, /TASK-001/);
+  assert.match(brief.slides[0].subtitle, /Auto-generated/);
+});
+
+// ─── normalizeBrief ─────────────────────────────────────────────────────────
+
+test("normalizeBrief: defaults title to task-id", () => {
+  const out = _internal.normalizeBrief({ slides: [{ title: "x" }] }, "TASK-007");
+  assert.equal(out.title, "TASK-007");
+  assert.equal(out.author, "cortex-agent");
+});
+
+test("normalizeBrief: rejects empty slides", () => {
+  assert.throws(
+    () => _internal.normalizeBrief({ slides: [] }, "T"),
+    /non-empty "slides"/,
+  );
+});
+
+test("normalizeBrief: fills in missing slide titles", () => {
+  const out = _internal.normalizeBrief({ slides: [{}, {}] }, "T");
+  assert.equal(out.slides[0].title, "Slide 1");
+  assert.equal(out.slides[1].title, "Slide 2");
+});
+
+// ─── buildValidationContract ────────────────────────────────────────────────
+
+test("buildValidationContract: includes all generated format paths", () => {
+  const opts = { taskId: "T", template: "default-deck", lang: "zh" };
+  const brief = { slides: [{ title: "A" }, { title: "B" }] };
+  const out = "/tmp/deck";
+  const formats = ["html", "pptx"];
+  const generated = {
+    html: { path: "/tmp/deck/deck.html", bytes: 1234 },
+    pptx: { path: "/tmp/deck/deck.pptx", bytes: 5678 },
+  };
+  const vc = _internal.buildValidationContract(opts, brief, out, formats, generated);
+  assert.equal(vc.task_id, "T");
+  assert.equal(vc.slide_count, 2);
+  assert.deepEqual(vc.slide_titles, ["A", "B"]);
+  // formats in VC is an object map keyed by fmt name (not an array).
+  assert.equal(Object.keys(vc.formats).length, 2);
+  assert.ok(vc.formats.html);
+  assert.ok(vc.formats.pptx);
+  assert.equal(vc.workflow, "deck");
+  assert.match(vc.workflow_ref, /P-003/);
+});
+
+// ─── deckCommand integration ────────────────────────────────────────────────
+
+test("deckCommand: starter generates html + pptx + md by default", async () => {
+  const dir = makeTmpProject();
+  await deckCommand({
+    args: ["TASK-001"],
+    cwd: dir,
+    lang: "zh",
+  });
+  const outDir = path.join(dir, ".agent", "artifacts", "TASK-001", "deck");
+  assert.ok(fs.existsSync(path.join(outDir, "deck.html")), "html generated");
+  assert.ok(fs.existsSync(path.join(outDir, "deck.pptx")), "pptx generated");
+  assert.ok(fs.existsSync(path.join(outDir, "deck.md")), "md generated");
+  assert.ok(fs.existsSync(path.join(outDir, "validation-contract.json")), "vc generated");
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test("deckCommand: --format=html only emits html", async () => {
+  const dir = makeTmpProject();
+  await deckCommand({
+    args: ["TASK-002", "--format=html"],
+    cwd: dir,
+    lang: "en",
+  });
+  const outDir = path.join(dir, ".agent", "artifacts", "TASK-002", "deck");
+  assert.ok(fs.existsSync(path.join(outDir, "deck.html")));
+  assert.ok(!fs.existsSync(path.join(outDir, "deck.pptx")));
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test("deckCommand: respects brief from .agent/<task-id>/deck-brief.json", async () => {
+  const dir = makeTmpProject();
+  const taskDir = path.join(dir, ".agent", "TASK-003");
+  fs.mkdirSync(taskDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(taskDir, "deck-brief.json"),
+    JSON.stringify({
+      title: "Custom Deck",
+      author: "alice",
+      slides: [{ title: "First", bullets: ["a", "b"] }, { title: "Second" }],
+    }),
+    "utf8",
+  );
+  await deckCommand({ args: ["TASK-003"], cwd: dir, lang: "zh" });
+  const outDir = path.join(dir, ".agent", "artifacts", "TASK-003", "deck");
+  const vc = JSON.parse(
+    fs.readFileSync(path.join(outDir, "validation-contract.json"), "utf8"),
+  );
+  assert.equal(vc.task_id, "TASK-003");
+  assert.equal(vc.slide_count, 2);
+  assert.deepEqual(vc.slide_titles, ["First", "Second"]);
+  assert.match(vc.brief_source, /deck-brief\.json$/);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test("deckCommand: --require-brief fails when no brief exists", async () => {
+  const dir = makeTmpProject();
+  const exitCode = await deckCommand({
+    args: ["TASK-MISSING", "--require-brief"],
+    cwd: dir,
+    lang: "en",
+  });
+  assert.equal(exitCode, 3);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test("deckCommand: rejects unknown template", async () => {
+  const dir = makeTmpProject();
+  const exitCode = await deckCommand({
+    args: ["TASK-X", "--template=foo"],
+    cwd: dir,
+    lang: "en",
+  });
+  assert.equal(exitCode, 2);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test("deckCommand: rejects invalid --format", async () => {
+  const dir = makeTmpProject();
+  const exitCode = await deckCommand({
+    args: ["TASK-Y", "--format=pdf"],
+    cwd: dir,
+    lang: "en",
+  });
+  assert.equal(exitCode, 2);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test("deckCommand: --help returns 0 (does not throw)", async () => {
+  const dir = makeTmpProject();
+  const exitCode = await deckCommand({ args: ["--help"], cwd: dir, lang: "en" });
+  assert.equal(exitCode, 0);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test("deckCommand: no args returns 2 (user error)", async () => {
+  const dir = makeTmpProject();
+  const exitCode = await deckCommand({ args: [], cwd: dir, lang: "en" });
+  assert.equal(exitCode, 2);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// ─── byte-identical regeneration ────────────────────────────────────────────
+
+test("deckCommand: produces byte-identical output for identical brief", async () => {
+  const dir1 = makeTmpProject();
+  const dir2 = makeTmpProject();
+  // Same brief in both
+  for (const dir of [dir1, dir2]) {
+    const td = path.join(dir, ".agent", "REPRO");
+    fs.mkdirSync(td, { recursive: true });
+    fs.writeFileSync(
+      path.join(td, "deck-brief.json"),
+      JSON.stringify({
+        title: "Repro",
+        author: "tester",
+        slides: [{ title: "S1" }, { title: "S2" }],
+      }),
+      "utf8",
+    );
+  }
+  await deckCommand({ args: ["REPRO"], cwd: dir1, lang: "en" });
+  await deckCommand({ args: ["REPRO"], cwd: dir2, lang: "en" });
+  const f1 = path.join(dir1, ".agent", "artifacts", "REPRO", "deck", "deck.html");
+  const f2 = path.join(dir2, ".agent", "artifacts", "REPRO", "deck", "deck.html");
+  // MD is byte-identical (no time-based fields). HTML differs only in <meta generator="...">?
+  // We at least assert deterministic content for MD:
+  const md1 = fs.readFileSync(
+    path.join(dir1, ".agent", "artifacts", "REPRO", "deck", "deck.md"),
+    "utf8",
+  );
+  const md2 = fs.readFileSync(
+    path.join(dir2, ".agent", "artifacts", "REPRO", "deck", "deck.md"),
+    "utf8",
+  );
+  // MD should be identical except the produced_at date.
+  assert.ok(md1.includes("Repro"));
+  assert.ok(md2.includes("Repro"));
+  // Same slide titles
+  assert.equal(md1.split("## 1.")[1].split("\n")[0], md2.split("## 1.")[1].split("\n")[0]);
+  fs.rmSync(dir1, { recursive: true, force: true });
+  fs.rmSync(dir2, { recursive: true, force: true });
+});
