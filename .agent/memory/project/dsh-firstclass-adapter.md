@@ -3,7 +3,7 @@ name: dsh-firstclass-adapter
 description: DSH (DeepSeek Harness) 已从 TCP shadow host 提升为 first-class dispatch adapter（M-029/P-006，2026-08-19 done）。可复用事实：注册路径、能力声明、安全边界、后续 P-007。
 type: project
 created: 2026-08-19
-tags: [dsh, deepseek-harness, adapter, dispatch, M-029, P-006, first-class]
+tags: [dsh, deepseek-harness, adapter, dispatch, m029, p006, first-class]
 ---
 
 # DSH First-Class Adapter（M-029 / P-006）
