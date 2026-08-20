@@ -31,6 +31,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - `cortex-agent proposal-share export --slug mobile-device-variable-cards --root .`（打包主卷 + M-mdvc-* missions + topology + samkoonyun-mobile peer 卷）
     - `cortex-agent proposal-share import --package xxx.tar.gz --root . --root-map 'samkoonyun-mobile=/new/path'`（接收侧恢复 + 符号链接重建）
     - `cortex-agent proposal-share verify --package xxx.tar.gz`（分发前校验）
+- **Token Control Plane (M-025) 基础设施随本版本发布** — TCP shadow 测量与 token 账本代码进入 rc.4：
+  - `lib/host-adapter/shadow-usage/`（Pi + Codex + DSH 三 governed Host 测量适配器 + passive-collector + `shadow-usage.js`）
+  - management-api 脚本：`token-attempt-ledger.js` / `token-attempt-receipt.js` / `query-token-attempts.js` / `normalize-token-usage.js`（templates zh/en/_shared）
+  - context-budget skill 全套预算脚本（budget-ledger / select / rule-tier / prefix-builder 等）
+  - **状态说明**: M-025 Phase B 7-day observation window 进行中（预计 8-21~24 满窗），GA gate 未过；rc.3 草稿 release notes 中的 TCP 增量实际随 rc.4 发布；仓库内 `scripts/{dsh,opencodex}-usage-sync.js` 为回填运维工具（`scripts/` 不进 npm 包）
 
 ### Validation
 
