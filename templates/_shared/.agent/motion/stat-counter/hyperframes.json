@@ -1,0 +1,13 @@
+{
+  "schemaVersion": "od-composition/v1",
+  "engine": "hyperframes@>=1.x",
+  "motionId": "stat-counter",
+  "kind": "stat-counter",
+  "durationSec": 7,
+  "entry": "index.html",
+  "editPolicy": {
+    "editable": ["index.html"],
+    "locked": ["hyperframes.json", "meta.json", "DESIGN.md", "brief.md"],
+    "note": "只编辑 index.html 一处(P-005 §4.5 编辑最小面);其余文件由系统生成,锁定。"
+  }
+}

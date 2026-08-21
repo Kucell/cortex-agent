@@ -1,0 +1,100 @@
+<!doctype html>
+<!--
+  stat-counter starter — count-up stat animation (P-005 MS-005)
+  ★ 唯一编辑对象:本文件。改 data-duration / 调色板 / 数字 / GSAP tween。
+  Layout Before Animation:先写静态 CSS(hero frame),再描述 journey。
+-->
+<html lang="en" data-duration="7">
+<head>
+<meta charset="utf-8">
+<title>stat-counter · count-up</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; background: #0b0b0f; }
+  /* .scene-content 硬规则:全尺寸 + flex 容器,禁止 absolute 定位内容 */
+  .scene-content {
+    width: 100%;
+    height: 100%;
+    padding: 80px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 40px;
+    box-sizing: border-box;
+    overflow: hidden;
+  }
+  .overline {
+    font-family: Inter, system-ui, sans-serif;
+    font-size: 18px;
+    font-weight: 600;
+    letter-spacing: 0.28em;
+    text-transform: uppercase;
+    color: #7da4ff;
+  }
+  .stats {
+    display: flex;
+    gap: 64px;
+  }
+  .stat {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .number {
+    font-family: Inter, system-ui, sans-serif;
+    font-size: 132px;
+    font-weight: 800;
+    letter-spacing: -0.04em;
+    color: #f5f5f7;
+    font-variant-numeric: tabular-nums;
+  }
+  .number[data-suffix]::after { content: attr(data-suffix); color: #7da4ff; }
+  .label {
+    font-family: Inter, system-ui, sans-serif;
+    font-size: 24px;
+    font-weight: 400;
+    color: #9a9aa4;
+  }
+</style>
+</head>
+<body>
+  <div class="scene-content">
+    <div class="overline">Motion · stat counter</div>
+    <div class="stats">
+      <div class="stat">
+        <div class="number" data-target="4200" data-suffix="+">0</div>
+        <div class="label">compositions shipped</div>
+      </div>
+      <div class="stat">
+        <div class="number" data-target="24" data-suffix="fps">0</div>
+        <div class="label">deterministic frames</div>
+      </div>
+      <div class="stat">
+        <div class="number" data-target="8" data-suffix="">0</div>
+        <div class="label">edit presets</div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+  <script>
+    window.__timelines = window.__timelines || {};
+    window.__timelines["main"] = gsap.timeline({ paused: true });
+    // count-up:从 0 数到 data-target(stat-counter 模式,style-tokens 默认 patterns 之一)
+    function countUp(el, tl, at) {
+      const target = Number(el.dataset.target) || 0;
+      const obj = { v: 0 };
+      tl.to(obj, {
+        v: target,
+        duration: 1.6,
+        ease: "power2.out",
+        onUpdate: () => { el.textContent = Math.round(obj.v).toLocaleString("en-US"); },
+      }, at);
+    }
+    window.__timelines["main"]
+      .from(".overline", { y: 24, opacity: 0, duration: 0.5, ease: "power2.out" }, 0.0)
+      .from(".stat", { y: 40, opacity: 0, duration: 0.6, ease: "power2.out", stagger: 0.12 }, 0.25);
+    document.querySelectorAll(".number").forEach((el, i) => countUp(el, window.__timelines["main"], 0.6 + i * 0.15));
+  </script>
+</body>
+</html>

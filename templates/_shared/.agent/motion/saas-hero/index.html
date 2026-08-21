@@ -1,0 +1,94 @@
+<!doctype html>
+<!--
+  saas-hero starter — product launch hero (P-005 MS-005)
+  ★ 唯一编辑对象:本文件。改 data-duration / 调色板 / 产品名 / GSAP tween。
+  Layout Before Animation:先写静态 CSS(hero frame),再描述 journey。
+-->
+<html lang="en" data-duration="8">
+<head>
+<meta charset="utf-8">
+<title>saas-hero · product launch</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; background: #f7f7f5; }
+  /* .scene-content 硬规则:全尺寸 + flex 容器,禁止 absolute 定位内容 */
+  .scene-content {
+    width: 100%;
+    height: 100%;
+    padding: 96px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 32px;
+    box-sizing: border-box;
+    overflow: hidden;
+  }
+  .logo {
+    font-family: Inter, system-ui, sans-serif;
+    font-size: 24px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    color: #1a1a1a;
+  }
+  .logo span { color: #ff5c1f; }
+  .eyebrow {
+    font-family: Inter, system-ui, sans-serif;
+    font-size: 18px;
+    font-weight: 600;
+    color: #ff5c1f;
+    letter-spacing: 0.06em;
+  }
+  h1 {
+    font-family: Inter, system-ui, sans-serif;
+    font-size: 84px;
+    font-weight: 800;
+    line-height: 1.04;
+    letter-spacing: -0.03em;
+    color: #1a1a1a;
+    max-width: 900px;
+  }
+  .tagline {
+    font-family: Inter, system-ui, sans-serif;
+    font-size: 28px;
+    font-weight: 400;
+    line-height: 1.5;
+    color: #5c5c5c;
+    max-width: 640px;
+  }
+  .cta {
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+    padding: 20px 36px;
+    background: #ff5c1f;
+    color: #ffffff;
+    font-family: Inter, system-ui, sans-serif;
+    font-size: 22px;
+    font-weight: 700;
+    border-radius: 12px;
+    align-self: flex-start;
+  }
+</style>
+</head>
+<body>
+  <div class="scene-content">
+    <div class="logo">Cortex<span>Agent</span></div>
+    <div class="eyebrow">Motion · 5th plane</div>
+    <h1>Ship brand motion,<br>straight into your edit.</h1>
+    <p class="tagline">Describe the effect in brand language. OpenDesign generates it, previews live, exports edit-ready MP4.</p>
+    <div class="cta">Render the moment →</div>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+  <script>
+    window.__timelines = window.__timelines || {};
+    window.__timelines["main"] = gsap.timeline({ paused: true });
+    window.__timelines["main"]
+      .from(".logo", { y: -24, opacity: 0, duration: 0.5, ease: "power2.out" }, 0.0)
+      .from(".eyebrow", { opacity: 0, duration: 0.5, ease: "power2.out" }, 0.3)
+      .from("h1", { y: 48, opacity: 0, duration: 0.8, ease: "power2.out" }, 0.45)
+      .from(".tagline", { y: 24, opacity: 0, duration: 0.6, ease: "power2.out" }, 0.8)
+      .from(".cta", { scale: 0.9, opacity: 0, duration: 0.5, ease: "back.out(1.4)" }, 1.0);
+  </script>
+</body>
+</html>
