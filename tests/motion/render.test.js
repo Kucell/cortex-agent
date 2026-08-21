@@ -100,16 +100,21 @@ test("renderMotion: path B spawns npx hyperframes render with sandbox warning", 
       preset: "overlay-webm",
       detect: { hasOpenDesign: false, hasNpx: true },
       env: { CLAUDE_CODE: "true" },
-      spawnFn: (cmd, args) => {
-        spawned.push({ cmd, args });
+      spawnFn: (cmd, args, options) => {
+        spawned.push({ cmd, args, options });
         return fakeChild(0);
       },
     });
     assert.equal(result.ok, true);
     assert.equal(result.engine, "hyperframes-npx");
     assert.equal(spawned[0].cmd, "npx");
-    assert.deepEqual(spawned[0].args, ["hyperframes", "render", "--motion-id", "m-002", "--preset", "overlay-webm"]);
+    assert.deepEqual(
+      spawned[0].args,
+      ["hyperframes", "render", "-c", ".", "--format", "webm", "-f", "30", "--strict", "-o", path.join(dir, ".agent", "motion", "m-002", "renders", "m-002-overlay-webm.webm")]
+    );
     assert.ok(warnings.some((w) => w.includes("sandbox-exec 会挂起 Chrome")));
+    // cwd 必须是 composition 目录(hyperframes render 是项目级命令)
+    assert.equal(spawned[0].options.cwd, path.join(dir, ".agent", "motion", "m-002"));
   } finally {
     console.warn = origWarn;
   }

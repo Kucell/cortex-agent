@@ -4,7 +4,7 @@
   ★ 唯一编辑对象:本文件。改 data-duration / 调色板 / 数字 / GSAP tween。
   Layout Before Animation:先写静态 CSS(hero frame),再描述 journey。
 -->
-<html lang="en" data-duration="7">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <title>stat-counter · count-up</title>
@@ -58,7 +58,9 @@
 </style>
 </head>
 <body>
-  <div class="scene-content">
+  <!-- root composition wrapper: data-composition-id 必须与 window.__timelines 注册键一致;
+       data-width/data-height 为数值像素,hyperframes lint 硬校验 -->
+  <div class="scene-content clip" data-composition-id="main" data-width="1920" data-height="1080" data-start="0" data-duration="7">
     <div class="overline">Motion · stat counter</div>
     <div class="stats">
       <div class="stat">
