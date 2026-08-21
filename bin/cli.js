@@ -98,6 +98,14 @@ const { designCommand } = require("../lib/commands/design");
 // lib/commands.js; the new case routes to lib/commands/deck.js.
 const { deckCommand } = require("../lib/commands/deck");
 
+// SamHMI pilot: `/design-package` workflow CLI surface.
+// `cortex-agent design-package <task-id> --from-pixso <dsl.json> [options]`
+// builds an Open Design-style design resource package (runnable HTML,
+// brand-spec.md, artifact metadata, validation contract) from a Pixso compact
+// DSL. Zero-dep; output stays inside .agent/artifacts/<task-id>/package/.
+// Strictly additive: routes to lib/commands/design-package.js.
+const { designPackageCommand } = require("../lib/commands/design-package");
+
 // P-002 MS-003: MCP bridge CLI surface.
 // `cortex-agent mcp <serve|install|ping|list|uninstall>` is owned by
 // lib/commands/mcp.js (P-002 stdio MCP bridge over .agent/ design assets).
@@ -600,6 +608,7 @@ async function initModeGeneral() {
     case "hook":        hook(ctx); break;
     case "design":      await designCommand(ctx); break;
     case "deck":        await deckCommand(ctx); break;
+    case "design-package": await designPackageCommand(ctx); break;
     case "branch":      branchCommand(ctx); break;
     case "pr":          prCommand(ctx); break;
     case "event-bus":   eventBusCommand(ctx); break;
