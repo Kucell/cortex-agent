@@ -138,6 +138,39 @@ test("spec: resolveOutputDir rejects traversal out of project", () => {
   }
 });
 
+test("spec: resolveOutputDir accepts symlink alias inside project, rejects true outside", (t) => {
+  const realDir = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-dp-real-"));
+  const aliasBase = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-dp-alias-"));
+  const alias = path.join(aliasBase, "proj");
+  let symlinkOk = true;
+  try {
+    fs.symlinkSync(realDir, alias, "dir");
+  } catch (_) {
+    symlinkOk = false;
+  }
+  t.after(() => {
+    fs.rmSync(aliasBase, { recursive: true, force: true });
+    fs.rmSync(realDir, { recursive: true, force: true });
+  });
+  if (!symlinkOk) {
+    // Symlinks unavailable (e.g. some CI/Windows setups) — skip gracefully.
+    return;
+  }
+  // cwd is the symlink alias; output path physically inside the real project
+  // must be accepted (macOS /tmp → /private/tmp style alias).
+  const inside = spec.resolveOutputDir(
+    path.join(realDir, ".agent", "artifacts", "T", "package"),
+    "T",
+    alias,
+  );
+  assert.ok(inside.startsWith(realDir + path.sep));
+  // A path that is truly outside the project must still be rejected.
+  assert.throws(
+    () => spec.resolveOutputDir(path.join(realDir, "..", "escape"), "T", alias),
+    /escapes project root/,
+  );
+});
+
 test("spec: validateDsl + readDslFile", () => {
   const dsl = makeDsl();
   assert.equal(spec.validateDsl(dsl), dsl);
@@ -231,6 +264,23 @@ test("render: buildHtml produces runnable SamHMI shell", () => {
   }
   // deterministic
   assert.equal(html, render.buildHtml(brief, { lang: "zh" }));
+});
+
+test("render: large source canvas shown with editor shell labelled separately", () => {
+  const dsl = makeDsl();
+  dsl.roots[0].box = { w: 23570, h: 6757 };
+  const brief = { taskId: "SAMHMI-LARGE", title: "P-M01 画面模块设计区", dsl };
+  const html = render.buildHtml(brief, { lang: "zh" });
+  // Real source canvas must be surfaced…
+  assert.ok(html.includes("源画布 23570×6757"), "stage sub shows real source canvas");
+  assert.ok(html.includes("源画布"), "inspector source canvas label present");
+  assert.ok(html.includes("23570 × 6757"), "inspector/fallback shows real source canvas");
+  // …while the fixed SamHMI editor shell is still present and labelled as such.
+  assert.ok(html.includes("编辑器壳"), "editor shell label present");
+  assert.ok(html.includes("编辑器壳"), "editor shell labelled separately");
+  assert.ok(html.includes("1920 × 1080"), "editor shell dimensions still present");
+  // CSS `.app` remains the fixed SamHMI viewport.
+  assert.ok(html.includes(".app{width:1920px;height:1080px"));
 });
 
 test("render: escapeHtml", () => {
