@@ -30,6 +30,8 @@ const {
   checkAuthorization,
   validateDelegation,
   buildClaudeAddDirs,
+  supportsAddDirFlag,
+  HOSTS_WITHOUT_ADD_DIR_FLAG,
   canonicalizeToExistingParent,
   checkPreToolUse,
   AGENT_ROOT_GRANT_SCHEMA_VERSION,
@@ -494,6 +496,27 @@ test("buildClaudeAddDirs: value is canonical .agent absolute path", () => {
     assert.equal(arg.includes(" --"), false);
     assert.equal(arg.includes(root.replace(/\\/g, "/")), true);
   } finally { closeWorktree(root); }
+});
+
+// ─── Host-aware --add-dir policy ────────────────────────────────────────────
+
+test("supportsAddDirFlag: true for Claude Code and Codex hosts", () => {
+  assert.equal(supportsAddDirFlag("claude-code"), true);
+  assert.equal(supportsAddDirFlag("codex"), true);
+});
+
+test("supportsAddDirFlag: false for Pi (rejects --add-dir)", () => {
+  assert.equal(supportsAddDirFlag("pi"), false);
+  assert.equal(HOSTS_WITHOUT_ADD_DIR_FLAG.has("pi"), true);
+});
+
+test("supportsAddDirFlag: unknown and empty host ids keep today's behavior", () => {
+  // Hosts not in the denylist must not silently lose managed-.agent access.
+  assert.equal(supportsAddDirFlag("cursor"), true);
+  assert.equal(supportsAddDirFlag("codey"), true);
+  assert.equal(supportsAddDirFlag(""), true);
+  assert.equal(supportsAddDirFlag(undefined), false);
+  assert.equal(supportsAddDirFlag(null), false);
 });
 
 // ─── PreToolUse gate ───────────────────────────────────────────────────────

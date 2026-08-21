@@ -762,3 +762,87 @@ test("governed child ready-state preserves attempt_review_ready without touching
   assert.equal(receipt.monitoring_terminal, true);
   assert.equal(receipt.reconciliation_required, false);
 });
+
+// ─── Host-aware --add-dir injection (feedback pi-governed-launch-host-args) ──
+
+// Writes a fake agent binary that records the argv it was launched with into a
+// marker file, then exits 0 (monitor settles as BLOCKED / EXIT_ZERO).
+function writeArgvRecorder(probeDir) {
+  const argvFile = path.join(probeDir, "argv.json");
+  const bin = path.join(probeDir, "argv-recorder");
+  fs.writeFileSync(bin,
+    "#!/usr/bin/env node\n" +
+    'const fs = require("fs");\n' +
+    'fs.writeFileSync(process.env.CORTEX_TEST_ARGV_FILE, JSON.stringify(process.argv.slice(2)));\n',
+    { mode: 0o755 });
+  return { argvFile, bin };
+}
+
+test("governed child does not inject --add-dir for Pi host even with a grant", (t) => {
+  const root = makeRuntime();
+  const taskId = "T-ADD-DIR-PI";
+  const agentId = "pi";
+  const { lease, sessionId } = setupAcceptedTask(root, taskId, agentId);
+  const probeDir = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-adddir-probe-"));
+  t.after(() => { closeRuntime(root); fs.rmSync(probeDir, { recursive: true, force: true }); });
+
+  const { argvFile, bin } = writeArgvRecorder(probeDir);
+  const { contextFile, receiptFile } = writeContext(root, {
+    taskId,
+    targetAgentId: agentId,
+    sessionId,
+    leaseId: lease.leaseId,
+    fencingToken: lease.fencingToken,
+    agentCommand: bin,
+    agentArgs: ["--mode", "json", "--no-session"],
+    terminalTimeoutMs: 10000,
+    agentRootGrant: {
+      schemaVersion: "1.0",
+      canonicalAgentRoot: path.join(root, ".agent"),
+      operations: {},
+    },
+  });
+
+  const result = runMonitor(contextFile, receiptFile, { CORTEX_TEST_ARGV_FILE: argvFile });
+  assert.equal(result.status, 0, result.stderr);
+  const argv = JSON.parse(fs.readFileSync(argvFile, "utf8"));
+  assert.equal(argv.some((a) => a.startsWith("--add-dir=")), false,
+    `Pi must not receive --add-dir: ${JSON.stringify(argv)}`);
+  // Pi's own args pass through untouched.
+  assert.deepEqual(argv, ["--mode", "json", "--no-session"]);
+  // The monitor still settles the attempt (private context env is intact).
+  assert.ok(fs.existsSync(receiptFile), "receipt must be written");
+});
+
+test("governed child still injects --add-dir for Claude/Codex hosts with a grant", (t) => {
+  const root = makeRuntime();
+  const taskId = "T-ADD-DIR-CLAUDE";
+  const agentId = "claude-code";
+  const { lease, sessionId } = setupAcceptedTask(root, taskId, agentId);
+  const probeDir = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-adddir-probe-"));
+  t.after(() => { closeRuntime(root); fs.rmSync(probeDir, { recursive: true, force: true }); });
+
+  const { argvFile, bin } = writeArgvRecorder(probeDir);
+  const canonicalAgentRoot = path.join(root, ".agent");
+  const { contextFile, receiptFile } = writeContext(root, {
+    taskId,
+    targetAgentId: agentId,
+    sessionId,
+    leaseId: lease.leaseId,
+    fencingToken: lease.fencingToken,
+    agentCommand: bin,
+    agentArgs: [],
+    terminalTimeoutMs: 10000,
+    agentRootGrant: {
+      schemaVersion: "1.0",
+      canonicalAgentRoot,
+      operations: {},
+    },
+  });
+
+  const result = runMonitor(contextFile, receiptFile, { CORTEX_TEST_ARGV_FILE: argvFile });
+  assert.equal(result.status, 0, result.stderr);
+  const argv = JSON.parse(fs.readFileSync(argvFile, "utf8"));
+  assert.ok(argv.some((a) => a === `--add-dir=${canonicalAgentRoot}`),
+    `Claude/Codex must receive --add-dir with a grant: ${JSON.stringify(argv)}`);
+});
