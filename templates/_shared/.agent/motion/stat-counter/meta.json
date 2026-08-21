@@ -1,0 +1,8 @@
+{
+  "name": "stat-counter",
+  "kind": "stat-counter",
+  "description": "Count-up stat animation: dark canvas, cool accent, tabular-nums big figures with power2.out ease.",
+  "tags": ["stat", "count-up", "data", "metric"],
+  "defaultPreset": "vertical-9x16",
+  "createdBy": "cortex-agent motion scaffold (P-005 MS-005)"
+}

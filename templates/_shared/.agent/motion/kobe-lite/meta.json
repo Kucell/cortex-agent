@@ -1,0 +1,8 @@
+{
+  "name": "kobe-lite",
+  "kind": "kinetic-type",
+  "description": "Kinetic-type hero: warm accent on deep charcoal, restrained entrance, brand-driven moment.",
+  "tags": ["kinetic-type", "hero", "logo-sting", "brand"],
+  "defaultPreset": "fcp-1080p",
+  "createdBy": "cortex-agent motion scaffold (P-005 MS-005)"
+}

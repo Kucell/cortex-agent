@@ -1,0 +1,8 @@
+{
+  "name": "saas-hero",
+  "kind": "saas-hero",
+  "description": "Product launch hero: light canvas, single brand accent, logo + headline + tagline + CTA with restrained fade-up.",
+  "tags": ["saas", "hero", "launch", "product"],
+  "defaultPreset": "pp-1080p",
+  "createdBy": "cortex-agent motion scaffold (P-005 MS-005)"
+}

@@ -114,6 +114,7 @@ const { designPackageCommand } = require("../lib/commands/design-package");
 // lib/commands/mcp.js, so this case replaces the previous `mcp` binding
 // without losing the old contract. Strictly additive for other commands.
 const { mcpCommand } = require("../lib/commands/mcp");
+const { motionCommand } = require("../lib/commands/motion");
 
 // M-016 MS-002: Branch Management CLI surface.
 // `branch <create|list|show|sync|ready|merge|cleanup>` is owned by
@@ -556,6 +557,7 @@ async function initModeGeneral() {
     case "lease":       lease(ctx); break;
     case "notification": await notification(ctx); break;
     case "mcp":         await mcpCommand(ctx); break;
+    case "motion":      await motionCommand(ctx); break;
     case "query":       managementQuery(ctx); break;
     case "memory":      memoryCommand(ctx); break;
     case "dispatch":    await dispatchCommand(ctx); break;
