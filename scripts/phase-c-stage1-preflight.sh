@@ -244,7 +244,7 @@ if [[ "$SKIP_ROLLBACK" == "1" ]]; then
   echo "   ⏭  skipped (--skip-rollback)" >&2
   PASS_COUNT=$((PASS_COUNT+1)); RESULTS+=("rollback_drill=SKIPPED")
 else
-  MIG_SCRIPT="$REPO/.agent/skills/management-api/scripts/runtime-state-layout-migration.js"
+  MIG_SCRIPT="$REPO/templates/_shared/.agent/skills/management-api/scripts/runtime-state-layout-migration.js"
   if [[ -f "$MIG_SCRIPT" ]]; then
     ROLLBACK_OUT="$(node "$MIG_SCRIPT" rollback --from-policy-revision HEAD --to HEAD~1 --dry-run 2>&1 || true)"
     if echo "$ROLLBACK_OUT" | grep -qiE "error|fail"; then
