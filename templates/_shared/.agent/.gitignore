@@ -1,3 +1,9 @@
 metrics/agent-dashboard.html
 sessions/S-*.json
 runtime-continuity/guard/
+
+# Token usage ledger — raw runtime evidence is high-frequency local-only
+# state; only the dated tar.gz archives under archives/ are committed.
+token-attempts/receipts/
+token-attempts/ledger-index.json
+token-attempts/recovery-events.jsonl

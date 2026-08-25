@@ -242,23 +242,26 @@ function main() {
   }
 
   // ── 4. npm pack ────────────────────────────────────────────────────────
+  // Pack into the local build dir (.build/tarballs) so the repo root stays clean.
   console.log('📦 npm pack...');
-  const packR = run('npm', ['pack', '--silent'], cwd, opts);
+  const buildTarballs = path.join(cwd, '.build', 'tarballs');
+  fs.mkdirSync(buildTarballs, { recursive: true });
+  const packR = run('npm', ['pack', '--silent', '--pack-destination', buildTarballs], cwd, opts);
   if (packR.status !== 0) {
     console.error('❌ npm pack failed');
     console.error(packR.stderr);
     process.exit(3);
   }
   const tarball = packR.stdout.trim().split('\n').pop();
-  if (!fs.existsSync(path.join(cwd, tarball))) {
-    console.error(`❌ Expected tarball not found: ${tarball}`);
+  if (!fs.existsSync(path.join(buildTarballs, tarball))) {
+    console.error(`❌ Expected tarball not found: ${tarball} (in .build/tarballs)`);
     process.exit(3);
   }
-  console.log(`   → ${tarball}`);
+  console.log(`   → .build/tarballs/${tarball}`);
 
   // ── 5. volta install ────────────────────────────────────────────────────
   console.log('⚡ volta install (file: protocol)...');
-  const tarballAbs = path.join(cwd, tarball);
+  const tarballAbs = path.join(buildTarballs, tarball);
   const installR = runInherit('volta', ['install', `${pkgName}@file:${tarballAbs}`], cwd, opts);
   if (installR.status !== 0) {
     console.error(`❌ volta install failed (exit ${installR.status})`);

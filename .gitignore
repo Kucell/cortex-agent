@@ -1,6 +1,7 @@
 .DS_Store
 node_modules/
 dist/
+.build/
 *.log
 graphify-out/
 .agent/metrics/agent-dashboard.html
