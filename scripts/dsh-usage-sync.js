@@ -41,7 +41,8 @@
 
 const fs = require("node:fs");
 const path = require("node:path");
-const { spawn } = require("node:child_process");
+const { createReadStream } = require("node:fs");
+const zlib = require("node:zlib");
 
 const ledger = require("../templates/_shared/.agent/skills/management-api/scripts/token-attempt-ledger.js");
 const receiptLib = require("../templates/_shared/.agent/skills/management-api/scripts/token-attempt-receipt.js");
@@ -153,16 +154,25 @@ function listSessionDirs(dshHome, sessionSlug) {
 }
 
 function readZstdLinesAsync(jsonlPath) {
-  // Stream zstd -dc so we never hit spawnSync maxBuffer on multi-MB files.
+  // Stream-decompress via Node's built-in zlib ZstdDecompress (no external CLI).
   // Lines are accumulated in memory (sessions are small enough; ledger batches
   // handle out-of-order writes).
   return new Promise((resolve) => {
-    const proc = spawn("zstd", ["-dc", "--no-progress", jsonlPath]);
+    let input;
+    try {
+      input = createReadStream(jsonlPath);
+    } catch (err) {
+      resolve({ lines: [], error: err.message });
+      return;
+    }
+    const decompressor = zlib.createZstdDecompress();
     const lines = [];
     let buffer = "";
-    let stderr = "";
-    proc.stderr.on("data", (chunk) => { stderr += chunk.toString("utf8"); });
-    proc.stdout.on("data", (chunk) => {
+    let streamError = null;
+    input.on("error", (err) => { streamError = err.message; });
+    decompressor.on("error", (err) => { streamError = err.message; });
+    decompressor.on("data", (chunk) => {
+      if (streamError) return;
       buffer += chunk.toString("utf8");
       let nl = buffer.indexOf("\n");
       while (nl !== -1) {
@@ -171,15 +181,15 @@ function readZstdLinesAsync(jsonlPath) {
         nl = buffer.indexOf("\n");
       }
     });
-    proc.on("error", (err) => resolve({ lines: [], error: err.message }));
-    proc.on("close", (code) => {
-      if (buffer.length > 0) lines.push(buffer);
-      if (code !== 0) {
-        resolve({ lines: [], error: stderr.trim() || `zstd exited ${code}` });
-      } else {
-        resolve({ lines, error: null });
+    decompressor.on("end", () => {
+      if (streamError) {
+        resolve({ lines: [], error: streamError });
+        return;
       }
+      if (buffer.length > 0) lines.push(buffer);
+      resolve({ lines, error: null });
     });
+    input.pipe(decompressor);
   });
 }
 
