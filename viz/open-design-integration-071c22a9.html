@@ -1,0 +1,305 @@
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #f7f6f3;
+    --panel: #ffffff;
+    --ink: #1d1d1f;
+    --ink-soft: #5b5b66;
+    --line: #e7e4dd;
+    --accent: #d97706;
+    --accent-soft: #fff3e0;
+    --green: #1f7a4d;
+    --green-soft: #e6f4ec;
+    --amber: #b45309;
+    --amber-soft: #fef3c7;
+    --red: #b91c1c;
+    --red-soft: #fee2e2;
+    --blue: #1e40af;
+    --blue-soft: #e0e7ff;
+    --shadow: 0 1px 2px rgba(0,0,0,0.04), 0 8px 24px rgba(0,0,0,0.04);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1c1c1f;
+      --panel: #26262a;
+      --ink: #f5f5f7;
+      --ink-soft: #a1a1aa;
+      --line: #3a3a3f;
+      --accent: #fbbf24;
+      --accent-soft: #422006;
+      --green: #4ade80;
+      --green-soft: #052e16;
+      --amber: #fbbf24;
+      --amber-soft: #422006;
+      --red: #fca5a5;
+      --red-soft: #450a0a;
+      --blue: #93c5fd;
+      --blue-soft: #1e3a8a;
+      --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 8px 24px rgba(0,0,0,0.4);
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 24px; background: var(--bg); color: var(--ink); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif; line-height: 1.5; }
+
+  .wrap { max-width: 1100px; margin: 0 auto; }
+
+  h1 { font-size: 28px; margin: 0 0 4px; font-weight: 700; letter-spacing: -0.01em; }
+  .sub { color: var(--ink-soft); font-size: 14px; margin-bottom: 24px; }
+
+  .hero {
+    background: linear-gradient(135deg, var(--accent-soft), var(--green-soft));
+    border: 1px solid var(--accent);
+    border-radius: 14px;
+    padding: 24px;
+    margin-bottom: 16px;
+  }
+  @media (prefers-color-scheme: dark) {
+    .hero { background: linear-gradient(135deg, var(--accent-soft), var(--green-soft)); }
+  }
+  .hero h1 { color: var(--ink); }
+  .hero .sub { color: var(--ink); }
+
+  .grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 16px;
+  }
+  @media (max-width: 800px) {
+    .grid { grid-template-columns: 1fr; }
+  }
+
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 18px;
+    box-shadow: var(--shadow);
+  }
+  .panel h2 {
+    font-size: 14px;
+    margin: 0 0 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--ink-soft);
+    font-weight: 600;
+  }
+  .panel h3 {
+    font-size: 16px;
+    margin: 0 0 8px;
+    font-weight: 600;
+  }
+
+  /* status pills */
+  .pill {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+  }
+  .pill-green { background: var(--green-soft); color: var(--green); }
+  .pill-amber { background: var(--amber-soft); color: var(--amber); }
+  .pill-red { background: var(--red-soft); color: var(--red); }
+  .pill-blue { background: var(--blue-soft); color: var(--blue); }
+  .pill-accent { background: var(--accent-soft); color: var(--accent); }
+
+  /* milestone grid */
+  .ms-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 10px;
+  }
+  .ms-card {
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 12px;
+    border-left: 3px solid var(--accent);
+  }
+  .ms-card .id { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12px; color: var(--accent); font-weight: 700; }
+  .ms-card h4 { margin: 4px 0; font-size: 13px; }
+  .ms-card p { margin: 4px 0 0; font-size: 11px; color: var(--ink-soft); }
+
+  /* file tree */
+  .tree {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 11px;
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 12px;
+    overflow-x: auto;
+    line-height: 1.6;
+  }
+  .tree .dir { color: var(--accent); font-weight: 600; }
+  .tree .file { color: var(--ink); }
+  .tree .comment { color: var(--ink-soft); font-style: italic; }
+  .tree .new { background: var(--green-soft); color: var(--green); padding: 1px 4px; border-radius: 3px; font-weight: 600; }
+
+  /* stats */
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin-top: 16px;
+  }
+  @media (max-width: 600px) {
+    .stats { grid-template-columns: repeat(2, 1fr); }
+  }
+  .stat {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 14px;
+    text-align: center;
+  }
+  .stat .num { font-size: 24px; font-weight: 700; color: var(--accent); line-height: 1; }
+  .stat .label { font-size: 11px; color: var(--ink-soft); text-transform: uppercase; letter-spacing: 0.06em; margin-top: 4px; }
+</style>
+
+<div class="wrap">
+  <div class="hero">
+    <h1>✅ open-design-integration 提案组已批准</h1>
+    <div class="sub">User said "批准实施" → 5 子提案 + 4 决策 + Mission M-ODI-001 全部就绪</div>
+  </div>
+
+  <div class="grid">
+    <div class="panel">
+      <h2>批准状态总览</h2>
+      <div style="display: flex; flex-direction: column; gap: 8px;">
+        <div style="display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: var(--green-soft); border-radius: 8px;">
+          <span style="font-size: 18px;">✅</span>
+          <span style="flex: 1; font-size: 13px;"><strong>项目级入口</strong> · <code>index.md</code></span>
+          <span class="pill pill-green">approved</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: var(--green-soft); border-radius: 8px;">
+          <span style="font-size: 18px;">✅</span>
+          <span style="flex: 1; font-size: 13px;"><strong>5 子提案</strong> · P-001 ~ P-005</span>
+          <span class="pill pill-green">approved</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: var(--green-soft); border-radius: 8px;">
+          <span style="font-size: 18px;">✅</span>
+          <span style="flex: 1; font-size: 13px;"><strong>4 决策</strong> · D-ODI-001 ~ D-ODI-004</span>
+          <span class="pill pill-green">approved</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: var(--green-soft); border-radius: 8px;">
+          <span style="font-size: 18px;">✅</span>
+          <span style="flex: 1; font-size: 13px;"><strong>审查报告</strong> · 4 项修复完成</span>
+          <span class="pill pill-green">APPROVED</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: var(--green-soft); border-radius: 8px;">
+          <span style="font-size: 18px;">✅</span>
+          <span style="flex: 1; font-size: 13px;"><strong>Pilot 验证清单</strong> · 4 个 pilot</span>
+          <span class="pill pill-green">shipped</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Mission 调度 · M-ODI-001</h2>
+      <div style="font-size: 13px; line-height: 1.6;">
+        <p style="margin: 0 0 8px;"><strong>路径选择</strong>: /mission(大任务,5 子提案 + 5 milestones)</p>
+        <p style="margin: 0 0 8px;"><strong>Task ID</strong>: <code>T-ODI-001</code></p>
+        <p style="margin: 0 0 8px;"><strong>Stage</strong>: plan(spec → plan 已通过)</p>
+        <p style="margin: 0 0 8px;"><strong>Owner</strong>: cortex-agent</p>
+        <p style="margin: 0 0 8px;"><strong>Priority</strong>: <span class="pill pill-red">P0</span></p>
+        <p style="margin: 0 0 8px;"><strong>Approval</strong>: 2026-08-20 by interactive-user</p>
+        <p style="margin: 0 0 0;"><strong>Approval Evidence</strong>: 用户原话"批准实施"</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>5 Milestones 调度矩阵</h2>
+    <div class="ms-grid">
+      <div class="ms-card">
+        <div class="id">MS-001</div>
+        <h4>设计工作流落地</h4>
+        <p>P-003 (主) · /deck + /live-artifact + /image + /motion 入口</p>
+      </div>
+      <div class="ms-card">
+        <div class="id">MS-002</div>
+        <h4>catalog bridge</h4>
+        <p>P-001 (主) · lib/catalog/* 重构 + lock schema v1 → v2</p>
+      </div>
+      <div class="ms-card">
+        <div class="id">MS-003</div>
+        <h4>MCP bridge + runtime-adapter</h4>
+        <p>P-002 + P-004 · mcp serve + 16+ agent + 26 adapter 文档</p>
+      </div>
+      <div class="ms-card">
+        <div class="id">MS-004</div>
+        <h4>pilot 验证 + 文档</h4>
+        <p>all 5 · SamHMI/csm-view-memory/hmi-platform/AI-Brain</p>
+      </div>
+      <div class="ms-card">
+        <div class="id">MS-005</div>
+        <h4>动效第 5 平面</h4>
+        <p>P-005 (主) · HyperFrames + 3 edit-presets</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel" style="margin-top:16px">
+    <h2>交付物清单</h2>
+    <div class="tree">
+<span class="dir">.agent/plans/proposals/projects/open-design-integration/</span>
+├── <span class="file">index.md</span>                       <span class="new">approved</span>
+├── <span class="file">review.md</span>                      <span class="comment"># 审查报告 · 2 必须修 + 2 建议修</span>
+├── <span class="file">pilot-verification.md</span>          <span class="new">new</span> <span class="comment"># 4 pilot 验证清单</span>
+├── <span class="file">references.md</span>                  <span class="comment"># upstream + 4 solutions/alternatives 映射</span>
+├── <span class="file">relations.md</span>                   <span class="comment"># 3 decisions + 依赖矩阵 + pilot</span>
+├── <span class="dir">proposals/</span>
+│   ├── <span class="file">P-001-catalog-bridge-proposal.md</span>           <span class="new">approved</span>
+│   ├── <span class="file">P-002-mcp-bridge-proposal.md</span>               <span class="new">approved</span>
+│   ├── <span class="file">P-003-design-workflow-chain-proposal.md</span>    <span class="new">approved</span>
+│   ├── <span class="file">P-004-runtime-adapter-proposal.md</span>          <span class="new">approved</span>
+│   └── <span class="file">P-005-motion-graphics-hyperframes-proposal.md</span> <span class="new">approved</span>
+└── <span class="dir">decisions/</span>
+    ├── <span class="file">D-ODI-001.md</span>  <span class="new">approved</span> <span class="comment">backend upstream 模式</span>
+    ├── <span class="file">D-ODI-002.md</span>  <span class="new">approved</span> <span class="comment">沿用 T-OD-001 catalog 协议</span>
+    ├── <span class="file">D-ODI-003.md</span>  <span class="new">approved</span> <span class="comment">子提案平行 ship</span>
+    └── <span class="file">D-ODI-004.md</span>  <span class="new">approved</span> <span class="comment">动效用 HyperFrames 引擎</span>
+
+<span class="dir">.agent/missions/M-ODI-001/</span>  <span class="new">NEW</span>
+├── <span class="file">mission-plan.md</span>
+├── <span class="file">command-log.md</span>
+├── <span class="file">validation-contract.json</span>
+├── <span class="dir">milestones/</span>
+│   ├── <span class="file">MS-001.md</span> <span class="comment">设计工作流</span>
+│   ├── <span class="file">MS-002.md</span> <span class="comment">catalog bridge</span>
+│   ├── <span class="file">MS-003.md</span> <span class="comment">MCP + runtime-adapter</span>
+│   ├── <span class="file">MS-004.md</span> <span class="comment">pilot 验证 + 文档</span>
+│   └── <span class="file">MS-005.md</span> <span class="comment">动效第 5 平面</span>
+└── <span class="dir">handoffs/</span>        <span class="comment">pilot 完成证据落点</span>
+
+<span class="dir">.agent/tasks/</span>
+└── <span class="file">T-ODI-001.json</span>  <span class="new">new</span> <span class="comment">active · plan stage · P0</span>
+    </div>
+  </div>
+
+  <div class="stats">
+    <div class="stat"><div class="num">5</div><div class="label">子提案</div></div>
+    <div class="stat"><div class="num">4</div><div class="label">决策记录</div></div>
+    <div class="stat"><div class="num">5</div><div class="label">Milestones</div></div>
+    <div class="stat"><div class="num">4</div><div class="label">Pilot 项目</div></div>
+  </div>
+
+  <div class="panel" style="margin-top:16px">
+    <h2>建议下一步</h2>
+    <div style="font-size: 13px; line-height: 1.6;">
+      <ol style="margin: 0; padding-left: 20px; color: var(--ink-soft);">
+        <li><strong>进入 MS-001</strong>(P-003 设计工作流):先补 <code>/deck</code>(5 格式导出) + <code>/live-artifact</code>(tweaks panel) + <code>/image</code>(BYOK) + <code>/motion</code> workflow 入口</li>
+        <li><strong>进入 MS-002</strong>(P-001 catalog bridge):重构 <code>lib/design/*</code> → <code>lib/catalog/*</code>,lock schema v1 → v2 向后兼容</li>
+        <li><strong>进入 MS-003</strong>(P-002 + P-004):cortex-agent stdio MCP server + 16+ agent install + 26 agent adapter 文档</li>
+        <li><strong>进入 MS-005</strong>(P-005 动效平面):HyperFrames 引擎集成 + 3 edit-presets</li>
+        <li><strong>进入 MS-004</strong>(pilot 验证):SamHMI(P0) → csm-view-memory(P1) → hmi-platform(P2) → AI-Brain(P3 全链路 dogfooding)</li>
+      </ol>
+      <p style="margin: 12px 0 0; padding-top: 12px; border-top: 1px solid var(--line); font-size: 12px; color: var(--ink-soft);">
+        📌 小任务 → <code>/start-task &lt;T-id&gt;</code> · 大任务 → <code>/mission status M-ODI-001</code>
+      </p>
+    </div>
+  </div>
+</div>

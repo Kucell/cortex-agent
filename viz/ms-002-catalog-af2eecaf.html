@@ -1,0 +1,137 @@
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #f7f6f3;
+    --panel: #ffffff;
+    --ink: #1d1d1f;
+    --ink-soft: #5b5b66;
+    --line: #e7e4dd;
+    --accent: #d97706;
+    --accent-soft: #fff3e0;
+    --green: #1f7a4d;
+    --green-soft: #e6f4ec;
+    --amber: #b45309;
+    --amber-soft: #fef3c7;
+    --blue: #1e40af;
+    --blue-soft: #e0e7ff;
+    --shadow: 0 1px 2px rgba(0,0,0,0.04), 0 8px 24px rgba(0,0,0,0.04);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1c1c1f; --panel: #26262a; --ink: #f5f5f7; --ink-soft: #a1a1aa; --line: #3a3a3f;
+      --accent: #fbbf24; --accent-soft: #422006;
+      --green: #4ade80; --green-soft: #052e16;
+      --amber: #fbbf24; --amber-soft: #422006;
+      --blue: #93c5fd; --blue-soft: #1e3a8a;
+      --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 8px 24px rgba(0,0,0,0.4);
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 24px; background: var(--bg); color: var(--ink); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif; line-height: 1.5; }
+  .wrap { max-width: 1100px; margin: 0 auto; }
+  h1 { font-size: 26px; margin: 0 0 4px; font-weight: 700; letter-spacing: -0.01em; }
+  .sub { color: var(--ink-soft); font-size: 13px; margin-bottom: 20px; }
+  .hero { background: linear-gradient(135deg, var(--green-soft), var(--accent-soft)); border: 1px solid var(--green); border-radius: 14px; padding: 22px; margin-bottom: 16px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px; }
+  @media (max-width: 800px) { .grid { grid-template-columns: 1fr; } }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; box-shadow: var(--shadow); }
+  .panel h2 { font-size: 13px; margin: 0 0 10px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-soft); font-weight: 600; }
+  .panel h3 { font-size: 15px; margin: 0 0 6px; font-weight: 600; }
+  .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; letter-spacing: 0.04em; }
+  .pill-green { background: var(--green-soft); color: var(--green); }
+  .pill-blue { background: var(--blue-soft); color: var(--blue); }
+  .pill-amber { background: var(--amber-soft); color: var(--amber); }
+  .tree { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11px; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 12px; overflow-x: auto; line-height: 1.6; }
+  .tree .dir { color: var(--accent); font-weight: 600; }
+  .tree .new { background: var(--green-soft); color: var(--green); padding: 1px 4px; border-radius: 3px; font-weight: 600; }
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 14px; }
+  @media (max-width: 600px) { .stats { grid-template-columns: repeat(2, 1fr); } }
+  .stat { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px; text-align: center; }
+  .stat .num { font-size: 22px; font-weight: 700; color: var(--accent); line-height: 1; }
+  .stat .label { font-size: 10px; color: var(--ink-soft); text-transform: uppercase; letter-spacing: 0.06em; margin-top: 4px; }
+  table { width: 100%; font-size: 12px; border-collapse: collapse; }
+  td { padding: 6px; border-bottom: 1px solid var(--line); }
+</style>
+
+<div class="wrap">
+  <div class="hero">
+    <h1>✅ M-ODI-001 / MS-002 catalog 协议层落地</h1>
+    <div class="sub">P-001 §4 · lib/catalog/* · lock schema v1→v2 向后兼容 · 64 新测试 + 184 既有零回归</div>
+  </div>
+
+  <div class="grid">
+    <div class="panel">
+      <h2>新模块 · 4 文件 + 3 测试</h2>
+      <div class="tree">
+<span class="dir">lib/catalog/</span>           <span class="new">NEW</span>
+├── <span class="new">kind-map.js</span>      208 行  <span class="comment"># 4 kind 元数据</span>
+├── <span class="new">lockfile.js</span>      175 行  <span class="comment"># v2 multi-kind + v1→v2</span>
+├── <span class="new">registry.js</span>     224 行  <span class="comment"># 4 kind index 聚合</span>
+└── <span class="new">index.js</span>         38 行  <span class="comment"># 统一导出</span>
+
+<span class="dir">tests/catalog/</span>
+├── <span class="new">kind-map.test.js</span>    180 行  <span class="pill pill-green">21 PASS</span>
+├── <span class="new">lockfile-v2.test.js</span> 251 行  <span class="pill pill-green">26 PASS</span>
+└── <span class="new">registry.test.js</span>   175 行  <span class="pill pill-green">17 PASS</span>
+
+<span class="dir">docs/architecture/catalog-bridge.md</span> <span class="new">231 行</span>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>验收 · MS-002 VC 对应 P-001 §6</h2>
+      <table>
+        <tr><td>VC-1</td><td>T-OD-001 118 tests 不破坏</td><td><span class="pill pill-green">✓</span></td></tr>
+        <tr><td>VC-3</td><td>plugin install(MS-002 follow-up)</td><td><span class="pill pill-amber">↻</span></td></tr>
+        <tr><td>VC-4</td><td>skill install(MS-002 follow-up)</td><td><span class="pill pill-amber">↻</span></td></tr>
+        <tr><td>VC-5</td><td>template install(MS-002 follow-up)</td><td><span class="pill pill-amber">↻</span></td></tr>
+        <tr><td>VC-6</td><td>lock schema v1 → v2 向后兼容</td><td><span class="pill pill-green">✓ E2E</span></td></tr>
+        <tr><td>VC-7</td><td>Brand-backed extract(follow-up)</td><td><span class="pill pill-amber">↻</span></td></tr>
+        <tr><td>VC-8</td><td>Claude Design import(follow-up)</td><td><span class="pill pill-amber">↻</span></td></tr>
+        <tr><td>VC-9</td><td>bin/cli.js 零依赖(未触碰)</td><td><span class="pill pill-green">✓</span></td></tr>
+        <tr><td>VC-10</td><td>architecture-guard 0 violation</td><td><span class="pill pill-green">✓</span></td></tr>
+        <tr><td>VC-11</td><td>license fail-closed(沿用 ship 资产)</td><td><span class="pill pill-green">✓</span></td></tr>
+        <tr><td>VC-12</td><td>24h TTL(沿用 lib/design/registry)</td><td><span class="pill pill-green">✓</span></td></tr>
+      </table>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>端到端验证 · v1 lock → v2 lock</h2>
+    <div style="font-family: ui-monospace, 'SF Mono', monospace; font-size: 11px; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 14px; line-height: 1.7; overflow-x: auto;">
+<div><span style="color: var(--ink-soft);">// 1. 写 v1 lock (T-OD-001 既有格式)</span></div>
+<div>fs.writeFileSync(<span style="color: var(--accent);">'.agent/design-systems.lock'</span>, { lockfileVersion: <span style="color: var(--blue);">1</span>, systems: [{ id: <span style="color: var(--accent);">'linear-app'</span>, license: <span style="color: var(--accent);">'Apache-2.0'</span> }, ...] })</div>
+<div><span style="color: var(--ink-soft);">// 2. readLockfile() 自动迁移</span></div>
+<div>lock = readLockfile(dir)  <span style="color: var(--green);">✓</span> lockfileVersion: <span style="color: var(--blue);">1</span> → <span style="color: var(--blue);">2</span></div>
+<div>                  catalogs[<span style="color: var(--blue);">0</span>].kind: <span style="color: var(--accent);">'design-system'</span> (注入)</div>
+<div>                  _migrated_from_v1: <span style="color: var(--blue);">true</span></div>
+<div><span style="color: var(--ink-soft);">// 3. 跨 4 kind 增删</span></div>
+<div>upsertEntry(lock, plugin / od-figma-migration)         <span style="color: var(--green);">✓</span></div>
+<div>upsertEntry(lock, skill  / open-design-launch-checklist) <span style="color: var(--green);">✓</span></div>
+<div>upsertEntry(lock, template / saas-landing)             <span style="color: var(--green);">✓</span></div>
+<div><span style="color: var(--ink-soft);">// 4. writeLockfile → 干净 v2</span></div>
+<div>writeLockfile(dir, lock) → <span style="color: var(--accent);">'.agent/catalog.lock'</span></div>
+<div>  <span style="color: var(--green);">✓</span> _migrated_from_v1 被剥离</div>
+<div><span style="color: var(--ink-soft);">// 5. 重读</span></div>
+<div>readLockfile(dir)  → catalogs.length = <span style="color: var(--blue);">5</span> (4 kind 隔离正确)</div>
+    </div>
+  </div>
+
+  <div class="stats">
+    <div class="stat"><div class="num">64</div><div class="label">MS-002 新测试</div></div>
+    <div class="stat"><div class="num">118</div><div class="label">T-OD-001 回归</div></div>
+    <div class="stat"><div class="num">66</div><div class="label">MS-001 既有</div></div>
+    <div class="stat"><div class="num">248</div><div class="label">总基线 PASS</div></div>
+  </div>
+
+  <div class="panel" style="margin-top: 14px;">
+    <h2>建议下一步</h2>
+    <ol style="margin: 0; padding-left: 20px; font-size: 13px; line-height: 1.7;">
+      <li><strong>用户授权 commit</strong> MS-002(8 新文件 · +1,776 行)</li>
+      <li><strong>MS-003</strong> MCP bridge + 26 agent adapter(P-002 + P-004)</li>
+      <li><strong>MS-005</strong> 动效第 5 平面(P-005 HyperFrames)</li>
+      <li><strong>MS-002 follow-up</strong> lib/catalog/{fetch,license,plugin-converter,extract}.js + 4 CLI subcommand</li>
+      <li><strong>MS-004 pilot</strong>:SamHMI(P0)用 <code>cortex-agent design system install linear-app</code> 实跑验收</li>
+    </ol>
+  </div>
+</div>

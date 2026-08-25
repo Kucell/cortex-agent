@@ -1,0 +1,463 @@
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #f7f6f3;
+    --panel: #ffffff;
+    --ink: #1d1d1f;
+    --ink-soft: #5b5b66;
+    --line: #e7e4dd;
+    --accent: #d97706;
+    --accent-soft: #fff3e0;
+    --green: #1f7a4d;
+    --green-soft: #e6f4ec;
+    --amber: #b45309;
+    --amber-soft: #fef3c7;
+    --red: #b91c1c;
+    --red-soft: #fee2e2;
+    --blue: #1e40af;
+    --blue-soft: #e0e7ff;
+    --shadow: 0 1px 2px rgba(0,0,0,0.04), 0 8px 24px rgba(0,0,0,0.04);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1c1c1f;
+      --panel: #26262a;
+      --ink: #f5f5f7;
+      --ink-soft: #a1a1aa;
+      --line: #3a3a3f;
+      --accent: #fbbf24;
+      --accent-soft: #422006;
+      --green: #4ade80;
+      --green-soft: #052e16;
+      --amber: #fbbf24;
+      --amber-soft: #422006;
+      --red: #fca5a5;
+      --red-soft: #450a0a;
+      --blue: #93c5fd;
+      --blue-soft: #1e3a8a;
+      --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 8px 24px rgba(0,0,0,0.4);
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 24px; background: var(--bg); color: var(--ink); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif; line-height: 1.5; }
+
+  .wrap { max-width: 1100px; margin: 0 auto; }
+
+  h1 { font-size: 28px; margin: 0 0 4px; font-weight: 700; letter-spacing: -0.01em; }
+  .sub { color: var(--ink-soft); font-size: 14px; margin-bottom: 24px; }
+
+  .grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 16px;
+  }
+  @media (max-width: 800px) {
+    .grid { grid-template-columns: 1fr; }
+  }
+
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 18px;
+    box-shadow: var(--shadow);
+  }
+  .panel h2 {
+    font-size: 14px;
+    margin: 0 0 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--ink-soft);
+    font-weight: 600;
+  }
+  .panel h3 {
+    font-size: 16px;
+    margin: 0 0 8px;
+    font-weight: 600;
+  }
+
+  /* status pills */
+  .pill {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+  }
+  .pill-green { background: var(--green-soft); color: var(--green); }
+  .pill-amber { background: var(--amber-soft); color: var(--amber); }
+  .pill-red { background: var(--red-soft); color: var(--red); }
+  .pill-blue { background: var(--blue-soft); color: var(--blue); }
+  .pill-accent { background: var(--accent-soft); color: var(--accent); }
+
+  /* chain row */
+  .chain {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+  }
+  .step {
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 8px 12px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s;
+    user-select: none;
+  }
+  .step:hover { border-color: var(--accent); transform: translateY(-1px); }
+  .step.active { background: var(--accent); color: white; border-color: var(--accent); }
+  .step .ico { display: inline-block; margin-right: 4px; }
+  .arrow { color: var(--ink-soft); font-size: 18px; }
+
+  /* gap row */
+  .gap-list { display: flex; flex-direction: column; gap: 8px; }
+  .gap-row {
+    display: grid;
+    grid-template-columns: 24px 1fr auto;
+    gap: 10px;
+    align-items: center;
+    padding: 8px 12px;
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    font-size: 13px;
+  }
+  .gap-row .ico { font-size: 16px; }
+  .gap-row.shipped { border-left: 3px solid var(--green); }
+  .gap-row.mostgap { border-left: 3px solid var(--amber); }
+  .gap-row.fullgap { border-left: 3px solid var(--red); }
+
+  /* proposal cards */
+  .proposal-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 12px;
+  }
+  .proposal {
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 14px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .proposal:hover { transform: translateY(-2px); box-shadow: var(--shadow); border-color: var(--accent); }
+  .proposal .head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+  .proposal .head .id { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 13px; color: var(--accent); font-weight: 600; }
+  .proposal h4 { margin: 0 0 6px; font-size: 14px; font-weight: 600; }
+  .proposal p { margin: 0; font-size: 12px; color: var(--ink-soft); line-height: 1.5; }
+  .proposal .meta { display: flex; gap: 8px; margin-top: 10px; font-size: 11px; color: var(--ink-soft); }
+  .proposal .meta span { padding: 2px 6px; background: var(--panel); border-radius: 4px; border: 1px solid var(--line); }
+
+  /* detail panel */
+  #detail-panel {
+    margin-top: 16px;
+    padding: 18px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    display: none;
+    box-shadow: var(--shadow);
+  }
+  #detail-panel.show { display: block; }
+  #detail-panel h3 { margin: 0 0 8px; font-size: 18px; }
+  #detail-panel .close { float: right; cursor: pointer; color: var(--ink-soft); font-size: 20px; line-height: 1; padding: 0 4px; }
+  #detail-panel .close:hover { color: var(--ink); }
+
+  .kv { display: grid; grid-template-columns: 140px 1fr; gap: 6px 12px; font-size: 13px; margin-top: 12px; }
+  .kv .k { color: var(--ink-soft); font-weight: 600; }
+  .kv .v { color: var(--ink); }
+  .kv code { background: var(--bg); padding: 1px 6px; border-radius: 4px; font-size: 12px; }
+
+  /* url table */
+  .url-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  .url-table th, .url-table td {
+    text-align: left;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--line);
+  }
+  .url-table th { color: var(--ink-soft); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; }
+  .url-table td.url { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12px; color: var(--accent); }
+  .url-table tr:hover td { background: var(--bg); }
+
+  /* file tree */
+  .tree {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 12px;
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 12px;
+    overflow-x: auto;
+    line-height: 1.6;
+  }
+  .tree .dir { color: var(--accent); font-weight: 600; }
+  .tree .file { color: var(--ink); }
+  .tree .comment { color: var(--ink-soft); font-style: italic; }
+
+  /* footer stats */
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin-top: 16px;
+  }
+  @media (max-width: 600px) {
+    .stats { grid-template-columns: repeat(2, 1fr); }
+  }
+  .stat {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 14px;
+    text-align: center;
+  }
+  .stat .num { font-size: 24px; font-weight: 700; color: var(--accent); line-height: 1; }
+  .stat .label { font-size: 11px; color: var(--ink-soft); text-transform: uppercase; letter-spacing: 0.06em; margin-top: 4px; }
+</style>
+
+<div class="wrap">
+  <h1>open-design 设计版图链路集成</h1>
+  <div class="sub">
+    <code>nexu-io/open-design</code> 集成到 cortex-agent 的完整设计链路 — 4 个子提案 + 12 个交付物 + 2760 行
+  </div>
+
+  <div class="grid">
+    <div class="panel">
+      <h2>设计链路 Chain <span class="pill pill-accent" style="float:right">点击节点看状态</span></h2>
+      <div class="chain" id="chain">
+        <div class="step active" data-step="prd"><span class="ico">📋</span>/prd</div>
+        <span class="arrow">→</span>
+        <div class="step" data-step="prototype"><span class="ico">🖼️</span>/prototype</div>
+        <span class="arrow">→</span>
+        <div class="step" data-step="deck"><span class="ico">🎬</span>/deck</div>
+        <span class="arrow">→</span>
+        <div class="step" data-step="live"><span class="ico">📊</span>/live-artifact</div>
+        <span class="arrow">→</span>
+        <div class="step" data-step="motion"><span class="ico">🎞️</span>/motion</div>
+        <span class="arrow">→</span>
+        <div class="step" data-step="image"><span class="ico">🖌️</span>/image</div>
+        <span class="arrow">→</span>
+        <div class="step" data-step="arch"><span class="ico">🏛️</span>/arch-design</div>
+        <span class="arrow">→</span>
+        <div class="step" data-step="ship"><span class="ico">🚀</span>/ship</div>
+      </div>
+      <div id="chain-desc" style="margin-top:14px; padding:10px 12px; background:var(--bg); border-radius:8px; font-size:13px; border:1px solid var(--line);">
+        <strong>/prd</strong> — 已 ship · <code>.agent/prd/&lt;id&gt;/</code> 沉淀 PRD 资产 · 可视化需求与验收契约 · 喂给下游所有 workflow
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>覆盖状态 Gap Analysis</h2>
+      <div class="gap-list">
+        <div class="gap-row shipped"><span class="ico">✅</span><span><strong>DESIGN.md cascade</strong> — T-OD-001 已 ship · 4-level cascade · 151 systems</span><span class="pill pill-green">shipped</span></div>
+        <div class="gap-row shipped"><span class="ico">✅</span><span><strong>/prototype workflow</strong> — 已 ship · Doc + Pixso MCP backend</span><span class="pill pill-green">shipped</span></div>
+        <div class="gap-row shipped"><span class="ico">✅</span><span><strong>dsh native runtime</strong> — M-029 / P-006 已 ship · first-class</span><span class="pill pill-green">shipped</span></div>
+        <div class="gap-row mostgap"><span class="ico">⚠️</span><span><strong>Plugin / Skill / Template catalog</strong> — 277+100+18 = 395 个 catalog 缺统一接入</span><span class="pill pill-amber">P-001</span></div>
+        <div class="gap-row fullgap"><span class="ico">🆕</span><span><strong>/deck / /live-artifact / /motion / /image</strong> — 4 条设计工作流完全缺位</span><span class="pill pill-red">P-003</span></div>
+        <div class="gap-row mostgap"><span class="ico">🔌</span><span><strong>MCP stdio bridge (双向)</strong> — cortex-agent 自身不暴露 MCP,外部 agent 无法消费 .agent/ 资产</span><span class="pill pill-amber">P-002</span></div>
+        <div class="gap-row mostgap"><span class="ico">📚</span><span><strong>26 agent runtime-adapter 契约</strong> — 除 dsh / Claude / Cursor / Codex / Copilot 外 21 个 agent 缺文档</span><span class="pill pill-amber">P-004</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>4 个子提案(平行可独立 ship · 建议顺序 P-003 → P-001 → P-002 → P-004)</h2>
+    <div class="proposal-grid">
+      <div class="proposal" data-p="P-001">
+        <div class="head"><span class="id">P-001</span><span class="pill pill-blue">draft</span></div>
+        <h4>Catalog Bridge</h4>
+        <p>open-design 277 plugins / 100+ skills / 18 templates / 151 systems → cortex-agent plugin/skill/template 体系 · 沿用 T-OD-001 lib/design/* + lock v2 · Brand-backed 提取 + Claude Design import</p>
+        <div class="meta"><span>~4500 LOC</span><span>28 文件</span><span>3-4 周</span></div>
+      </div>
+      <div class="proposal" data-p="P-002">
+        <div class="head"><span class="id">P-002</span><span class="pill pill-blue">draft</span></div>
+        <h4>MCP Bridge</h4>
+        <p>cortex-agent 暴露 stdio MCP server · 11+ tools 暴露 .agent/ 资产 · 16+ agent 一键 install · 复用 P-006 dsh adapter · od-bridge thin wrapper(GET-only 白名单)</p>
+        <div class="meta"><span>~1800 LOC</span><span>15 文件</span><span>2 周</span></div>
+      </div>
+      <div class="proposal" data-p="P-003">
+        <div class="head"><span class="id">P-003</span><span class="pill pill-accent">P0 最优先</span></div>
+        <h4>Workflow Chain</h4>
+        <p>/deck (HTML+PDF+PPTX+ZIP+MD) · /live-artifact (tweaks panel) · /motion (HTML+GSAP→MP4) · /image (BYOK) · /prototype backend 4 选互选 · PPTX 手工 OOXML 零依赖</p>
+        <div class="meta"><span>~3200 LOC</span><span>22 文件</span><span>3 周</span></div>
+      </div>
+      <div class="proposal" data-p="P-004">
+        <div class="head"><span class="id">P-004</span><span class="pill pill-blue">draft</span></div>
+        <h4>Runtime Adapter</h4>
+        <p>.agent/references/runtime-adapters/&lt;agent&gt;.md 沉淀 26 agent + 8 BYOK 契约 · _index.json 机器可读 · cortex-agent agent list|show · 复用 P-006 / P-002</p>
+        <div class="meta"><span>~1800 行</span><span>~30 文件</span><span>1.5 周</span></div>
+      </div>
+    </div>
+
+    <div id="detail-panel">
+      <span class="close" id="detail-close">×</span>
+      <h3 id="detail-title">详情</h3>
+      <div class="kv" id="detail-kv"></div>
+    </div>
+  </div>
+
+  <div class="panel" style="margin-top:16px">
+    <h2>用户原话 URL 映射(8 个 solutions + alternatives)</h2>
+    <table class="url-table">
+      <thead>
+        <tr><th style="width:50%">open-design URL</th><th>cortex-agent 现状</th><th>本提案补齐</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="url">/zh/solutions/prototype/</td><td>/prototype ship (Doc + Pixso MCP)</td><td>扩展 backend 4 选 + open-design 13 templates</td></tr>
+        <tr><td class="url">/zh/solutions/dashboard/</td><td>❌ 缺 live-artifact</td><td>P-003 /live-artifact + tweaks panel</td></tr>
+        <tr><td class="url">/zh/solutions/slides/</td><td>❌ 完全缺位</td><td><strong>P-003 /deck</strong>(15 templates × 36 themes + PPTX)</td></tr>
+        <tr><td class="url">/zh/solutions/design-system/</td><td>T-OD-001 ship</td><td>P-001 Brand-backed 提取 + Claude Design import</td></tr>
+        <tr><td class="url">/zh/alternatives/claude-design/</td><td>n/a</td><td>P-001 §4.8 Claude Design ZIP importer</td></tr>
+        <tr><td class="url">/zh/alternatives/figma/</td><td>Pixso + OpenPencil backend</td><td>新增 open-design 第 4 backend</td></tr>
+        <tr><td class="url">/zh/alternatives/lovable/</td><td>n/a(定位不同)</td><td>"OD 生成 → Lovable 出口"路径</td></tr>
+        <tr><td class="url">/zh/alternatives/figma-make/</td><td>n/a(定位不同)</td><td>OD Figma import → DESIGN.md 提取</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="stats">
+    <div class="stat"><div class="num">12</div><div class="label">交付文件</div></div>
+    <div class="stat"><div class="num">2,760</div><div class="label">总行数</div></div>
+    <div class="stat"><div class="num">4</div><div class="label">子提案</div></div>
+    <div class="stat"><div class="num">~9 周</div><div class="label">分阶段实施</div></div>
+  </div>
+
+  <div class="panel" style="margin-top:16px">
+    <h2>交付物文件树</h2>
+    <div class="tree">
+<span class="dir">.agent/plans/proposals/projects/open-design-integration/</span>
+├── <span class="file">index.md</span>                         <span class="comment"># 92 行 · 项目入口 + 4 子提案 + 4 milestones</span>
+├── <span class="file">references.md</span>                    <span class="comment"># 127 行 · 4 solutions/alternatives 映射 + upstream</span>
+├── <span class="file">relations.md</span>                     <span class="comment"># 139 行 · 3 decisions + 依赖矩阵 + pilot</span>
+├── <span class="dir">decisions/</span>
+│   ├── <span class="file">D-ODI-001.md</span>                   <span class="comment"># 89 行 · backend upstream 模式</span>
+│   ├── <span class="file">D-ODI-002.md</span>                   <span class="comment"># 88 行 · 沿用 T-OD-001 catalog 协议</span>
+│   └── <span class="file">D-ODI-003.md</span>                   <span class="comment"># 83 行 · 子提案平行 ship</span>
+└── <span class="dir">proposals/</span>
+    ├── <span class="file">P-001-catalog-bridge-proposal.md</span>          <span class="comment"># 351 行</span>
+    ├── <span class="file">P-002-mcp-bridge-proposal.md</span>              <span class="comment"># 397 行</span>
+    ├── <span class="file">P-003-design-workflow-chain-proposal.md</span>   <span class="comment"># 559 行</span>
+    └── <span class="file">P-004-runtime-adapter-proposal.md</span>         <span class="comment"># 456 行</span>
+
+<span class="dir">.agent/memory/project/</span>
+└── <span class="file">open-design-integration-design-chain.md</span>    <span class="comment"># 133 行 · 项目记忆 + MEMORY.md 索引</span>
+
+<span class="dir">.agent/references/external/</span>
+└── <span class="file">open-design-landscape.md</span>                   <span class="comment"># 246 行 · 上游地景 + 集成策略</span>
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+  const steps = {
+    prd: { title: '/prd', desc: '已 ship · <code>.agent/prd/&lt;id&gt;/</code> 沉淀 PRD 资产 · 可视化需求与验收契约 · 喂给下游所有 workflow', status: 'shipped' },
+    prototype: { title: '/prototype', desc: '已 ship · Doc (Mermaid + Anime.js HTML) + Pixso MCP · 本提案扩展为 4 backend 互选(doc / openpencil / pixso / open-design)', status: 'shipped-ext' },
+    deck: { title: '/deck', desc: '❌ 缺位 · 15 templates × 36 themes + PPTX/PDF/HTML/ZIP/MD 5 格式 · 手工 OOXML 零依赖 · P-003 ⭐ 最先补齐', status: 'new' },
+    live: { title: '/live-artifact', desc: '❌ 缺位 · 数据驱动 dashboard + AI-emitted tweaks manifest · iframe 内不重载只重渲染 · P-003', status: 'new' },
+    motion: { title: '/motion', desc: '❌ 缺位 · HyperFrames HTML+GSAP → MP4 · headless Chrome 截图 + FFmpeg 编码 · P-003', status: 'new' },
+    image: { title: '/image', desc: '❌ 缺位 · BYOK image generation · gpt-image-2 / Seedream / Nano Banana · P-003', status: 'new' },
+    arch: { title: '/arch-design', desc: '已 ship · 架构提案 · 消费 PRD + prototype + design-system + validation-contract', status: 'shipped' },
+    ship: { title: '/ship', desc: '已 ship · 交付收尾 · 串联所有产物', status: 'shipped' }
+  };
+
+  const proposals = {
+    'P-001': {
+      title: 'P-001 · Catalog Bridge',
+      kv: [
+        ['范围', 'open-design 4 planes (277 plugins + 100+ skills + 18 templates + 151 systems) → cortex-agent 体系'],
+        ['核心设计', 'lib/design/* 扩展为 lib/catalog/* · lock schema v1 → v2 向后兼容 · 4 kind 共享 fetch / lockfile / license'],
+        ['关键能力', 'Plugin 转 cortex-agent manifest · Skill 直接复用 · Template 新建 lib/templates · Brand-backed 提取 · Claude Design import'],
+        ['依赖', 'T-OD-001 (lib/design/*) · M-002 (plugin / skill 体系)'],
+        ['风险', 'plugins 大量 license 散落 (R2) · plugin runtime 不可移植 (R3) · open-design daemon 启动慢 (R6)'],
+        ['验收', 'VC-1..VC-12 12 条 · 既有 87 tests 不破坏 · license fail-closed 4 kind 一致']
+    ] },
+    'P-002': {
+      title: 'P-002 · MCP Bridge',
+      kv: [
+        ['范围', 'cortex-agent 暴露 stdio MCP server · 11+ tools 暴露 .agent/ 资产 · 16+ agent 一键 install'],
+        ['核心设计', 'stdio JSON-RPC over Node.js 内置模块 · 零 npm 依赖 · token gate · loopback-only · SSRF guard'],
+        ['关键能力', 'design/list|show|install|resolved · prototype/list|show · prd/list|show · template/list · plugin/list · skill/browse · od/api-call (GET-only 白名单)'],
+        ['依赖', 'P-006 dsh adapter · P-001 catalog (optional)'],
+        ['风险', 'MCP protocol 演进 (R1) · 16+ agent 配置文件路径差异 (R2) · od-bridge 白名单绕过 (R5) · token 泄漏 (R7)'],
+        ['验收', 'VC-1..VC-12 12 条 · dsh 自动接入 · Ctrl+C graceful shutdown']
+    ] },
+    'P-003': {
+      title: 'P-003 · Design Workflow Chain (P0 最优先)',
+      kv: [
+        ['范围', '补齐 cortex-agent 4 条设计工作流 · /deck + /live-artifact + /motion + /image'],
+        ['核心设计', '/deck 15 templates × 36 themes + 5 格式导出 (HTML+PDF+PPTX+ZIP+MD) · /live-artifact tweaks manifest · /motion GSAP → MP4 · /image BYOK 图像生成 · PPTX 手工 OOXML 零依赖'],
+        ['关键能力', 'tweaks.json 数据驱动 · iframe sandbox · chrome-render.js headless · BYOK env var 引用 (不存 key) · /prototype backend 4 选'],
+        ['依赖', 'P-001 catalog (可选) · P-002 MCP bridge (live-artifact api mode)'],
+        ['风险', 'PPTX OOXML 兼容性 (R1) · Chrome 截图性能 (R2) · FFmpeg H.264 专利 (R3) · BYOK key 泄漏 (R4) · tweaks XSS (R7)'],
+        ['验收', 'VC-1..VC-12 12 条 · PPTX 能用 LibreOffice/Keynote/PowerPoint 打开 · 缺失 Chrome/FFmpeg 优雅报错']
+    ] },
+    'P-004': {
+      title: 'P-004 · Runtime Adapter',
+      kv: [
+        ['范围', '.agent/references/runtime-adapters/&lt;agent&gt;.md 沉淀 26 agent + 8 BYOK 契约'],
+        ['核心设计', '_schema.md 统一 frontmatter + sections · _index.json 机器可读 · cortex-agent agent list|show · 复用 P-006 dsh + P-002 stdio MCP'],
+        ['关键能力', '26 agent × protocol × mcpBridge × pilot 字段 · 8 BYOK provider 共用模板 · dsh.md 引用 P-006 已 ship'],
+        ['依赖', 'P-006 dsh first-class · P-002 mcp-bridge · open-design 官方 runtime registry'],
+        ['风险', 'open-design 上游 agent adapter 演进 (R1) · 跨平台配置路径差异 (R2) · dsh native vs stdio MCP 抽象不一致 (R4)'],
+        ['验收', 'VC-1..VC-11 11 条 · 至少 3 agent pilot 验证 (dsh / claude / cursor)']
+    ] }
+  };
+
+  // Chain step click handler
+  const chainSteps = document.querySelectorAll('#chain .step');
+  const chainDesc = document.getElementById('chain-desc');
+  chainSteps.forEach(s => {
+    s.addEventListener('click', () => {
+      chainSteps.forEach(x => x.classList.remove('active'));
+      s.classList.add('active');
+      const stepKey = s.dataset.step;
+      const step = steps[stepKey];
+      chainDesc.innerHTML = '<strong>' + step.title + '</strong> — ' + step.desc;
+    });
+  });
+
+  // Proposal click handler
+  const proposalCards = document.querySelectorAll('.proposal');
+  const detailPanel = document.getElementById('detail-panel');
+  const detailTitle = document.getElementById('detail-title');
+  const detailKv = document.getElementById('detail-kv');
+  const detailClose = document.getElementById('detail-close');
+
+  proposalCards.forEach(card => {
+    card.addEventListener('click', () => {
+      const pId = card.dataset.p;
+      const p = proposals[pId];
+      detailTitle.textContent = p.title;
+      detailKv.innerHTML = '';
+      p.kv.forEach(([k, v]) => {
+        const kEl = document.createElement('div');
+        kEl.className = 'k';
+        kEl.textContent = k;
+        const vEl = document.createElement('div');
+        vEl.className = 'v';
+        vEl.innerHTML = v;
+        detailKv.appendChild(kEl);
+        detailKv.appendChild(vEl);
+      });
+      detailPanel.classList.add('show');
+      detailPanel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    });
+  });
+
+  detailClose.addEventListener('click', () => {
+    detailPanel.classList.remove('show');
+  });
+})();
+</script>

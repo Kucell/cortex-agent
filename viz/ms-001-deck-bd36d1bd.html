@@ -1,0 +1,166 @@
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #f7f6f3;
+    --panel: #ffffff;
+    --ink: #1d1d1f;
+    --ink-soft: #5b5b66;
+    --line: #e7e4dd;
+    --accent: #d97706;
+    --accent-soft: #fff3e0;
+    --green: #1f7a4d;
+    --green-soft: #e6f4ec;
+    --amber: #b45309;
+    --amber-soft: #fef3c7;
+    --blue: #1e40af;
+    --blue-soft: #e0e7ff;
+    --shadow: 0 1px 2px rgba(0,0,0,0.04), 0 8px 24px rgba(0,0,0,0.04);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1c1c1f;
+      --panel: #26262a;
+      --ink: #f5f5f7;
+      --ink-soft: #a1a1aa;
+      --line: #3a3a3f;
+      --accent: #fbbf24;
+      --accent-soft: #422006;
+      --green: #4ade80;
+      --green-soft: #052e16;
+      --amber: #fbbf24;
+      --amber-soft: #422006;
+      --blue: #93c5fd;
+      --blue-soft: #1e3a8a;
+      --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 8px 24px rgba(0,0,0,0.4);
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 24px; background: var(--bg); color: var(--ink); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif; line-height: 1.5; }
+  .wrap { max-width: 1100px; margin: 0 auto; }
+  h1 { font-size: 26px; margin: 0 0 4px; font-weight: 700; letter-spacing: -0.01em; }
+  .sub { color: var(--ink-soft); font-size: 13px; margin-bottom: 20px; }
+  .hero { background: linear-gradient(135deg, var(--green-soft), var(--blue-soft)); border: 1px solid var(--green); border-radius: 14px; padding: 22px; margin-bottom: 16px; }
+  .hero h1 { color: var(--ink); }
+  .hero .sub { color: var(--ink); }
+
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px; }
+  @media (max-width: 800px) { .grid { grid-template-columns: 1fr; } }
+
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; box-shadow: var(--shadow); }
+  .panel h2 { font-size: 13px; margin: 0 0 10px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-soft); font-weight: 600; }
+  .panel h3 { font-size: 15px; margin: 0 0 6px; font-weight: 600; }
+
+  .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; letter-spacing: 0.04em; }
+  .pill-green { background: var(--green-soft); color: var(--green); }
+  .pill-blue { background: var(--blue-soft); color: var(--blue); }
+  .pill-amber { background: var(--amber-soft); color: var(--amber); }
+  .pill-accent { background: var(--accent-soft); color: var(--accent); }
+
+  .tree { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11px; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 12px; overflow-x: auto; line-height: 1.6; }
+  .tree .dir { color: var(--accent); font-weight: 600; }
+  .tree .file { color: var(--ink); }
+  .tree .new { background: var(--green-soft); color: var(--green); padding: 1px 4px; border-radius: 3px; font-weight: 600; }
+  .tree .mod { background: var(--blue-soft); color: var(--blue); padding: 1px 4px; border-radius: 3px; font-weight: 600; }
+
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 14px; }
+  @media (max-width: 600px) { .stats { grid-template-columns: repeat(2, 1fr); } }
+  .stat { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px; text-align: center; }
+  .stat .num { font-size: 22px; font-weight: 700; color: var(--accent); line-height: 1; }
+  .stat .label { font-size: 10px; color: var(--ink-soft); text-transform: uppercase; letter-spacing: 0.06em; margin-top: 4px; }
+</style>
+
+<div class="wrap">
+  <div class="hero">
+    <h1>✅ M-ODI-001 / MS-001 /deck 工作流落地</h1>
+    <div class="sub">P-003 §4.2 · 零依赖 · 66 新测试 + 118 既有回归全过</div>
+  </div>
+
+  <div class="grid">
+    <div class="panel">
+      <h2>交付物 · 11 新文件 + 2 改动</h2>
+      <div class="tree">
+<span class="dir">lib/templates/</span>           <span class="new">NEW</span>
+├── <span class="file">pptx.js</span>            <span class="new">483 lines</span>  <span class="comment"># 零依赖 OOXML ZIP</span>
+├── <span class="file">html-deck.js</span>        <span class="new">233 lines</span>  <span class="comment"># 单文件 inlined CSS</span>
+└── <span class="file">md-deck.js</span>          <span class="new">68 lines</span>   <span class="comment"># Markdown 摘要</span>
+
+<span class="dir">lib/commands/deck.js</span>      <span class="new">315 lines</span>  <span class="comment"># CLI dispatcher + brief 解析</span>
+
+<span class="dir">tests/templates/</span>
+├── <span class="file">pptx.test.js</span>         <span class="new">205 lines</span>  <span class="pill pill-green">20 PASS</span>
+├── <span class="file">html-deck.test.js</span>   <span class="new">121 lines</span>  <span class="pill pill-green">13 PASS</span>
+└── <span class="file">md-deck.test.js</span>      <span class="new">80 lines</span>  <span class="pill pill-green">10 PASS</span>
+
+<span class="dir">tests/commands/deck.test.js</span> <span class="new">288 lines</span>  <span class="pill pill-green">23 PASS</span>
+
+<span class="dir">docs/architecture/deck-workflow-design.md</span> <span class="new">183 lines</span>
+<span class="dir">templates/_shared/.agent/artifacts/deck-README.md</span> <span class="new">54 lines</span>
+
+<span class="dir">bin/cli.js</span>              <span class="mod">+6</span>  <span class="comment"># 单 require + 单 case</span>
+<span class="dir">lib/cli/contract.js</span>     <span class="mod">+9</span>  <span class="comment"># deck 契约条目</span>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>验收 · VC 对应 P-003 §6 / MS-001</h2>
+      <table style="width:100%; font-size:12px; border-collapse: collapse;">
+        <tr style="border-bottom: 1px solid var(--line);"><td style="padding:6px;">VC-1</td><td>PPTX 产出可被 PowerPoint 打开</td><td><span class="pill pill-green">✓</span></td></tr>
+        <tr style="border-bottom: 1px solid var(--line);"><td>VC-2</td><td>PDF (外部 Chrome, 跳过)</td><td><span class="pill pill-amber">↻</span></td></tr>
+        <tr style="border-bottom: 1px solid var(--line);"><td>VC-3</td><td>HTML 单文件 + 内嵌 assets</td><td><span class="pill pill-green">✓</span></td></tr>
+        <tr style="border-bottom: 1px solid var(--line);"><td>VC-4</td><td>P-001 catalog 模板(待 MS-002)</td><td><span class="pill pill-amber">↻</span></td></tr>
+        <tr style="border-bottom: 1px solid var(--line);"><td>VC-5</td><td>bin/cli.js 零依赖</td><td><span class="pill pill-green">✓</span></td></tr>
+        <tr style="border-bottom: 1px solid var(--line);"><td>VC-6</td><td>/motion 委托 P-005(边界)</td><td><span class="pill pill-green">✓</span></td></tr>
+        <tr style="border-bottom: 1px solid var(--line);"><td>VC-7</td><td>PPTX 零依赖(不引入 pptxgenjs)</td><td><span class="pill pill-green">✓</span></td></tr>
+        <tr style="border-bottom: 1px solid var(--line);"><td>VC-10</td><td>T-OD-001 既有 87 tests 不破坏</td><td><span class="pill pill-green">✓ 118/118</span></td></tr>
+      </table>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>端到端验证 · 自定义 brief TASK-LAUNCH 4 slides</h2>
+    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 10px; margin-top: 8px;">
+      <div style="background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 12px;">
+        <div style="font-family: ui-monospace, monospace; font-size: 11px; color: var(--accent); font-weight: 700;">deck.html</div>
+        <div style="font-size: 18px; font-weight: 700; margin-top: 4px;">4,943 <span style="font-size: 12px; color: var(--ink-soft);">bytes</span></div>
+        <div style="font-size: 11px; color: var(--ink-soft);">单文件 inlined CSS</div>
+      </div>
+      <div style="background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 12px;">
+        <div style="font-family: ui-monospace, monospace; font-size: 11px; color: var(--accent); font-weight: 700;">deck.pptx</div>
+        <div style="font-size: 18px; font-weight: 700; margin-top: 4px;">24,280 <span style="font-size: 12px; color: var(--ink-soft);">bytes</span></div>
+        <div style="font-size: 11px; color: var(--ink-soft);">20 XML parts · 全 valid</div>
+      </div>
+      <div style="background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 12px;">
+        <div style="font-family: ui-monospace, monospace; font-size: 11px; color: var(--accent); font-weight: 700;">deck.md</div>
+        <div style="font-size: 18px; font-weight: 700; margin-top: 4px;">1,109 <span style="font-size: 12px; color: var(--ink-soft);">bytes</span></div>
+        <div style="font-size: 11px; color: var(--ink-soft);">Markdown + speaker notes</div>
+      </div>
+      <div style="background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 12px;">
+        <div style="font-family: ui-monospace, monospace; font-size: 11px; color: var(--accent); font-weight: 700;">validation-contract.json</div>
+        <div style="font-size: 18px; font-weight: 700; margin-top: 4px;">1,192 <span style="font-size: 12px; color: var(--ink-soft);">bytes</span></div>
+        <div style="font-size: 11px; color: var(--ink-soft);">VC schema 一致</div>
+      </div>
+    </div>
+    <div style="margin-top: 12px; padding: 10px 12px; background: var(--accent-soft); border-radius: 8px; font-size: 12px;">
+      <strong>PPTX slide1 text runs</strong>(Python zipfile + xml.etree 验证):<br/>
+      <code style="font-family: ui-monospace, monospace; font-size: 11px;">['Q4 Launch', 'cortex-agent design chain', '5 ship-ready sub-proposals (P-001 ~ P-005)', 'HyperFrames motion plane as 5th plane', 'open-design catalog bridge with zero-dep lock']</code>
+    </div>
+  </div>
+
+  <div class="stats">
+    <div class="stat"><div class="num">66</div><div class="label">新增测试通过</div></div>
+    <div class="stat"><div class="num">118</div><div class="label">T-OD-001 回归</div></div>
+    <div class="stat"><div class="num">0</div><div class="label">Fail / Cancelled</div></div>
+    <div class="stat"><div class="num">0</div><div class="label">npm 依赖</div></div>
+  </div>
+
+  <div class="panel" style="margin-top: 14px;">
+    <h2>建议下一步</h2>
+    <ol style="margin: 0; padding-left: 20px; font-size: 13px; line-height: 1.7;">
+      <li><strong>用户授权 commit</strong>(<code>bin/cli.js</code> + <code>lib/</code> + tests + docs 共 11 新 + 2 改)</li>
+      <li><strong>MS-002</strong> lib/catalog/* 重构 + lock schema v2(P-001)</li>
+      <li><strong>MS-003</strong> MCP bridge + 26 agent adapter(P-002 + P-004)</li>
+      <li><strong>MS-005</strong> 动效第 5 平面(P-005)</li>
+      <li><strong>MS-004 pilot</strong>:SamHMI(P0)用 <code>cortex-agent deck TASK-XXX --lang en</code> 实跑验收</li>
+    </ol>
+  </div>
+</div>

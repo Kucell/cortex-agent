@@ -1,0 +1,381 @@
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #f7f6f3;
+    --panel: #ffffff;
+    --ink: #1d1d1f;
+    --ink-soft: #5b5b66;
+    --line: #e7e4dd;
+    --accent: #d97706;
+    --accent-soft: #fff3e0;
+    --green: #1f7a4d;
+    --green-soft: #e6f4ec;
+    --amber: #b45309;
+    --amber-soft: #fef3c7;
+    --red: #b91c1c;
+    --red-soft: #fee2e2;
+    --blue: #1e40af;
+    --blue-soft: #e0e7ff;
+    --shadow: 0 1px 2px rgba(0,0,0,0.04), 0 8px 24px rgba(0,0,0,0.04);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1c1c1f;
+      --panel: #26262a;
+      --ink: #f5f5f7;
+      --ink-soft: #a1a1aa;
+      --line: #3a3a3f;
+      --accent: #fbbf24;
+      --accent-soft: #422006;
+      --green: #4ade80;
+      --green-soft: #052e16;
+      --amber: #fbbf24;
+      --amber-soft: #422006;
+      --red: #fca5a5;
+      --red-soft: #450a0a;
+      --blue: #93c5fd;
+      --blue-soft: #1e3a8a;
+      --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 8px 24px rgba(0,0,0,0.4);
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 24px; background: var(--bg); color: var(--ink); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif; line-height: 1.5; }
+
+  .wrap { max-width: 1100px; margin: 0 auto; }
+
+  h1 { font-size: 28px; margin: 0 0 4px; font-weight: 700; letter-spacing: -0.01em; }
+  .sub { color: var(--ink-soft); font-size: 14px; margin-bottom: 24px; }
+
+  .grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 16px;
+  }
+  @media (max-width: 800px) {
+    .grid { grid-template-columns: 1fr; }
+  }
+
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 18px;
+    box-shadow: var(--shadow);
+  }
+  .panel h2 {
+    font-size: 14px;
+    margin: 0 0 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--ink-soft);
+    font-weight: 600;
+  }
+  .panel h3 {
+    font-size: 16px;
+    margin: 0 0 8px;
+    font-weight: 600;
+  }
+
+  /* status pills */
+  .pill {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+  }
+  .pill-green { background: var(--green-soft); color: var(--green); }
+  .pill-amber { background: var(--amber-soft); color: var(--amber); }
+  .pill-red { background: var(--red-soft); color: var(--red); }
+  .pill-blue { background: var(--blue-soft); color: var(--blue); }
+  .pill-accent { background: var(--accent-soft); color: var(--accent); }
+
+  /* chain row */
+  .chain {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+  }
+  .step {
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 8px 12px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s;
+    user-select: none;
+  }
+  .step:hover { border-color: var(--accent); transform: translateY(-1px); }
+  .step.active { background: var(--accent); color: white; border-color: var(--accent); }
+  .step .ico { display: inline-block; margin-right: 4px; }
+  .arrow { color: var(--ink-soft); font-size: 18px; }
+
+  /* gap row */
+  .gap-list { display: flex; flex-direction: column; gap: 8px; }
+  .gap-row {
+    display: grid;
+    grid-template-columns: 24px 1fr auto;
+    gap: 10px;
+    align-items: center;
+    padding: 8px 12px;
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    font-size: 13px;
+  }
+  .gap-row .ico { font-size: 16px; }
+  .gap-row.shipped { border-left: 3px solid var(--green); }
+  .gap-row.mostgap { border-left: 3px solid var(--amber); }
+  .gap-row.fullgap { border-left: 3px solid var(--red); }
+
+  /* proposal cards */
+  .proposal-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 12px;
+  }
+  .proposal {
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 14px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .proposal:hover { transform: translateY(-2px); box-shadow: var(--shadow); border-color: var(--accent); }
+  .proposal .head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+  .proposal .head .id { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 13px; color: var(--accent); font-weight: 600; }
+  .proposal h4 { margin: 0 0 6px; font-size: 14px; font-weight: 600; }
+  .proposal p { margin: 0; font-size: 12px; color: var(--ink-soft); line-height: 1.5; }
+  .proposal .meta { display: flex; gap: 8px; margin-top: 10px; font-size: 11px; color: var(--ink-soft); }
+  .proposal .meta span { padding: 2px 6px; background: var(--panel); border-radius: 4px; border: 1px solid var(--line); }
+
+  /* detail panel */
+  #detail-panel {
+    margin-top: 16px;
+    padding: 18px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    display: none;
+    box-shadow: var(--shadow);
+  }
+  #detail-panel.show { display: block; }
+  #detail-panel h3 { margin: 0 0 8px; font-size: 18px; }
+  #detail-panel .close { float: right; cursor: pointer; color: var(--ink-soft); font-size: 20px; line-height: 1; padding: 0 4px; }
+  #detail-panel .close:hover { color: var(--ink); }
+
+  .kv { display: grid; grid-template-columns: 140px 1fr; gap: 6px 12px; font-size: 13px; margin-top: 12px; }
+  .kv .k { color: var(--ink-soft); font-weight: 600; }
+  .kv .v { color: var(--ink); }
+  .kv code { background: var(--bg); padding: 1px 6px; border-radius: 4px; font-size: 12px; }
+
+  /* url table */
+  .url-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  .url-table th, .url-table td {
+    text-align: left;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--line);
+  }
+  .url-table th { color: var(--ink-soft); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; }
+  .url-table td.url { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12px; color: var(--accent); }
+  .url-table tr:hover td { background: var(--bg); }
+
+  /* file tree */
+  .tree {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 12px;
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 12px;
+    overflow-x: auto;
+    line-height: 1.6;
+  }
+  .tree .dir { color: var(--accent); font-weight: 600; }
+  .tree .file { color: var(--ink); }
+  .tree .comment { color: var(--ink-soft); font-style: italic; }
+
+  /* footer stats */
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin-top: 16px;
+  }
+  @media (max-width: 600px) {
+    .stats { grid-template-columns: repeat(2, 1fr); }
+  }
+  .stat {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 14px;
+    text-align: center;
+  }
+  .stat .num { font-size: 24px; font-weight: 700; color: var(--accent); line-height: 1; }
+  .stat .label { font-size: 11px; color: var(--ink-soft); text-transform: uppercase; letter-spacing: 0.06em; margin-top: 4px; }
+</style>
+
+<div class="wrap">
+  <h1>open-design 设计版图链路集成 — 审查报告</h1>
+  <div class="sub">
+    提案组审查:12 文件 / 2986 行 · 总评 <strong>APPROVE_WITH_CHANGES</strong> · 2 必须修 + 2 建议修
+  </div>
+
+  <div class="grid">
+    <div class="panel">
+      <h2>审查总评</h2>
+      <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px;">
+        <span class="pill pill-accent" style="font-size: 14px; padding: 6px 14px;">APPROVE_WITH_CHANGES</span>
+        <span style="font-size: 13px; color: var(--ink-soft);">整体架构合理,需修 2 项 + 建议修 2 项</span>
+      </div>
+      <div style="font-size: 13px; line-height: 1.6;">
+        <p style="margin: 0 0 8px;"><strong>✅ 优势:</strong></p>
+        <ul style="margin: 0 0 12px; padding-left: 20px; color: var(--ink-soft);">
+          <li>沿用 T-OD-001 已 ship 资产(lib/design/* + lock file + license ack)</li>
+          <li>复用 P-006 dsh first-class adapter(M-029 已 ship)</li>
+          <li>子提案平行可独立采纳,不强制顺序</li>
+          <li>上游证据充分(4 planes + 26 agent + HyperFrames 引擎)</li>
+        </ul>
+        <p style="margin: 0 0 8px;"><strong>⚠️ 待修:</strong></p>
+        <ul style="margin: 0; padding-left: 20px; color: var(--ink-soft);">
+          <li>P-003 /motion 与 P-005 职责重叠</li>
+          <li>P-005 存在但 index.md 之前版本未提及</li>
+          <li>缺乏统一的 verification contract</li>
+          <li>Pilot 验证路径不闭合</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>架构原则审查(7/7 PASS)</h2>
+      <div class="gap-list">
+        <div class="gap-row shipped"><span class="ico">✅</span><span><strong>零依赖原则</strong> — 5 子提案 + 4 决策都明确标注零依赖</span><span class="pill pill-green">PASS</span></div>
+        <div class="gap-row shipped"><span class="ico">✅</span><span><strong>模板驱动</strong> — 新增内容优先落在 templates/_shared/.agent/</span><span class="pill pill-green">PASS</span></div>
+        <div class="gap-row shipped"><span class="ico">✅</span><span><strong>纯加法升级</strong> — lock schema v1 → v2 向后兼容,旧 lock 仍可读</span><span class="pill pill-green">PASS</span></div>
+        <div class="gap-row shipped"><span class="ico">✅</span><span><strong>平台无关 + 符号链接桥接</strong> — .agent/ 仍是唯一真理来源</span><span class="pill pill-green">PASS</span></div>
+        <div class="gap-row shipped"><span class="ico">✅</span><span><strong>最小化修改原则</strong> — 每个 MS 改动范围可控,职责单一</span><span class="pill pill-green">PASS</span></div>
+        <div class="gap-row shipped"><span class="ico">✅</span><span><strong>证据/数据支撑</strong> — 上游官方文档 + 现有提案引用 + pilot 项目引用</span><span class="pill pill-green">PASS</span></div>
+        <div class="gap-row shipped"><span class="ico">✅</span><span><strong>复用现有构件</strong> — 沿用 lib/design/* + P-006 dsh adapter + skill-dispatch</span><span class="pill pill-green">PASS</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid">
+    <div class="panel">
+      <h2>提案结构规范审查(4/4 PASS)</h2>
+      <div class="gap-list">
+        <div class="gap-row shipped"><span class="ico">✅</span><span><strong>目录结构合规</strong> — projects/open-design-integration/ 项目级提案组</span><span class="pill pill-green">PASS</span></div>
+        <div class="gap-row shipped"><span class="ico">✅</span><span><strong>index.md 必备章节</strong> — 目标/范围/子提案/关联项目/里程碑/当前决策/下一步</span><span class="pill pill-green">PASS</span></div>
+        <div class="gap-row shipped"><span class="ico">✅</span><span><strong>命名规范</strong> — kebab-case + P-XXX-<short-name>-proposal.md + D-ODI-XXX.md</span><span class="pill pill-green">PASS</span></div>
+        <div class="gap-row shipped"><span class="ico">✅</span><span><strong>禁止事项</strong> — 无根目录提案 / 无临时文件 / 无含糊目录名</span><span class="pill pill-green">PASS</span></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>交叉一致性检查(2/4 需修)</h2>
+      <div class="gap-list">
+        <div class="gap-row mostgap"><span class="ico">⚠️</span><span><strong>P-003 /motion vs P-005 职责重叠</strong> — P-003 应只定义 workflow 入口,P-005 是引擎 + 剪辑管线</span><span class="pill pill-amber">WARN</span></div>
+        <div class="gap-row mostgap"><span class="ico">⚠️</span><span><strong>P-005 版本标注缺失</strong> — index.md §3 子提案表未标注 P-005 是后补的</span><span class="pill pill-amber">WARN</span></div>
+        <div class="gap-row mostgap"><span class="ico">⚠️</span><span><strong>缺乏统一 verification contract</strong> — 5 个子提案 VC 各自独立,无 project 级整体验收</span><span class="pill pill-amber">WARN</span></div>
+        <div class="gap-row mostgap"><span class="ico">⚠️</span><span><strong>Pilot 验证路径不闭合</strong> — 缺少"验证什么 → 怎么算通过"的可执行清单</span><span class="pill pill-amber">WARN</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>上游证据验证(3/3 PASS)</h2>
+    <table class="url-table">
+      <thead>
+        <tr><th style="width:30%">验证项</th><th style="width:40%">证据</th><th>结论</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><strong>open-design 4 planes 数量</strong></td><td>151 design systems + 277 plugins + 100+ skills + 18 design-templates</td><td><span class="pill pill-green">PASS</span></td></tr>
+        <tr><td><strong>open-design 26 agent runtime</strong></td><td>27 runtime definitions × 26 distinct coding-agent CLIs</td><td><span class="pill pill-green">PASS</span></td></tr>
+        <tr><td><strong>HyperFrames 引擎</strong></td><td>Apache-2.0 + 20 skills + macOS Apple Silicon / Linux x64 + FFmpeg + npx hyperframes doctor</td><td><span class="pill pill-green">PASS</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="panel" style="margin-top:16px">
+    <h2>关键问题清单(2 必须修 + 2 建议修)</h2>
+    <div style="display: flex; flex-direction: column; gap: 12px;">
+      <div style="padding: 12px; background: var(--red-soft); border-left: 3px solid var(--red); border-radius: 8px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+          <strong style="font-size: 14px;">1. P-003 /motion 与 P-005 职责重叠</strong>
+          <span class="pill pill-red">必须修</span>
+        </div>
+        <div style="font-size: 13px; color: var(--ink-soft); line-height: 1.5;">
+          P-003 §4.4 定义了 /motion 工作流(HTML+GSAP → MP4),P-005 定义了"动效第 5 平面"(品牌配色驱动 → 实时预览 → 剪辑即用 MP4)。relations.md §4.1 已明确划分:P-003 是 workflow 入口,P-005 是引擎 + 剪辑管线。但 P-003 §4.4 的描述跟 P-005 有重叠,P-003 应该只定义 workflow 入口(/motion 命令的形态),不涉及引擎细节。
+        </div>
+        <div style="margin-top: 8px; font-size: 12px; color: var(--red); font-weight: 600;">
+          建议: P-003 §4.4 改为 "调用 cortex-agent motion 命令(见 P-005)",不重复引擎细节。
+        </div>
+      </div>
+
+      <div style="padding: 12px; background: var(--red-soft); border-left: 3px solid var(--red); border-radius: 8px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+          <strong style="font-size: 14px;">2. P-005 存在但 index.md 之前版本未提及</strong>
+          <span class="pill pill-red">必须修</span>
+        </div>
+        <div style="font-size: 13px; color: var(--ink-soft); line-height: 1.5;">
+          P-005 是后补的,index.md §3 子提案表在最初版本只有 P-001 ~ P-004,后补了 P-005。references.md §2.5 和 relations.md §4.1 也是后补的。虽然所有引用都已更新,但 index.md 的创建日期还是 2026-08-20,没有标注 P-005 是后补的。
+        </div>
+        <div style="margin-top: 8px; font-size: 12px; color: var(--red); font-weight: 600;">
+          建议: index.md §3 子提案表加一行备注 "P-005 后补于 2026-08-20,补充用户强调的动效场景"。
+        </div>
+      </div>
+
+      <div style="padding: 12px; background: var(--amber-soft); border-left: 3px solid var(--amber); border-radius: 8px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+          <strong style="font-size: 14px;">3. 缺乏统一的 verification contract</strong>
+          <span class="pill pill-amber">建议修</span>
+        </div>
+        <div style="font-size: 13px; color: var(--ink-soft); line-height: 1.5;">
+          5 个子提案各自有 VC-1..VC-12 / VC-1..VC-11,但没有 project 级别的整体验收。每个子提案的 VC 都是独立的,没有"如果 P-001 + P-002 + P-003 都 ship 了,整体验收是什么"的描述。
+        </div>
+        <div style="margin-top: 8px; font-size: 12px; color: var(--amber); font-weight: 600;">
+          建议: index.md §5 里程碑表加一列 "整体验收",描述 M-ODI-001 ~ M-ODI-005 各自的整体验收标准。
+        </div>
+      </div>
+
+      <div style="padding: 12px; background: var(--amber-soft); border-left: 3px solid var(--amber); border-radius: 8px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+          <strong style="font-size: 14px;">4. Pilot 验证路径不闭合</strong>
+          <span class="pill pill-amber">建议修</span>
+        </div>
+        <div style="font-size: 13px; color: var(--ink-soft); line-height: 1.5;">
+          M-ODI-004 提到 SamHMI / csm-view-memory / hmi-platform / AI-Brain 作为 pilot,但缺少"验证什么 → 怎么算通过"的可执行清单。比如 SamHMI 要验证什么?/deck + 1 design-system 端到端?怎么算通过?
+        </div>
+        <div style="margin-top: 8px; font-size: 12px; color: var(--amber); font-weight: 600;">
+          建议: 新增 .agent/plans/proposals/projects/open-design-integration/pilot-verification.md,列出每个 pilot 项目的验证步骤 + 通过标准。
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel" style="margin-top:16px">
+    <h2>Gate 建议</h2>
+    <div style="font-size: 13px; line-height: 1.6;">
+      <p style="margin: 0 0 8px;"><strong>按 .agent/workflows/review-proposal.md §5:</strong></p>
+      <ol style="margin: 0; padding-left: 20px; color: var(--ink-soft);">
+        <li>创建 decisions request --gate mission --type approval --gate-action architecture --resource-ref architecture:open-design-integration,由用户批准</li>
+        <li>修复 2 个必须修项后,可进入 /approve 流程</li>
+        <li>修复 2 个建议修项后,可进入 pilot 验证阶段</li>
+      </ol>
+      <p style="margin: 12px 0 0; padding-top: 12px; border-top: 1px solid var(--line); font-size: 12px; color: var(--ink-soft);">
+        <strong>评审产物:</strong> 本审查报告 .agent/plans/proposals/projects/open-design-integration/review.md
+      </p>
+    </div>
+  </div>
+</div>
