@@ -6,6 +6,8 @@
 > **Owner**: `<owner>`
 > **Created**: `<iso-time>`
 > **Updated**: `<iso-time>`
+> **Risk Tier**: `low | medium | high | critical`
+> **Intent Summary**: `<human-confirmed problem and desired outcome>`
 
 ## 1. 受众（必填，文档/分析任务）
 

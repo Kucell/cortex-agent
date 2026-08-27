@@ -8,6 +8,8 @@
 > **Owner**: `<owner>`
 > **Created**: `<iso-time>`
 > **Updated**: `<iso-time>`
+> **Risk Tier**: `low | medium | high | critical`
+> **Intent Summary**: `<human-confirmed problem and desired outcome>`
 
 ## 1. Audience (required — doc/analysis tasks)
 
