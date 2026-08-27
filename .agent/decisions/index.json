@@ -1,6 +1,14 @@
 {
   "decisions": [
     {
+      "decision_id": "D-release-1.13.0-stable-36bacff",
+      "path": ".agent/decisions/D-release-1.13.0-stable-36bacff.json",
+      "type": "approval",
+      "status": "pending",
+      "gate_action": "external_side_effect",
+      "resource_ref": "release:cortex-agent@36bacffeac0964ef9462525a9d977ccad043970c"
+    },
+    {
       "decision_id": "D-rsl-p003-pilot-validation-20260819",
       "path": ".agent/decisions/D-rsl-p003-pilot-validation-20260819.json",
       "type": "architecture",

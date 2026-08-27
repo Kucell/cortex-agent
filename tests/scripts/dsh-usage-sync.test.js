@@ -54,6 +54,25 @@ function writeSession(root, slug, sessionId, lines) {
   return zstdPath;
 }
 
+// DSH writes session.jsonl.zstd as a SEQUENCE of independently-compressed
+// Zstandard frames (one header frame plus one frame per event batch). The
+// sync script must walk the concatenated container instead of treating the
+// artifact as a single frame. This helper writes one frame per input line
+// group so tests can mirror real on-disk layout.
+function writeConcatenatedSession(root, slug, sessionId, lineGroups, trailingTornBytes = null) {
+  const dir = path.join(root, ".dsh", "sessions", slug, `session-${sessionId}`);
+  fs.mkdirSync(dir, { recursive: true });
+  const zstdPath = path.join(dir, "session.jsonl.zstd");
+  const frames = [];
+  for (const group of lineGroups) {
+    const text = `${group.join("\n")}\n`;
+    frames.push(zlib.zstdCompressSync(Buffer.from(text, "utf8")));
+  }
+  const combined = Buffer.concat([...frames, ...(trailingTornBytes ? [trailingTornBytes] : [])]);
+  fs.writeFileSync(zstdPath, combined);
+  return zstdPath;
+}
+
 function tempProject() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-dsh-sync-"));
   fs.mkdirSync(path.join(root, ".agent"), { recursive: true });
@@ -327,4 +346,97 @@ test("TC-011: blocked field (prompt) in envelope triggers build_error", () => {
   // and either skipped (preferred) or surfaced as build_error.
   // Either way, no receipt with prompt contents may end up in the ledger.
   assert.equal(out.counters.written + (out.counters.submit_errors || 0), out.counters.events_mapped);
+});
+
+// ─── TC-012: concatenated zstd frames (DSH real layout) map every usage ─────
+// DSH writes session.jsonl.zstd as a concatenated sequence of independently
+// compressed Zstandard frames — one for the header line, one per event
+// batch. The previous script's single-stream ZstdDecompress only decoded
+// the FIRST frame, which made `events_mapped` stay at 0 on real sessions.
+// This fixture mirrors that on-disk layout exactly.
+test("TC-012: concatenated zstd frames (header + 2 event batches) are all decoded", () => {
+  const root = tempProject();
+  const dshHome = tempDshHome(root);
+  writeConcatenatedSession(root, "--tmp-project--", "fixture-012", [
+    // Frame 1: DSH session header (the only thing the OLD script decoded)
+    [makeSessionLine({ id: "session-fixture-012" })],
+    // Frame 2: first event batch — a single usage chunk
+    [JSON.stringify(makeUsageEvent({ seq: 1 }))],
+    // Frame 3: second event batch — another usage chunk (the OLD script dropped this)
+    [JSON.stringify(
+      makeUsageEvent({
+        seq: 2,
+        data: {
+          turn: 1,
+          step: 2,
+          chunk: {
+            type: "usage",
+            usage: { inputTokens: 5000, outputTokens: 80, cacheReadTokens: 200 },
+          },
+        },
+      }),
+    )],
+  ]);
+  const runResult = runSync(
+    ["--dry-run", "--dsh-home", dshHome, "--project-root", root],
+    root,
+  );
+  assert.equal(runResult.status, 0, `stderr=${runResult.stderr}`);
+  const out = JSON.parse(runResult.stdout);
+  assert.equal(out.ok, true);
+  assert.equal(out.counters.zstd_errors, 0, "structural scanner must accept concatenated frames");
+  // All 3 frames are decoded: 1 header line (non_usage_event) + 2 usage events (mapped)
+  assert.equal(out.counters.events_parsed, 3);
+  assert.equal(out.counters.events_mapped, 2);
+  assert.equal(out.by_slug["--tmp-project--"].mapped, 2);
+  // Privacy boundary preserved: still zero zstd_errors and ledger untouched.
+  assert.equal(out.counters.written, 0);
+  const ledgerDir = path.join(root, ".agent", "token-attempts");
+  assert.ok(!fs.existsSync(path.join(ledgerDir, "index.json")));
+});
+
+// ─── TC-013: incomplete trailing frame is tolerated; complete frames survive ─
+// DSH flushes a session.jsonl.zstd by appending one frame per batch. If a
+// crash / concurrent reader interrupts mid-flush, the artifact ends with a
+// torn final frame. The scanner must keep the complete earlier frames and
+// skip the partial one (matching the upstream
+// `dsh-session-persistence-jsonl` scanZstdFrames recovery semantics).
+test("TC-013: trailing partial frame is tolerated, earlier frames still map", () => {
+  const root = tempProject();
+  const dshHome = tempDshHome(root);
+  // 5 bytes is not enough for a frame header (magic=4 + descriptor=1 + at
+  // least 1 content-size byte = 6 minimum), so the scanner classifies this
+  // as torn and keeps the two complete frames.
+  const tornTail = Buffer.from([0x28, 0xB5, 0x2F, 0xFD, 0x00]);
+  writeConcatenatedSession(
+    root,
+    "--tmp-project--",
+    "fixture-013",
+    [
+      [makeSessionLine({ id: "session-fixture-013" })],
+      [JSON.stringify(makeUsageEvent({ seq: 1 }))],
+      [JSON.stringify(
+        makeUsageEvent({
+          seq: 2,
+          data: {
+            turn: 1,
+            step: 2,
+            chunk: { type: "usage", usage: { inputTokens: 42, outputTokens: 7 } },
+          },
+        }),
+      )],
+    ],
+    tornTail,
+  );
+  const runResult = runSync(
+    ["--dry-run", "--dsh-home", dshHome, "--project-root", root],
+    root,
+  );
+  assert.equal(runResult.status, 0, `stderr=${runResult.stderr}`);
+  const out = JSON.parse(runResult.stdout);
+  // Torn frames must NOT be reported as zstd_errors (they are normal recovery).
+  assert.equal(out.counters.zstd_errors, 0, "partial trailing frame must not surface as zstd_error");
+  assert.equal(out.counters.events_parsed, 3);
+  assert.equal(out.counters.events_mapped, 2);
+  assert.equal(out.by_slug["--tmp-project--"].mapped, 2);
 });

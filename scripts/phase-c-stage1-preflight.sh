@@ -95,34 +95,134 @@ echo "1/7 Sample gate + integrity (G-SampleGate, agent-host dimension)..." >&2
 SAMPLE_JSON="$(readiness_json)"
 ELIGIBLE="$(echo "$SAMPLE_JSON" | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{try{const j=JSON.parse(d);console.log(j.eligible_count??'n/a')}catch(e){console.log('parse-error')}})" 2>/dev/null || echo 'n/a')"
 EXCL="$(echo "$SAMPLE_JSON" | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{try{const j=JSON.parse(d);const e=j.by_exclusion_reason??{};console.log(Object.keys(e).filter(k=>/test/i.test(k)).join(','))}catch(e){console.log('parse-error')}})" 2>/dev/null || echo 'n/a')"
-# agent-host 维度: 直接从 ledger 扫描 attempt_id 前缀 (ocx-/dsh-/pi-/test-)
-AGENT_HOSTS="$(node -e "
+# agent-host 维度: 直接从 ledger 扫描 attempt_id 前缀 (ocx-/dsh-/pi-/test-),
+# 按 UTC 日期分组非 test receipts, 验证 M-025 Phase C 框架 §2.1 G-SampleGate:
+#   ≥100 non-test receipts/host/day, 7 consecutive UTC days shared by ≥2 hosts.
+# 此处的 readiness host 维度是 LLM provider; agent host 必须从 attempt_id 前缀派生。
+# 注意: 仅仅看到多个 host 前缀并不等于 sample gate 满足 — 必须每 host 每天 ≥100,
+# 且必须有 ≥2 host 同时覆盖 7 个连续 UTC 日, 才算 PASS.
+SAMPLE_GATE_JSON="$(node -e "
   const fs = require('fs');
   const path = require('path');
   const ledgerDir = path.join('$PROJECT', '.agent', 'token-attempts');
+  const PER_HOST_PER_DAY = 100;
+  const REQUIRED_DAYS = 7;
+  const REQUIRED_HOSTS = 2;
+  function agentHost(aid) {
+    if (!aid || typeof aid !== 'string') return null;
+    if (aid.startsWith('ocx-')) return 'codex';
+    if (aid.startsWith('dsh-')) return 'dsh';
+    if (aid.startsWith('pi-'))  return 'pi';
+    if (aid.startsWith('test-')) return 'test';
+    return null;
+  }
+  function utcDay(ts) {
+    if (!ts) return null;
+    const d = new Date(ts);
+    if (Number.isNaN(d.getTime())) return null;
+    return d.toISOString().slice(0, 10);
+  }
+  const out = {
+    hosts_present: [],
+    per_host_day: {},
+    longest_run_days: 0,
+    qualifying_days: 0,
+    reason: 'no_ledger',
+  };
   try {
-    const index = JSON.parse(fs.readFileSync(path.join(ledgerDir, 'ledger-index.json'), 'utf8'));
-    const entries = index.entries || [];
-    const hosts = new Set();
-    for (const e of entries) {
-      const id = e.attempt_id || '';
-      if (id.startsWith('ocx-')) hosts.add('codex');
-      else if (id.startsWith('dsh-')) hosts.add('dsh');
-      else if (id.startsWith('pi-')) hosts.add('pi');
-      else if (id.startsWith('test-')) hosts.add('test');
+    const indexPath = path.join(ledgerDir, 'ledger-index.json');
+    const index = JSON.parse(fs.readFileSync(indexPath, 'utf8'));
+    const receipts = index.receipts || index.entries || {};
+    const entries = Array.isArray(receipts)
+      ? receipts
+      : Object.values(receipts || {});
+    const perHostDay = {};
+    const hostSet = new Set();
+    for (const r of entries) {
+      const aid = r.attempt_id || '';
+      const h = agentHost(aid);
+      if (!h || h === 'test') continue;          // exclude test receipts
+      const day = utcDay(r.recorded_at);
+      if (!day) continue;
+      hostSet.add(h);
+      perHostDay[h] = perHostDay[h] || {};
+      perHostDay[h][day] = (perHostDay[h][day] || 0) + 1;
     }
-    console.log([...hosts].join(','));
-  } catch (e) { console.log(''); }
-" 2>/dev/null || echo '')"
-# 过滤 test
-NON_TEST_HOSTS="$(echo "$AGENT_HOSTS" | tr ',' '\n' | grep -v '^test$' | grep -c . || true)"
-echo "   eligible_count=$ELIGIBLE agent_hosts=[$AGENT_HOSTS] test_exclusions=[$EXCL]" >&2
-if [[ "$NON_TEST_HOSTS" -ge 2 ]] && [[ -n "$EXCL" ]]; then
-  echo "   ✅ sample-gate: agent-hosts>=2, test-exclusions present" >&2
-  PASS_COUNT=$((PASS_COUNT+1)); RESULTS+=("sample_gate=PASS agent_hosts=$AGENT_HOSTS eligible=$ELIGIBLE")
+    out.hosts_present = [...hostSet].sort();
+    out.per_host_day = perHostDay;
+    if (hostSet.size < REQUIRED_HOSTS) {
+      out.reason = 'host_parity_short:' + hostSet.size;
+      console.log(JSON.stringify(out));
+      process.exit(0);
+    }
+    // Collect all days any host has data for, sorted ascending.
+    const daySet = new Set();
+    for (const h of hostSet) for (const d of Object.keys(perHostDay[h] || {})) daySet.add(d);
+    const days = [...daySet].sort();
+    // Find longest consecutive UTC run where ≥ REQUIRED_HOSTS hosts each have ≥100.
+    let bestRun = 0, bestStart = null, bestEnd = null;
+    let runLen = 0, runStart = null, runPrev = null;
+    function dayQualifies(d) {
+      let n = 0;
+      for (const h of hostSet) {
+        const c = (perHostDay[h] && perHostDay[h][d]) || 0;
+        if (c >= PER_HOST_PER_DAY) n += 1;
+        if (n >= REQUIRED_HOSTS) return true;
+      }
+      return false;
+    }
+    function prevDay(d) {
+      const dt = new Date(d + 'T00:00:00Z');
+      dt.setUTCDate(dt.getUTCDate() - 1);
+      return dt.toISOString().slice(0, 10);
+    }
+    for (const d of days) {
+      if (!dayQualifies(d)) {
+        runLen = 0; runStart = null; runPrev = null;
+        continue;
+      }
+      if (runPrev && prevDay(d) === runPrev) {
+        runLen += 1;
+      } else {
+        runLen = 1; runStart = d;
+      }
+      runPrev = d;
+      if (runLen > bestRun) {
+        bestRun = runLen;
+        bestStart = runStart;
+        bestEnd = d;
+      }
+    }
+    out.longest_run_days = bestRun;
+    out.run_start = bestStart;
+    out.run_end = bestEnd;
+    if (bestRun >= REQUIRED_DAYS) {
+      out.qualifying_days = bestRun;
+      out.reason = 'pass';
+    } else {
+      out.qualifying_days = bestRun;
+      out.reason = 'consecutive_days_short:' + bestRun + '/required=' + REQUIRED_DAYS;
+    }
+  } catch (e) {
+    out.reason = 'ledger_unreadable:' + (e && e.message ? e.message : 'unknown');
+  }
+  console.log(JSON.stringify(out));
+" 2>/dev/null || echo '{"hosts_present":[],"per_host_day":{},"longest_run_days":0,"qualifying_days":0,"reason":"node_failure"}')"
+
+# Parse JSON fields the bash side needs (no jq dependency).
+SG_HOSTS="$(node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{try{const j=JSON.parse(d);console.log((j.hosts_present||[]).join(','))}catch(e){console.log('')}})" <<<"$SAMPLE_GATE_JSON" 2>/dev/null || echo '')"
+SG_RUN="$(node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{try{const j=JSON.parse(d);console.log(j.longest_run_days??0)}catch(e){console.log('0')}})" <<<"$SAMPLE_GATE_JSON" 2>/dev/null || echo '0')"
+SG_REASON="$(node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{try{const j=JSON.parse(d);console.log(j.reason||'unknown')}catch(e){console.log('parse-error')}})" <<<"$SAMPLE_GATE_JSON" 2>/dev/null || echo 'parse-error')"
+SG_START="$(node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{try{const j=JSON.parse(d);console.log(j.run_start||'')}catch(e){console.log('')}})" <<<"$SAMPLE_GATE_JSON" 2>/dev/null || echo '')"
+SG_END="$(node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{try{const j=JSON.parse(d);console.log(j.run_end||'')}catch(e){console.log('')}})" <<<"$SAMPLE_GATE_JSON" 2>/dev/null || echo '')"
+
+echo "   eligible_count=$ELIGIBLE test_exclusions=[$EXCL] agent_hosts=[$SG_HOSTS] run=${SG_RUN}d reason=${SG_REASON} window=${SG_START}..${SG_END}" >&2
+if [[ "$SG_REASON" == "pass" ]] && [[ -n "$EXCL" ]]; then
+  echo "   ✅ sample-gate: ≥${SG_RUN}d consecutive with ≥2 hosts @ ≥100/day (window=${SG_START}..${SG_END})" >&2
+  PASS_COUNT=$((PASS_COUNT+1)); RESULTS+=("sample_gate=PASS run_days=$SG_RUN hosts=$SG_HOSTS window=${SG_START}..${SG_END} eligible=$ELIGIBLE")
 else
-  echo "   ⚠️  sample-gate: incomplete (agent_hosts=$NON_TEST_HOSTS, excl=[$EXCL]) — Phase B window may not be full yet" >&2
-  FAIL_COUNT=$((FAIL_COUNT+1)); RESULTS+=("sample_gate=WARN agent_hosts=$AGENT_HOSTS eligible=$ELIGIBLE")
+  echo "   ⚠️  sample-gate: not ready — reason=${SG_REASON} (need ≥7 consecutive days, ≥2 hosts, ≥100/day each, plus test exclusions)" >&2
+  FAIL_COUNT=$((FAIL_COUNT+1)); RESULTS+=("sample_gate=WARN reason=$SG_REASON run_days=$SG_RUN hosts=$SG_HOSTS eligible=$ELIGIBLE")
 fi
 
 # =============================================================================

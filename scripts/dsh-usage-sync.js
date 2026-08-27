@@ -41,7 +41,6 @@
 
 const fs = require("node:fs");
 const path = require("node:path");
-const { createReadStream } = require("node:fs");
 const zlib = require("node:zlib");
 
 const ledger = require("../templates/_shared/.agent/skills/management-api/scripts/token-attempt-ledger.js");
@@ -154,43 +153,113 @@ function listSessionDirs(dshHome, sessionSlug) {
 }
 
 function readZstdLinesAsync(jsonlPath) {
-  // Stream-decompress via Node's built-in zlib ZstdDecompress (no external CLI).
-  // Lines are accumulated in memory (sessions are small enough; ledger batches
-  // handle out-of-order writes).
+  // DSH writes session.jsonl.zstd as a concatenated sequence of independently
+  // compressed Zstandard frames (one per header / event batch). Node's
+  // built-in `createZstdDecompress` stream only reads the FIRST frame and
+  // silently drops the rest, which makes `events_mapped` stay at 0 on real
+  // sessions. To stay zero-dependency and avoid importing DSH internals, we
+  // mirror the structural scanner used by
+  // `dsh-session-persistence-jsonl/lib/index.js` (see scanZstdFrames around
+  // lines 491-581 there): locate each complete frame in the raw bytes, then
+  // decompress them one-by-one with the synchronous Node built-in API.
+  //
+  // A trailing partial frame (write-in-progress) is reported as `tornStart`
+  // by the scanner; we skip it and keep the complete earlier frames, exactly
+  // the same recovery semantics the upstream scanner enforces.
   return new Promise((resolve) => {
-    let input;
-    try {
-      input = createReadStream(jsonlPath);
-    } catch (err) {
-      resolve({ lines: [], error: err.message });
-      return;
-    }
-    const decompressor = zlib.createZstdDecompress();
-    const lines = [];
-    let buffer = "";
-    let streamError = null;
-    input.on("error", (err) => { streamError = err.message; });
-    decompressor.on("error", (err) => { streamError = err.message; });
-    decompressor.on("data", (chunk) => {
-      if (streamError) return;
-      buffer += chunk.toString("utf8");
-      let nl = buffer.indexOf("\n");
-      while (nl !== -1) {
-        lines.push(buffer.slice(0, nl));
-        buffer = buffer.slice(nl + 1);
-        nl = buffer.indexOf("\n");
-      }
-    });
-    decompressor.on("end", () => {
-      if (streamError) {
-        resolve({ lines: [], error: streamError });
+    fs.readFile(jsonlPath, (err, buffer) => {
+      if (err) {
+        resolve({ lines: [], error: err.message });
         return;
       }
-      if (buffer.length > 0) lines.push(buffer);
+      let scan;
+      try {
+        scan = scanZstdFrames(buffer);
+      } catch (scanErr) {
+        resolve({ lines: [], error: scanErr.message });
+        return;
+      }
+      const lines = [];
+      let bufferStr = "";
+      for (const frame of scan.frames) {
+        const slice = buffer.subarray(frame.start, frame.end);
+        let plain;
+        try {
+          plain = zlib.zstdDecompressSync(slice);
+        } catch (decompErr) {
+          resolve({ lines: [], error: decompErr.message });
+          return;
+        }
+        bufferStr += plain.toString("utf8");
+        let nl = bufferStr.indexOf("\n");
+        while (nl !== -1) {
+          lines.push(bufferStr.slice(0, nl));
+          bufferStr = bufferStr.slice(nl + 1);
+          nl = bufferStr.indexOf("\n");
+        }
+      }
+      if (bufferStr.length > 0) lines.push(bufferStr);
       resolve({ lines, error: null });
     });
-    input.pipe(decompressor);
   });
+}
+
+// ─── Zstandard frame scanner (mirror of dsh-session-persistence-jsonl) ──────
+// Structurally scans a Zstandard container for independently-compressed frame
+// boundaries WITHOUT touching the compressed blocks. Only the frame header
+// (magic + descriptor + window/logical sizes), the block headers, and the
+// optional checksum field are read. A trailing partial frame (torn write)
+// is reported via `tornStart` so callers can drop it and keep complete frames.
+const ZSTD_MAGIC = 0xFD2FB528;
+
+function scanZstdFrames(buffer, maxFrames = Number.POSITIVE_INFINITY) {
+  const frames = [];
+  let offset = 0;
+  while (offset < buffer.length) {
+    const start = offset;
+    if (buffer.length - offset < 4) return { frames, tornStart: start };
+    if (buffer.readUInt32LE(offset) !== ZSTD_MAGIC) {
+      throw new Error(`corrupt Zstandard session log: invalid frame magic at byte ${offset}`);
+    }
+    offset += 4;
+    if (offset === buffer.length) return { frames, tornStart: start };
+    const descriptor = buffer.readUInt8(offset);
+    offset += 1;
+    if ((descriptor & 24) !== 0) {
+      throw new Error(`corrupt Zstandard session log: reserved frame-header bit at byte ${offset - 1}`);
+    }
+    const contentSizeFlag = descriptor >>> 6;
+    const singleSegment = (descriptor & 32) !== 0;
+    const checksum = (descriptor & 4) !== 0;
+    const dictionaryFlag = descriptor & 3;
+    const dictionaryBytes = dictionaryFlag === 3 ? 4 : dictionaryFlag;
+    const contentSizeBytes = contentSizeFlag === 0 ? (singleSegment ? 1 : 0) : (1 << contentSizeFlag);
+    const remainingHeaderBytes = (singleSegment ? 0 : 1) + dictionaryBytes + contentSizeBytes;
+    if (buffer.length - offset < remainingHeaderBytes) return { frames, tornStart: start };
+    offset += remainingHeaderBytes;
+    for (;;) {
+      if (buffer.length - offset < 3) return { frames, tornStart: start };
+      const blockHeader = buffer.readUIntLE(offset, 3);
+      offset += 3;
+      const lastBlock = (blockHeader & 1) !== 0;
+      const blockType = (blockHeader >>> 1) & 3;
+      const blockSize = blockHeader >>> 3;
+      if (blockType === 3) {
+        throw new Error(`corrupt Zstandard session log: reserved block type at byte ${offset - 3}`);
+      }
+      const payloadBytes = blockType === 1 ? 1 : blockSize;
+      if (buffer.length - offset < payloadBytes) return { frames, tornStart: start };
+      offset += payloadBytes;
+      if (lastBlock) break;
+    }
+    if (checksum) {
+      if (buffer.length - offset < 4) return { frames, tornStart: start };
+      offset += 4;
+    }
+    frames.push({ start, end: offset });
+    if (frames.length === maxFrames) return { frames };
+  }
+  return { frames };
 }
 
 // ─── DSH usage event → MS-001 envelope ──────────────────────────────────────

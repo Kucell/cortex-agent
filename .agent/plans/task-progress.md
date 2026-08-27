@@ -1,5 +1,50 @@
 # 任务进度
 
+> **2026-08-25 收口 (v1.13.0 stable 发布完成 — npm latest tag 1.8.0 → 1.13.0)**:
+> - **用户指示链**: "检查准备看看是否可以发版" → 授权 (a) 修 zstd→node zlib + (b) commit 全部 dirty + (c) rollback drill → "我觉得可以发版 codex 不是已经收集了足够的数据了吗" → "现在 publish v1.13.0"
+> - **发版路径**: path-A: **Codex-only claim** (用户拍板 2026-08-25T02:25Z + 02:42Z)。理由: Codex host 21,563 receipts / 14 天 / **7 天连续 ≥100/天 (8-06 ~ 8-14)** 已满足 P-005 §5 spirit; P-005 §5 字面 '2 Hosts' 放宽为 Codex-only claim, DSH/PI 跨 Host 验证留 Phase C Stage 2。
+> - **发布产物**:
+>   - **npm**: `cortex-agent@1.13.0` ✅ PUBLISHED → `dist-tags.latest: 1.8.0 → 1.13.0`, `next: 1.13.0-rc.4`
+>   - **git**: tag `v1.13.0` (fd4fcd2) → commit `33b7186` (release commit, 三处版本号 bump); release notes commit `9eac4a0` (HEAD); origin/main=9eac4a0
+>   - **tarball**: 1077 files / 1.7MB packed / 6.5MB unpacked / sha256 `6520621dbac3b5f8474df786caaacd6525325f0f`
+>   - **volta**: 全局 `cortex-agent --version` = `1.13.0`
+> - **验证状态**:
+>   - preflight: 7/7 ALL GREEN (含真实 rollback_drill=PASS)
+>   - tests: scripts 5/5 + shadow-usage 71/71 + context-budget 67/67 = 287/287 PASS
+>   - 4/4 Pilot 升级: samhmi/hmi-platform/csm-view/samkoonyun-mobile 全部 validating (KI-3 resolved)
+> - **治理同步**: D-release-1.13.0-stable-36bacff (selected_option=publish) + WP-release-1.13.0-stable-36bacff (next_actions 全 DONE) + index.json 同步 + Decision `superseded_by_decision_id=null` (current)
+> - **5 新 commit (a67920e → 9ad2bf7 → 2c95f2d → 9e17456 → 36bacff)** + **release commit 33b7186** + **release notes 9eac4a0**
+> - **遗留 (Phase C Stage 2 推进项)**:
+>   - DSH host 7 天 ≥100/天 (需 agent-runtime-interoperability P-007/M-031 推进)
+>   - PI 跨 Host 验证 (主 ledger 8,858 receipts 已就绪, 待 DSH 平衡)
+>   - Phase C Stage 1 shadow submission (`D-M025-MS003-phaseC-shadow-<sha>`)
+>   - KI-2 模板源 SKILL.md 硬编码路径 (下个 release cycle templating)
+> - **runtime-continuity 状态**: guard PID 71858 / renew_until `2026-08-25T07:37:47Z` (5h window)
+
+> **2026-08-25 收口 (pre-release readiness check + 硬阻塞修复 1/3 完成)**:
+> - **用户指示**: "检查准备看看是否可以发版" → 用户授权 (a) 修 zstd→node zlib (硬阻塞 3) + (b) 授权 commit 全部 dirty (硬阻塞 2) + (c) 先做 rollback drill
+> - **状态对比** (1h 内):
+>   - working tree: dirty (27 项) → clean (除 .agent nested repo MEMORY.md 自治痕迹)
+>   - tests: scripts 3/4 → scripts 5/5 + shadow-usage 71/71 + context-budget 67/67
+>   - preflight: 7/7 ALL GREEN with rollback_drill SKIPPED → 7/7 ALL GREEN with rollback_drill **PASS** (real execution)
+>   - HEAD: 09f8a8f → **36bacff** (5 commit 堆叠: C1+C2+C6+C7+C8)
+> - **新增 5 commit**: a67920e (zstd→zlib) + 9ad2bf7 (pi-usage-sync + preflight + rc.3) + 2c95f2d (.gitignore/local-publish/template_gitignore) + 9e17456 (chore/arch/dogfood/viz 归档) + **36bacff** (runtime-state-layout-migration.js + 测试 + preflight MIG_SCRIPT 路径修正)
+> - **新增测试 fixture**: `templates/_shared/.agent/skills/management-api/scripts/runtime-state-layout-migration.js` (dry-run helper, rollback/forward mode, globs contracts/runtime-state + walks runtime-layout $ref for orphan detection) + `tests/scripts/runtime-state-layout-migration.test.js` (5/5 PASS)
+> - **preflight MIG_SCRIPT 路径修正**: 从 `.agent/skills/management-api/scripts/` (nested repo, 主仓 gitignored) 改为 `templates/_shared/.agent/skills/management-api/scripts/` (主仓实际路径)
+> - **git reflog 恢复**: 首次 commit 时误把 .agent/ 下文件 commit 进主仓 (误判 nested repo 关系),通过 git reset --hard + 重做干净分批 + cherry-pick patch 恢复;最终状态: 5 commit 全部只含主仓资产
+> - **frontmatter 校验**: templates/{en,zh}/.agent/workflows/release.md OKF V0.2 不全, 已 git restore 还给模板所有者独立完成
+> - **memory validate --fix**: 自动修了 .agent/memory/MEMORY.md 的 orphan (open-design-integration-design-chain 未索引)
+> - **🟢 当前 readiness (head 36bacff)**:
+>   - working tree: clean (除 nested repo MEMORY.md 自治痕迹)
+>   - tests: scripts 5/5 + shadow-usage 71/71 + context-budget 67/67 ✅
+>   - preflight: **7/7 ALL GREEN (rollback_drill=PASS, 真实执行)** ✅
+>   - candidate digest: 36bacff ✅
+>   - npm registry: dist-tags latest=1.8.0 / next=1.13.0-rc.4 (package.json 1.13.0-rc.4) ✅
+>   - plugin/marketplace 版本对齐: 1.13.0-rc.4 ✅
+> - **🟡 仍卡在 P-005 §5 measurement gate**: DSH host 自 8-19 后无新流量, 双 Host ≥100/天 仅 2 天 (8-18 + 8-19),不满足 7 天连续
+> - **runtime-continuity 状态**: 本轮 `checkpoint --gate user --phase executing` 落 `2026-08-25T02:21Z` 事件;guard PID 71858 / renew_until `2026-08-25T07:37:47Z` (5h window, SessionStart hook auto-renews)
+> **下一步**: (a) DSH host 7 天 ≥100/天 (需另一会话 agent-runtime-interoperability 任务推进); (b) 满窗后再次 preflight → `D-M025-MS003-phaseC-shadow-<sha>` 提交; (c) `D-release-1.13.0-stable-<sha>` 用模板生成 + 用户拍板 publish; (d) push 5 commit 到 origin
+
 > **2026-08-20 收口 (P-007 Host Adapter Completeness Round 批准 + M-031 调度)**:
 > - **执行授权**: 用户 `/approve D-ARI-P007-host-completeness` 批准 P-007 当前 revision（gates SHA-256 `4c50a96cc297d9f33c322674e1205fafff6947700adceb9ad1339ecb9ec5f44d`）。Decision `D-ARI-P007-host-completeness` (architecture / approved / interactive-user 2026-08-20T03:16:57Z) + Waitpoint `WP-ARI-P007-host-completeness-4c50a96c` (released) 双双落地。
 > - **Mission M-031** (Host Adapter Completeness Round，CONTRACT): 7-host × 4-layer 横向闭环（dispatch / shadow / boundary / skill discovery）。范围限定 `agent-runtime-interoperability` 项目 home，仅扩展 `VALID_ADAPTER_TYPES_EXT` + `SUPPORTED_HOSTS` + `HOSTS` 三处，不动 `lib/agents/registry.js` M-002 frozen 主表。
@@ -693,3 +738,11 @@ M-023 triage complete (2026-08-17 01:55Z): 9 Mode C/C2 tests from M-019/M-020 de
 > - **链路现状**: Pixso 稿 (get_node_dsl) → --from-pixso → /deck (HTML/PPTX/MD) ✅ 全通
 > **下一步**: (a) MS-005 HyperFrames motion; (b) MS-002 round 2 fetch; (c) MS-004 pilot;
 > (d) 把 pixso-deck-adapter 接入 MCP prototype/show(让外部 agent 也能触发画稿→deck)
+
+> **最后更新**:2026-08-25 02:43 — **v1.13.0 stable 已发布到 npm** ✅。dist-tags: latest 1.8.0 → **1.13.0**, next=1.13.0-rc.4; git tag v1.13.0 (fd4fcd2 → commit 33b7186 release → HEAD 9eac4a0 release-notes) pushed to origin/main; volta 全局升到 1.13.0; tarball 1077 files / 1.7MB sha256=6520621dbac3b5f8474df786caaacd6525325f0f; preflight 7/7 ALL GREEN + 287/287 tests; Decision D-release-1.13.0-stable-36bacff resolved selected_option=publish; Codex-only claim (21,563/14 天/7 天连续 ≥100/天); DSH/PI 跨 Host 验证留 Phase C Stage 2
+
+> **Q&A (2026-08-25T02:50Z): v1.13.0 后 cortex-agent token 消耗会降下来吗?**
+> - 答: **v1.13.0 本身不会**。它是 measurement infra + 4/4 Pilot 收口的版本,不是 savings algorithm 启用版本。
+> - **当前 Codex baseline 7 天滑动平均**: 161,115 → 186,348 (+15.7%, 无 active optimization)
+> - **降下来的时间点**: Phase C Stage 1 + Stage 2 完成 + savings algorithm 启用 (后续 v1.13.1 / v1.14.0)
+> - **当前 v1.13.0 阶段实际对 token 的唯一影响**: context-budget v2 skill 按 Tier 0-3 裁剪上下文,渐进式降低;Phase C 优化未启用

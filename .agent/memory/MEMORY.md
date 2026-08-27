@@ -15,7 +15,7 @@
 
 - [MR merged plan semantic drift](feedback/mr-merged-plan-semantic-drift.md) — feedback, merge, plan-reconcile
 
-## project (6/20)
+## project (7/20)
 - [Token Control Plane MS-001](project/token-control-plane-ms001.md) — token-control-plane, token-attempt, M-025, MS-001
 - [M-025 Phase C parallel eval](project/m025-phase-c-parallel-eval.md) — m-025, phase-c, evaluation, gates, P-002, P-003, P-004
 - [Cross-host memory handoff](project/cross-host-memory-handoff.md) — memory, cross-host, MiniMax, Qoder, Codex, Cortex Agent
@@ -25,5 +25,6 @@
 
 - [pnpm-not-npm](project/pnpm-not-npm.md) — This project (cortex-agent) uses pnpm, not npm. Trigger: any time the agent would suggest `npm install` / `npm run` / `npm test` commands.
 
+- [open-design-integration-design-chain](project/open-design-integration-design-chain.md) — open-design (151 systems + 277 plugins + 100+ skills + 18 templates + MCP + 26 CLIs + HyperFrames 动效) 设计版图接入 cortex-agent 的项目记忆;P-001~005 五个子提案与 T-OD-001/M-029 协同
 ## reference (1/50)
 - [pilot projects entry](reference/pilot-projects-pointer.md) — pilot, validation, evidence

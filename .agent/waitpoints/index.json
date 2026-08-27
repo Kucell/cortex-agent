@@ -1,16 +1,31 @@
 {
   "waitpoints": [
     {
-      "waitpoint_id": "WP-rsl-p003-pilot-validation-20260819",
-      "path": ".agent/waitpoints/WP-rsl-p003-pilot-validation-20260819.json",
-      "status": "released",
-      "linked_decision": "D-rsl-p003-pilot-validation-20260819"
+      "waitpoint_id": "WP-AINSDLC-001",
+      "path": ".agent/waitpoints/WP-AINSDLC-001.json",
+      "status": "blocked",
+      "owner_workflow": "/arch-design",
+      "decision_id": "D-AINSDLC-001",
+      "updated_at": "2026-08-27T05:35:47.440Z"
     },
     {
-      "waitpoint_id": "WP-M026-MS004-launch",
-      "path": ".agent/waitpoints/WP-M026-MS004-launch.json",
+      "waitpoint_id": "WP-rsl-dsh-host-shadow-20260819",
+      "path": ".agent/waitpoints/WP-rsl-dsh-host-shadow-20260819.json",
       "status": "released",
-      "linked_decision": "D-M026-MS004-launch"
+      "owner_workflow": "/m-025-ms003-phaseB",
+      "gate_action": "architecture",
+      "resource_ref": "decision://D-TCP-004-add-dsh-host",
+      "decision_id": "D-TCP-004",
+      "updated_at": "2026-08-19T03:30:00.000Z"
+    },
+    {
+      "waitpoint_id": "WP-rsl-p001-p002-p003-impl-20260819",
+      "path": ".agent/waitpoints/WP-rsl-p001-p002-p003-impl-20260819.json",
+      "status": "released",
+      "owner_workflow": "/mission",
+      "decision_id": "D-rsl-p001-p002-p003-impl-20260819",
+      "release_note": "User authorized '三个都推进到 approved-implementation';P-001/P-002 实现已合并,P-003 implementation 落地但 release eligible 仍需 MS-005 Pilot 验证。",
+      "updated_at": "2026-08-19T01:38:00.000Z"
     },
     {
       "waitpoint_id": "WP-M026-freeze-window",
@@ -21,15 +36,6 @@
       "superseded_by_decision_id": "D-M026-MS004-R1-close",
       "supersede_note": "原 decision D-M026-freeze-window 已 superseded; waitpoint 保持在 released 终态,语义由 D-M026-MS004-R1-close 接管;FREEZE 范围释放",
       "updated_at": "2026-08-19T00:35:00.000Z"
-    },
-    {
-      "waitpoint_id": "WP-rsl-p001-p002-p003-impl-20260819",
-      "path": ".agent/waitpoints/WP-rsl-p001-p002-p003-impl-20260819.json",
-      "status": "released",
-      "owner_workflow": "/mission",
-      "decision_id": "D-rsl-p001-p002-p003-impl-20260819",
-      "release_note": "User authorized '三个都推进到 approved-implementation';P-001/P-002 实现已合并,P-003 implementation 落地但 release eligible 仍需 MS-005 Pilot 验证。",
-      "updated_at": "2026-08-19T01:38:00.000Z"
     },
     {
       "waitpoint_id": "WP-M025-MS003-phaseB-observation-240294f00e6d",
@@ -336,14 +342,22 @@
       "updated_at": "2026-07-20T08:18:35.143Z"
     },
     {
-      "waitpoint_id": "WP-rsl-dsh-host-shadow-20260819",
-      "path": ".agent/waitpoints/WP-rsl-dsh-host-shadow-20260819.json",
+      "waitpoint_id": "WP-release-1.13.0-stable-36bacff",
+      "path": ".agent/waitpoints/WP-release-1.13.0-stable-36bacff.json",
       "status": "released",
-      "owner_workflow": "/m-025-ms003-phaseB",
-      "gate_action": "architecture",
-      "resource_ref": "decision://D-TCP-004-add-dsh-host",
-      "decision_id": "D-TCP-004",
-      "updated_at": "2026-08-19T03:30:00.000Z"
+      "linked_decision": "D-release-1.13.0-stable-36bacff"
+    },
+    {
+      "waitpoint_id": "WP-rsl-p003-pilot-validation-20260819",
+      "path": ".agent/waitpoints/WP-rsl-p003-pilot-validation-20260819.json",
+      "status": "released",
+      "linked_decision": "D-rsl-p003-pilot-validation-20260819"
+    },
+    {
+      "waitpoint_id": "WP-M026-MS004-launch",
+      "path": ".agent/waitpoints/WP-M026-MS004-launch.json",
+      "status": "released",
+      "linked_decision": "D-M026-MS004-launch"
     }
   ]
 }
