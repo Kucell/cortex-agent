@@ -15,6 +15,14 @@ metrics/agent-dashboard.html
 # (Absolute targets break across users; relative targets still vary per machine.)
 .agent/global
 
+# Local secrets store (per-user, never commit). Internal .gitignore enforces
+# the same rule; the top-level entry protects against future moves or symlinks.
+# The directory itself may exist on a developer's machine (Penpot userToken,
+# ad-hoc MCP credentials, etc.) — git must never see its contents.
+/.agent/secrets/
+/.agent/**/*.local.env
+/.agent/**/secrets/
+
 # Pi coding-agent runtime / cache directories — local-only state, never commit.
 .pi-glla/
 .pi/
