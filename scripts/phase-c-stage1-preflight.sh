@@ -96,11 +96,10 @@ SAMPLE_JSON="$(readiness_json)"
 ELIGIBLE="$(echo "$SAMPLE_JSON" | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{try{const j=JSON.parse(d);console.log(j.eligible_count??'n/a')}catch(e){console.log('parse-error')}})" 2>/dev/null || echo 'n/a')"
 EXCL="$(echo "$SAMPLE_JSON" | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{try{const j=JSON.parse(d);const e=j.by_exclusion_reason??{};console.log(Object.keys(e).filter(k=>/test/i.test(k)).join(','))}catch(e){console.log('parse-error')}})" 2>/dev/null || echo 'n/a')"
 # agent-host 维度: 直接从 ledger 扫描 attempt_id 前缀 (ocx-/dsh-/pi-/test-),
-# 按 UTC 日期分组非 test receipts, 验证 M-025 Phase C 框架 §2.1 G-SampleGate:
-#   ≥100 non-test receipts/host/day, 7 consecutive UTC days shared by ≥2 hosts.
+# 按 UTC 日期分组非 test receipts, 验证 M-025 Phase C 框架 §2.1 G-SampleGate。
+# 2026-08-25 D-TCP-005-sample-gate-relaxation: 覆盖窗口(≥7 UTC 日, 允许 ≤1 个 2-日零样本,
+# 禁止 ≥3 天连续零样本), 每 Host 每日 ≥100, ≥2 Hosts。
 # 此处的 readiness host 维度是 LLM provider; agent host 必须从 attempt_id 前缀派生。
-# 注意: 仅仅看到多个 host 前缀并不等于 sample gate 满足 — 必须每 host 每天 ≥100,
-# 且必须有 ≥2 host 同时覆盖 7 个连续 UTC 日, 才算 PASS.
 SAMPLE_GATE_JSON="$(node -e "
   const fs = require('fs');
   const path = require('path');
@@ -108,6 +107,7 @@ SAMPLE_GATE_JSON="$(node -e "
   const PER_HOST_PER_DAY = 100;
   const REQUIRED_DAYS = 7;
   const REQUIRED_HOSTS = 2;
+  const MAX_ZERO_RUN = 2; // 0..MAX_ZERO_RUN 天的连续零样本(无≥2 Host 达阈值)视为可接受缺口
   function agentHost(aid) {
     if (!aid || typeof aid !== 'string') return null;
     if (aid.startsWith('ocx-')) return 'codex';
@@ -122,11 +122,17 @@ SAMPLE_GATE_JSON="$(node -e "
     if (Number.isNaN(d.getTime())) return null;
     return d.toISOString().slice(0, 10);
   }
+  function prevDay(d) {
+    const dt = new Date(d + 'T00:00:00Z');
+    dt.setUTCDate(dt.getUTCDate() - 1);
+    return dt.toISOString().slice(0, 10);
+  }
   const out = {
     hosts_present: [],
     per_host_day: {},
-    longest_run_days: 0,
-    qualifying_days: 0,
+    counted_days: 0,
+    max_zero_run: 0,
+    coverage_window: [],
     reason: 'no_ledger',
   };
   try {
@@ -141,7 +147,7 @@ SAMPLE_GATE_JSON="$(node -e "
     for (const r of entries) {
       const aid = r.attempt_id || '';
       const h = agentHost(aid);
-      if (!h || h === 'test') continue;          // exclude test receipts
+      if (!h || h === 'test') continue;
       const day = utcDay(r.recorded_at);
       if (!day) continue;
       hostSet.add(h);
@@ -155,13 +161,19 @@ SAMPLE_GATE_JSON="$(node -e "
       console.log(JSON.stringify(out));
       process.exit(0);
     }
-    // Collect all days any host has data for, sorted ascending.
-    const daySet = new Set();
-    for (const h of hostSet) for (const d of Object.keys(perHostDay[h] || {})) daySet.add(d);
-    const days = [...daySet].sort();
-    // Find longest consecutive UTC run where ≥ REQUIRED_HOSTS hosts each have ≥100.
-    let bestRun = 0, bestStart = null, bestEnd = null;
-    let runLen = 0, runStart = null, runPrev = null;
+    // 取两端: 首个 host 的最早一天 到 最晚一天 的闭区间作为候选窗口。
+    let earliest = null, latest = null;
+    for (const h of hostSet) {
+      for (const d of Object.keys(perHostDay[h] || {})) {
+        if (earliest === null || d < earliest) earliest = d;
+        if (latest === null || d > latest) latest = d;
+      }
+    }
+    if (!earliest || !latest) {
+      out.reason = 'no_qualifying_days';
+      console.log(JSON.stringify(out));
+      process.exit(0);
+    }
     function dayQualifies(d) {
       let n = 0;
       for (const h of hostSet) {
@@ -171,58 +183,62 @@ SAMPLE_GATE_JSON="$(node -e "
       }
       return false;
     }
-    function prevDay(d) {
-      const dt = new Date(d + 'T00:00:00Z');
-      dt.setUTCDate(dt.getUTCDate() - 1);
-      return dt.toISOString().slice(0, 10);
-    }
-    for (const d of days) {
-      if (!dayQualifies(d)) {
-        runLen = 0; runStart = null; runPrev = null;
-        continue;
-      }
-      if (runPrev && prevDay(d) === runPrev) {
-        runLen += 1;
+    // 枚举 candidate window [earliest..latest] 中每个 UTC 日, 判定 counted / zero_sample
+    const window = [];
+    let cursor = earliest;
+    let countedDays = 0;
+    let zeroRun = 0, maxZeroRun = 0;
+    let countedStart = null, countedEnd = null;
+    while (cursor <= latest) {
+      if (dayQualifies(cursor)) {
+        countedDays += 1;
+        zeroRun = 0;
+        if (countedStart === null) countedStart = cursor;
+        countedEnd = cursor;
+        window.push({ date: cursor, kind: 'counted' });
       } else {
-        runLen = 1; runStart = d;
+        zeroRun += 1;
+        if (zeroRun > maxZeroRun) maxZeroRun = zeroRun;
+        window.push({ date: cursor, kind: 'zero_sample' });
       }
-      runPrev = d;
-      if (runLen > bestRun) {
-        bestRun = runLen;
-        bestStart = runStart;
-        bestEnd = d;
-      }
+      cursor = prevDay(cursor) === cursor ? null : (function(){
+        const dt = new Date(cursor + 'T00:00:00Z'); dt.setUTCDate(dt.getUTCDate() + 1); return dt.toISOString().slice(0,10);
+      })();
+      if (cursor === null) break;
     }
-    out.longest_run_days = bestRun;
-    out.run_start = bestStart;
-    out.run_end = bestEnd;
-    if (bestRun >= REQUIRED_DAYS) {
-      out.qualifying_days = bestRun;
+    out.counted_days = countedDays;
+    out.max_zero_run = maxZeroRun;
+    out.coverage_window = window;
+    if (countedDays >= REQUIRED_DAYS && maxZeroRun <= MAX_ZERO_RUN) {
       out.reason = 'pass';
+      out.window_start = countedStart;
+      out.window_end = countedEnd;
+    } else if (countedDays < REQUIRED_DAYS) {
+      out.reason = 'coverage_days_short:' + countedDays + '/required=' + REQUIRED_DAYS;
     } else {
-      out.qualifying_days = bestRun;
-      out.reason = 'consecutive_days_short:' + bestRun + '/required=' + REQUIRED_DAYS;
+      out.reason = 'zero_run_too_long:' + maxZeroRun + '/max=' + MAX_ZERO_RUN;
     }
   } catch (e) {
     out.reason = 'ledger_unreadable:' + (e && e.message ? e.message : 'unknown');
   }
   console.log(JSON.stringify(out));
-" 2>/dev/null || echo '{"hosts_present":[],"per_host_day":{},"longest_run_days":0,"qualifying_days":0,"reason":"node_failure"}')"
+" 2>/dev/null || echo '{"hosts_present":[],"per_host_day":{},"counted_days":0,"max_zero_run":0,"reason":"node_failure"}')"
 
 # Parse JSON fields the bash side needs (no jq dependency).
 SG_HOSTS="$(node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{try{const j=JSON.parse(d);console.log((j.hosts_present||[]).join(','))}catch(e){console.log('')}})" <<<"$SAMPLE_GATE_JSON" 2>/dev/null || echo '')"
-SG_RUN="$(node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{try{const j=JSON.parse(d);console.log(j.longest_run_days??0)}catch(e){console.log('0')}})" <<<"$SAMPLE_GATE_JSON" 2>/dev/null || echo '0')"
+SG_COUNTED="$(node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{try{const j=JSON.parse(d);console.log(j.counted_days??0)}catch(e){console.log('0')}})" <<<"$SAMPLE_GATE_JSON" 2>/dev/null || echo '0')"
+SG_MAXZERO="$(node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{try{const j=JSON.parse(d);console.log(j.max_zero_run??0)}catch(e){console.log('0')}})" <<<"$SAMPLE_GATE_JSON" 2>/dev/null || echo '0')"
 SG_REASON="$(node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{try{const j=JSON.parse(d);console.log(j.reason||'unknown')}catch(e){console.log('parse-error')}})" <<<"$SAMPLE_GATE_JSON" 2>/dev/null || echo 'parse-error')"
-SG_START="$(node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{try{const j=JSON.parse(d);console.log(j.run_start||'')}catch(e){console.log('')}})" <<<"$SAMPLE_GATE_JSON" 2>/dev/null || echo '')"
-SG_END="$(node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{try{const j=JSON.parse(d);console.log(j.run_end||'')}catch(e){console.log('')}})" <<<"$SAMPLE_GATE_JSON" 2>/dev/null || echo '')"
+SG_START="$(node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{try{const j=JSON.parse(d);console.log(j.window_start||'')}catch(e){console.log('')}})" <<<"$SAMPLE_GATE_JSON" 2>/dev/null || echo '')"
+SG_END="$(node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{try{const j=JSON.parse(d);console.log(j.window_end||'')}catch(e){console.log('')}})" <<<"$SAMPLE_GATE_JSON" 2>/dev/null || echo '')"
 
-echo "   eligible_count=$ELIGIBLE test_exclusions=[$EXCL] agent_hosts=[$SG_HOSTS] run=${SG_RUN}d reason=${SG_REASON} window=${SG_START}..${SG_END}" >&2
+echo "   eligible_count=$ELIGIBLE test_exclusions=[$EXCL] agent_hosts=[$SG_HOSTS] counted=${SG_COUNTED}d max_zero_run=${SG_MAXZERO}d reason=${SG_REASON} window=${SG_START}..${SG_END}" >&2
 if [[ "$SG_REASON" == "pass" ]] && [[ -n "$EXCL" ]]; then
-  echo "   ✅ sample-gate: ≥${SG_RUN}d consecutive with ≥2 hosts @ ≥100/day (window=${SG_START}..${SG_END})" >&2
-  PASS_COUNT=$((PASS_COUNT+1)); RESULTS+=("sample_gate=PASS run_days=$SG_RUN hosts=$SG_HOSTS window=${SG_START}..${SG_END} eligible=$ELIGIBLE")
+  echo "   ✅ sample-gate: ≥${SG_COUNTED}d coverage with max_zero_run=${SG_MAXZERO}d ≤2 (window=${SG_START}..${SG_END}, authority D-TCP-005-sample-gate-relaxation)" >&2
+  PASS_COUNT=$((PASS_COUNT+1)); RESULTS+=("sample_gate=PASS counted_days=$SG_COUNTED max_zero_run=$SG_MAXZERO hosts=$SG_HOSTS window=${SG_START}..${SG_END} eligible=$ELIGIBLE")
 else
-  echo "   ⚠️  sample-gate: not ready — reason=${SG_REASON} (need ≥7 consecutive days, ≥2 hosts, ≥100/day each, plus test exclusions)" >&2
-  FAIL_COUNT=$((FAIL_COUNT+1)); RESULTS+=("sample_gate=WARN reason=$SG_REASON run_days=$SG_RUN hosts=$SG_HOSTS eligible=$ELIGIBLE")
+  echo "   ⚠️  sample-gate: not ready — reason=${SG_REASON} (need ≥7 coverage days, ≤2-day zero-run, ≥2 hosts, ≥100/day each, plus test exclusions)" >&2
+  FAIL_COUNT=$((FAIL_COUNT+1)); RESULTS+=("sample_gate=WARN reason=$SG_REASON counted_days=$SG_COUNTED max_zero_run=$SG_MAXZERO hosts=$SG_HOSTS eligible=$ELIGIBLE")
 fi
 
 # =============================================================================

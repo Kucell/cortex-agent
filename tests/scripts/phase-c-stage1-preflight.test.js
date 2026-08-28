@@ -3,10 +3,11 @@
 // ─── phase-c-stage1-preflight tests ─────────────────────────────────────────
 // Focused regression tests for scripts/phase-c-stage1-preflight.sh
 // Verifies that the SampleGate (check #1) implements the M-025 Phase C framework
-// §2.1 G-SampleGate criteria, not just multi-host prefix presence:
-//   - ≥100 non-test eligible receipts per Host per UTC day
-//   - 7 consecutive UTC days where ≥2 Hosts each meet the per-day threshold
-//   - WARN with explicit reason when not met (regression fix)
+// §2.1 G-SampleGate criteria after D-TCP-005-sample-gate-relaxation (2026-08-25):
+//   - ≥100 non-test eligible receipts per Host per counted UTC day
+//   - ≥7 counted days with ≥2 Hosts each meeting the per-day threshold (coverage window)
+//   - max consecutive zero-sample days ≤ 2 (weekend/rest allowed, no ≥3-day runs)
+//   - WARN with explicit reason when not met (coverage_days_short, zero_run_too_long, …)
 //
 // Test strategy: spawn the bash script with --project <tmp> and --skip-rollback
 // against a synthetic ledger-index.json. Other gates will WARN/FAIL because the
@@ -120,31 +121,27 @@ function consecutiveDays(startISO, n) {
   return out;
 }
 
-// ─── TC-001: PASS — 2 hosts × 7 consecutive days × 100 receipts/day ──────────
-test("TC-001: sample_gate=PASS when 2 hosts have ≥100/day on 7 consecutive UTC days", () => {
+// ─── TC-001: PASS — 2 hosts × 7 coverage days × 100 receipts/day, no zero-run ─
+test("TC-001: sample_gate=PASS when 2 hosts cover ≥7 days with ≥100/day (no zero-run)", () => {
   const project = tempProject();
   const days7 = consecutiveDays("2026-08-01", 7);
-  // Synthetic non-test receipts that qualify the sample gate.
   writeSyntheticLedger(project, {
     codex: { days: days7, countPerDay: 100 },
     pi:    { days: days7, countPerDay: 100 },
   });
-  // Add a couple of test receipts so queryReadiness sees test exclusion reasons
-  // (G-TestExclusion requires excluded_count > 0). The preflight only PASSes
-  // when both sample gate AND test exclusion are present.
   appendTestReceipts(project, 2);
   const r = runScript(project);
   assert.equal(r.status, 0, `script failed: stderr=${r.stderr}`);
   const sampleGateLine = extractSampleGate(r);
   assert.ok(/^sample_gate=PASS/.test(sampleGateLine),
     `expected sample_gate=PASS, got: ${sampleGateLine}`);
-  assert.match(sampleGateLine, /run_days=7/);
+  assert.match(sampleGateLine, /counted_days=7/);
+  assert.match(sampleGateLine, /max_zero_run=0/);
   assert.match(sampleGateLine, /hosts=codex,pi/);
-  assert.match(sampleGateLine, /window=2026-08-01\.\.2026-08-07/);
 });
 
-// ─── TC-002: WARN — only 6 consecutive days (short of 7) ─────────────────────
-test("TC-002: sample_gate=WARN with consecutive_days_short when only 6 consecutive days qualify", () => {
+// ─── TC-002: WARN — only 6 counted days (short of 7) ────────────────────────
+test("TC-002: sample_gate=WARN with coverage_days_short when only 6 days qualify", () => {
   const project = tempProject();
   const days6 = consecutiveDays("2026-08-01", 6);
   writeSyntheticLedger(project, {
@@ -156,17 +153,16 @@ test("TC-002: sample_gate=WARN with consecutive_days_short when only 6 consecuti
   const sampleGateLine = extractSampleGate(r);
   assert.ok(/^sample_gate=WARN/.test(sampleGateLine),
     `expected sample_gate=WARN, got: ${sampleGateLine}`);
-  assert.match(sampleGateLine, /reason=consecutive_days_short:6\/required=7/);
-  assert.match(sampleGateLine, /run_days=6/);
+  assert.match(sampleGateLine, /reason=coverage_days_short:6\/required=7/);
+  assert.match(sampleGateLine, /counted_days=6/);
 });
 
-// ─── TC-003: WARN — 7 days but only 1 host (host parity missing) ────────────
+// ─── TC-003: WARN — ≥7 days but only 1 host (host parity missing) ───────────
 test("TC-003: sample_gate=WARN with host_parity_short when only 1 host has data", () => {
   const project = tempProject();
   const days7 = consecutiveDays("2026-08-01", 7);
   writeSyntheticLedger(project, {
     codex: { days: days7, countPerDay: 100 },
-    // pi omitted → only 1 host
   });
   const r = runScript(project);
   assert.equal(r.status, 0, `script failed: stderr=${r.stderr}`);
@@ -176,29 +172,52 @@ test("TC-003: sample_gate=WARN with host_parity_short when only 1 host has data"
   assert.match(sampleGateLine, /reason=host_parity_short:1/);
 });
 
-// ─── TC-004: WARN — 7 days × 2 hosts but one host drops below 100 on a day ───
-test("TC-004: sample_gate=WARN when one host has <100 on a day in an otherwise qualifying window", () => {
+// ─── TC-004: PASS with 2-day zero-run (weekend relaxation D-TCP-005) ─────────
+test("TC-004: sample_gate=PASS when ≥7 counted days with one 2-day zero-run (weekend)", () => {
   const project = tempProject();
-  const days7 = consecutiveDays("2026-08-01", 7);
+  // 9-day window: days 1..5 counted, days 6..7 zero, days 8..9 counted → 7 counted, max_zero_run=2
+  const counted = [
+    ...consecutiveDays("2026-08-01", 5),
+    ...consecutiveDays("2026-08-08", 2),
+  ];
   writeSyntheticLedger(project, {
-    codex: { days: days7, countPerDay: 100 },
-    pi:    { days: days7.slice(0, 3), countPerDay: 100 }, // pi only 3 days
+    codex: { days: counted, countPerDay: 100 },
+    pi:    { days: counted, countPerDay: 100 },
+  });
+  appendTestReceipts(project, 2);
+  const r = runScript(project);
+  assert.equal(r.status, 0, `script failed: stderr=${r.stderr}`);
+  const sampleGateLine = extractSampleGate(r);
+  assert.ok(/^sample_gate=PASS/.test(sampleGateLine),
+    `expected sample_gate=PASS with weekend gap, got: ${sampleGateLine}`);
+  assert.match(sampleGateLine, /counted_days=7/);
+  assert.match(sampleGateLine, /max_zero_run=2/);
+});
+
+// ─── TC-005: WARN — 3-day zero-run is too long ──────────────────────────────
+test("TC-005: sample_gate=WARN with zero_run_too_long when zero-run > 2 days", () => {
+  const project = tempProject();
+  // 10-day window: 5 counted + 3 zero + 2 counted → counted_days=7 BUT max_zero_run=3
+  const counted = [
+    ...consecutiveDays("2026-08-01", 5),
+    ...consecutiveDays("2026-08-09", 2),
+  ];
+  writeSyntheticLedger(project, {
+    codex: { days: counted, countPerDay: 100 },
+    pi:    { days: counted, countPerDay: 100 },
   });
   const r = runScript(project);
   assert.equal(r.status, 0, `script failed: stderr=${r.stderr}`);
   const sampleGateLine = extractSampleGate(r);
   assert.ok(/^sample_gate=WARN/.test(sampleGateLine),
-    `expected sample_gate=WARN, got: ${sampleGateLine}`);
-  // Days where BOTH hosts have ≥100: only days 1..3 → run = 3 days, not 7
-  assert.match(sampleGateLine, /run_days=3/);
-  assert.match(sampleGateLine, /reason=consecutive_days_short:3\/required=7/);
+    `expected sample_gate=WARN with 3-day zero-run, got: ${sampleGateLine}`);
+  assert.match(sampleGateLine, /reason=zero_run_too_long:3\/max=2/);
 });
 
-// ─── TC-005: WARN — ledger with only test receipts (excluded by prefix) ─────
-test("TC-005: sample_gate=WARN when ledger contains only test receipts", () => {
+// ─── TC-006: WARN — ledger with only test receipts (excluded by prefix) ─────
+test("TC-006: sample_gate=WARN when ledger contains only test receipts", () => {
   const project = tempProject();
   const days7 = consecutiveDays("2026-08-01", 7);
-  // Use 'test' prefix attempt_id; the analyzer must filter these out.
   writeSyntheticLedger(project, {
     test: { days: days7, countPerDay: 100 },
   });
@@ -207,28 +226,7 @@ test("TC-005: sample_gate=WARN when ledger contains only test receipts", () => {
   const sampleGateLine = extractSampleGate(r);
   assert.ok(/^sample_gate=WARN/.test(sampleGateLine),
     `expected sample_gate=WARN (test-only), got: ${sampleGateLine}`);
-  // 0 non-test hosts → host_parity_short:0
   assert.match(sampleGateLine, /reason=host_parity_short:0/);
-});
-
-// ─── TC-006: WARN — 100+ on each day but split across a gap (no 7-run) ──────
-test("TC-006: sample_gate=WARN when qualifying days exist but no 7-day consecutive run", () => {
-  const project = tempProject();
-  // 3 qualifying days in week 1, gap of 3 days, 3 qualifying days in week 2.
-  // No single run of ≥7 days even though 6 qualifying days exist.
-  const run1 = consecutiveDays("2026-08-01", 3);
-  const run2 = consecutiveDays("2026-08-08", 3);
-  writeSyntheticLedger(project, {
-    codex: { days: [...run1, ...run2], countPerDay: 100 },
-    pi:    { days: [...run1, ...run2], countPerDay: 100 },
-  });
-  const r = runScript(project);
-  assert.equal(r.status, 0, `script failed: stderr=${r.stderr}`);
-  const sampleGateLine = extractSampleGate(r);
-  assert.ok(/^sample_gate=WARN/.test(sampleGateLine),
-    `expected sample_gate=WARN, got: ${sampleGateLine}`);
-  assert.match(sampleGateLine, /run_days=3/);
-  assert.match(sampleGateLine, /reason=consecutive_days_short:3\/required=7/);
 });
 
 // ─── TC-007: PASS — exact threshold: 2 hosts × 7 days × exactly 100/day ──────
@@ -247,33 +245,30 @@ test("TC-007: sample_gate=PASS at exact 100/day threshold (boundary case)", () =
     `expected sample_gate=PASS at boundary, got: ${sampleGateLine}`);
 });
 
-// ─── TC-008: WARN — 99/day (one under threshold) breaks the run ─────────────
-test("TC-008: sample_gate=WARN at 99/day (one below threshold) breaks the qualifying run", () => {
+// ─── TC-008: WARN — 99/day (one under threshold) breaks all counted days ────
+test("TC-008: sample_gate=WARN at 99/day (one below threshold) breaks counted days", () => {
   const project = tempProject();
   const days7 = consecutiveDays("2026-08-01", 7);
   writeSyntheticLedger(project, {
     codex: { days: days7, countPerDay: 100 },
-    pi:    { days: days7, countPerDay: 99 }, // 1 short on every day
+    pi:    { days: days7, countPerDay: 99 },
   });
   const r = runScript(project);
   assert.equal(r.status, 0);
   const sampleGateLine = extractSampleGate(r);
   assert.ok(/^sample_gate=WARN/.test(sampleGateLine),
     `expected sample_gate=WARN at 99/day boundary, got: ${sampleGateLine}`);
-  assert.match(sampleGateLine, /run_days=0/);
-  assert.match(sampleGateLine, /reason=consecutive_days_short:0\/required=7/);
+  assert.match(sampleGateLine, /counted_days=0/);
 });
 
 // ─── TC-009: WARN — missing ledger-index.json yields WARN, never PASS ───────
 test("TC-009: sample_gate=WARN when ledger-index.json is missing (no false PASS)", () => {
   const project = tempProject();
-  // Do not write any ledger-index.json.
   const r = runScript(project);
   assert.equal(r.status, 0);
   const sampleGateLine = extractSampleGate(r);
   assert.ok(/^sample_gate=WARN/.test(sampleGateLine),
     `expected sample_gate=WARN on missing ledger, got: ${sampleGateLine}`);
-  // The script must NEVER report PASS based on historical multi-host presence alone.
   assert.ok(!/^sample_gate=PASS/.test(sampleGateLine),
     `must not report PASS without sufficient data: ${sampleGateLine}`);
 });
@@ -281,13 +276,10 @@ test("TC-009: sample_gate=WARN when ledger-index.json is missing (no false PASS)
 // ─── TC-010: regression — multi-host presence alone does NOT trigger PASS ────
 test("TC-010: multi-host presence alone (with insufficient per-day counts) never triggers PASS", () => {
   const project = tempProject();
-  // Two distinct hosts, plenty of receipts spread thinly across many days,
-  // but neither host reaches 100/day on any single day. The OLD logic would
-  // have returned PASS just because ≥2 prefixes exist; the new logic MUST NOT.
   const days = consecutiveDays("2026-08-01", 14);
   writeSyntheticLedger(project, {
-    codex: { days, countPerDay: 5 },  // 5/day × 14 days = 70 total
-    pi:    { days, countPerDay: 5 },  // 5/day × 14 days = 70 total
+    codex: { days, countPerDay: 5 },
+    pi:    { days, countPerDay: 5 },
   });
   const r = runScript(project);
   assert.equal(r.status, 0);
@@ -295,4 +287,27 @@ test("TC-010: multi-host presence alone (with insufficient per-day counts) never
   assert.ok(!/^sample_gate=PASS/.test(sampleGateLine),
     `multi-host presence alone must not yield PASS: ${sampleGateLine}`);
   assert.ok(/^sample_gate=WARN/.test(sampleGateLine));
+});
+
+// ─── TC-011: real-world DSH coverage shape (6 days, 1 zero-run) ─────────────
+test("TC-011: sample_gate=WARN coverage_days_short:6/required=7 for real-world 6-day shape", () => {
+  // Mirrors actual DSH ledger shape after backfill on 2026-08-25:
+  // 6 covered days, 1 single-day zero sample. Should still WARN because coverage<7.
+  const project = tempProject();
+  const counted = [
+    "2026-08-18", "2026-08-19", "2026-08-20", "2026-08-21",
+    "2026-08-24", "2026-08-25",
+  ];
+  writeSyntheticLedger(project, {
+    codex: { days: counted, countPerDay: 200 },
+    pi:    { days: counted, countPerDay: 200 },
+  });
+  appendTestReceipts(project, 2);
+  const r = runScript(project);
+  assert.equal(r.status, 0);
+  const sampleGateLine = extractSampleGate(r);
+  assert.ok(/^sample_gate=WARN/.test(sampleGateLine),
+    `expected WARN for 6-day coverage, got: ${sampleGateLine}`);
+  assert.match(sampleGateLine, /reason=coverage_days_short:6\/required=7/);
+  assert.match(sampleGateLine, /max_zero_run=2/);
 });
