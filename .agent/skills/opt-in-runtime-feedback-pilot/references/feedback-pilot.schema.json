@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Cortex Agent Opt-In Runtime Feedback Pilot Artifact",
+  "description": "Authoritative schema for MS-003 CI flaky-test rate pilot artifacts. Additional fields are forbidden to keep the pilot read-only and authority-bound.",
+  "type": "object",
+  "required": ["type", "decision_id", "waitpoint_id", "signal", "scope", "capability", "environments", "agent_identity", "allowed_tools", "message_route", "evidence_refs", "authority_boundary", "generated_at"],
+  "properties": {
+    "type": { "enum": ["runtime_feedback_trigger", "runtime_diagnosis", "runtime_proposal"] },
+    "decision_id": { "type": "string", "const": "D-M032-MS003-runtime-pilot-5f9b7e2a" },
+    "waitpoint_id": { "type": "string", "const": "WP-M032-MS003-runtime-pilot-5f9b7e2a" },
+    "signal": { "type": "string", "const": "ci-flaky-test-rate" },
+    "scope": { "type": "string", "const": "non-production" },
+    "capability": { "enum": ["diagnosis-or-proposal-only"] },
+    "environments": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+    "agent_identity": { "type": "string", "minLength": 1 },
+    "allowed_tools": { "type": "array", "maxItems": 0 },
+    "message_route": { "type": "string", "enum": ["none"] },
+    "evidence_refs": { "type": "array", "items": { "type": "string" }, "minItems": 1, "uniqueItems": true },
+    "authority_boundary": { "type": "string", "minLength": 1 },
+    "metrics": { "type": "object" },
+    "affected_tests": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+    "remediation_options": { "type": "array", "items": { "type": "string" } },
+    "generated_at": { "type": "string", "format": "date-time" }
+  },
+  "additionalProperties": false
+}
