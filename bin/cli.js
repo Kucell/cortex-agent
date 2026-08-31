@@ -116,6 +116,22 @@ const { designPackageCommand } = require("../lib/commands/design-package");
 const { mcpCommand } = require("../lib/commands/mcp");
 const { motionCommand } = require("../lib/commands/motion");
 
+// P-003 §4.5: live-artifact CLI surface.
+// `cortex-agent live-artifact <task-id> [--data-source static|json|csv] ...`
+// produces an interactive dashboard artifact at .agent/artifacts/<task-id>/live-artifact/
+// (index.html with iframe srcdoc sandbox + tweaks.json + data source). Strictly
+// additive: no changes to lib/commands.js; the new case routes to
+// lib/commands/live-artifact.js.
+const { liveArtifactCommand } = require("../lib/commands/live-artifact");
+
+// P-003 §4.3: image CLI surface.
+// `cortex-agent image <task-id> [--prompt ...] [--model ...] [--aspect ...] [--count N]`
+// produces a prompt + manifest + README at .agent/artifacts/<task-id>/images/.
+// Does NOT call any provider API; the BYOK route (out of CLI scope) does that.
+// Strictly additive: no changes to lib/commands.js; the new case routes to
+// lib/commands/image.js.
+const { imageCommand } = require("../lib/commands/image");
+
 // M-016 MS-002: Branch Management CLI surface.
 // `branch <create|list|show|sync|ready|merge|cleanup>` is owned by
 // lib/commands/branch.js. Strictly additive: no changes to lib/commands.js;
@@ -558,6 +574,8 @@ async function initModeGeneral() {
     case "notification": await notification(ctx); break;
     case "mcp":         await mcpCommand(ctx); break;
     case "motion":      await motionCommand(ctx); break;
+    case "live-artifact": await liveArtifactCommand(ctx); break;
+    case "image":        await imageCommand(ctx); break;
     case "query":       managementQuery(ctx); break;
     case "memory":      memoryCommand(ctx); break;
     case "dispatch":    await dispatchCommand(ctx); break;
