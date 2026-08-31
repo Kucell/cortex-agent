@@ -15,11 +15,13 @@
 
 - [MR merged plan semantic drift](feedback/mr-merged-plan-semantic-drift.md) — feedback, merge, plan-reconcile
 
-## project (7/20)
+## project (8/20)
 - [Token Control Plane MS-001](project/token-control-plane-ms001.md) — token-control-plane, token-attempt, M-025, MS-001
 - [M-025 Phase C parallel eval](project/m025-phase-c-parallel-eval.md) — m-025, phase-c, evaluation, gates, P-002, P-003, P-004
 - [Cross-host memory handoff](project/cross-host-memory-handoff.md) — memory, cross-host, MiniMax, Qoder, Codex, Cortex Agent
 - [DSH first-class adapter](project/dsh-firstclass-adapter.md) — dsh, deepseek-harness, adapter, dispatch, M-029, P-006, first-class
+
+- [M-032 AI-Native SDLC Governance](project/m032-ai-native-sdlc-governance.md) — M-032, P-001, risk-tier, runtime-feedback-pilot, governance, MS-001, MS-002, MS-003
 
 - [PostCommit hook not working](project/postcommit-hook-incompat.md) — 2026-07-21 触发，关键词：PostCommit, settings.json, hook, cortex-setup
 
