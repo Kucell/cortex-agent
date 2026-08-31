@@ -9,9 +9,6 @@
 - [reply-zh](user/reply-zh.md) — Always reply in Simplified Chinese (简体中文). Trigger: any user prompt or response from this user.
 
 ## feedback (3/30)
-- [progress-rc-20260819_053750_176-2026-08-19](feedback/progress-rc-20260819_053750_176-2026-08-19.md) — auto-evolution
-
-
 - [Pi governed launch host arguments](feedback/pi-governed-launch-host-args.md) — pi, governed-launch, host-adapter
 
 - [Feedback example config parity](feedback/feedback-example-config-parity.md) — feedback, config, template-parity
