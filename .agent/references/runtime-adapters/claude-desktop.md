@@ -2,7 +2,7 @@
 agent: claude-desktop
 cli: claude-desktop
 displayName: Claude Desktop
-status: stable
+status: reference
 protocol: stdio-mcp
 homepage: https://claude.com/download
 installCommand: "cortex-agent mcp install claude-desktop"

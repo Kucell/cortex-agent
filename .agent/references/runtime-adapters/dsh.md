@@ -2,7 +2,7 @@
 agent: dsh
 cli: dsh
 displayName: DeepSeek Harness
-status: stable
+status: shipped
 protocol: native
 homepage: https://github.com/deepseek-ai/deepseek-harness
 installCommand: "cortex-agent mcp install dsh"

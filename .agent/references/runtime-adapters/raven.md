@@ -2,7 +2,7 @@
 agent: raven
 cli: raven
 displayName: Raven
-status: stable
+status: reference
 protocol: stdio-mcp
 homepage: unknown (see open-design agent-adapters)
 installCommand: "manual — see raven.md"

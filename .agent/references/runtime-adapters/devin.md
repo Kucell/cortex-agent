@@ -2,7 +2,7 @@
 agent: devin
 cli: devin
 displayName: Devin
-status: stable
+status: reference
 protocol: stdio-mcp
 homepage: https://devin.ai
 installCommand: "manual — see devin.md"

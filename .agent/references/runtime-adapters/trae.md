@@ -2,7 +2,7 @@
 agent: trae
 cli: trae
 displayName: Trae
-status: stable
+status: reference
 protocol: stdio-mcp
 homepage: https://www.trae.ai
 installCommand: "manual — see trae.md"

@@ -2,7 +2,7 @@
 agent: codex
 cli: codex
 displayName: Codex CLI
-status: stable
+status: shipped
 protocol: stdio-mcp
 homepage: https://developers.openai.com/codex/
 installCommand: "cortex-agent mcp install codex"

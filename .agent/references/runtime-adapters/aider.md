@@ -2,7 +2,7 @@
 agent: aider
 cli: aider
 displayName: Aider
-status: stable
+status: reference
 protocol: stdio-mcp
 homepage: https://aider.chat
 installCommand: "manual — see aider.md"

@@ -2,7 +2,7 @@
 agent: opencode
 cli: opencode
 displayName: OpenCode
-status: stable
+status: reference
 protocol: stdio-mcp
 homepage: https://opencode.ai
 installCommand: "cortex-agent mcp install opencode (best-effort)"

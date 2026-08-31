@@ -2,7 +2,7 @@
 agent: kimi
 cli: kimi
 displayName: Kimi CLI
-status: stable
+status: reference
 protocol: stdio-mcp
 homepage: https://kimi.moonshot.cn
 installCommand: "manual — see kimi.md"

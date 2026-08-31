@@ -2,7 +2,7 @@
 agent: copilot
 cli: copilot
 displayName: GitHub Copilot
-status: stable
+status: shipped
 protocol: stdio-mcp
 homepage: https://github.com/features/copilot
 installCommand: "cortex-agent mcp install copilot"

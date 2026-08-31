@@ -2,7 +2,7 @@
 agent: vibe
 cli: vibe
 displayName: Mistral Vibe
-status: stable
+status: reference
 protocol: stdio-mcp
 homepage: https://github.com/mistralai/vibe
 installCommand: "manual — see vibe.md"

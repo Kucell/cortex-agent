@@ -2,7 +2,7 @@
 agent: antigravity
 cli: antigravity
 displayName: Antigravity
-status: stable
+status: reference
 protocol: stdio-mcp
 homepage: https://antigravity.google
 installCommand: "manual — see antigravity.md"
