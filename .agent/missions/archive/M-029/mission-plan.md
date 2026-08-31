@@ -1,11 +1,11 @@
 # Mission Plan: M-029 — DSH First-Class Adapter
 
 > **Status**: `SCOPE → PLAN → CONTRACT`（approved by `/approve` 2026-08-19）
-> **Proposal**: [P-006 DSH Host Adapter (first-class)](../../plans/proposals/projects/agent-runtime-interoperability/proposals/P-006-dsh-host-adapter-proposal.md)
-> **Approval Decision**: [D-ARI-P006-promote-dsh-firstclass](../../decisions/D-ARI-P006-promote-dsh-firstclass.json)
-> **Source Waitpoint**: [WP-ari-p006-impl](../../waitpoints/WP-ari-p006-impl.json)（pending；M-029 CONTRACT 阶段 release）
-> **Related Decision**: [D-TCP-004-add-dsh-host](../../decisions/D-TCP-004-add-dsh-host.json)（已 approved，仅授权 shadow usage）
-> **Related Waitpoint**: [WP-rsl-dsh-host-shadow-20260819](../../waitpoints/WP-rsl-dsh-host-shadow-20260819.json)（已 released，shadow scope）
+> **Proposal**: [P-006 DSH Host Adapter (first-class)](../../../plans/proposals/projects/agent-runtime-interoperability/proposals/P-006-dsh-host-adapter-proposal.md)
+> **Approval Decision**: [D-ARI-P006-promote-dsh-firstclass](../../../decisions/D-ARI-P006-promote-dsh-firstclass.json)
+> **Source Waitpoint**: [WP-ari-p006-impl](../../../waitpoints/WP-ari-p006-impl.json)（pending；M-029 CONTRACT 阶段 release）
+> **Related Decision**: [D-TCP-004-add-dsh-host](../../../decisions/D-TCP-004-add-dsh-host.json)（已 approved，仅授权 shadow usage）
+> **Related Waitpoint**: [WP-rsl-dsh-host-shadow-20260819](../../../waitpoints/WP-rsl-dsh-host-shadow-20260819.json)（已 released，shadow scope）
 
 ## Goal
 

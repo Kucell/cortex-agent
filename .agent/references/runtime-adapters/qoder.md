@@ -2,7 +2,7 @@
 agent: qoder
 cli: qoder
 displayName: Qoder
-status: reference
+status: stable
 protocol: stdio-mcp
 homepage: https://qoder.com
 installCommand: "cortex-agent add qoderclicn (M-026) + manual MCP"

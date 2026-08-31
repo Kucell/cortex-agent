@@ -1,3 +1,18 @@
+---
+title: "Risk Tier Policy"
+description: "按 low/medium/high/critical 四档风险分级，约束自动化与审批路径；非状态机，不授予执行权限。"
+type: rule
+scope: governance
+applicable_to: ["task-pipeline", "validation-contract", "decision-waitpoint"]
+module: rules-risk-tier-policy
+module_path: ".agent/rules/risk-tier-policy.md"
+status: stable
+owner: governance
+last_verified: "2026-08-31"
+sources: []
+linked_decisions: ["D-TCP-005"]
+---
+
 # Risk Tier Policy
 
 ## Purpose

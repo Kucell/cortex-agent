@@ -2,7 +2,7 @@
 agent: cline
 cli: cline
 displayName: Cline
-status: reference
+status: stable
 protocol: stdio-mcp
 homepage: https://cline.bot
 installCommand: "cortex-agent mcp install cline (best-effort)"

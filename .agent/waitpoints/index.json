@@ -1,12 +1,38 @@
 {
   "waitpoints": [
     {
+      "waitpoint_id": "WP-ODS-001",
+      "path": ".agent/waitpoints/WP-ODS-001.json",
+      "status": "released",
+      "owner_workflow": "/approve",
+      "decision_id": "D-ODS-001",
+      "updated_at": "2026-08-27T15:58:00.000Z"
+    },
+    {
+      "waitpoint_id": "WP-AINSDLC-002",
+      "path": ".agent/waitpoints/WP-AINSDLC-002.json",
+      "status": "released",
+      "owner_workflow": "/approve",
+      "decision_id": "D-AINSDLC-001",
+      "updated_at": "2026-08-27T05:42:14.147Z"
+    },
+    {
+      "waitpoint_id": "WP-M032-MS003-runtime-pilot-5f9b7e2a",
+      "path": ".agent/waitpoints/WP-M032-MS003-runtime-pilot-5f9b7e2a.json",
+      "status": "released",
+      "owner_workflow": "/mission",
+      "decision_id": "D-M032-MS003-runtime-pilot-5f9b7e2a",
+      "gate_action": "external_side_effect",
+      "resource_ref": "mission://M-032/MS-003/runtime-feedback-pilot?signal=ci-flaky-test-rate&scope=non-production&capability=diagnosis-or-proposal-only&environments=ci-non-prod&reviewers=human&valid_until=2026-09-30T00:00:00Z&base=d78fb7e&mission_revision=d78fb7e9fd460d95d235bb28b33e05f8fe6196f8",
+      "updated_at": "2026-08-27T10:10:00.000Z"
+    },
+    {
       "waitpoint_id": "WP-AINSDLC-001",
       "path": ".agent/waitpoints/WP-AINSDLC-001.json",
-      "status": "blocked",
+      "status": "canceled",
       "owner_workflow": "/arch-design",
       "decision_id": "D-AINSDLC-001",
-      "updated_at": "2026-08-27T05:35:47.440Z"
+      "updated_at": "2026-08-27T05:37:13.748Z"
     },
     {
       "waitpoint_id": "WP-rsl-dsh-host-shadow-20260819",
@@ -358,6 +384,14 @@
       "path": ".agent/waitpoints/WP-M026-MS004-launch.json",
       "status": "released",
       "linked_decision": "D-M026-MS004-launch"
+    },
+    {
+      "waitpoint_id": "WP-TCP-005-sample-gate-relaxation",
+      "path": ".agent/waitpoints/WP-TCP-005-sample-gate-relaxation.json",
+      "status": "released",
+      "owner_workflow": "/approve",
+      "decision_id": "D-TCP-005-sample-gate-relaxation",
+      "updated_at": "2026-08-25T07:05:00.000Z"
     }
   ]
 }

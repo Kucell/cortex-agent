@@ -2,7 +2,7 @@
 agent: reasonix
 cli: reasonix
 displayName: DeepSeek Reasonix
-status: reference
+status: stable
 protocol: stdio-mcp
 homepage: unknown (see open-design agent-adapters)
 installCommand: "manual — see reasonix.md"

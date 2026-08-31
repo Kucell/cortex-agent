@@ -2,7 +2,7 @@
 agent: hermes
 cli: hermes
 displayName: Hermes Agent
-status: reference
+status: stable
 protocol: stdio-mcp
 homepage: unknown (see open-design agent-adapters)
 installCommand: "manual — see hermes.md"

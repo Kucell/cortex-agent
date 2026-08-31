@@ -2,7 +2,7 @@
 agent: amp
 cli: amp
 displayName: Amp
-status: reference
+status: stable
 protocol: stdio-mcp
 homepage: https://ampcode.com
 installCommand: "manual — see amp.md"

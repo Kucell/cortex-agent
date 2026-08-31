@@ -2,7 +2,7 @@
 agent: kiro
 cli: kiro
 displayName: Kiro
-status: reference
+status: stable
 protocol: stdio-mcp
 homepage: https://kiro.dev
 installCommand: "manual — see kiro.md"

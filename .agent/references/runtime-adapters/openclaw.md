@@ -2,7 +2,7 @@
 agent: openclaw
 cli: openclaw
 displayName: OpenClaw
-status: reference
+status: stable
 protocol: stdio-mcp
 homepage: https://openclaw.ai
 installCommand: "cortex-agent mcp install openclaw (best-effort)"

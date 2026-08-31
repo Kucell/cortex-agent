@@ -460,8 +460,8 @@ Claude Code 等 agent CLI 的 Bash 被 macOS **sandbox-exec** 包裹。puppeteer
 
 ## 12. 相关文档
 
-- [P-005 提案](.agent/plans/proposals/projects/open-design-integration/proposals/P-005-motion-graphics-hyperframes-proposal.md)(451 行)
-- [D-ODI-004 决策](.agent/plans/proposals/projects/open-design-integration/decisions/D-ODI-004.md)
+- [P-005 提案](../../.agent/plans/proposals/projects/open-design-integration/proposals/P-005-motion-graphics-hyperframes-proposal.md)(451 行)
+- [D-ODI-004 决策](../../.agent/plans/proposals/projects/open-design-integration/decisions/D-ODI-004.md)
 - [open-design 集成架构总览](./open-design-integration.md)
 - [DESIGN.md cascade 设计系统架构](./design-system.md)(T-OD-001,本架构的输入)
 - [deck-workflow-design.md](./deck-workflow-design.md)(P-003,兄弟工作流)

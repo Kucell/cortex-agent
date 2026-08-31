@@ -2,7 +2,7 @@
 agent: atomcode
 cli: atomcode
 displayName: AtomCode
-status: reference
+status: stable
 protocol: stdio-mcp
 homepage: unknown (see open-design agent-adapters)
 installCommand: "manual — see atomcode.md"

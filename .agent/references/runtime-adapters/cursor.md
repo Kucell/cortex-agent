@@ -2,7 +2,7 @@
 agent: cursor
 cli: cursor
 displayName: Cursor
-status: shipped
+status: stable
 protocol: stdio-mcp
 homepage: https://cursor.com
 installCommand: "cortex-agent mcp install cursor"

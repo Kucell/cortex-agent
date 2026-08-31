@@ -2,7 +2,7 @@
 agent: claude
 cli: claude
 displayName: Claude Code
-status: shipped
+status: stable
 protocol: stdio-mcp
 homepage: https://docs.anthropic.com/en/docs/claude-code
 installCommand: "cortex-agent mcp install claude"

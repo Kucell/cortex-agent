@@ -3,7 +3,7 @@
 > **项目**: open-design-integration (P-004)
 > **状态**: MS-003 shipped (2026-08-20)
 > **机器可读索引**: [`_index.json`](./_index.json) · **文档规范**: [`_schema.md`](./_schema.md)
-> **配套**: [P-002 MCP bridge](../../plans/proposals/projects/open-design-integration/proposals/P-002-mcp-bridge-proposal.md) · [P-006 dsh first-class adapter](../../plans/proposals/projects/dsh-*) · [docs/architecture/runtime-adapter.md](../../../docs/architecture/runtime-adapter.md)
+> **配套**: [P-002 MCP bridge](../../plans/proposals/projects/open-design-integration/proposals/P-002-mcp-bridge-proposal.md) · `P-006 dsh first-class adapter` · [docs/architecture/runtime-adapter.md](../../../docs/architecture/runtime-adapter.md)
 
 ## 1. 这是什么
 

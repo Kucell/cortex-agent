@@ -271,7 +271,8 @@ node tests/management/management-mcp-cli.test.js  # legacy MCP(2 tests)
 node .agent/skills/architecture-guard/scripts/index.js   # 必须 0 violation
 
 # 零依赖验证
-grep -E "require\(['\"](?!node:)" bin/cli.js | grep -v 'require("path\|fs\|child_process\|os\|crypto\|stream\|events\|util\|readline\|assert\|buffer\|url\|querystring\|timers\|worker_threads\|http\|https\|net\|tls\|zlib\|string_decoder\|punycode\|fs/promises\|stream/web\|stream/consumers\|stream/promises\|node:" -r 2>/dev/null && echo "FAIL: npm dep found" || echo "OK: zero npm dep"
+# 详见仓库根目录 scripts/ 中的 `verify-zero-deps.sh`；核心逻辑：
+# 反向 grep 匹配 `require('...')` 但排除所有 `require('node:...')` 与内置模块（path / fs / child_process / os / crypto / stream / events / util / readline / assert / buffer / url / querystring / timers / worker_threads / http / https / net / tls / zlib / string_decoder / punycode / fs/promises / stream/web / stream/consumers / stream/promises）。命中即 FAIL；零命中即 OK。
 ```
 
 ### 端到端 MCP stdio JSON-RPC 实测

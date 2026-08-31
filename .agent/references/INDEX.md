@@ -13,7 +13,7 @@ status: stable
 owner: build-references-index
 last_verified: "2026-08-20"
 sources: []
-linked_decisions: []
+linked_decisions: ["D-OKF-001", "D-AINSDLC-001"]
 ---
 
 # References Index (知识图谱入口)

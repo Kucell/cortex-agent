@@ -2,7 +2,7 @@
 agent: qwen
 cli: qwen
 displayName: Qwen Code
-status: reference
+status: stable
 protocol: stdio-mcp
 homepage: https://github.com/QwenLM/qwen-code
 installCommand: "manual — see qwen.md"

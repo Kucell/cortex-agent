@@ -2,7 +2,7 @@
 agent: codebuddy
 cli: codebuddy
 displayName: CodeBuddy
-status: reference
+status: stable
 protocol: stdio-mcp
 homepage: https://www.codebuddy.ai
 installCommand: "manual — see codebuddy.md"
