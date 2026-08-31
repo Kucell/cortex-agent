@@ -392,6 +392,14 @@
       "owner_workflow": "/approve",
       "decision_id": "D-TCP-005-sample-gate-relaxation",
       "updated_at": "2026-08-25T07:05:00.000Z"
+    },
+    {
+      "waitpoint_id": "WP-M032-MS003-pilot-review-20260831",
+      "path": ".agent/waitpoints/WP-M032-MS003-pilot-review-20260831.json",
+      "status": "released",
+      "gate_action": "review",
+      "resource_ref": "pilot://M-032/MS-003/runtime-feedback-pilot?review_at=20260831T040500Z",
+      "updated_at": "2026-08-31T04:05:00.000Z"
     }
   ]
 }

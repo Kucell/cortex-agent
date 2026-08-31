@@ -10,6 +10,15 @@
       "updated_at": "2026-08-27T15:58:00.000Z"
     },
     {
+      "decision_id": "D-ODS-002",
+      "path": ".agent/decisions/D-ODS-002.json",
+      "type": "approval",
+      "status": "proposed",
+      "gate_action": "architecture",
+      "resource_ref": "mission:.agent/missions/M-ODI-001/mission-plan.md@e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "updated_at": "2026-08-31T09:00:00.000Z"
+    },
+    {
       "decision_id": "D-M032-MS003-runtime-pilot-5f9b7e2a",
       "path": ".agent/decisions/D-M032-MS003-runtime-pilot-5f9b7e2a.json",
       "type": "approval",
