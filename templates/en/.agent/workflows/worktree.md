@@ -80,6 +80,8 @@ mkdir -p ../<repo>-worktrees
 git worktree add ../<repo>-worktrees/<task-id> -b agent/<task-id>-<slug>
 ```
 
+For an explicitly configured multi-repository workspace, pass `--root <workspace-root>/.worktrees/<repo>` (or set `CORTEX_WORKTREE_ROOT`) so the target becomes `<workspace-root>/.worktrees/<repo>/<task-id>`. The root must be outside the repository; a soft-link placeholder that resolves to the primary repository is blocked and must not be followed or replaced automatically.
+
 默认目录必须是 `<repo-parent>/<repo>-worktrees/<task-id>[-slug]`，不得继续在项目父目录平铺 `<repo>-<task-id>`。迁移旧 worktree 前先运行只读 `plan` 审计 dirty 状态和活动进程，然后使用 `git worktree move`，不得用 Finder 或 `mv`。
 
 然后在新 worktree 中：

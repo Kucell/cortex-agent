@@ -1,13 +1,238 @@
 {
   "decisions": [
     {
-      "decision_id": "D-ODS-001",
-      "path": ".agent/decisions/D-ODS-001.json",
+      "decision_id": "D-M033-rm-hmi-platform-fix-regen-contracts-rc10-318fe9bd",
+      "path": ".agent/decisions/D-M033-rm-hmi-platform-fix-regen-contracts-rc10-318fe9bd.json",
+      "type": "approval",
+      "status": "open",
+      "gate_action": "destructive",
+      "resource_ref": "destructive:git-worktree-remove@repo:hmi-platform;path:/Users/workspace/code/HMI/hmi-platform/.worktrees/fix-regen-contracts-rc10;branch:fix/regenerate-contracts-rc10;head:c700c115fde2b5739b8b8bc1350df28eb971f021;main:257795a19e8ed5c36df897804033496434c6661b;preconditions:clean,merged#digest:318fe9bdd3d2d43c2b9d6e02c81f84e61195800a56b0e83e792f5c0490c2e6d0",
+      "updated_at": "2026-08-31T09:26:09.483Z"
+    },
+    {
+      "decision_id": "D-M033-rm-hmi-platform-yunxiao-tag-push-isolation-0a858d9c",
+      "path": ".agent/decisions/D-M033-rm-hmi-platform-yunxiao-tag-push-isolation-0a858d9c.json",
+      "type": "approval",
+      "status": "open",
+      "gate_action": "destructive",
+      "resource_ref": "destructive:git-worktree-remove@repo:hmi-platform;path:/Users/workspace/code/HMI/hmi-platform-worktrees/yunxiao-tag-push-isolation;branch:fix/yunxiao-tag-push-channel-isolation;head:a81632ce29efbb43aa8e34625efc5177f9622954;main:257795a19e8ed5c36df897804033496434c6661b;preconditions:clean,merged#digest:0a858d9c22f6a07a570f9aeb0396b7492c8ff02c9a7ab2a7244c981d0dc5ca48",
+      "updated_at": "2026-08-31T09:26:09.384Z"
+    },
+    {
+      "decision_id": "D-M033-rm-hmi-platform-variable-catalog-contract-9dce7905",
+      "path": ".agent/decisions/D-M033-rm-hmi-platform-variable-catalog-contract-9dce7905.json",
+      "type": "approval",
+      "status": "open",
+      "gate_action": "destructive",
+      "resource_ref": "destructive:git-worktree-remove@repo:hmi-platform;path:/Users/workspace/code/HMI/hmi-platform-worktrees/variable-catalog-contract;branch:feat/variable-catalog-contract;head:775ffbae87dab7ffc64ea10ae1c5d28ce0cad949;main:257795a19e8ed5c36df897804033496434c6661b;preconditions:clean,merged#digest:9dce7905bda5df8611f549e4667fb700c69aef9fee467bdb8924944f5f5e361f",
+      "updated_at": "2026-08-31T09:26:09.174Z"
+    },
+    {
+      "decision_id": "D-M033-rm-hmi-platform-t-m013-ly002-02-c109bd71",
+      "path": ".agent/decisions/D-M033-rm-hmi-platform-t-m013-ly002-02-c109bd71.json",
+      "type": "approval",
+      "status": "open",
+      "gate_action": "destructive",
+      "resource_ref": "destructive:git-worktree-remove@repo:hmi-platform;path:/Users/workspace/code/HMI/hmi-platform-worktrees/T-M013-LY002-02;branch:feat/t-m013-ly002-02;head:23e24f2c74385f2f5b78f86af194dc3e2d386d9e;main:257795a19e8ed5c36df897804033496434c6661b;preconditions:clean,merged#digest:c109bd71650e58fc3ba37ba4fc35e690c34e1cbc66249b5b418e5b832ca998c5",
+      "updated_at": "2026-08-31T09:26:08.980Z"
+    },
+    {
+      "decision_id": "D-M033-rm-hmi-platform-t-m013-ly002-01-a777dadc",
+      "path": ".agent/decisions/D-M033-rm-hmi-platform-t-m013-ly002-01-a777dadc.json",
+      "type": "approval",
+      "status": "open",
+      "gate_action": "destructive",
+      "resource_ref": "destructive:git-worktree-remove@repo:hmi-platform;path:/Users/workspace/code/HMI/hmi-platform-worktrees/T-M013-LY002-01;branch:feat/t-m013-ly002-01;head:4b2330625656f38ff5ddbfccde96ca0d641dade4;main:257795a19e8ed5c36df897804033496434c6661b;preconditions:clean,merged#digest:a777dadcb8d5f46f8a2e614ec09c1445d5aac3132e03aaecdcea6562b2d9bc09",
+      "updated_at": "2026-08-31T09:26:08.866Z"
+    },
+    {
+      "decision_id": "D-M033-rm-hmi-platform-release-promote-0-5-0-rc-2-77125a2f",
+      "path": ".agent/decisions/D-M033-rm-hmi-platform-release-promote-0-5-0-rc-2-77125a2f.json",
+      "type": "approval",
+      "status": "open",
+      "gate_action": "destructive",
+      "resource_ref": "destructive:git-worktree-remove@repo:hmi-platform;path:/Users/workspace/code/HMI/hmi-platform-worktrees/release-promote-0.5.0-rc.2;branch:chore/release-promote-0.5.0-rc.2;head:257795a19e8ed5c36df897804033496434c6661b;main:257795a19e8ed5c36df897804033496434c6661b;preconditions:clean,merged#digest:77125a2fb5658b83dace31dd9a4e53335e837cf44d9efa7826ef34ddd96b8a78",
+      "updated_at": "2026-08-31T09:26:08.704Z"
+    },
+    {
+      "decision_id": "D-M033-rm-hmi-platform-release-candidate-3b9b4f2b",
+      "path": ".agent/decisions/D-M033-rm-hmi-platform-release-candidate-3b9b4f2b.json",
+      "type": "approval",
+      "status": "open",
+      "gate_action": "destructive",
+      "resource_ref": "destructive:git-worktree-remove@repo:hmi-platform;path:/Users/workspace/code/HMI/hmi-platform-worktrees/release-candidate;branch:merge-conflict;head:2ca493c05918bd4f876015f1e791609e9b34243c;main:257795a19e8ed5c36df897804033496434c6661b;preconditions:clean,merged#digest:3b9b4f2b27d2fdd443ada3e280bb7d95049324a18ab9e1c483b86df582a74688",
+      "updated_at": "2026-08-31T09:26:08.610Z"
+    },
+    {
+      "decision_id": "D-M033-rm-hmi-platform-p110-string-io-116db0b0",
+      "path": ".agent/decisions/D-M033-rm-hmi-platform-p110-string-io-116db0b0.json",
+      "type": "approval",
+      "status": "open",
+      "gate_action": "destructive",
+      "resource_ref": "destructive:git-worktree-remove@repo:hmi-platform;path:/Users/workspace/code/HMI/hmi-platform-worktrees/p110-string-io;branch:feat/p110-string-io-productization;head:412a913f905cf65f2f20815a180e6a9af25f6238;main:257795a19e8ed5c36df897804033496434c6661b;preconditions:clean,merged#digest:116db0b01fe9ef386ee2f69f6ac4fe65b6087cc1af07cac106d539599bb2fbed",
+      "updated_at": "2026-08-31T09:26:08.454Z"
+    },
+    {
+      "decision_id": "D-M033-rm-hmi-platform-mr32-contract-drift-c7b5b899",
+      "path": ".agent/decisions/D-M033-rm-hmi-platform-mr32-contract-drift-c7b5b899.json",
+      "type": "approval",
+      "status": "open",
+      "gate_action": "destructive",
+      "resource_ref": "destructive:git-worktree-remove@repo:hmi-platform;path:/Users/workspace/code/HMI/hmi-platform-worktrees/mr32-contract-drift;branch:fix/mr32-contract-drift;head:b0276392d2623ae39b40cf00f21a116357398677;main:257795a19e8ed5c36df897804033496434c6661b;preconditions:clean,merged#digest:c7b5b8993d8f2dcf64234ce249363fb0b6643a2a63a3bc67d5efd00a5d44866f",
+      "updated_at": "2026-08-31T09:26:08.069Z"
+    },
+    {
+      "decision_id": "D-M033-rm-hmi-platform-m017-canvas-extended-domains-b8b4a3dd",
+      "path": ".agent/decisions/D-M033-rm-hmi-platform-m017-canvas-extended-domains-b8b4a3dd.json",
+      "type": "approval",
+      "status": "open",
+      "gate_action": "destructive",
+      "resource_ref": "destructive:git-worktree-remove@repo:hmi-platform;path:/Users/workspace/code/HMI/hmi-platform-worktrees/m017-canvas-extended-domains;branch:feat/m017-canvas-extended-domains;head:109c916d675fc1bd675f074ee3c8a1e2762cb790;main:257795a19e8ed5c36df897804033496434c6661b;preconditions:clean,merged#digest:b8b4a3ddb60857f02548527eb5a311cf2dffe3998cc4b9aa751709df6416d745",
+      "updated_at": "2026-08-31T09:26:07.968Z"
+    },
+    {
+      "decision_id": "D-M033-rm-hmi-platform-control-handoff-validation-parity-17425678",
+      "path": ".agent/decisions/D-M033-rm-hmi-platform-control-handoff-validation-parity-17425678.json",
+      "type": "approval",
+      "status": "open",
+      "gate_action": "destructive",
+      "resource_ref": "destructive:git-worktree-remove@repo:hmi-platform;path:/Users/workspace/code/HMI/hmi-platform-worktrees/control-handoff-validation-parity;branch:fix/control-handoff-validation-parity;head:0ca36be143c8bea7bdcfb842f3d19cd9c7c512c9;main:257795a19e8ed5c36df897804033496434c6661b;preconditions:clean,merged#digest:1742567887422ea614124fa2d412400dc78809900bf11f91c867ebe625a85ae0",
+      "updated_at": "2026-08-31T09:26:07.691Z"
+    },
+    {
+      "decision_id": "D-M033-rm-hmi-platform-control-handoff-v5-delivery-rebase-c4aec46f",
+      "path": ".agent/decisions/D-M033-rm-hmi-platform-control-handoff-v5-delivery-rebase-c4aec46f.json",
+      "type": "approval",
+      "status": "open",
+      "gate_action": "destructive",
+      "resource_ref": "destructive:git-worktree-remove@repo:hmi-platform;path:/Users/workspace/code/HMI/hmi-platform-worktrees/control-handoff-v5-delivery-rebase;branch:feat/control-handoff-v5-delivery-rebase;head:f766e028fc1e0559acf79b227be2f7377fb49450;main:257795a19e8ed5c36df897804033496434c6661b;preconditions:clean,merged#digest:c4aec46f8acfefb42caa402aa55eee943168af2351f8042dcb88873bc68385c5",
+      "updated_at": "2026-08-31T09:26:07.585Z"
+    },
+    {
+      "decision_id": "D-M033-rm-hmi-platform-control-governance-baseline-e5b4cdc2",
+      "path": ".agent/decisions/D-M033-rm-hmi-platform-control-governance-baseline-e5b4cdc2.json",
+      "type": "approval",
+      "status": "open",
+      "gate_action": "destructive",
+      "resource_ref": "destructive:git-worktree-remove@repo:hmi-platform;path:/Users/workspace/code/HMI/hmi-platform-worktrees/control-governance-baseline;branch:fix/control-governance-baseline;head:412a913f905cf65f2f20815a180e6a9af25f6238;main:257795a19e8ed5c36df897804033496434c6661b;preconditions:clean,merged#digest:e5b4cdc2f39faf7b7c43f92a48a3424212eee6d88e3c3f95c21458f464afa62b",
+      "updated_at": "2026-08-31T09:26:07.429Z"
+    },
+    {
+      "decision_id": "D-M033-rm-hmi-platform-control-design-derivation-gate-694d00b0",
+      "path": ".agent/decisions/D-M033-rm-hmi-platform-control-design-derivation-gate-694d00b0.json",
+      "type": "approval",
+      "status": "open",
+      "gate_action": "destructive",
+      "resource_ref": "destructive:git-worktree-remove@repo:hmi-platform;path:/Users/workspace/code/HMI/hmi-platform-worktrees/control-design-derivation-gate;branch:feat/control-design-derivation-gate;head:b968cf16ab523bcb761b6b04d935cff9dbd9e28a;main:257795a19e8ed5c36df897804033496434c6661b;preconditions:clean,merged#digest:694d00b083e9992a11c63fd49e597116769aa66377023f490e4130d9a59f5f0a",
+      "updated_at": "2026-08-31T09:26:07.305Z"
+    },
+    {
+      "decision_id": "D-M033-rm-hmi-platform-connection-address-contract-a073a40c",
+      "path": ".agent/decisions/D-M033-rm-hmi-platform-connection-address-contract-a073a40c.json",
+      "type": "approval",
+      "status": "open",
+      "gate_action": "destructive",
+      "resource_ref": "destructive:git-worktree-remove@repo:hmi-platform;path:/Users/workspace/code/HMI/hmi-platform-worktrees/connection-address-contract;branch:feat/connection-address-contract;head:4d5c4015891bbf077fed9c3e3be2e57358b182df;main:257795a19e8ed5c36df897804033496434c6661b;preconditions:clean,merged#digest:a073a40c4acfdcbf932200997c0777bcf75b362bcc398632a8c2cb2c8b997395",
+      "updated_at": "2026-08-31T09:26:07.122Z"
+    },
+    {
+      "decision_id": "D-M033-rm-hmi-platform-artifact-release-governance-b1898e39",
+      "path": ".agent/decisions/D-M033-rm-hmi-platform-artifact-release-governance-b1898e39.json",
+      "type": "approval",
+      "status": "open",
+      "gate_action": "destructive",
+      "resource_ref": "destructive:git-worktree-remove@repo:hmi-platform;path:/Users/workspace/code/HMI/hmi-platform-worktrees/artifact-release-governance;branch:chore/artifact-release-governance;head:5faee033203d9deab1168c2b3a48467109c7ce34;main:257795a19e8ed5c36df897804033496434c6661b;preconditions:clean,merged#digest:b1898e391ede3090cdfd343a42ea0b8e6380f1bafce737d882418c7a8b565835",
+      "updated_at": "2026-08-31T09:26:06.874Z"
+    },
+    {
+      "decision_id": "D-M033-rm-hmi-platform-appearance-live-preview-6cc38c1e",
+      "path": ".agent/decisions/D-M033-rm-hmi-platform-appearance-live-preview-6cc38c1e.json",
+      "type": "approval",
+      "status": "open",
+      "gate_action": "destructive",
+      "resource_ref": "destructive:git-worktree-remove@repo:hmi-platform;path:/Users/workspace/code/HMI/hmi-platform-worktrees/appearance-live-preview;branch:feat/appearance-live-preview;head:412a913f905cf65f2f20815a180e6a9af25f6238;main:257795a19e8ed5c36df897804033496434c6661b;preconditions:clean,merged#digest:6cc38c1e400c9dab4bcae43ecda50ba1a7daf19ad074ddabcd5b2d27c7645ac5",
+      "updated_at": "2026-08-31T09:26:06.787Z"
+    },
+    {
+      "decision_id": "D-M033-rm-hmi-platform-appearance-effects-inspector-contract-edd268e6",
+      "path": ".agent/decisions/D-M033-rm-hmi-platform-appearance-effects-inspector-contract-edd268e6.json",
+      "type": "approval",
+      "status": "open",
+      "gate_action": "destructive",
+      "resource_ref": "destructive:git-worktree-remove@repo:hmi-platform;path:/Users/workspace/code/HMI/hmi-platform-worktrees/appearance-effects-inspector-contract;branch:feat/appearance-effects-inspector-contract;head:33e666e12f3cf7ffa25642b7b2fa18512b235c1d;main:257795a19e8ed5c36df897804033496434c6661b;preconditions:clean,merged#digest:edd268e665d69e048952714fb8d2042c135ed402ea02fff868bea9b351d4eabd",
+      "updated_at": "2026-08-31T09:26:06.688Z"
+    },
+    {
+      "decision_id": "D-M033-rm-hmi-platform-hmi-platform-ms-005b-fe23170e",
+      "path": ".agent/decisions/D-M033-rm-hmi-platform-hmi-platform-ms-005b-fe23170e.json",
+      "type": "approval",
+      "status": "open",
+      "gate_action": "destructive",
+      "resource_ref": "destructive:git-worktree-remove@repo:hmi-platform;path:/Users/workspace/code/HMI/hmi-platform-ms-005b;branch:fix/ms007-non-publication-preflight;head:68b53f31d2f6130f0a2558045fbff76abb5a66b0;main:257795a19e8ed5c36df897804033496434c6661b;preconditions:clean,merged#digest:fe23170ea709e2dc959d240332fdad214fb96731516f73ab16d649a235c1fdfc",
+      "updated_at": "2026-08-31T09:26:06.451Z"
+    },
+    {
+      "decision_id": "D-M033-rm-samhmi-variable-catalog-runtime-host-66f1d85c",
+      "path": ".agent/decisions/D-M033-rm-samhmi-variable-catalog-runtime-host-66f1d85c.json",
+      "type": "approval",
+      "status": "open",
+      "gate_action": "destructive",
+      "resource_ref": "destructive:git-worktree-remove@repo:samhmi;path:/Users/workspace/code/HMI/SamHMI/.worktrees/variable-catalog-runtime-host;branch:feat/variable-catalog-runtime-host;head:c61d3aae637ac3f4c66f18098b40ea4731b142eb;main:ac695f826e4ad2de2bf828271193680569d2de84;preconditions:clean,merged#digest:66f1d85c3c68ec7f8e9d2dd8e263a21c5435bf535a24ea5f3e00120e09aa6ff9",
+      "updated_at": "2026-08-31T09:26:06.160Z"
+    },
+    {
+      "decision_id": "D-M033-rm-samhmi-variable-catalog-composition-203ae0fa",
+      "path": ".agent/decisions/D-M033-rm-samhmi-variable-catalog-composition-203ae0fa.json",
+      "type": "approval",
+      "status": "open",
+      "gate_action": "destructive",
+      "resource_ref": "destructive:git-worktree-remove@repo:samhmi;path:/Users/workspace/code/HMI/SamHMI/.worktrees/variable-catalog-composition;branch:feat/variable-catalog-composition;head:4be517d0b2db00aa9b07da2d37371d53313a3ad9;main:ac695f826e4ad2de2bf828271193680569d2de84;preconditions:clean,merged#digest:203ae0fa6d478a19f385346db3b95b9f7c90f575df293bc5a0e7101b9703cfe9",
+      "updated_at": "2026-08-31T09:26:06.031Z"
+    },
+    {
+      "decision_id": "D-M033-rm-samhmi-variable-connection-v2-host-964b6ea4",
+      "path": ".agent/decisions/D-M033-rm-samhmi-variable-connection-v2-host-964b6ea4.json",
+      "type": "approval",
+      "status": "open",
+      "gate_action": "destructive",
+      "resource_ref": "destructive:git-worktree-remove@repo:samhmi;path:/Users/workspace/code/HMI/SamHMI-worktrees/variable-connection-v2-host;branch:feat/variable-connection-v2-host;head:b2d205c292b20a24f98c1242a95437ec4eb3e998;main:ac695f826e4ad2de2bf828271193680569d2de84;preconditions:clean,merged#digest:964b6ea46194ff68e9ede938a2bb7507f97c64556c91a2675adde2b2aaf1e22d",
+      "updated_at": "2026-08-31T09:26:05.577Z"
+    },
+    {
+      "decision_id": "D-M033-rm-samhmi-t030-binding-contract-audit-3b1efebd",
+      "path": ".agent/decisions/D-M033-rm-samhmi-t030-binding-contract-audit-3b1efebd.json",
+      "type": "approval",
+      "status": "open",
+      "gate_action": "destructive",
+      "resource_ref": "destructive:git-worktree-remove@repo:samhmi;path:/Users/workspace/code/HMI/SamHMI-worktrees/t030-binding-contract-audit;branch:feat/t030-binding-contract-audit;head:ac695f826e4ad2de2bf828271193680569d2de84;main:ac695f826e4ad2de2bf828271193680569d2de84;preconditions:clean,merged#digest:3b1efebd50beca2eeaaa910937f7f28173b726231c5cbe050c5c425792c8a749",
+      "updated_at": "2026-08-31T09:26:05.287Z"
+    },
+    {
+      "decision_id": "D-M033-rm-samhmi-control-design-derivation-team-rule-3f542576",
+      "path": ".agent/decisions/D-M033-rm-samhmi-control-design-derivation-team-rule-3f542576.json",
+      "type": "approval",
+      "status": "open",
+      "gate_action": "destructive",
+      "resource_ref": "destructive:git-worktree-remove@repo:samhmi;path:/Users/workspace/code/HMI/SamHMI-worktrees/control-design-derivation-team-rule;branch:docs/control-design-derivation-team-rule;head:838b703d12efd9358adf9e4017b510e15368d966;main:ac695f826e4ad2de2bf828271193680569d2de84;preconditions:clean,merged#digest:3f54257601c48fbc194125b184ece19303300d4fa1023b5d9618796d21345d6b",
+      "updated_at": "2026-08-31T09:26:05.021Z"
+    },
+    {
+      "decision_id": "D-M033-replace-hmi-platform-container-d75570e3",
+      "path": ".agent/decisions/D-M033-replace-hmi-platform-container-d75570e3.json",
+      "type": "approval",
+      "status": "approved",
+      "gate_action": "destructive",
+      "resource_ref": "destructive:replace-hmi-platform-container-symlink@sha256:d75570e33815ab8e39c1a99130a3f7df37f031116bb022976893d6982caa74ef#digest:d75570e33815ab8e39c1a99130a3f7df37f031116bb022976893d6982caa74ef",
+      "updated_at": "2026-08-31T09:23:14.503Z"
+    },
+    {
+      "decision_id": "D-HMI-WTL-001-architecture-100507ce",
+      "path": ".agent/decisions/D-HMI-WTL-001-architecture-100507ce.json",
       "type": "approval",
       "status": "approved",
       "gate_action": "architecture",
-      "resource_ref": "proposal:.agent/plans/proposals/projects/open-design-system/index.md@38834eb6494aa52b4ccde54b209bb169630750ee4f621fa62b649c5c704544af",
-      "updated_at": "2026-08-27T15:58:00.000Z"
+      "resource_ref": "proposal:.agent/plans/proposals/projects/hmi-workspace-worktree-layout/proposals/P-001-workspace-scoped-worktree-container-proposal.md@sha256:100507ce5a645829c414511f6a180935f3efd4777091636d259db08bfefba93f#digest:100507ce5a645829c414511f6a180935f3efd4777091636d259db08bfefba93f",
+      "updated_at": "2026-08-31T09:06:28.656Z"
     },
     {
       "decision_id": "D-ODS-002",
@@ -17,6 +242,15 @@
       "gate_action": "architecture",
       "resource_ref": "mission:.agent/missions/M-ODI-001/mission-plan.md@e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
       "updated_at": "2026-08-31T09:00:00.000Z"
+    },
+    {
+      "decision_id": "D-ODS-001",
+      "path": ".agent/decisions/D-ODS-001.json",
+      "type": "approval",
+      "status": "approved",
+      "gate_action": "architecture",
+      "resource_ref": "proposal:.agent/plans/proposals/projects/open-design-system/index.md@38834eb6494aa52b4ccde54b209bb169630750ee4f621fa62b649c5c704544af",
+      "updated_at": "2026-08-27T15:58:00.000Z"
     },
     {
       "decision_id": "D-M032-MS003-runtime-pilot-5f9b7e2a",
@@ -35,6 +269,15 @@
       "gate_action": "architecture",
       "resource_ref": "proposal:.agent/plans/proposals/projects/ai-native-sdlc-governance/proposals/P-001-closed-loop-governance-proposal.md@fab2626de57efbd396a1ed88b82fb8663840f77bbe9c9284d7e21dfb26367a21",
       "updated_at": "2026-08-27T05:42:14.147Z"
+    },
+    {
+      "decision_id": "D-TCP-005-sample-gate-relaxation",
+      "path": ".agent/decisions/D-TCP-005-sample-gate-relaxation.json",
+      "type": "architecture",
+      "status": "approved",
+      "gate_action": "architecture",
+      "resource_ref": "proposal:.agent/plans/proposals/projects/token-control-plane/proposals/P-005-evaluation-rollout-gates-proposal.md#5-gate@pending-digest",
+      "updated_at": "2026-08-25T07:05:00.000Z"
     },
     {
       "decision_id": "D-TCP-004",
@@ -448,15 +691,6 @@
       "status": "approved",
       "gate_action": "external_side_effect",
       "resource_ref": "file://~/.codex/cc-switch-model-catalog.json#gpt-5.6-terra.base_instructions+model_messages.instructions_template"
-    },
-    {
-      "decision_id": "D-TCP-005-sample-gate-relaxation",
-      "path": ".agent/decisions/D-TCP-005-sample-gate-relaxation.json",
-      "type": "architecture",
-      "status": "approved",
-      "gate_action": "architecture",
-      "resource_ref": "proposal:.agent/plans/proposals/projects/token-control-plane/proposals/P-005-evaluation-rollout-gates-proposal.md#5-gate@pending-digest",
-      "updated_at": "2026-08-25T07:05:00.000Z"
     },
     {
       "decision_id": "D-M026-MS004-launch",

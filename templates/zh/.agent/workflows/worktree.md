@@ -78,6 +78,8 @@ mkdir -p ../<repo>-worktrees
 git worktree add ../<repo>-worktrees/<task-id> -b agent/<task-id>-<slug>
 ```
 
+对显式配置的多仓库工作区，可传入 `--root <workspace-root>/.worktrees/<repo>`（或设置 `CORTEX_WORKTREE_ROOT`），使目标变为 `<workspace-root>/.worktrees/<repo>/<task-id>`。该 root 必须位于仓库 Git 根外；若软链接占位解析到主仓，必须阻断，不得自动跟随或替换。
+
 默认目录必须是 `<repo-parent>/<repo>-worktrees/<task-id>[-slug]`，不得继续在项目父目录平铺 `<repo>-<task-id>`。迁移旧 worktree 前先运行只读 `plan` 审计 dirty 状态和活动进程，然后使用 `git worktree move`，不得用 Finder 或 `mv`。
 
 然后在新 worktree 中：

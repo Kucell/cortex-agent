@@ -1,5 +1,5 @@
 <!-- cortex-agent:anchor:v1 -->
-This project is managed by [cortex-agent](https://github.com/Kucell/cortex-agent) v1.12.0-rc.2.
+This project is managed by [cortex-agent](https://github.com/Kucell/cortex-agent) v1.13.0.
 
 ## What this means
 - The project uses a `.agent/` directory (gitignored) as the single source of truth for AI agent rules, workflows, and skills.

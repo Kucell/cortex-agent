@@ -48,6 +48,24 @@ test("repository-internal root fails closed without explicit policy", () => {
   assert.throws(() => cp.execFileSync(process.execPath, [shared, "resolve", "--repo", repo, "--root", path.join(repo, ".worktrees"), "--name", "T-1"]));
 });
 
+test("explicit symlink container resolving to the repository fails closed", () => {
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-worktree-layout-"));
+  const repo = path.join(base, "Demo");
+  const workspace = path.join(base, "workspace");
+  const container = path.join(workspace, ".worktrees", "Demo");
+  fs.mkdirSync(repo);
+  fs.mkdirSync(path.dirname(container), { recursive: true });
+  git(repo, ["init", "-q"]);
+  fs.symlinkSync(repo, container);
+  assert.throws(() => cp.execFileSync(process.execPath, [
+    shared,
+    "resolve",
+    "--repo", repo,
+    "--root", container,
+    "--name", "T-1",
+  ]), /repository-internal worktree roots require --allow-internal/);
+});
+
 test("migration plan is read-only and requires a full status/process audit", () => {
   const base = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-worktree-layout-"));
   const repo = path.join(base, "Demo");
@@ -71,7 +89,7 @@ test("migration plan is read-only and requires a full status/process audit", () 
 test("distributed workflows no longer create flat sibling task directories", () => {
   const enWorkflow = fs.readFileSync(path.join(root, "templates/en/.agent/workflows/worktree.md"), "utf8");
   const zhWorkflow = fs.readFileSync(path.join(root, "templates/zh/.agent/workflows/worktree.md"), "utf8");
-  assert.match(enWorkflow, /<repo>-worktrees\/T-001/);
+  assert.match(enWorkflow, /<repo>-worktrees\/<task-id>/);
   assert.match(zhWorkflow, /<repo>-worktrees\/<task-id>/);
   assert.doesNotMatch(enWorkflow, /worktree add \.\.\/<repo>-<task-id>/);
   assert.doesNotMatch(zhWorkflow, /worktree add \.\.\/<repo>-<task-id>/);
