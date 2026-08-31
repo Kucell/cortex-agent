@@ -1,3 +1,18 @@
+---
+title: "Worktree 协同规则"
+description: "多 Agent worktree 隔离；共享 .agent + .agent-runtime + graphify-out 基线；备份策略。"
+type: rule
+scope: governance
+applicable_to: ["worktree-isolation", "parallel-development", "shared-agent-state"]
+module: rules-worktree-collaboration
+module_path: ".agent/rules/worktree-collaboration.md"
+status: stable
+owner: governance
+last_verified: "2026-08-31"
+sources: []
+linked_decisions: ["D-OKF-001"]
+---
+
 # Worktree 协同规则
 
 当多个 Agent 需要并行推进同一个大项目时，可以使用 Git worktree 隔离工作区。worktree 只负责文件系统隔离；任务状态、handoff、锁和合并顺序仍由 `.agent/` 协调。
@@ -55,22 +70,29 @@
 - 不得使用 Finder、`mv` 或复制工具移动已登记 worktree；完成 clean/活动进程审计后使用 `git worktree move`。
 - 移动后必须更新持久化旧路径的 WorkspaceIdentity、Run、Session、Queue、lock、handoff 和 Dashboard 投影，并验证 `git worktree list --porcelain`。
 
-## 3. 共享 .agent
+## 3. 共享 Agent 状态与 Graphify 基线
 
-多个 worktree 必须共享同一份 `.agent` 状态目录，避免 task-progress、locks、handoffs、artifacts、dashboard 分裂。
+多个 worktree 必须共享主 worktree 的 `.agent`、`.agent-runtime` 状态目录与 `graphify-out` 基线，避免 task-progress、locks、handoffs、artifacts、dashboard、Coordination Task/Lease 和图谱事实分裂。
 
 推荐方式是在子 worktree 中使用符号链接：
 
 ```bash
-rm -rf <child-worktree>/.agent
+# 先审计并保留已有状态；不得直接删除子 worktree 的 .agent 或 .agent-runtime。
+mv <child-worktree>/.agent <primary-worktree>/.dev/worktree-agent-backups/<child>-agent-<timestamp>
 ln -s <primary-worktree>/.agent <child-worktree>/.agent
+mv <child-worktree>/.agent-runtime <primary-worktree>/.dev/worktree-agent-backups/<child>-agent-runtime-<timestamp>
+ln -s <primary-worktree>/.agent-runtime <child-worktree>/.agent-runtime
+ln -s <primary-worktree>/graphify-out <child-worktree>/graphify-out
 ```
 
 说明：
 
 - 不推荐硬链接目录；多数文件系统不支持目录硬链接，且容易破坏目录一致性。
 - 不要在每个 worktree 复制一份 `.agent` 后各自写入。
+- 若子 worktree 不存在对应目录，跳过该 `mv`；先核验链接目标和备份目录，再建立链接。
 - 所有 worktree 应共享同一套 `.agent/locks/`、`.agent/handoffs/`、`.agent/artifacts/` 和 `.agent/metrics/agent-dashboard.html`。
+- `.agent-runtime` 必须与 `.agent` 同源共享；不得让 `task` 写入旧布局而让 `lease` 或 `agent launch` 读取新布局。
+- Graphify 仅共享主分支基线；每次查询后必须用 `git diff <base>...HEAD` 复核当前 worktree 增量，不能把共享图谱当作分支最新事实。
 - 如果确实需要隔离实验状态，必须在 handoff 或 coordination report 中明确说明该 worktree 不参与共享状态。
 
 ## 4. 锁与写入边界

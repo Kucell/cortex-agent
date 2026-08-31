@@ -1,3 +1,18 @@
+---
+title: "Worktree Collaboration Rules"
+description: "Multi-agent worktree isolation; share .agent + .agent-runtime + graphify-out baseline; backup strategy."
+type: rule
+scope: governance
+applicable_to: ["worktree-isolation", "parallel-development", "shared-agent-state"]
+module: rules-worktree-collaboration
+module_path: ".agent/rules/worktree-collaboration.md"
+status: stable
+owner: governance
+last_verified: "2026-08-31"
+sources: []
+linked_decisions: ["D-OKF-001"]
+---
+
 # Worktree Collaboration Rules
 
 When multiple agents need to advance one large project in parallel, use Git worktrees to isolate working directories. Worktrees isolate filesystems only; task state, handoff, locks, and merge order are still coordinated by `.agent/`.
@@ -55,22 +70,29 @@ Rules:
 - Never move a registered worktree with Finder, `mv`, or file-copy tools. Use `git worktree move` after a clean/active-process audit.
 - After a move, update WorkspaceIdentity, Run, Session, Queue, lock, handoff, and Dashboard projections that persist the old path, then verify `git worktree list --porcelain`.
 
-## 3. Shared .agent
+## 3. Shared agent state and Graphify baseline
 
-Multiple worktrees must share one `.agent` state directory so task-progress, locks, handoffs, artifacts, and dashboard state do not split.
+Multiple worktrees must share the primary worktree's `.agent`, `.agent-runtime`, and `graphify-out` baseline so task-progress, locks, handoffs, artifacts, dashboard, Coordination Task/Lease, and graph facts do not split.
 
 Recommended approach: create a symbolic link in child worktrees:
 
 ```bash
-rm -rf <child-worktree>/.agent
+# Audit and preserve existing state first; never delete a child .agent or .agent-runtime directly.
+mv <child-worktree>/.agent <primary-worktree>/.dev/worktree-agent-backups/<child>-agent-<timestamp>
 ln -s <primary-worktree>/.agent <child-worktree>/.agent
+mv <child-worktree>/.agent-runtime <primary-worktree>/.dev/worktree-agent-backups/<child>-agent-runtime-<timestamp>
+ln -s <primary-worktree>/.agent-runtime <child-worktree>/.agent-runtime
+ln -s <primary-worktree>/graphify-out <child-worktree>/graphify-out
 ```
 
 Notes:
 
 - Do not hard-link directories; most file systems do not support directory hard links safely.
 - Do not copy `.agent` into every worktree and let each copy diverge.
+- If a child directory does not exist, skip that `mv`; verify both the backup and target before creating the link.
 - All worktrees should share `.agent/locks/`, `.agent/handoffs/`, `.agent/artifacts/`, and `.agent/metrics/agent-dashboard.html`.
+- `.agent-runtime` must share the same source as `.agent`; never allow `task` to write a legacy layout while `lease` or `agent launch` reads a new layout.
+- Graphify shares only the primary-branch baseline. After every query, verify the current worktree delta with `git diff <base>...HEAD`; never treat the shared graph as current branch fact.
 - If an experimental worktree intentionally uses isolated state, explain that in handoff or coordination report.
 
 ## 4. Locks and Write Boundaries
