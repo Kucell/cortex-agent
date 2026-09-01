@@ -505,8 +505,10 @@ test("supportsAddDirFlag: true for Claude Code and Codex hosts", () => {
   assert.equal(supportsAddDirFlag("codex"), true);
 });
 
-test("supportsAddDirFlag: false for Pi (rejects --add-dir)", () => {
+test("supportsAddDirFlag: false for Pi host ids (rejects --add-dir)", () => {
   assert.equal(supportsAddDirFlag("pi"), false);
+  assert.equal(supportsAddDirFlag("pi-ms003-provider"), false);
+  assert.equal(supportsAddDirFlag("PI-release"), false);
   assert.equal(HOSTS_WITHOUT_ADD_DIR_FLAG.has("pi"), true);
 });
 
