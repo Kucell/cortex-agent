@@ -35,6 +35,16 @@ node .agent/workspaces/scripts/worktree-layout.js resolve \
 
 `CORTEX_WORKTREE_ROOT` or `--root` overrides the sibling container. The resolver canonicalizes macOS path aliases such as `/var` and `/private/var`, rejects repository-internal roots by default, and removes a repeated repository prefix from legacy child names.
 
+### Workspace-scoped override
+
+For several repositories intentionally managed as one non-Git workspace, configure each repository explicitly instead of changing the default:
+
+```text
+<workspace-root>/.worktrees/<repo>/<task-id>
+```
+
+Pass `<workspace-root>/.worktrees/<repo>` through `CORTEX_WORKTREE_ROOT` or `--root`. The container must remain outside that repository's Git root. A path that resolves into the primary repository, including a soft-link placeholder pointing at it, is blocked; do not replace or follow it automatically.
+
 ## Migration
 
 Generate a read-only plan first:

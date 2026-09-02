@@ -778,10 +778,10 @@ function writeArgvRecorder(probeDir) {
   return { argvFile, bin };
 }
 
-test("governed child does not inject --add-dir for Pi host even with a grant", (t) => {
+test("governed child does not inject --add-dir for Pi-derived host ids with a grant", (t) => {
   const root = makeRuntime();
   const taskId = "T-ADD-DIR-PI";
-  const agentId = "pi";
+  const agentId = "pi-ms003-provider";
   const { lease, sessionId } = setupAcceptedTask(root, taskId, agentId);
   const probeDir = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-adddir-probe-"));
   t.after(() => { closeRuntime(root); fs.rmSync(probeDir, { recursive: true, force: true }); });

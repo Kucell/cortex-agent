@@ -93,6 +93,40 @@ function appendTestReceipts(projectRoot, count) {
   fs.writeFileSync(indexPath, JSON.stringify(index));
 }
 
+// Append non-test receipts for given hosts/days at a custom countPerDay.
+// Used by trailing-10 tests to push `latest` to a specific anchor date while
+// keeping those days BELOW the 100/host/day threshold (so they register as
+// zero_sample rather than counted days).
+function appendBelowThresholdDays(projectRoot, plan) {
+  const ledgerDir = path.join(projectRoot, ".agent", "token-attempts");
+  const indexPath = path.join(ledgerDir, "ledger-index.json");
+  const index = JSON.parse(fs.readFileSync(indexPath, "utf8"));
+  let n = (index.entries || []).length;
+  for (const [host, info] of Object.entries(plan)) {
+    const prefix = host === "codex" ? "ocx" : host === "dsh" ? "dsh" : host === "pi" ? "pi" : "test";
+    for (const day of info.days) {
+      for (let i = 0; i < info.countPerDay; i++) {
+        n++;
+        const aid = `${prefix}-below-${day.replace(/-/g, "")}-${i}`;
+        const rec = {
+          receipt_id: `TR-${String(n).padStart(24, "0")}`,
+          attempt_id: aid,
+          host: "synthetic-provider",
+          model: "synthetic-model",
+          status: "host_reported",
+          measurement_source: "synthetic",
+          recorded_at: `${day}T12:00:00.000Z`,
+          appended_at: `${day}T12:00:00.000Z`,
+          usage: { input_tokens: 1, output_tokens: 1 },
+        };
+        index.receipts[`${aid}::${rec.receipt_id}`] = rec;
+        (index.entries = index.entries || []).push(rec);
+      }
+    }
+  }
+  fs.writeFileSync(indexPath, JSON.stringify(index));
+}
+
 function runScript(projectRoot) {
   return spawnSync("bash", [SCRIPT, "--project", projectRoot, "--skip-rollback", "--json"], {
     cwd: ROOT,
@@ -310,4 +344,103 @@ test("TC-011: sample_gate=WARN coverage_days_short:6/required=7 for real-world 6
     `expected WARN for 6-day coverage, got: ${sampleGateLine}`);
   assert.match(sampleGateLine, /reason=coverage_days_short:6\/required=7/);
   assert.match(sampleGateLine, /max_zero_run=2/);
+});
+
+// ─── TC-012: stale dates OUTSIDE trailing 10 must NOT pin max zero run ───────
+test("TC-012: sample_gate=PASS even with stale dates outside trailing 10 (D-TCP-006)", () => {
+  // Authority D-TCP-006 (2026-08-31): candidate window = trailing 10 UTC days
+  // ending at the latest eligible receipt day. Historical receipts BEFORE the
+  // trailing window are excluded entirely — they can no longer inflate
+  // max_zero_run. Under the pre-D-TCP-006 [earliest..latest] semantics this
+  // scenario produced zero_run_too_long (~20-day gap from 2026-08-01 to
+  // 2026-08-22) and would have FAILed the gate.
+  const project = tempProject();
+  const stale = ["2026-08-01"];                  // far outside trailing 10
+  const trailing10 = consecutiveDays("2026-08-22", 10); // 2026-08-22..2026-08-31
+  writeSyntheticLedger(project, {
+    codex: { days: [...stale, ...trailing10], countPerDay: 100 },
+    pi:    { days: [...stale, ...trailing10], countPerDay: 100 },
+  });
+  appendTestReceipts(project, 2);
+  const r = runScript(project);
+  assert.equal(r.status, 0, `script failed: stderr=${r.stderr}`);
+  const sampleGateLine = extractSampleGate(r);
+  assert.ok(/^sample_gate=PASS/.test(sampleGateLine),
+    `expected sample_gate=PASS (stale outside trailing must not pin zero run), got: ${sampleGateLine}`);
+  assert.match(sampleGateLine, /counted_days=10/);
+  assert.match(sampleGateLine, /max_zero_run=0/);
+  assert.match(sampleGateLine, /window=2026-08-22\.\.2026-08-31/);
+});
+
+// ─── TC-013: exactly 6 qualifying days inside trailing 10 → WARN ─────────────
+test("TC-013: sample_gate=WARN coverage_days_short when only 6 of trailing 10 days qualify", () => {
+  // Authority D-TCP-006: 6 counted days inside the trailing-10 window with
+  // max_zero_run ≤ 2 must still WARN because coverage_days_short:6/required=7.
+  // Trailing window [2026-08-22..2026-08-31]; 6 days cross the 100/host/day
+  // threshold (2026-08-22..25, 2026-08-28..29), 4 days stay below it
+  // (2026-08-26..27, 2026-08-30..31). Two separate 2-day zero runs;
+  // counted_days=6.
+  const project = tempProject();
+  const trailing10 = consecutiveDays("2026-08-22", 10); // 2026-08-22..2026-08-31
+  const countedSubset = [
+    "2026-08-22", "2026-08-23", "2026-08-24", "2026-08-25",
+    "2026-08-28", "2026-08-29",
+  ];
+  const belowThresholdSubset = [
+    "2026-08-26", "2026-08-27", "2026-08-30", "2026-08-31",
+  ];
+  for (const d of [...countedSubset, ...belowThresholdSubset]) {
+    assert.ok(trailing10.includes(d), `test bug: ${d} not in trailing 10`);
+  }
+  // Compose ledger plan: counted days with 100/day, below-threshold days with 50/day.
+  writeSyntheticLedger(project, {
+    codex: { days: countedSubset, countPerDay: 100 },
+    pi:    { days: countedSubset, countPerDay: 100 },
+  });
+  appendBelowThresholdDays(project, {
+    codex: { days: belowThresholdSubset, countPerDay: 50 },
+    pi:    { days: belowThresholdSubset, countPerDay: 50 },
+  });
+  appendTestReceipts(project, 2);
+  const r = runScript(project);
+  assert.equal(r.status, 0, `script failed: stderr=${r.stderr}`);
+  const sampleGateLine = extractSampleGate(r);
+  assert.ok(/^sample_gate=WARN/.test(sampleGateLine),
+    `expected sample_gate=WARN for 6-of-trailing-10, got: ${sampleGateLine}`);
+  assert.match(sampleGateLine, /reason=coverage_days_short:6\/required=7/);
+  assert.match(sampleGateLine, /max_zero_run=2/);
+  assert.match(sampleGateLine, /window=2026-08-22\.\.2026-08-31/);
+});
+
+// ─── TC-014: 7 counted days in trailing 10 with zero run ≤ 2 → PASS ─────────
+test("TC-014: sample_gate=PASS with 7 counted days in trailing 10 (zero run ≤ 2, D-TCP-006)", () => {
+  // Authority D-TCP-006: 7 counted days inside the trailing-10 window with a
+  // single 2-day zero run must PASS. Trailing window [2026-08-22..2026-08-31];
+  // 8 days cross the 100/host/day threshold (2026-08-22..29), 2 days stay
+  // below it (2026-08-30..31). counted_days=8 ≥ 7 and max_zero_run=2.
+  const project = tempProject();
+  const trailing10 = consecutiveDays("2026-08-22", 10);
+  const countedSubset = consecutiveDays("2026-08-22", 8); // 2026-08-22..2026-08-29
+  const belowThresholdSubset = ["2026-08-30", "2026-08-31"];
+  for (const d of [...countedSubset, ...belowThresholdSubset]) {
+    assert.ok(trailing10.includes(d), `test bug: ${d} not in trailing 10`);
+  }
+  writeSyntheticLedger(project, {
+    codex: { days: countedSubset, countPerDay: 100 },
+    pi:    { days: countedSubset, countPerDay: 100 },
+  });
+  appendBelowThresholdDays(project, {
+    codex: { days: belowThresholdSubset, countPerDay: 50 },
+    pi:    { days: belowThresholdSubset, countPerDay: 50 },
+  });
+  appendTestReceipts(project, 2);
+  const r = runScript(project);
+  assert.equal(r.status, 0, `script failed: stderr=${r.stderr}`);
+  const sampleGateLine = extractSampleGate(r);
+  assert.ok(/^sample_gate=PASS/.test(sampleGateLine),
+    `expected sample_gate=PASS for 7+ counted in trailing 10, got: ${sampleGateLine}`);
+  assert.match(sampleGateLine, /counted_days=8/);
+  assert.match(sampleGateLine, /max_zero_run=2/);
+  // PASS branch reports counted span (window_start=first counted, window_end=last counted).
+  assert.match(sampleGateLine, /window=2026-08-22\.\.2026-08-29/);
 });

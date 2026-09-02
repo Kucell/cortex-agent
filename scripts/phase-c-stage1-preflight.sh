@@ -97,8 +97,11 @@ ELIGIBLE="$(echo "$SAMPLE_JSON" | node -e "let d='';process.stdin.on('data',c=>d
 EXCL="$(echo "$SAMPLE_JSON" | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{try{const j=JSON.parse(d);const e=j.by_exclusion_reason??{};console.log(Object.keys(e).filter(k=>/test/i.test(k)).join(','))}catch(e){console.log('parse-error')}})" 2>/dev/null || echo 'n/a')"
 # agent-host 维度: 直接从 ledger 扫描 attempt_id 前缀 (ocx-/dsh-/pi-/test-),
 # 按 UTC 日期分组非 test receipts, 验证 M-025 Phase C 框架 §2.1 G-SampleGate。
-# 2026-08-25 D-TCP-005-sample-gate-relaxation: 覆盖窗口(≥7 UTC 日, 允许 ≤1 个 2-日零样本,
-# 禁止 ≥3 天连续零样本), 每 Host 每日 ≥100, ≥2 Hosts。
+# 2026-08-25 D-TCP-005-sample-gate-relaxation: 候选窗口内 ≥7 UTC 日, 允许 ≤1 个 2-日零样本
+# (禁止 ≥3 天连续零样本), 每 Host 每日 ≥100, ≥2 Hosts。
+# 2026-08-31 D-TCP-006-trailing-10-utc-days: 候选窗口 = 相对最新一日 (latest) 的尾随 10 个
+# 日历 UTC 日, 下界 = max(latest-9, earliest); 早于该窗口的历史日不参与 counted_days 也不
+# 计入 max_zero_run。
 # 此处的 readiness host 维度是 LLM provider; agent host 必须从 attempt_id 前缀派生。
 SAMPLE_GATE_JSON="$(node -e "
   const fs = require('fs');
@@ -161,7 +164,7 @@ SAMPLE_GATE_JSON="$(node -e "
       console.log(JSON.stringify(out));
       process.exit(0);
     }
-    // 取两端: 首个 host 的最早一天 到 最晚一天 的闭区间作为候选窗口。
+    // 取两端: 所有非 test host 中出现的最早一天 与 最晚一天(最新一天)。
     let earliest = null, latest = null;
     for (const h of hostSet) {
       for (const d of Object.keys(perHostDay[h] || {})) {
@@ -183,13 +186,34 @@ SAMPLE_GATE_JSON="$(node -e "
       }
       return false;
     }
-    // 枚举 candidate window [earliest..latest] 中每个 UTC 日, 判定 counted / zero_sample
+    // 候选窗口 = 相对 latest 的「尾随 10 个日历 UTC 日」(trailing window), D-TCP-006 (2026-08-31)
+    //   window_start = max(latest - 9, earliest)
+    //   window_end   = latest
+    // 若最早数据距 latest 不足 10 个日历日, 则以 earliest 为下界 (候选窗口短于 10 日)。
+    // 仅评估此窗口内每个 UTC 日是否 counted / zero_sample; 早于 window_start 的历史日被排除,
+    // 不再贡献 counted_days 也不再拖累 max_zero_run。
+    const TRAILING_WINDOW_DAYS = 10;
+    function addDays(iso, delta) {
+      const dt = new Date(iso + 'T00:00:00Z');
+      dt.setUTCDate(dt.getUTCDate() + delta);
+      return dt.toISOString().slice(0, 10);
+    }
+    const trailingStart = addDays(latest, -(TRAILING_WINDOW_DAYS - 1));
+    const windowStart = (trailingStart < earliest) ? earliest : trailingStart;
+    const windowEnd = latest;
+    out.window_mode = 'trailing_10_utc_days';
+    out.window_size_days = TRAILING_WINDOW_DAYS;
+    out.trailing_start = trailingStart;
+    out.window_start_requested = trailingStart;
+    out.window_start = windowStart;
+    out.window_end = windowEnd;
+    // 枚举 candidate window [windowStart..windowEnd] 中每个 UTC 日, 判定 counted / zero_sample
     const window = [];
-    let cursor = earliest;
+    let cursor = windowStart;
     let countedDays = 0;
     let zeroRun = 0, maxZeroRun = 0;
     let countedStart = null, countedEnd = null;
-    while (cursor <= latest) {
+    while (cursor <= windowEnd) {
       if (dayQualifies(cursor)) {
         countedDays += 1;
         zeroRun = 0;
@@ -232,13 +256,13 @@ SG_REASON="$(node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{tr
 SG_START="$(node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{try{const j=JSON.parse(d);console.log(j.window_start||'')}catch(e){console.log('')}})" <<<"$SAMPLE_GATE_JSON" 2>/dev/null || echo '')"
 SG_END="$(node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{try{const j=JSON.parse(d);console.log(j.window_end||'')}catch(e){console.log('')}})" <<<"$SAMPLE_GATE_JSON" 2>/dev/null || echo '')"
 
-echo "   eligible_count=$ELIGIBLE test_exclusions=[$EXCL] agent_hosts=[$SG_HOSTS] counted=${SG_COUNTED}d max_zero_run=${SG_MAXZERO}d reason=${SG_REASON} window=${SG_START}..${SG_END}" >&2
+echo "   eligible_count=$ELIGIBLE test_exclusions=[$EXCL] agent_hosts=[$SG_HOSTS] counted=${SG_COUNTED}d max_zero_run=${SG_MAXZERO}d reason=${SG_REASON} window=trailing10:${SG_START}..${SG_END}" >&2
 if [[ "$SG_REASON" == "pass" ]] && [[ -n "$EXCL" ]]; then
-  echo "   ✅ sample-gate: ≥${SG_COUNTED}d coverage with max_zero_run=${SG_MAXZERO}d ≤2 (window=${SG_START}..${SG_END}, authority D-TCP-005-sample-gate-relaxation)" >&2
-  PASS_COUNT=$((PASS_COUNT+1)); RESULTS+=("sample_gate=PASS counted_days=$SG_COUNTED max_zero_run=$SG_MAXZERO hosts=$SG_HOSTS window=${SG_START}..${SG_END} eligible=$ELIGIBLE")
+  echo "   ✅ sample-gate: ≥${SG_COUNTED}d coverage with max_zero_run=${SG_MAXZERO}d ≤2 (trailing-10-utc-day window=${SG_START}..${SG_END}, authority D-TCP-006)" >&2
+  PASS_COUNT=$((PASS_COUNT+1)); RESULTS+=("sample_gate=PASS counted_days=$SG_COUNTED max_zero_run=$SG_MAXZERO hosts=$SG_HOSTS window=${SG_START}..${SG_END} window_mode=trailing_10_utc_days eligible=$ELIGIBLE")
 else
-  echo "   ⚠️  sample-gate: not ready — reason=${SG_REASON} (need ≥7 coverage days, ≤2-day zero-run, ≥2 hosts, ≥100/day each, plus test exclusions)" >&2
-  FAIL_COUNT=$((FAIL_COUNT+1)); RESULTS+=("sample_gate=WARN reason=$SG_REASON counted_days=$SG_COUNTED max_zero_run=$SG_MAXZERO hosts=$SG_HOSTS eligible=$ELIGIBLE")
+  echo "   ⚠️  sample-gate: not ready — reason=${SG_REASON} (trailing-10-utc-day window=${SG_START}..${SG_END}; need ≥7 counted days, ≤2-day zero-run, ≥2 hosts, ≥100/day each, plus test exclusions)" >&2
+  FAIL_COUNT=$((FAIL_COUNT+1)); RESULTS+=("sample_gate=WARN reason=$SG_REASON counted_days=$SG_COUNTED max_zero_run=$SG_MAXZERO hosts=$SG_HOSTS window=${SG_START}..${SG_END} window_mode=trailing_10_utc_days eligible=$ELIGIBLE")
 fi
 
 # =============================================================================

@@ -1,20 +1,228 @@
 {
   "waitpoints": [
     {
+      "waitpoint_id": "WP-M033-rm-hmi-platform-fix-regen-contracts-rc10-318fe9bd",
+      "path": ".agent/waitpoints/WP-M033-rm-hmi-platform-fix-regen-contracts-rc10-318fe9bd.json",
+      "status": "blocked",
+      "owner_workflow": "/mission",
+      "decision_id": "D-M033-rm-hmi-platform-fix-regen-contracts-rc10-318fe9bd",
+      "updated_at": "2026-08-31T09:26:09.529Z"
+    },
+    {
+      "waitpoint_id": "WP-M033-rm-hmi-platform-yunxiao-tag-push-isolation-0a858d9c",
+      "path": ".agent/waitpoints/WP-M033-rm-hmi-platform-yunxiao-tag-push-isolation-0a858d9c.json",
+      "status": "blocked",
+      "owner_workflow": "/mission",
+      "decision_id": "D-M033-rm-hmi-platform-yunxiao-tag-push-isolation-0a858d9c",
+      "updated_at": "2026-08-31T09:26:09.418Z"
+    },
+    {
+      "waitpoint_id": "WP-M033-rm-hmi-platform-variable-catalog-contract-9dce7905",
+      "path": ".agent/waitpoints/WP-M033-rm-hmi-platform-variable-catalog-contract-9dce7905.json",
+      "status": "blocked",
+      "owner_workflow": "/mission",
+      "decision_id": "D-M033-rm-hmi-platform-variable-catalog-contract-9dce7905",
+      "updated_at": "2026-08-31T09:26:09.215Z"
+    },
+    {
+      "waitpoint_id": "WP-M033-rm-hmi-platform-t-m013-ly002-02-c109bd71",
+      "path": ".agent/waitpoints/WP-M033-rm-hmi-platform-t-m013-ly002-02-c109bd71.json",
+      "status": "blocked",
+      "owner_workflow": "/mission",
+      "decision_id": "D-M033-rm-hmi-platform-t-m013-ly002-02-c109bd71",
+      "updated_at": "2026-08-31T09:26:09.017Z"
+    },
+    {
+      "waitpoint_id": "WP-M033-rm-hmi-platform-t-m013-ly002-01-a777dadc",
+      "path": ".agent/waitpoints/WP-M033-rm-hmi-platform-t-m013-ly002-01-a777dadc.json",
+      "status": "blocked",
+      "owner_workflow": "/mission",
+      "decision_id": "D-M033-rm-hmi-platform-t-m013-ly002-01-a777dadc",
+      "updated_at": "2026-08-31T09:26:08.903Z"
+    },
+    {
+      "waitpoint_id": "WP-M033-rm-hmi-platform-release-promote-0-5-0-rc-2-77125a2f",
+      "path": ".agent/waitpoints/WP-M033-rm-hmi-platform-release-promote-0-5-0-rc-2-77125a2f.json",
+      "status": "blocked",
+      "owner_workflow": "/mission",
+      "decision_id": "D-M033-rm-hmi-platform-release-promote-0-5-0-rc-2-77125a2f",
+      "updated_at": "2026-08-31T09:26:08.734Z"
+    },
+    {
+      "waitpoint_id": "WP-M033-rm-hmi-platform-release-candidate-3b9b4f2b",
+      "path": ".agent/waitpoints/WP-M033-rm-hmi-platform-release-candidate-3b9b4f2b.json",
+      "status": "blocked",
+      "owner_workflow": "/mission",
+      "decision_id": "D-M033-rm-hmi-platform-release-candidate-3b9b4f2b",
+      "updated_at": "2026-08-31T09:26:08.642Z"
+    },
+    {
+      "waitpoint_id": "WP-M033-rm-hmi-platform-p110-string-io-116db0b0",
+      "path": ".agent/waitpoints/WP-M033-rm-hmi-platform-p110-string-io-116db0b0.json",
+      "status": "blocked",
+      "owner_workflow": "/mission",
+      "decision_id": "D-M033-rm-hmi-platform-p110-string-io-116db0b0",
+      "updated_at": "2026-08-31T09:26:08.488Z"
+    },
+    {
+      "waitpoint_id": "WP-M033-rm-hmi-platform-mr32-contract-drift-c7b5b899",
+      "path": ".agent/waitpoints/WP-M033-rm-hmi-platform-mr32-contract-drift-c7b5b899.json",
+      "status": "blocked",
+      "owner_workflow": "/mission",
+      "decision_id": "D-M033-rm-hmi-platform-mr32-contract-drift-c7b5b899",
+      "updated_at": "2026-08-31T09:26:08.103Z"
+    },
+    {
+      "waitpoint_id": "WP-M033-rm-hmi-platform-m017-canvas-extended-domains-b8b4a3dd",
+      "path": ".agent/waitpoints/WP-M033-rm-hmi-platform-m017-canvas-extended-domains-b8b4a3dd.json",
+      "status": "blocked",
+      "owner_workflow": "/mission",
+      "decision_id": "D-M033-rm-hmi-platform-m017-canvas-extended-domains-b8b4a3dd",
+      "updated_at": "2026-08-31T09:26:08.000Z"
+    },
+    {
+      "waitpoint_id": "WP-M033-rm-hmi-platform-control-handoff-validation-parity-17425678",
+      "path": ".agent/waitpoints/WP-M033-rm-hmi-platform-control-handoff-validation-parity-17425678.json",
+      "status": "blocked",
+      "owner_workflow": "/mission",
+      "decision_id": "D-M033-rm-hmi-platform-control-handoff-validation-parity-17425678",
+      "updated_at": "2026-08-31T09:26:07.730Z"
+    },
+    {
+      "waitpoint_id": "WP-M033-rm-hmi-platform-control-handoff-v5-delivery-rebase-c4aec46f",
+      "path": ".agent/waitpoints/WP-M033-rm-hmi-platform-control-handoff-v5-delivery-rebase-c4aec46f.json",
+      "status": "blocked",
+      "owner_workflow": "/mission",
+      "decision_id": "D-M033-rm-hmi-platform-control-handoff-v5-delivery-rebase-c4aec46f",
+      "updated_at": "2026-08-31T09:26:07.623Z"
+    },
+    {
+      "waitpoint_id": "WP-M033-rm-hmi-platform-control-governance-baseline-e5b4cdc2",
+      "path": ".agent/waitpoints/WP-M033-rm-hmi-platform-control-governance-baseline-e5b4cdc2.json",
+      "status": "blocked",
+      "owner_workflow": "/mission",
+      "decision_id": "D-M033-rm-hmi-platform-control-governance-baseline-e5b4cdc2",
+      "updated_at": "2026-08-31T09:26:07.466Z"
+    },
+    {
+      "waitpoint_id": "WP-M033-rm-hmi-platform-control-design-derivation-gate-694d00b0",
+      "path": ".agent/waitpoints/WP-M033-rm-hmi-platform-control-design-derivation-gate-694d00b0.json",
+      "status": "blocked",
+      "owner_workflow": "/mission",
+      "decision_id": "D-M033-rm-hmi-platform-control-design-derivation-gate-694d00b0",
+      "updated_at": "2026-08-31T09:26:07.349Z"
+    },
+    {
+      "waitpoint_id": "WP-M033-rm-hmi-platform-connection-address-contract-a073a40c",
+      "path": ".agent/waitpoints/WP-M033-rm-hmi-platform-connection-address-contract-a073a40c.json",
+      "status": "blocked",
+      "owner_workflow": "/mission",
+      "decision_id": "D-M033-rm-hmi-platform-connection-address-contract-a073a40c",
+      "updated_at": "2026-08-31T09:26:07.163Z"
+    },
+    {
+      "waitpoint_id": "WP-M033-rm-hmi-platform-artifact-release-governance-b1898e39",
+      "path": ".agent/waitpoints/WP-M033-rm-hmi-platform-artifact-release-governance-b1898e39.json",
+      "status": "blocked",
+      "owner_workflow": "/mission",
+      "decision_id": "D-M033-rm-hmi-platform-artifact-release-governance-b1898e39",
+      "updated_at": "2026-08-31T09:26:06.902Z"
+    },
+    {
+      "waitpoint_id": "WP-M033-rm-hmi-platform-appearance-live-preview-6cc38c1e",
+      "path": ".agent/waitpoints/WP-M033-rm-hmi-platform-appearance-live-preview-6cc38c1e.json",
+      "status": "blocked",
+      "owner_workflow": "/mission",
+      "decision_id": "D-M033-rm-hmi-platform-appearance-live-preview-6cc38c1e",
+      "updated_at": "2026-08-31T09:26:06.815Z"
+    },
+    {
+      "waitpoint_id": "WP-M033-rm-hmi-platform-appearance-effects-inspector-contract-edd268e6",
+      "path": ".agent/waitpoints/WP-M033-rm-hmi-platform-appearance-effects-inspector-contract-edd268e6.json",
+      "status": "blocked",
+      "owner_workflow": "/mission",
+      "decision_id": "D-M033-rm-hmi-platform-appearance-effects-inspector-contract-edd268e6",
+      "updated_at": "2026-08-31T09:26:06.721Z"
+    },
+    {
+      "waitpoint_id": "WP-M033-rm-hmi-platform-hmi-platform-ms-005b-fe23170e",
+      "path": ".agent/waitpoints/WP-M033-rm-hmi-platform-hmi-platform-ms-005b-fe23170e.json",
+      "status": "blocked",
+      "owner_workflow": "/mission",
+      "decision_id": "D-M033-rm-hmi-platform-hmi-platform-ms-005b-fe23170e",
+      "updated_at": "2026-08-31T09:26:06.516Z"
+    },
+    {
+      "waitpoint_id": "WP-M033-rm-samhmi-variable-catalog-runtime-host-66f1d85c",
+      "path": ".agent/waitpoints/WP-M033-rm-samhmi-variable-catalog-runtime-host-66f1d85c.json",
+      "status": "blocked",
+      "owner_workflow": "/mission",
+      "decision_id": "D-M033-rm-samhmi-variable-catalog-runtime-host-66f1d85c",
+      "updated_at": "2026-08-31T09:26:06.228Z"
+    },
+    {
+      "waitpoint_id": "WP-M033-rm-samhmi-variable-catalog-composition-203ae0fa",
+      "path": ".agent/waitpoints/WP-M033-rm-samhmi-variable-catalog-composition-203ae0fa.json",
+      "status": "blocked",
+      "owner_workflow": "/mission",
+      "decision_id": "D-M033-rm-samhmi-variable-catalog-composition-203ae0fa",
+      "updated_at": "2026-08-31T09:26:06.064Z"
+    },
+    {
+      "waitpoint_id": "WP-M033-rm-samhmi-variable-connection-v2-host-964b6ea4",
+      "path": ".agent/waitpoints/WP-M033-rm-samhmi-variable-connection-v2-host-964b6ea4.json",
+      "status": "blocked",
+      "owner_workflow": "/mission",
+      "decision_id": "D-M033-rm-samhmi-variable-connection-v2-host-964b6ea4",
+      "updated_at": "2026-08-31T09:26:05.675Z"
+    },
+    {
+      "waitpoint_id": "WP-M033-rm-samhmi-t030-binding-contract-audit-3b1efebd",
+      "path": ".agent/waitpoints/WP-M033-rm-samhmi-t030-binding-contract-audit-3b1efebd.json",
+      "status": "blocked",
+      "owner_workflow": "/mission",
+      "decision_id": "D-M033-rm-samhmi-t030-binding-contract-audit-3b1efebd",
+      "updated_at": "2026-08-31T09:26:05.318Z"
+    },
+    {
+      "waitpoint_id": "WP-M033-rm-samhmi-control-design-derivation-team-rule-3f542576",
+      "path": ".agent/waitpoints/WP-M033-rm-samhmi-control-design-derivation-team-rule-3f542576.json",
+      "status": "blocked",
+      "owner_workflow": "/mission",
+      "decision_id": "D-M033-rm-samhmi-control-design-derivation-team-rule-3f542576",
+      "updated_at": "2026-08-31T09:26:05.063Z"
+    },
+    {
+      "waitpoint_id": "WP-M033-replace-hmi-platform-container-d75570e3",
+      "path": ".agent/waitpoints/WP-M033-replace-hmi-platform-container-d75570e3.json",
+      "status": "released",
+      "owner_workflow": "/mission",
+      "decision_id": "D-M033-replace-hmi-platform-container-d75570e3",
+      "updated_at": "2026-08-31T09:23:14.503Z"
+    },
+    {
+      "waitpoint_id": "WP-HMI-WTL-001-architecture-100507ce",
+      "path": ".agent/waitpoints/WP-HMI-WTL-001-architecture-100507ce.json",
+      "status": "released",
+      "owner_workflow": "/arch-design",
+      "decision_id": "D-HMI-WTL-001-architecture-100507ce",
+      "updated_at": "2026-08-31T09:06:28.656Z"
+    },
+    {
+      "waitpoint_id": "WP-M032-MS003-pilot-review-20260831",
+      "path": ".agent/waitpoints/WP-M032-MS003-pilot-review-20260831.json",
+      "status": "released",
+      "gate_action": "review",
+      "resource_ref": "pilot://M-032/MS-003/runtime-feedback-pilot?review_at=20260831T040500Z",
+      "updated_at": "2026-08-31T04:05:00.000Z"
+    },
+    {
       "waitpoint_id": "WP-ODS-001",
       "path": ".agent/waitpoints/WP-ODS-001.json",
       "status": "released",
       "owner_workflow": "/approve",
       "decision_id": "D-ODS-001",
       "updated_at": "2026-08-27T15:58:00.000Z"
-    },
-    {
-      "waitpoint_id": "WP-AINSDLC-002",
-      "path": ".agent/waitpoints/WP-AINSDLC-002.json",
-      "status": "released",
-      "owner_workflow": "/approve",
-      "decision_id": "D-AINSDLC-001",
-      "updated_at": "2026-08-27T05:42:14.147Z"
     },
     {
       "waitpoint_id": "WP-M032-MS003-runtime-pilot-5f9b7e2a",
@@ -27,12 +235,28 @@
       "updated_at": "2026-08-27T10:10:00.000Z"
     },
     {
+      "waitpoint_id": "WP-AINSDLC-002",
+      "path": ".agent/waitpoints/WP-AINSDLC-002.json",
+      "status": "released",
+      "owner_workflow": "/approve",
+      "decision_id": "D-AINSDLC-001",
+      "updated_at": "2026-08-27T05:42:14.147Z"
+    },
+    {
       "waitpoint_id": "WP-AINSDLC-001",
       "path": ".agent/waitpoints/WP-AINSDLC-001.json",
       "status": "canceled",
       "owner_workflow": "/arch-design",
       "decision_id": "D-AINSDLC-001",
       "updated_at": "2026-08-27T05:37:13.748Z"
+    },
+    {
+      "waitpoint_id": "WP-TCP-005-sample-gate-relaxation",
+      "path": ".agent/waitpoints/WP-TCP-005-sample-gate-relaxation.json",
+      "status": "released",
+      "owner_workflow": "/approve",
+      "decision_id": "D-TCP-005-sample-gate-relaxation",
+      "updated_at": "2026-08-25T07:05:00.000Z"
     },
     {
       "waitpoint_id": "WP-rsl-dsh-host-shadow-20260819",
@@ -384,22 +608,6 @@
       "path": ".agent/waitpoints/WP-M026-MS004-launch.json",
       "status": "released",
       "linked_decision": "D-M026-MS004-launch"
-    },
-    {
-      "waitpoint_id": "WP-TCP-005-sample-gate-relaxation",
-      "path": ".agent/waitpoints/WP-TCP-005-sample-gate-relaxation.json",
-      "status": "released",
-      "owner_workflow": "/approve",
-      "decision_id": "D-TCP-005-sample-gate-relaxation",
-      "updated_at": "2026-08-25T07:05:00.000Z"
-    },
-    {
-      "waitpoint_id": "WP-M032-MS003-pilot-review-20260831",
-      "path": ".agent/waitpoints/WP-M032-MS003-pilot-review-20260831.json",
-      "status": "released",
-      "gate_action": "review",
-      "resource_ref": "pilot://M-032/MS-003/runtime-feedback-pilot?review_at=20260831T040500Z",
-      "updated_at": "2026-08-31T04:05:00.000Z"
     }
   ]
 }

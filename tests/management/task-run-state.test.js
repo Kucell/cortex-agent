@@ -60,18 +60,18 @@ test("task-state: returns compact summary for valid task", () => {
     });
     const r = projectTask(root, "T-001");
     assert.equal(r.ok, true);
-    assert.equal(r.task_id, "T-001");
-    assert.equal(r.status, "active");
-    assert.equal(r.stage, "implement");
-    assert.equal(r.priority, "P0");
-    assert.equal(r.collaborators.length, 2);
-    assert.equal(r.subtasks.length, 1);
-    assert.equal(r.dependencies.length, 1);
-    assert.equal(r.source_refs_count, 3);
+    assert.equal(r.task.task_id, "T-001");
+    assert.equal(r.task.status, "active");
+    assert.equal(r.task.stage, "implement");
+    assert.equal(r.task.priority, "P0");
+    assert.equal(r.task.collaborators.length, 2);
+    assert.equal(r.task.subtasks.length, 1);
+    assert.equal(r.task.dependencies.length, 1);
+    assert.equal(r.task.source_refs_count, 3);
     // acceptance_criteria preview truncated to first 3
-    assert.equal(r.acceptance_criteria_preview.length, 3);
+    assert.equal(r.task.acceptance_criteria_preview.length, 3);
     // validation_commands preview truncated to first 2
-    assert.equal(r.validation_commands_preview.length, 2);
+    assert.equal(r.task.validation_commands_preview.length, 2);
   } finally {
     rmProject(root);
   }
@@ -112,9 +112,9 @@ test("task-state: handles missing acceptance_criteria/validation_commands gracef
     });
     const r = projectTask(root, "T-002");
     assert.equal(r.ok, true);
-    assert.deepEqual(r.acceptance_criteria_preview, []);
-    assert.deepEqual(r.validation_commands_preview, []);
-    assert.equal(r.source_refs_count, 0);
+    assert.deepEqual(r.task.acceptance_criteria_preview, []);
+    assert.deepEqual(r.task.validation_commands_preview, []);
+    assert.equal(r.task.source_refs_count, 0);
   } finally {
     rmProject(root);
   }
@@ -153,13 +153,13 @@ test("run-state: returns compact summary with recent events", () => {
     });
     const r = projectRun(root, "R-001");
     assert.equal(r.ok, true);
-    assert.equal(r.run_id, "R-001");
-    assert.equal(r.task_id, "T-001");
-    assert.equal(r.kind, "implement");
-    assert.equal(r.events_total, 12);
-    assert.equal(r.events_recent.length, 5);  // RECENT_EVENTS default
-    assert.equal(r.artifacts_count, 2);
-    assert.equal(r.worktree_path, "/tmp/wt");
+    assert.equal(r.run.run_id, "R-001");
+    assert.equal(r.run.task_id, "T-001");
+    assert.equal(r.run.kind, "implement");
+    assert.equal(r.run.events_total, 12);
+    assert.equal(r.run.events_recent.length, 5);  // RECENT_EVENTS default
+    assert.equal(r.run.artifacts_count, 2);
+    assert.equal(r.run.worktree_path, "/tmp/wt");
   } finally {
     rmProject(root);
   }
@@ -194,9 +194,9 @@ test("run-state: handles empty events array", () => {
     });
     const r = projectRun(root, "R-002");
     assert.equal(r.ok, true);
-    assert.equal(r.events_total, 0);
-    assert.equal(r.events_recent.length, 0);
-    assert.equal(r.artifacts_count, 0);
+    assert.equal(r.run.events_total, 0);
+    assert.equal(r.run.events_recent.length, 0);
+    assert.equal(r.run.artifacts_count, 0);
   } finally {
     rmProject(root);
   }
@@ -229,9 +229,9 @@ test("cli: query task-state --task returns compact summary via management-api", 
     assert.equal(r.status, 0, r.stderr);
     const out = JSON.parse(r.stdout);
     assert.equal(out.ok, true);
-    assert.equal(out.task_id, "T-E2E");
-    assert.equal(out.status, "active");
-    assert.equal(out.stage, "validate");
+    assert.equal(out.task.task_id, "T-E2E");
+    assert.equal(out.task.status, "active");
+    assert.equal(out.task.stage, "validate");
   } finally {
     rmProject(root);
   }
@@ -270,9 +270,9 @@ test("cli: query run-state --run returns compact summary via management-api", ()
     assert.equal(r.status, 0, r.stderr);
     const out = JSON.parse(r.stdout);
     assert.equal(out.ok, true);
-    assert.equal(out.run_id, "R-E2E");
-    assert.equal(out.events_total, 2);
-    assert.equal(out.events_recent.length, 2);
+    assert.equal(out.run.run_id, "R-E2E");
+    assert.equal(out.run.events_total, 2);
+    assert.equal(out.run.events_recent.length, 2);
   } finally {
     rmProject(root);
   }

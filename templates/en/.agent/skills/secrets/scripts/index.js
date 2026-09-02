@@ -160,9 +160,17 @@ function main() {
   const [command] = argv;
   const action = flag("--action", argv) || (ACTIONS.has(command) ? command : null);
   if (!action || !ACTIONS.has(action)) {
+    // `generate` is intentionally NOT in the ACTIONS set: it does not resolve
+    // a `ref` against any backend, does not touch keychain / gpg / secret-service,
+    // and does not consult loadConfig(). It is dispatched to its own module
+    // before the ACTIONS check fails, so the user sees a clean entry point.
+    if (command === "generate" || action === "generate") {
+      require("./generate.js").main(argv.slice(command === "generate" ? 1 : argv.indexOf("--action") + 2));
+      return;
+    }
     fail(
       "unknown_command",
-      "Usage: node secrets/index.js get|store|rotate|delete|list|audit [--ref REF] [--backend …] [--gate …]",
+      "Usage: node secrets/index.js get|store|rotate|delete|list|audit|generate [--ref REF] [--backend …] [--gate …]",
     );
   }
 
@@ -206,7 +214,15 @@ function main() {
   const cfg = loadConfig();
   const declared = cfg?.secrets?.find?.((s) => s && s.ref === ref);
   const service = flag("--service", argv) || declared?.service || ref;
-  const account = flag("--account", argv) || declared?.account;
+  // Account is the (service, account) tuple from config — never the operator's
+  // --account flag.  Honoring --account would let a caller reach a different
+  // row's secret (the yunxiao-pkg-upload incident).  Reject explicit overrides
+  // that don't match the declared account for this ref.
+  const account = declared?.account;
+  const accountOverride = flag("--account", argv);
+  if (accountOverride !== null && accountOverride !== account) {
+    fail("account_override_disallowed", `--account must not be supplied; it is resolved from config for ref '${ref}'. Got: ${accountOverride}`);
+  }
   const payload = {
     action,
     ref,
@@ -214,8 +230,24 @@ function main() {
     account,
   };
   if (action === "store") {
-    const value = flag("--value", argv) || readPayload().value;
-    if (!value) fail("missing_value", "--value or --payload-json value is required for store.");
+    let value = flag("--value", argv) || readPayload().value;
+    // --from-env <NAME> resolves the value from process.env without ever placing
+    // the secret on the command line (defense against shell-history / process
+    // listing leaks).  The env backend still rejects store by design.
+    const fromEnv = flag("--from-env", argv);
+    if (fromEnv) {
+      if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(fromEnv)) {
+        fail("invalid_from_env", `--from-env must be a valid env var name, got: ${fromEnv}`);
+      }
+      value = process.env[fromEnv];
+      if (value === undefined) {
+        fail("missing_value", `--from-env '${fromEnv}' is not set in the environment.`);
+      }
+      if (value === "") {
+        fail("empty_value", `--from-env '${fromEnv}' is set but empty.`);
+      }
+    }
+    if (!value) fail("missing_value", "--value or --payload-json value or --from-env is required for store.");
     payload.value = value;
   }
 
