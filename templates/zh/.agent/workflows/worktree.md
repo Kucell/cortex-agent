@@ -28,6 +28,7 @@ status: stable
 /worktree plan T-001 T-002
 /worktree create T-001 --branch agent/T-001-auth
 /worktree status
+/worktree audit --dirty-only
 /worktree handoff T-001 --to ../project-T-001
 /worktree sync
 /worktree commit T-001
@@ -42,6 +43,7 @@ status: stable
 - 写入前必须获取 Progress Lock。
 - handoff 必须记录 worktree path、branch、base commit、HEAD commit 和 git status。
 - worktree 内完成一个可验证任务后必须及时 `/ship` 或 `/commit`。
+- 不得通过 hook、sweeper 或 Agent 静默提交、stash、drop stash、abort/continue Git 操作或清理 dirty 文件。
 - 合并前必须确认 registry、locks、artifacts、handoff 和 git 状态一致。
 - 合并后必须在目标主线 worktree 重新验证功能。
 - 若 Management API 存在，worktree 创建、锁获取、提交、合并、验证都必须写入 Run journal。
@@ -181,6 +183,27 @@ cortex-agent runs checkpoint --project . \
 ```
 
 同时输出一段人类可读摘要，说明为什么给出该 next_action。
+
+## AUDIT
+
+在 handoff、`/worktree commit`、`/worktree merge` 或任何 cleanup/migration 前，运行只读审计：
+
+```bash
+node .agent/skills/worktree-audit/scripts/index.js --dirty-only --json
+```
+
+审计仅报告状态，不改变任何 Git 或工作树内容。按以下结果处理：
+
+| 审计状态 | 含义 | gate / next action |
+| :--- | :--- | :--- |
+| `clean` | 无未提交改动 | 继续常规状态机 |
+| `recovery_required` | 存在 unmerged paths，通常来自中断的 merge/rebase/cherry-pick | 阻断 `/commit` 与 `/merge`；owner 显式 resolve+continue 或显式 abort 后再审计 |
+| `owner_action_required` | tracked、untracked 或 `dist/` 改动 | owner 显式 commit 已验证改动、创建 handoff，或保留供后续恢复；不得自动处理 |
+| `unavailable` | 无法读取该 worktree 状态 | 阻断 cleanup/migration，先恢复可读性 |
+
+- `dist/` 是否可忽略、重建或提交，必须由目标仓库自己的交付策略决定；Cortex 不自动添加 `.gitignore` 或提交构建产物。
+- 审计中显示的 `oldest_observed_file_mtime` 只是文件系统证据，不得当作 dirty 状态的精确开始时间。
+- 写入开始后，owner 应在 30 分钟内产生一次可恢复 checkpoint（已验证 commit 或 handoff/Run journal）。缺少受管时间戳时只报告 `stale-suspected`，不得据此自动变更工作树。
 
 ## HANDOFF
 

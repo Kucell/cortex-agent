@@ -30,6 +30,7 @@ Use Git worktrees to provide each Agent with an isolated workspace while keeping
 /worktree plan T-001 T-002
 /worktree create T-001 --branch agent/T-001-auth
 /worktree status
+/worktree audit --dirty-only
 /worktree handoff T-001 --to ../project-T-001
 /worktree sync
 /worktree commit T-001
@@ -44,6 +45,7 @@ Use Git worktrees to provide each Agent with an isolated workspace while keeping
 - 写入前必须获取 Progress Lock。
 - handoff 必须记录 worktree path、branch、base commit、HEAD commit 和 git status。
 - worktree 内完成一个可验证任务后必须及时 `/ship` 或 `/commit`。
+- Hooks, sweepers, and Agents must not silently commit, stash, drop stashes, abort/continue Git operations, or clean dirty files.
 - 合并前必须确认 registry、locks、artifacts、handoff 和 git 状态一致。
 - 合并后必须在目标主线 worktree 重新验证功能。
 - 若 Management API 存在，worktree 创建、锁获取、提交、合并、验证都必须写入 Run journal。
@@ -183,6 +185,27 @@ cortex-agent runs checkpoint --project . \
 ```
 
 同时输出一段人类可读摘要，说明为什么给出该 next_action。
+
+## AUDIT
+
+Before handoff, `/worktree commit`, `/worktree merge`, or any cleanup/migration, run the read-only audit:
+
+```bash
+node .agent/skills/worktree-audit/scripts/index.js --dirty-only --json
+```
+
+The audit reports state only and never changes Git or worktree contents.
+
+| Audit state | Meaning | Gate / next action |
+| :--- | :--- | :--- |
+| `clean` | No uncommitted changes | Continue the normal state machine |
+| `recovery_required` | Unmerged paths, normally from an interrupted merge/rebase/cherry-pick | Block `/commit` and `/merge`; the owner explicitly resolves+continues or explicitly aborts, then re-audits |
+| `owner_action_required` | Tracked, untracked, or `dist/` changes | Owner explicitly commits verified changes, creates a handoff, or preserves the worktree for later recovery |
+| `unavailable` | Worktree status cannot be read | Block cleanup/migration until it is readable |
+
+- Whether `dist/` is ignored, rebuilt, or committed is decided by the target repository's delivery policy. Cortex does not add `.gitignore` rules or commit build output automatically.
+- `oldest_observed_file_mtime` is filesystem evidence, not a proven dirty-state start time.
+- After writes begin, the owner should produce a recoverable checkpoint within 30 minutes (a verified commit or handoff/Run journal). Without managed timestamps, report only `stale-suspected`; never mutate the worktree.
 
 ## HANDOFF
 
