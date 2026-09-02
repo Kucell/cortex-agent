@@ -325,11 +325,25 @@ async function main() {
     if (argv.indexOf("--gate") === -1 || argv[argv.indexOf("--gate") + 1] !== "user") {
       fail("workflow_gate_required", "merge requires --gate user.");
     }
+    const prNumber = Number(flag("--pr-number", argv));
+    // GitLab API 18+ requires the PUT /merge payload's `squash` to match the
+    // MR's `squash_on_merge` setting, otherwise the API returns HTTP 422
+    // "Branch cannot be merged" even when merge_status=mergeable.  When the
+    // caller does not pass --squash / --no-squash explicitly, infer the
+    // default from the current MR state so legacy invocations remain green.
+    let squash;
+    if (argv.includes("--squash")) squash = true;
+    else if (argv.includes("--no-squash")) squash = false;
+    else {
+      const mrStatus = await backend.getStatus({ ...optsBase, pr_number: prNumber });
+      squash = Boolean(mrStatus.raw?.squash || mrStatus.raw?.squash_on_merge);
+    }
     const result = await backend.merge({
       ...optsBase,
-      pr_number: Number(flag("--pr-number", argv)),
+      pr_number: prNumber,
       commit_message: flag("--commit-message", argv),
       sha: flag("--sha", argv),
+      squash,
     });
     if (runId) {
       appendRunEvent(runId, {
