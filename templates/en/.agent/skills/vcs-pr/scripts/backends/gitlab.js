@@ -207,13 +207,18 @@ async function updatePR(opts) {
 }
 
 async function merge(opts) {
-  const { config, token, pr_number, commit_message } = opts;
+  const { config, token, pr_number, commit_message, sha } = opts;
   const pid = projectUrl(opts, config);
-  const res = await send("PUT", config.host, `/api/v4/projects/${pid}/merge_requests/${pr_number}/merge`, token, {
+  // GitLab API 18+ requires an explicit `sha` on PUT merge.  Forward it when
+  // supplied; otherwise omit the field so older GitLab versions still accept
+  // the request.
+  const payload = {
     merge_commit_message: commit_message || "",
     squash: opts.squash === true,
     should_remove_source_branch: opts.remove_source !== false,
-  });
+  };
+  if (sha) payload.sha = sha;
+  const res = await send("PUT", config.host, `/api/v4/projects/${pid}/merge_requests/${pr_number}/merge`, token, payload);
   if (res.status !== 200) throw new Error(`gitlab_merge_failed: HTTP ${res.status} ${res.raw?.slice(0, 200)}`);
   return { merged: true, raw: res.body };
 }

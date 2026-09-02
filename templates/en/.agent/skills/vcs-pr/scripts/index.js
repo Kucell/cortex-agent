@@ -161,6 +161,9 @@ function defaultBody(opts, ctx) {
   // Template aligned with cortex-agent governance.  Host can override
   // via --body-file; this fallback is the minimum a PR must carry.
   const lines = [];
+  lines.push(`## 受管创建`);
+  lines.push(`- 创建入口：vcs-pr`);
+  lines.push(``);
   lines.push(`## 提交范围`);
   lines.push(`- branch: \`${opts.head}\` → \`${opts.base || ctx.cfg.default.base_branch || "main"}\``);
   if (ctx.cfg.default.org && ctx.cfg.default.repo) {
@@ -171,12 +174,29 @@ function defaultBody(opts, ctx) {
   lines.push(`## 相关功能`);
   lines.push(`- (填写)`);
   lines.push("");
+  lines.push(`## 模块 MCP 服务化`);
+  lines.push(`- (填写服务化说明；纯展示或治理变更须明确声明“不适用”及理由)`);
+  lines.push("");
+  lines.push(`## 兼容性与边界`);
+  lines.push(`- (填写)`);
+  lines.push("");
   lines.push(`## 验证结果`);
   lines.push(`- (填写。失败经验留 known issues)`);
   lines.push("");
   lines.push(`## 已知事项`);
   lines.push(`- (无)`);
+  lines.push("");
+  lines.push(`## 风险与回滚`);
+  lines.push(`- (填写)`);
+  lines.push("");
+  lines.push(`## 组件分支吸收与清理`);
+  lines.push(`- 不适用`);
   return lines.join("\n");
+}
+
+function ensureManagedCreationMarker(body) {
+  const marker = "## 受管创建\n- 创建入口：vcs-pr";
+  return body.includes(marker) ? body : `${marker}\n\n${body}`;
 }
 
 function loadBody(opts) {
@@ -239,7 +259,9 @@ async function main() {
           runId,
           __cfgCtx: cfg,
         });
-    const body = bodyRaw == null ? defaultBody({ head: flag("--head", argv), base: flag("--base", argv), runId }, { cfg }) : bodyRaw;
+    const body = ensureManagedCreationMarker(
+      bodyRaw == null ? defaultBody({ head: flag("--head", argv), base: flag("--base", argv), runId }, { cfg }) : bodyRaw
+    );
     const result = await backend.createPR({
       ...optsBase,
       head: flag("--head", argv),
@@ -307,6 +329,7 @@ async function main() {
       ...optsBase,
       pr_number: Number(flag("--pr-number", argv)),
       commit_message: flag("--commit-message", argv),
+      sha: flag("--sha", argv),
     });
     if (runId) {
       appendRunEvent(runId, {
