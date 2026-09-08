@@ -2,9 +2,9 @@
 
 // ─── secrets (L1 secrets-vcs — credential storage abstraction) ────────────────
 // Pluggable credential storage.  Agent references `secret://<namespace>/<ref>`
-// and the framework resolves it through one of four backends (keychain,
-// secret-service, file-gpg, env).  Backends are independent shell scripts
-// in `./backends/<name>.sh`; this CLI is the orchestrator.
+// and the framework resolves it through a platform backend (keychain,
+// secret-service, win-dpapi, file-gpg, env). POSIX backends are shell scripts;
+// win-dpapi is a native PowerShell script. This CLI is the orchestrator.
 //
 // Why a thin CLI over shells (not a single binary per backend):
 //   - Pluggable: new backends ship as POSIX shell, framework stays small.
@@ -44,9 +44,13 @@ const {
 const AGENT_ROOT = path.join(process.cwd(), ".agent");
 const BACKENDS_DIR = path.join(__dirname, "backends");
 
-const BACKENDS = new Set(["keychain", "secret-service", "file-gpg", "env"]);
+const BACKENDS = new Set(["keychain", "secret-service", "win-dpapi", "file-gpg", "env"]);
 const ACTIONS = new Set(["get", "store", "rotate", "delete", "list", "audit"]);
 const GATE_STRICT = new Set(["user"]);
+
+function defaultBackend(platform = process.platform) {
+  return platform === "win32" ? "win-dpapi" : "keychain";
+}
 
 function flag(name, argv) {
   const i = argv.indexOf(name);
@@ -121,18 +125,27 @@ function loadConfig() {
   return out;
 }
 
-function backendScript(name) {
-  const script = path.join(BACKENDS_DIR, `${name}.sh`);
-  if (!fs.existsSync(script)) {
-    fail("backend_unavailable", `${name} backend not present at ${script}`);
+function backendInvocation(name, platform = process.platform) {
+  const windows = name === "win-dpapi";
+  if (windows && platform !== "win32") {
+    return { ok: false, error: "backend_platform_unsupported", message: "win-dpapi requires Windows" };
   }
-  return script;
+  const script = path.join(BACKENDS_DIR, `${name}.${windows ? "ps1" : "sh"}`);
+  if (!fs.existsSync(script)) {
+    return { ok: false, error: "backend_unavailable", message: `${name} backend not present at ${script}` };
+  }
+  return windows
+    ? { ok: true, command: "powershell.exe", args: ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", script] }
+    : { ok: true, command: "/bin/bash", args: [script] };
 }
 
 function runBackend(backend, payload, knownSecrets = []) {
-  const script = backendScript(backend);
+  const invocation = backendInvocation(backend);
+  if (!invocation.ok) return invocation;
   const json = JSON.stringify(payload);
-  const result = spawnSync("/bin/bash", [script, json], { encoding: "utf8" });
+  const result = backend === "win-dpapi"
+    ? spawnSync(invocation.command, invocation.args, { input: json, encoding: "utf8" })
+    : spawnSync(invocation.command, [...invocation.args, json], { encoding: "utf8" });
   const safe = wrapSpawnResult(result, knownSecrets);
   let body = {};
   try {
@@ -195,7 +208,7 @@ function main() {
 
   // get / store / rotate / delete — the security-sensitive path.
   const ref = flag("--ref", argv);
-  const backend = flag("--backend", argv) || loadConfig()?.default_backend || "keychain";
+  const backend = flag("--backend", argv) || loadConfig()?.default_backend || defaultBackend();
   if (!ref) fail("missing_ref", "--ref is required for get / store / rotate / delete.");
   if (!BACKENDS.has(backend)) {
     fail("unknown_backend", `--backend must be one of: ${[...BACKENDS].join(", ")}`);
@@ -283,4 +296,4 @@ function main() {
 }
 
 if (require.main === module) main();
-module.exports = { redactUnknown, makeRedactor, BACKENDS, ACTIONS };
+module.exports = { redactUnknown, makeRedactor, BACKENDS, ACTIONS, backendInvocation, defaultBackend };

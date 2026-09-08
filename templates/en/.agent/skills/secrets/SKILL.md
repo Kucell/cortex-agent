@@ -1,8 +1,8 @@
 ---
 name: secrets
-description: 凭据存储抽象 — 用 `secret://<ref>` 语义引用代替明文 token;支持 macOS Keychain、Linux Secret Service、gpg-encrypted file、env 4 个可插拔后端;agent 永不接触明文值,由框架代为取 + 注入。
+description: 凭据存储抽象 — 用 `secret://<ref>` 语义引用代替明文 token;支持 macOS Keychain、Windows DPAPI、Linux Secret Service、gpg-encrypted file、env 5 个可插拔后端;agent 永不接触明文值,由框架代为取 + 注入。
 area: aiapp
-summary: 凭据存储抽象 — 用 `secret://<ref>` 语义引用代替明文 token;支持 macOS Keychain、Linux Secret Service、gpg-encrypted file、env 4 个可插拔后端;agent 永不接触明文值,由框架代为取 + 注入。
+summary: 凭据存储抽象 — 用 `secret://<ref>` 语义引用代替明文 token;支持 macOS Keychain、Windows DPAPI、Linux Secret Service、gpg-encrypted file、env 5 个可插拔后端;agent 永不接触明文值,由框架代为取 + 注入。
 ---
 
 # secrets (L1 secrets-vcs)
@@ -117,24 +117,27 @@ keep their tty.
 | Backend | 平台 | 协议 |
 |---|---|---|
 | `keychain`(默认) | macOS | `security(1)` |
+| `win-dpapi` | Windows | 当前用户 DPAPI 加密文件；经 `powershell.exe` 原生调用，不依赖 Git Bash |
 | `secret-service` | Linux | `secret-tool(1)` |
 | `file-gpg` | 跨平台 | gpg-agent 对称加密,AES-256 |
 | `env` | CI / 便携 | `process.env[CORTEX_SECRET_*]`,只读 |
 
-每个 backend 是独立 `.sh` 脚本(在 `scripts/backends/`),按 `action` JSON 协议接受输入。新加 backend 写一个 `.sh` + 在 `BACKENDS` set 注册即可。
+POSIX backend 是独立 `.sh` 脚本；`win-dpapi` 是 PowerShell 脚本。它们均按 `action` JSON 协议接受输入。Windows 项目将 `backend: win-dpapi` 写入 `.agent/config/secrets.yml` 后即可使用。
+
+在 Windows 上未指定 backend 时，`secrets` 默认使用 `win-dpapi`；`vcs-pr` 会在受管子进程内读取该凭据并注入 API 认证头。密钥不会写入 agent 对话、MR 正文或常规命令输出。
 
 ## Configuration
 
 `.agent/config/secrets.yml` 示例:
 ```yaml
 backend: keychain           # default
-namespace: SamHMI
+namespace: ${PROJECT_NAMESPACE}
 secrets:
-  - ref: gitea-pr
-    service: gitea-192.168.2.110-codex-samhmi-pr
-    account: xueyq
+  - ref: vcs-pr
+    service: ${VCS_SERVICE_NAME}
+    account: ${VCS_ACCOUNT}
   - ref: github-copilot
-    service: github-copilot-xueyq
+    service: github-copilot
 ```
 
 无 `config/secrets.yml` → `secrets list` 提示 host 先 first-time setup。
