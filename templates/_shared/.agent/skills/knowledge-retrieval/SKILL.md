@@ -25,6 +25,14 @@ links, and generalizes `experience-recall` (experiences-only) to every store.
 
 ```bash
 node .agent/skills/knowledge-retrieval/scripts/recall.js --query "postcommit hook" [--intent auto|lexical|lesson] [--tags a,b] [--files x] [--limit 8]
+
+# Generate the derived metadata index from filenames and Markdown frontmatter.
+node .agent/skills/knowledge-retrieval/scripts/recall.js --build-metadata-index
+
+# Metadata-only precheck. It reads only .agent/metrics/recall-metadata.json
+# (or --metadata-file), never document bodies. Status is RELEVANT,
+# NOT_RELEVANT, or CHECK_UNAVAILABLE; unavailable is never treated as negative.
+node .agent/skills/knowledge-retrieval/scripts/recall.js --check --query "postcommit hook" [--metadata-file FILE] [--task-id T-001]
 ```
 
 Single entry point that routes by intent, calls `knowledge-recall` +

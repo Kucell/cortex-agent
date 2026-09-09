@@ -104,3 +104,41 @@ test("recall respects limit", () => {
   const res = agg.recall({ root, intent: "lexical", query: "caching cache", tags: [], files: [], limit: 3 });
   assert.ok(res.results.length <= 3);
 });
+
+function writeMetadata(root, documents) {
+  write(root, "metrics/recall-metadata.json", JSON.stringify({ documents }, null, 2));
+}
+
+test("checkRecall scores metadata only and returns RELEVANT", () => {
+  const root = makeVault();
+  const secret = "do-not-leak-credential";
+  writeMetadata(root, [{ doc_id: "EXP-001", title: "Cache retry policy", tags: ["cache", "retry"], source_path: "experiences/EXP-001.md", project_ids: ["payments"], updated_at: "2026-09-09T00:00:00Z", body: secret }]);
+  const result = agg.checkRecall({ root, query: "cache retry", limit: 8 });
+  assert.equal(result.status, "CHECK_UNAVAILABLE", "body fields invalidate a metadata-only index");
+  assert.equal(JSON.stringify(result).includes(secret), false, "check output never includes document body");
+});
+
+test("checkRecall distinguishes NOT_RELEVANT from unavailable metadata", () => {
+  const root = makeVault();
+  writeMetadata(root, [{ doc_id: "REF-001", title: "Cache retry policy", tags: ["cache"], source_path: "references/cache.md", project_ids: [], updated_at: "2026-09-09T00:00:00Z" }]);
+  assert.equal(agg.checkRecall({ root, query: "database schema", limit: 8 }).status, "NOT_RELEVANT");
+  fs.unlinkSync(path.join(root, ".agent", "metrics", "recall-metadata.json"));
+  assert.equal(agg.checkRecall({ root, query: "database schema", limit: 8 }).status, "CHECK_UNAVAILABLE");
+});
+
+test("checkRecall rejects corrupt or incomplete metadata as unavailable", () => {
+  const root = makeVault();
+  write(root, "metrics/recall-metadata.json", JSON.stringify({ documents: [{ doc_id: "bad" }] }));
+  assert.equal(agg.checkRecall({ root, query: "anything", limit: 8 }).status, "CHECK_UNAVAILABLE");
+});
+
+test("buildMetadataIndex derives a safe index without document body output", () => {
+  const root = makeVault();
+  const secret = "hidden-body-value";
+  write(root, "references/retry.md", "---\ntitle: Retry policy\ntags: retry,cache\nprojects: core\n---\n" + secret);
+  const built = agg.buildMetadataIndex(root);
+  assert.equal(built.documents, 1);
+  const result = agg.checkRecall({ root, query: "retry cache", limit: 8 });
+  assert.equal(result.status, "RELEVANT");
+  assert.equal(JSON.stringify(result).includes(secret), false);
+});

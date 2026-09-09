@@ -25,6 +25,8 @@ test("capability vocabulary is frozen and contains M-001 entries", () => {
     "tool.before.block",
     "tool.update",
     "context.render.observe",
+    "subagent",
+    "prompt_guidance",
   ]) {
     assert.ok(cap.isKnownCapability(name), `expected ${name} to be a known capability`);
   }
