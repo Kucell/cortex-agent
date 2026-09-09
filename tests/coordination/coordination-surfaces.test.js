@@ -110,9 +110,9 @@ test("public task CLI opens the real Application Service for writes", () => {
   ], { cwd: ROOT, encoding: "utf8" });
   assert.equal(result.status, 0, result.stderr);
   assert.equal(JSON.parse(result.stdout).result.task.state, STATES.CREATED);
-  assert.equal(fs.readdirSync(path.join(project, ".agent-runtime/coordination/tasks")).length, 1);
+  assert.equal(fs.readdirSync(path.join(project, ".agent/runtime/coordination/tasks")).length, 1);
   assert.equal(
-    fs.readFileSync(path.join(project, ".agent-runtime/.gitignore"), "utf8"),
+    fs.readFileSync(path.join(project, ".agent/runtime/coordination/.gitignore"), "utf8"),
     "*\n!.gitignore\n"
   );
   fs.rmSync(project, { recursive: true, force: true });
@@ -200,7 +200,7 @@ test("public event ACK opens a durable consumer store", () => {
   assert.equal(ack.status, 0, ack.stderr);
   assert.equal(JSON.parse(ack.stdout).acknowledgement.acknowledged, true);
   assert.equal(fs.readdirSync(
-    path.join(project, ".agent-runtime/coordination/consumers")
+    path.join(project, ".agent/runtime/coordination/consumers")
   ).filter((name) => name.endsWith(".json")).length, 1);
   fs.rmSync(project, { recursive: true, force: true });
 });
@@ -222,7 +222,7 @@ test("CLI and MCP contracts expose read-only coordination capabilities", () => {
 
 test("focused Management API projections read runtime state without writing", () => {
   const project = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-coordination-query-"));
-  const runtime = path.join(project, ".agent-runtime/coordination");
+  const runtime = path.join(project, ".agent/runtime/coordination");
   fs.mkdirSync(path.join(runtime, "tasks"), { recursive: true });
   fs.mkdirSync(path.join(runtime, "journal"), { recursive: true });
   fs.mkdirSync(path.join(runtime, "consumers"), { recursive: true });

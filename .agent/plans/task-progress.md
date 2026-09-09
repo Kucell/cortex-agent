@@ -746,3 +746,47 @@ M-023 triage complete (2026-08-17 01:55Z): 9 Mode C/C2 tests from M-019/M-020 de
 > - **当前 Codex baseline 7 天滑动平均**: 161,115 → 186,348 (+15.7%, 无 active optimization)
 > - **降下来的时间点**: Phase C Stage 1 + Stage 2 完成 + savings algorithm 启用 (后续 v1.13.1 / v1.14.0)
 > - **当前 v1.13.0 阶段实际对 token 的唯一影响**: context-budget v2 skill 按 Tier 0-3 裁剪上下文,渐进式降低;Phase C 优化未启用
+
+> **2026-09-08 收口 (audit-trail Phase 2 + Phase 3 提案就绪 · 学习依据蒸馏计划)**:
+> - **用户提问**: cortex-agent 已沉淀的 .agent/ 对话 / 操作 / 批准数据,是否能为后续全自动化做学习依据
+> - **现状盘点**:
+>   - ✅ **操作**(activities/events/ + receipts/,146 条带 schema v1) → 即用
+>   - ✅ **批准**(decisions/ 99 + authorizations/ 2 + checkpoints/ 4,带 schema v1) → 即用
+>   - ✅ **跨 session 状态**(runtime-continuity archives 20 + events 34 + `~/.agent/contexts/` 20) → 即用
+>   - ✅ **踩坑→教训**(experiences/ 5 条,带 key_lesson + expires) → 即用(数量少但密度高)
+>   - ⚠️ **对话 turns** → schema 已发布 (conversation.schema.json),0 条真实落盘;Phase 2 解锁
+>   - ⚠️ **episodic/semantic/procedural memory** → schema 已发布,0 条真实落盘;memory-curator MS-002 解锁
+>   - ✅ **runs.events 粒度细化**(human_observation / tool_failure / investigation_step / transcript_linked / subagent_* / vcs_pr_*)→ schema enum 已就位 (run.schema.json:48),Phase 1 已发,session-triage skill 已就位,**实际已落地**
+> - **补齐动作**(本工作落地):
+>   1. ✅ 升级 `.agent/plans/proposals/audit-trail/phase-2/cortex-agent-audit-trail-phase2-proposal.md` draft → **ready-for-approval**: 加 YAML frontmatter (status / depends_on / acceptance_criteria / milestones / risk)
+>   2. ✅ 新建 `.agent/plans/proposals/audit-trail/phase-3/cortex-agent-learning-data-harvesting-proposal.md` **ready-for-approval**: 8 类训练样本设计 + corpus_layout + privacy_invariants + redaction_rules
+>   3. ✅ 新建 `templates/general/.agent/skills/memory-curator/scripts/memory-curator.js`: CLI shell (distill / list / inspect),按 SKILL.md 声明的表面实现,可被任何 host 调用;遵循 memory-distill workflow 的失败回滚契约
+>   4. ✅ 新建 `.agent/plans/learning-data-harvesting-plan.md`: 顶层执行计划,4 周节奏,~5.5 工日,3 个 MS
+> - **测试基线**: memory-curator.js `--help` 子命令可执行,emit 正常 JSON envelope
+> - **零回归**: 仅在 `.agent/plans/proposals/` 和 `templates/general/.agent/skills/` 新增文件,**不修改任何既有 schema / CLI / 测试**
+> - **下一步**: (a) 把 Phase 2 提案提交批准 → 创建 `.agent/missions/M-XXX-transcript-link/` + 决策 D-XXX-transcript-link-approval;(b) Phase 2 4 个 sub-MS 顺序实施;(c) memory-curator CLI shell 测试 + 首批真实 memory;(d) Phase 3 6 个 sub-MS 实施
+>
+> **Q&A (2026-09-08T...Z): 对话 turns / episodic memory 现在还拿不到,怎么训练后续自动化?**
+> - 答: **现阶段能直接拿到的**:操作(intent_execution 146)、批准(approval_judgement 99)、失败教训(failure_recovery 5)、调查叙事(investigation_narrative 20) — 合计 ~270 条结构化样本,可立即作为 RL/SFT 起点。
+> - **解锁依赖**: Phase 2 (~2.5 天) + memory-curator (~1.5 天) + Phase 3 (~3 天) = ~7 天实施 + 1 周 Pilot。
+> - **训练 pipeline 留 v1.14**: 本计划只到"产出 corpus tar.gz";corpus → LoRA / SFT 训练 pipeline 属于 `/finetune` skill 设计范围(尚未启动)。
+> - **学习建议**: 用现有 270 条样本 + 7 天 Pilot 后的 ~1000+ 条样本混合训练行为克隆(Sonnet-4-5 + LoRA),目标:批准模式预测 + 操作意图分类 + 故障恢复路径推荐。
+
+> **最后更新**:2026-09-09 — 评审收敛后完成提案优化与治理闭环:
+> - 提案修订: P-002 转为 needs-revision(权威边界/模板 parity/隐私验收/独立 milestone),P-003 重写为 governed learning corpus(七类 v1、consent/redaction/复现契约),父提案声明 P-002 替代正文 archive、portfolio deferred,执行计划改为门禁顺序。
+> - 治理工件: `D-ATR-P002-ratification-821c463e`(open,architecture,绑定 P-002 revision digest 821c463e)+ `WP-arch-transcript-reference-ratification-821c463e`(blocked,绑定 Decision,expires 2026-09-23)。
+> - 下一步: 用户批准 Decision → release Waitpoint → 进入 P-002a L1 template parity(fresh-init parity gate),再补 writer/reporter 测试。>
+> **2026-09-09 P-002a (L1 template parity) 完成** — 在用户批准门禁之前先行落地模板同步(属于修订提案已明确同意范围内):
+> - **management-api transcript-link 移植**: canonical → `templates/_shared` + `templates/zh` + `templates/en` 三份副本,函数块字节级一致、dispatch + usage 行同步,`node --check` 全过;
+> - **_base run.schema 同步**: `templates/_base/.agent/runs/run.schema.json` 新增 `transcript_refs`(draft-07,required source/session_id/path/sha256/byte_size/turn_count/linked_at,additionalProperties:false,source enum claude-code/codex/cursor/pi/other),fresh-init 项目 schema 与模板字节级一致;
+> - **3-way schema parity 达成**: canonical `.agent/runs/run.schema.json` == `templates/_base` == fresh-init 项目(transcript_refs 定义一致);
+> - **新测试**: `tests/management/transcript-link-template-parity.test.js`(5/5 PASS,零依赖 node:test)锁定 4 副本 mgmt-api 契约 + 双 schema 字段/枚举一致;
+> - **回归**: management 15 套 + template 2 套 + governed 9 套全绿;transcript-link.test.js 18/18、memory-curator 31/31;
+> - **E2E**: 仓库自身 public CLI `runs transcript-link` 完整链路(link → 持久化 → dedupe)通过;
+> - **发现并记录**: 当前默认 `init` 全走 general 模式(MS-002 行为),general 项目无 management-api skill,`cortex-agent runs transcript-link` 返回 `MANAGEMENT_API_UNAVAILABLE`(packaged-runtime fallback 仅覆盖仓库自身)。这是 general 模式设计边界(轻量 data-layer + 记忆/工作流模板,不含 code 项目管理 API),非 P-002 引入 —— 已在下方列为 P-002a 验收边界决策,待用户批准时确认。
+> - **下一步**: (a) 用户批准 `D-ATR-P002-ratification-821c463e` → release Waitpoint;(b) P-002b writer 测试(注入/绝对路径/时间戳/内容注入拒绝);(c) P-002c reporter 测试(no-input/no-run/missing/valid/failure + macOS/Linux);(d) README 单一来源(引用模板脚本,删内联副本)。>
+> **2026-09-09 P-002b (writer 契约) 完成** — 在已批准范围内补齐 writer 契约实现与测试:
+> - **writer 实现补丁**(canonical + `_shared`/zh/en 三副本同步,4 文件字节级一致): ① **绝对路径强制** → 相对路径 `transcript_link_path_relative` 拒绝;② **内容注入拒绝**(隐私不变量) → 换行/JSONL 嵌入 `transcript_link_path_injection` 拒绝、超长(>1024) `transcript_link_path_too_long` 拒绝;这是 P-002 隐私边界(框架绝不写入 transcript 正文)的落地实现(此前仅注释、无检测);
+> - **测试扩展** `tests/management/transcript-link.test.js`: 18 → **45/45 PASS**,新增 27 用例覆盖 P-002b 全部验收项 — source=other、三种 gate(agent/user/mission)、missing-field 完整集(session/path/sha256)、relative/multiline/oversized path 拒绝、payload-json 输入面、schema validation(写入文件 7 必填字段 + 绝对路径)、public CLI wrapper(仓库自身 fallback 成功 + 外部无 mgmt-api 项目 fail-closed `MANAGEMENT_API_UNAVAILABLE`);
+> - **回归**: transcript-link-template-parity 5/5、token-attempt-template-parity 17/17、management-writer-cli 2/2、workflow-cli-contract 2/2、interface-boundary 1/1、_base-extraction 14/14、template-parity 6/6 全绿;
+> - **下一步**: (a) 用户批准 `D-ATR-P002-ratification-821c463e` → release Waitpoint;(b) P-002c reporter 测试(no-input/no-run/missing/valid/failure + macOS/Linux);(c) README 单一来源(引用模板脚本,删内联副本)。

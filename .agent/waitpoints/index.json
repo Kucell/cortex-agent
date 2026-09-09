@@ -1,6 +1,78 @@
 {
   "waitpoints": [
     {
+      "waitpoint_id": "WP-FAE-004a-pi-launch-15b05e07",
+      "path": ".agent/waitpoints/WP-FAE-004a-pi-launch-15b05e07.json",
+      "status": "released",
+      "owner_workflow": "/arch-design",
+      "decision_id": "D-FAE-004a-pi-launch-15b05e07",
+      "updated_at": "2026-09-09T11:32:19.985Z"
+    },
+    {
+      "waitpoint_id": "WP-FAE-004a-pi-launch-48b5ea43",
+      "path": ".agent/waitpoints/WP-FAE-004a-pi-launch-48b5ea43.json",
+      "status": "released",
+      "owner_workflow": "/arch-design",
+      "decision_id": "D-FAE-004a-pi-launch-48b5ea43",
+      "updated_at": "2026-09-09T11:28:40.455Z"
+    },
+    {
+      "waitpoint_id": "WP-TKR-MERGE-001",
+      "path": ".agent/waitpoints/WP-TKR-MERGE-001.json",
+      "status": "released",
+      "owner_workflow": "/worktree",
+      "decision_id": "D-TKR-MERGE-001",
+      "updated_at": "2026-09-09T02:44:18.406Z"
+    },
+    {
+      "waitpoint_id": "WP-P007-TKR-CAP-EXT",
+      "path": ".agent/waitpoints/WP-P007-TKR-CAP-EXT.json",
+      "status": "released",
+      "owner_workflow": "/approve",
+      "decision_id": "D-P007-TKR-CAP-EXT",
+      "updated_at": "2026-09-09T02:20:55.510Z"
+    },
+    {
+      "waitpoint_id": "WP-arch-transcript-reference-ratification-821c463e",
+      "path": ".agent/waitpoints/WP-arch-transcript-reference-ratification-821c463e.json",
+      "status": "blocked",
+      "owner_workflow": "/arch-design",
+      "decision_id": "D-ATR-P002-ratification-821c463e",
+      "updated_at": "2026-09-09T02:01:59.879Z"
+    },
+    {
+      "waitpoint_id": "WP-TKR-001",
+      "path": ".agent/waitpoints/WP-TKR-001.json",
+      "status": "released",
+      "owner_workflow": "/approve",
+      "decision_id": "D-TKR-001",
+      "updated_at": "2026-09-09T01:49:15.088Z"
+    },
+    {
+      "waitpoint_id": "WP-TCP-P010-shadow-ledger-0062e8ca",
+      "path": ".agent/waitpoints/WP-TCP-P010-shadow-ledger-0062e8ca.json",
+      "status": "released",
+      "owner_workflow": "/arch-design",
+      "decision_id": "D-TCP-P010-shadow-ledger-0062e8ca",
+      "updated_at": "2026-09-08T05:20:39.396Z"
+    },
+    {
+      "waitpoint_id": "WP-TCP-P009-public-observer-66c3da50",
+      "path": ".agent/waitpoints/WP-TCP-P009-public-observer-66c3da50.json",
+      "status": "released",
+      "owner_workflow": "/arch-design",
+      "decision_id": "D-TCP-P009-public-observer-66c3da50",
+      "updated_at": "2026-09-03T11:25:11.031Z"
+    },
+    {
+      "waitpoint_id": "WP-TCP-P008-codex-shadow-0c8bfe67",
+      "path": ".agent/waitpoints/WP-TCP-P008-codex-shadow-0c8bfe67.json",
+      "status": "released",
+      "owner_workflow": "/arch-design",
+      "decision_id": "D-TCP-P008-codex-shadow-0c8bfe67",
+      "updated_at": "2026-09-03T09:50:03.667Z"
+    },
+    {
       "waitpoint_id": "WP-M033-rm-hmi-platform-fix-regen-contracts-rc10-318fe9bd",
       "path": ".agent/waitpoints/WP-M033-rm-hmi-platform-fix-regen-contracts-rc10-318fe9bd.json",
       "status": "blocked",

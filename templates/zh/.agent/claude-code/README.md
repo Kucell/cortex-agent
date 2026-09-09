@@ -213,3 +213,97 @@ node .agent/skills/runtime-continuity/scripts/index.js restore \
 ```
 
 返回的 body 包含**结构化摘要**供新 agent 使用。详见 `runtime-continuity` SKILL.md 中的 4 步 `next_steps_for_new_host` 协议。
+## Transcript Link Hook(Phase 2 — audit-trail)
+
+当 Claude Code 会话结束时,把 transcript 路径引用推入当前 run,使 dashboard
+可以深链接到原始 transcript,**而框架从不读取 transcript content**。
+复用 token-usage 模式(第 40 行);hook 脚本独立,通过 `~/.claude/settings.json`
+的 `Stop` 数组共享。
+
+### Stop hook 配置
+
+在 `~/.claude/settings.json`(或其他 host 的 hook 配置)中添加:
+
+```json
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          { "type": "command", "command": "~/.claude/hooks/claude-code-token-reporter.sh" },
+          { "type": "command", "command": "~/.claude/hooks/claude-code-transcript-link-reporter.sh" }
+        ]
+      }
+    ]
+  }
+}
+```
+
+### Reporter 脚本
+
+`~/.claude/hooks/claude-code-transcript-link-reporter.sh`:
+
+```bash
+#!/usr/bin/env bash
+# ~/.claude/hooks/claude-code-transcript-link-reporter.sh
+# 把当前 transcript 路径 + 4 个元数据字段(sha256、byte_size、turn_count、
+# first/last 时间戳)推入当前 run。框架**绝不**读 transcript 内容——只存路径引用。
+#
+# 复用 token-reporter 模式(第 40 行)。从环境变量 CLAUDE_RUN_ID 读取 run id
+# (由 orchestration 层启动 session 时设置);未设置则静默跳过(不污染状态,不中断会话)。
+set -euo pipefail
+
+PAYLOAD="${1:-}"
+[ -z "$PAYLOAD" ] && exit 0
+
+RUN_ID="${CLAUDE_RUN_ID:-}"
+[ -z "$RUN_ID" ] && exit 0
+
+TRANSCRIPT=$(printf '%s' "$PAYLOAD" | jq -r '.transcript_path // ""')
+SESSION_ID=$(printf '%s' "$PAYLOAD" | jq -r '.session_id // ""')
+[ -f "$TRANSCRIPT" ] || exit 0
+
+SHA=$(sha256sum "$TRANSCRIPT" | awk '{print $1}')
+SIZE=$(stat -f%z "$TRANSCRIPT" 2>/dev/null || stat -c%s "$TRANSCRIPT")
+TURNS=$(grep -c '"role":"user"' "$TRANSCRIPT" 2>/dev/null || echo 0)
+FIRST=$(head -1 "$TRANSCRIPT" | jq -r '.timestamp // ""' 2>/dev/null || echo "")LAST=$(tail -1 "$TRANSCRIPT" | jq -r '.timestamp // ""' 2>/dev/null || echo "")
+
+# 项目根目录 = transcript_path 的上两级
+# ~/.claude/projects/<encoded-cwd>/<uuid>.jsonl → cd 到 projects/ 的父目录
+CLAUDE_PROJECT_DIR=$(dirname "$TRANSCRIPT")
+cd "$(dirname "$CLAUDE_PROJECT_DIR")"
+
+node .agent/skills/management-api/scripts/index.js runs transcript-link \
+  --gate agent --source claude-code \
+  --run-id "$RUN_ID" --session-id "$SESSION_ID" \
+  --transcript-path "$TRANSCRIPT" \
+  --transcript-sha256 "$SHA" --byte-size "$SIZE" --turn-count "$TURNS" \
+  --first-turn-at "$FIRST" --last-turn-at "$LAST" \
+  >/dev/null 2>&1 || {
+  echo "transcript-link reporter failed (non-fatal)" >&2
+  exit 0
+}
+```
+
+### 行为契约
+
+- transcript 路径不存在 → 静默退出(不中断会话)
+- transcript-link CLI 失败 → transcript_refs[] 不写,但 transcript_linked 事件尝试被框架接收;stderr 记录失败,exit 0(不中断会话)
+- 同一 source + session_id 重复推送 → 去重替换之前的条目(audit-trail Phase 2 §3.6)
+
+### 隐私不变量
+
+- 框架绝不读 transcript content。hook 只发送路径 + 4 个元数据字段(sha256 / byte_size / turn_count / first/last timestamps)。
+- **通过环境变量设置项目根目录**(推荐):启动 Claude Code 前 export `CORTEX_PROJECT_DIR=/path/to/project`。hook 直接读取并 cd,无需路径解码猜测。
+- **项目级 opt-out**:创建 `.agent/config/audit-trail.yaml`:
+  ```yaml
+  transcript_link:
+    enabled: false
+  ```
+  hook grep `enabled: false` 即静默跳过。YAML 匹配为 best-effort(空白宽容)。
+
+### 关联文档
+
+- 提案: .agent/plans/proposals/audit-trail/phase-2/cortex-agent-audit-trail-phase2-proposal.md
+- schema: .agent/runs/run.schema.json#properties.transcript_refs
+- 实现: .agent/skills/management-api/scripts/index.js runsTranscriptLink()

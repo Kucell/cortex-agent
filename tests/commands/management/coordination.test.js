@@ -48,7 +48,8 @@ test("coordination: help is read-only and never creates runtime state", () => {
     output = restore();
   }
   assert.match(output, /task <create\|assign/);
-  assert.equal(fs.existsSync(path.join(root, ".agent-runtime")), false);
+  // Under the new runtime layout the coordination namespace lives under .agent/runtime.
+  assert.equal(fs.existsSync(path.join(root, ".agent/runtime")), false);
 });
 
 test("coordination: auto-sync is limited to successful writes", () => {
@@ -96,7 +97,7 @@ test("coordination: read path (task status) routes through queryManagementProjec
 
 // ─── Write path: builds a real CoordinationApplicationService ────────────────
 
-test("coordination: write path (task start) creates .agent-runtime/coordination", () => {
+test("coordination: write path (task start) creates .agent/runtime/coordination", () => {
   const root = mkRoot();
   const ctx = { args: ["task", "start", "T-1"], cwd: root, options: {}, lang: "en" };
   const { restore } = captureStdout();
@@ -110,10 +111,10 @@ test("coordination: write path (task start) creates .agent-runtime/coordination"
   } finally {
     restore();
   }
-  const runtimeDir = path.join(root, ".agent-runtime");
-  assert.equal(fs.existsSync(runtimeDir), true, ".agent-runtime/ must exist");
-  const ignoreFile = path.join(runtimeDir, ".gitignore");
-  assert.equal(fs.existsSync(ignoreFile), true, ".agent-runtime/.gitignore must exist");
+  const runtimeDir = path.join(root, ".agent/runtime");
+  assert.equal(fs.existsSync(runtimeDir), true, ".agent/runtime must exist");
+  const ignoreFile = path.join(runtimeDir, "coordination", ".gitignore");
+  assert.equal(fs.existsSync(ignoreFile), true, ".agent/runtime/coordination/.gitignore must exist");
   const ignoreBody = fs.readFileSync(ignoreFile, "utf8");
   assert.equal(ignoreBody, "*\n!.gitignore\n");
   process.exitCode = origExitCode;
@@ -201,19 +202,19 @@ test("coordination: dependencies.service skips CoordinationApplicationService.op
   try {
     coordination(ctx, { service: fakeService });
   } catch (_) {
-    // Even if executeCoordinationCommand rejects, the .agent-runtime dir
+  // Even if executeCoordinationCommand rejects, the .agent/runtime dir
     // must NOT have been created (because the service was already injected).
   } finally {
     restore();
     process.exitCode = origExitCode;
   }
-  // The .agent-runtime dir is only created by the lazy CoordinationApplicationService
+  // The .agent/runtime dir is only created by the lazy CoordinationApplicationService
   // path — injection must bypass it.
-  const runtimeDir = path.join(root, ".agent-runtime");
+  const runtimeDir = path.join(root, ".agent/runtime");
   assert.equal(
     fs.existsSync(runtimeDir),
     false,
-    ".agent-runtime/ must NOT be created when service is injected",
+    ".agent/runtime must NOT be created when service is injected",
   );
   // (openedService sentinel is unused; included for documentation.)
   assert.equal(openedService, false);

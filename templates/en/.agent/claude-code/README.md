@@ -220,3 +220,99 @@ node .agent/skills/runtime-continuity/scripts/index.js restore \
 The body contains the **结构化摘要** for the new agent.  See
 `runtime-continuity` SKILL.md for the 4-step `next_steps_for_new_host`
 contract.
+## Transcript Link Hook (Phase 2 — audit-trail)
+
+When a Claude Code session ends, push a transcript-path reference into the
+active run so dashboards can deep-link to the raw transcript without the
+framework ever reading its content. Mirrors the token-usage pattern (line 40);
+hook script is independent, sharing `~/.claude/settings.json` `Stop` hooks array.
+
+### Stop hook recipe
+
+Append to your `~/.claude/settings.json`:
+
+```json
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          { "type": "command", "command": "~/.claude/hooks/claude-code-token-reporter.sh" },
+          { "type": "command", "command": "~/.claude/hooks/claude-code-transcript-link-reporter.sh" }
+        ]
+      }
+    ]
+  }
+}
+```
+
+### Reporter shell
+
+`~/.claude/hooks/claude-code-transcript-link-reporter.sh`:
+
+```bash
+#!/usr/bin/env bash
+# ~/.claude/hooks/claude-code-transcript-link-reporter.sh
+# Push the current transcript path + 4 metadata fields (sha256, byte_size,
+# turn_count, first/last timestamps) into the active run. Framework NEVER
+# reads transcript content — only stores path references.
+#
+# Mirrors the token-reporter pattern (line 40). Reads CLAUDE_RUN_ID from env
+# (set by orchestration layer when starting a session); skips silently when
+# absent (does NOT pollute state, does NOT crash session).
+set -euo pipefail
+
+PAYLOAD="${1:-}"
+[ -z "$PAYLOAD" ] && exit 0
+
+RUN_ID="${CLAUDE_RUN_ID:-}"
+[ -z "$RUN_ID" ] && exit 0
+
+TRANSCRIPT=$(printf '%s' "$PAYLOAD" | jq -r '.transcript_path // ""')
+SESSION_ID=$(printf '%s' "$PAYLOAD" | jq -r '.session_id // ""')
+[ -f "$TRANSCRIPT" ] || exit 0
+
+SHA=$(sha256sum "$TRANSCRIPT" | awk '{print $1}')
+SIZE=$(stat -f%z "$TRANSCRIPT" 2>/dev/null || stat -c%s "$TRANSCRIPT")
+TURNS=$(grep -c '"role":"user"' "$TRANSCRIPT" 2>/dev/null || echo 0)
+FIRST=$(head -1 "$TRANSCRIPT" | jq -r '.timestamp // ""' 2>/dev/null || echo "")LAST=$(tail -1 "$TRANSCRIPT" | jq -r '.timestamp // ""' 2>/dev/null || echo "")
+
+# Project root = grandparent of transcript_path
+# ~/.claude/projects/<encoded-cwd>/<uuid>.jsonl → cd to parent of projects/
+CLAUDE_PROJECT_DIR=$(dirname "$TRANSCRIPT")
+cd "$(dirname "$CLAUDE_PROJECT_DIR")"
+
+node .agent/skills/management-api/scripts/index.js runs transcript-link \
+  --gate agent --source claude-code \
+  --run-id "$RUN_ID" --session-id "$SESSION_ID" \
+  --transcript-path "$TRANSCRIPT" \
+  --transcript-sha256 "$SHA" --byte-size "$SIZE" --turn-count "$TURNS" \
+  --first-turn-at "$FIRST" --last-turn-at "$LAST" \
+  >/dev/null 2>&1 || {
+  echo "transcript-link reporter failed (non-fatal)" >&2
+  exit 0
+}
+```
+
+### Behavior contract
+
+- transcript path missing → silent exit (does not crash session)
+- transcript-link CLI fails → transcript_refs[] not written, but the framework still receives a transcript_linked event attempt; stderr logs the failure, exit 0
+- Same source + session_id pushed twice → dedupe replaces prior entry (audit-trail Phase 2 §3.6)
+
+### Privacy invariant
+
+- Framework NEVER reads transcript content. The hook only sends the path + 4 metadata fields (sha256 / byte_size / turn_count / first/last timestamps).
+- **Set project root via env var** (recommended): export `CORTEX_PROJECT_DIR=/path/to/project` before starting Claude Code. The hook reads this and cd's directly — no path-decoding guesswork.
+- **Opt-out per project**: create `.agent/config/audit-trail.yaml` with:
+  ```yaml
+  transcript_link:
+    enabled: false
+  ```
+  The hook greps for `enabled: false` and skips silently. Best-effort YAML match (whitespace-tolerant).
+
+### 关联文档
+
+- 提案: .agent/plans/proposals/audit-trail/phase-2/cortex-agent-audit-trail-phase2-proposal.md
+- schema: .agent/runs/run.schema.json#properties.transcript_refs
+- 实现: .agent/skills/management-api/scripts/index.js runsTranscriptLink()

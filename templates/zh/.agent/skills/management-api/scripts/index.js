@@ -1743,6 +1743,83 @@ function checkpointRun() {
   printJson({ ok: true, action: "runs checkpoint", path: rel(file), event, run: next });
 }
 
+// ─── runs transcript-link (audit-trail Phase 2) ────────────────────────────────
+// Host (Claude Code / Codex / Cursor / Pi) pushes a transcript-path reference +
+// 4 metadata fields (sha256, byte_size, turn_count, first/last timestamps).
+// Framework NEVER reads transcript content (privacy boundary).
+// Append-only on runs/<id>.json#transcript_refs[]; dedupe by source+session_id.
+function runsTranscriptLink() {
+  const gate = requireGate(["agent", "user", "mission"]);
+  const payload = parsePayload();
+  const runId = safeId(option("--run-id", payload.run_id), "R");
+  const source = option("--source", payload.source);
+  const sessionId = option("--session-id", payload.session_id);
+  const transcriptPath = option("--transcript-path", payload.transcript_path);
+  const sha256 = option("--transcript-sha256", payload.transcript_sha256);
+  const byteSize = Number(option("--byte-size", payload.byte_size ?? 0));
+  const turnCount = Number(option("--turn-count", payload.turn_count ?? 0));
+  const firstTurnAt = option("--first-turn-at", payload.first_turn_at ?? null);
+  const lastTurnAt = option("--last-turn-at", payload.last_turn_at ?? null);
+
+  // Required-field validation
+  if (!source) fail("transcript_link_source_required", "--source <host> required");
+  if (!sessionId) fail("transcript_link_session_required", "--session-id <id> required");
+  if (!transcriptPath) fail("transcript_link_path_required", "--transcript-path <abs> required");
+  if (!sha256 || !/^[a-f0-9]{64}$/.test(sha256)) fail("transcript_link_sha256_invalid", "--transcript-sha256 must be 64 hex chars");
+  if (!Number.isInteger(byteSize) || byteSize < 0) fail("transcript_link_byte_size_invalid", "--byte-size must be non-negative integer");
+  if (!Number.isInteger(turnCount) || turnCount < 0) fail("transcript_link_turn_count_invalid", "--turn-count must be non-negative integer");
+
+  // Privacy invariant: the framework must never write transcript content into runs/<id>.json.
+  // The hook only sends path+metadata; a path that embeds a payload (multiline JSONL, an
+  // oversized blob, or a transcript-looking body) is rejected outright instead of stored.
+  if (!path.isAbsolute(transcriptPath)) fail("transcript_link_path_relative", "--transcript-path must be an absolute path");
+  if (transcriptPath.length > 1024) fail("transcript_link_path_too_long", "--transcript-path exceeds 1024 chars");
+  if (/[\r\n]/.test(transcriptPath)) fail("transcript_link_path_injection", "--transcript-path must not contain newlines");
+  const file = runFile(runId);
+  const existing = readJson(file) || {
+    run_id: runId,
+    kind: option("--kind", payload.kind || "implement"),
+    status: "running",
+    started_at: nowIso(),
+  };
+  const timestamp = nowIso();
+  const ref = {
+    source,
+    session_id: sessionId,
+    path: transcriptPath,
+    sha256,
+    byte_size: byteSize,
+    turn_count: turnCount,
+    first_turn_at: firstTurnAt,
+    last_turn_at: lastTurnAt,
+    linked_at: timestamp,
+  };
+  const refs = Array.isArray(existing.transcript_refs) ? existing.transcript_refs : [];
+  // Dedupe by source + session_id; replace if already present.
+  const filtered = refs.filter((r) => !(r && r.source === source && r.session_id === sessionId));
+  filtered.push(ref);
+  // Append a transcript_linked event so the timeline reflects the push.
+  const event = compactEvent({
+    type: "transcript_linked",
+    phase: existing.phase || null,
+    status: existing.status || null,
+    activity: null,
+    message: `transcript_linked source=${source} session=${sessionId} turns=${turnCount} sha256=${sha256.slice(0, 12)}…`,
+    at: timestamp,
+  });
+  const events = Array.isArray(existing.events) ? existing.events : [];
+  const next = {
+    ...existing,
+    transcript_refs: filtered,
+    updated_at: timestamp,
+    updated_by_gate: gate,
+    events: [...events, event].slice(-200),
+    last_event: event,
+  };
+  writeJson(file, next);
+  printJson({ ok: true, action: "runs transcript-link", path: rel(file), transcript_ref: ref, run: next });
+}
+
 function upsertQueue() {
   const gate = requireGate(["parallel", "worktree", "approve", "mission"]);
   const payload = parsePayload();
@@ -2007,6 +2084,15 @@ function main() {
     checkpointRun();
     return;
   }
+  if (command === "runs" && query === "checkpoint") {
+    checkpointRun();
+    return;
+  }
+  if (command === "runs" && query === "transcript-link") {
+    runsTranscriptLink();
+    return;
+  }
+
   if (command === "runs" && query === "tokens" && args[2] === "receipt") {
     tokenReceipt();
     return;
@@ -2087,7 +2173,7 @@ function main() {
   printJson({
     ok: false,
     error: "unsupported_command",
-    usage: "node .agent/skills/management-api/scripts/index.js query capabilities|dashboard-state|dispatch-state|dispatch-plan|triggers|runs|queues|sessions|inbox|decisions|waitpoints|activity|context-trajectories|operations|readiness|authorizations|checkpoints|token-attempts | runs upsert|event|checkpoint|tokens|tokens receipt|tokens recover-lock | queues upsert|item | sessions open|heartbeat|pause|close | decisions request|resolve|supersede | inbox send|transition | waitpoints create|release|cancel",
+    usage: "node .agent/skills/management-api/scripts/index.js query capabilities|dashboard-state|dispatch-state|dispatch-plan|triggers|runs|queues|sessions|inbox|decisions|waitpoints|activity|context-trajectories|operations|readiness|authorizations|checkpoints|token-attempts | runs upsert|event|checkpoint|tokens|transcript-link|tokens receipt|tokens recover-lock | queues upsert|item | sessions open|heartbeat|pause|close | decisions request|resolve|supersede | inbox send|transition | waitpoints create|release|cancel",
   });
   process.exitCode = 2;
 }

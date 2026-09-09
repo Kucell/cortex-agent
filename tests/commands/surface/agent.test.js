@@ -21,6 +21,7 @@ const test = require("node:test");
 const AGENT_PATH = require.resolve("../../../lib/commands/surface/agent");
 const BRIDGE_PATH = require.resolve("../../../lib/coordination/host-event-bridge");
 const LAUNCH_PATH = require.resolve("../../../lib/governed/launch-cli");
+const PI_LAUNCH_PATH = require.resolve("../../../lib/governed/pi-launch");
 
 function captureStdout() {
   const chunks = [];
@@ -46,10 +47,11 @@ function makeCtx(args) {
   };
 }
 
-function loadAgentWithMocks({ bridgeMock, launchMock }) {
+function loadAgentWithMocks({ bridgeMock, launchMock, piLaunchMock = null }) {
   // Save the originals (if any)
   const origBridge = require.cache[BRIDGE_PATH];
   const origLaunch = require.cache[LAUNCH_PATH];
+  const origPiLaunch = require.cache[PI_LAUNCH_PATH];
   const origAgent = require.cache[AGENT_PATH];
 
   // Inject the mocks
@@ -65,6 +67,14 @@ function loadAgentWithMocks({ bridgeMock, launchMock }) {
     loaded: true,
     exports: { executeGovernedLaunch: launchMock },
   };
+  if (piLaunchMock) {
+    require.cache[PI_LAUNCH_PATH] = {
+      id: PI_LAUNCH_PATH,
+      filename: PI_LAUNCH_PATH,
+      loaded: true,
+      exports: { executeGovernedPiLaunch: piLaunchMock },
+    };
+  }
 
   // Force agent.js to re-require
   delete require.cache[AGENT_PATH];
@@ -77,6 +87,8 @@ function loadAgentWithMocks({ bridgeMock, launchMock }) {
     else delete require.cache[BRIDGE_PATH];
     if (origLaunch) require.cache[LAUNCH_PATH] = origLaunch;
     else delete require.cache[LAUNCH_PATH];
+    if (origPiLaunch) require.cache[PI_LAUNCH_PATH] = origPiLaunch;
+    else delete require.cache[PI_LAUNCH_PATH];
     if (origAgent) require.cache[AGENT_PATH] = origAgent;
   };
 }
@@ -108,6 +120,33 @@ test("agent: dependency-injected service is used by executeBridgeCommand", async
   }
   assert.equal(captured.service, fakeService, "service must be passed to executeBridgeCommand");
   assert.deepEqual(captured.args, ["agent", "report", "--event-type", "task.progress"]);
+});
+
+test("agent: launch pi delegates only to the Pi governed adapter", async () => {
+  const fakeService = { close: () => {} };
+  const captured = { args: null, opts: null };
+  const teardown = loadAgentWithMocks({
+    bridgeMock: () => { throw new Error("bridge must not run"); },
+    launchMock: async () => { throw new Error("generic launch must not run"); },
+    piLaunchMock: async (args, opts) => {
+      captured.args = args;
+      captured.opts = opts;
+      return { ok: true, host: "pi" };
+    },
+  });
+  const { agent } = require(AGENT_PATH);
+  const { restore: restoreOut } = captureStdout();
+  const { restore: restoreErr } = captureStderr();
+  try {
+    await agent(makeCtx(["agent", "launch", "pi", "--task-id", "T-PI-001"]), { service: fakeService });
+  } finally {
+    restoreOut();
+    restoreErr();
+    teardown();
+  }
+  assert.deepEqual(captured.args, ["--task-id", "T-PI-001"]);
+  assert.equal(captured.opts.service, fakeService);
+  assert.equal(typeof captured.opts.releaseService, "function");
 });
 
 test("agent: non-ok result sets process.exitCode = result.exitCode", async () => {

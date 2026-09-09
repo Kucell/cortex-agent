@@ -31,6 +31,7 @@ Use Git worktrees to provide each Agent with an isolated workspace while keeping
 /worktree create T-001 --branch agent/T-001-auth
 /worktree status
 /worktree audit --dirty-only
+/worktree reconcile <workspace-id>
 /worktree handoff T-001 --to ../project-T-001
 /worktree sync
 /worktree commit T-001
@@ -220,6 +221,15 @@ The audit reports state only and never changes Git or worktree contents.
 - `locks_to_release`
 - `locks_to_acquire`
 - `artifact_refs`
+
+Before creating a handoff, `/worktree` must run the owner- and Git-verified checkpoint, then the read-only reconcile:
+
+```bash
+node .agent/workspaces/scripts/workspace-runtime.js workspace checkpoint --payload-json '{"workspace_id":"WS-...","agent_id":"...","head_commit":"<git-head>","queue_item_id":"...","lock_scope":"task:...","artifact_ref":".agent/artifacts/..."}'
+node .agent/workspaces/scripts/workspace-runtime.js workspace reconcile --id WS-...
+```
+
+When `reconciled=false`, do not hand off, merge, or mark the task complete. Correct the identity projection via the owner-owned checkpoint first. The interface only appends Queue/Lock/Artifact references and a verified current HEAD; it cannot arbitrarily overwrite an Identity.
 
 交接完成后，来源 Agent 应释放不再持有的 lock，目标 Agent 在写入前重新获取 lock。
 

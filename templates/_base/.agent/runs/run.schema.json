@@ -60,6 +60,26 @@
         "additionalProperties": true
       }
     },
-    "next_action": { "type": ["string", "null"] }
+    "next_action": { "type": ["string", "null"] },
+    "transcript_refs": {
+      "type": "array",
+      "description": "Cross-host transcript path references (audit-trail P-002). Append-only; dedupe by source+session_id. Path is absolute; sha256/byte_size/turn_count/first/last timestamps are host-pushed metadata. Framework never reads transcript content.",
+      "items": {
+        "type": "object",
+        "required": ["source", "session_id", "path", "sha256", "byte_size", "turn_count", "linked_at"],
+        "properties": {
+          "source": { "type": "string", "enum": ["claude-code", "codex", "cursor", "pi", "other"] },
+          "session_id": { "type": "string" },
+          "path": { "type": "string" },
+          "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+          "byte_size": { "type": "integer", "minimum": 0 },
+          "turn_count": { "type": "integer", "minimum": 0 },
+          "first_turn_at": { "type": ["string", "null"] },
+          "last_turn_at": { "type": ["string", "null"] },
+          "linked_at": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    }
   }
 }

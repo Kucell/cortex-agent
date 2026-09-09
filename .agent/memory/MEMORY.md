@@ -15,9 +15,10 @@
 
 - [MR merged plan semantic drift](feedback/mr-merged-plan-semantic-drift.md) — feedback, merge, plan-reconcile
 
-## project (8/20)
+## project (9/20)
 - [Token Control Plane MS-001](project/token-control-plane-ms001.md) — token-control-plane, token-attempt, M-025, MS-001
 - [M-025 Phase C parallel eval](project/m025-phase-c-parallel-eval.md) — m-025, phase-c, evaluation, gates, P-002, P-003, P-004
+- [Codex P-002 Shadow Pilot](project/codex_p002_shadow_pilot.md) — codex, p-002, shadow-pilot, validation
 - [Cross-host memory handoff](project/cross-host-memory-handoff.md) — memory, cross-host, MiniMax, Qoder, Codex, Cortex Agent
 - [DSH first-class adapter](project/dsh-firstclass-adapter.md) — dsh, deepseek-harness, adapter, dispatch, M-029, P-006, first-class
 

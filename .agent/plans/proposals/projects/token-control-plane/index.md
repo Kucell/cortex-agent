@@ -94,6 +94,8 @@ measured -> evaluated | evaluation_pending
 | P-005 | [Evaluation and Rollout Gates](proposals/P-005-evaluation-rollout-gates-proposal.md) | approved (measurement gates only) | 可复现基线与质量 Gate；不含自动 rollout |
 | P-006 | [Host-side Context Optimization](proposals/P-006-host-side-context-optimization-proposal.md) | draft | 提示词分层、工具 schema 摘要、历史管理、固定前缀缓存；proposal-only 准备文件 |
 | P-007 | [Session & Task Context Offload](proposals/P-007-session-context-offload-proposal.md) | draft | 会话/任务级：memory 沉淀、sub-agent 隔离、skill 按需、task workspace 外置 |
+| P-008 | [Codex-only P-002 Shadow Pilot](proposals/P-008-codex-only-shadow-pilot-proposal.md) | draft | 单 Host、无副作用的 P-002 观测试点；不替代多 Host rollout Gate |
+| P-009 | [Governed Codex Public-Metadata Shadow Observer](proposals/P-009-governed-codex-public-shadow-observer-proposal.md) | draft | task.accepted 后的自动观测；仅显式公共元数据，不读取私有启动上下文 |
 
 ## 6. 关联项目
 
@@ -154,6 +156,7 @@ measured -> evaluated | evaluation_pending
 | :--- | :--- | :--- | :--- |
 | D-TCP-003 | 批准 measurement-only-first 并允许 Pi 实施准备 | approved | `.agent/decisions/D-TCP-003.json`；P-002～P-004 仍为 draft |
 | D-TCP-004 | 批准 DSH 作为第三个 governed Host 加入 shadow measurement | approved | `.agent/decisions/D-TCP-004-add-dsh-host.json`；scope 仍为 measurement-only-first；Waitpoint `WP-rsl-dsh-host-shadow-20260819` released |
+| D-TCP-P008-codex-shadow-0c8bfe67 | 批准 Codex-only、P-002-only、无副作用 Shadow Pilot | approved | `.agent/decisions/D-TCP-P008-codex-shadow-0c8bfe67.json`；不替代多 Host Gate，且不授权 production activation |
 
 ## 11. 架构审计摘要
 

@@ -3,6 +3,7 @@
 
 const fs = require("node:fs");
 const path = require("node:path");
+const { execFileSync } = require("node:child_process");
 
 function fail(error, details, code = 1) {
   process.stdout.write(`${JSON.stringify({ ok: false, error, details })}\n`);
@@ -144,6 +145,63 @@ function transitionWorkspace(cwd, input) {
   if (input.status === "closed") record.closed_at = record.updated_at;
   writeAtomic(file, record);
   return record;
+}
+
+function appendUnique(values, value) {
+  return value ? Array.from(new Set([...(Array.isArray(values) ? values : []), value])).sort() : (Array.isArray(values) ? values : []);
+}
+
+function worktreeHead(worktreePath) {
+  try {
+    return execFileSync("git", ["-C", worktreePath, "rev-parse", "HEAD"], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
+  } catch (error) {
+    fail("workspace_head_unavailable", { worktree_path: worktreePath, message: String(error.stderr || error.message || error).trim() }, 2);
+  }
+}
+
+function registeredWorktrees(root) {
+  try {
+    return execFileSync("git", ["-C", root, "worktree", "list", "--porcelain"], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] })
+      .split(/\r?\n/).filter((line) => line.startsWith("worktree ")).map((line) => canonicalPath(line.slice("worktree ".length)));
+  } catch (error) {
+    fail("workspace_registry_unavailable", { root, message: String(error.stderr || error.message || error).trim() }, 2);
+  }
+}
+
+function canonicalPath(value) {
+  try { return fs.realpathSync(value); } catch { return path.resolve(value); }
+}
+
+function checkpointWorkspace(cwd, input) {
+  requireFields(input, ["workspace_id", "agent_id"]);
+  if (!["head_commit", "queue_item_id", "lock_scope", "artifact_ref"].some((key) => input[key])) fail("checkpoint_empty", "Provide a verified head_commit or one relation reference.", 2);
+  const file = recordPath(cwd, "identities", input.workspace_id);
+  const record = readRequired(file, "workspace_not_found");
+  if (record.owner.agent_id !== input.agent_id) fail("owner_mismatch", input.agent_id, 2);
+  if (record.status === "closed") fail("workspace_closed", input.workspace_id, 2);
+  if (input.head_commit) {
+    const actual = worktreeHead(record.worktree_path);
+    if (actual !== input.head_commit) fail("head_commit_mismatch", { expected: input.head_commit, actual }, 2);
+    record.head_commit = actual;
+  }
+  record.relations.queue_item_ids = appendUnique(record.relations.queue_item_ids, input.queue_item_id);
+  record.relations.lock_scopes = appendUnique(record.relations.lock_scopes, input.lock_scope);
+  record.relations.artifact_refs = appendUnique(record.relations.artifact_refs, input.artifact_ref);
+  record.updated_at = now();
+  writeAtomic(file, record);
+  return record;
+}
+
+function reconcileWorkspace(cwd, id) {
+  requireFields({ id }, ["id"]);
+  const record = readRequired(recordPath(cwd, "identities", id), "workspace_not_found");
+  const actualHead = worktreeHead(record.worktree_path);
+  const registered = registeredWorktrees(record.root).includes(canonicalPath(record.worktree_path));
+  const drift = [];
+  if (!registered) drift.push({ field: "worktree_path", expected: record.worktree_path, actual: "not_registered" });
+  if (!record.head_commit) drift.push({ field: "head_commit", expected: "recorded", actual: actualHead });
+  else if (record.head_commit !== actualHead) drift.push({ field: "head_commit", expected: record.head_commit, actual: actualHead });
+  return { workspace: record, actual: { head_commit: actualHead, registered }, reconciled: drift.length === 0, drift };
 }
 
 function requestHook(cwd, input) {
@@ -441,6 +499,8 @@ function main() {
   let result;
   if (resource === "workspace" && action === "create") result = createWorkspace(cwd, input);
   else if (resource === "workspace" && action === "transition") result = transitionWorkspace(cwd, input);
+  else if (resource === "workspace" && action === "checkpoint") result = checkpointWorkspace(cwd, input);
+  else if (resource === "workspace" && action === "reconcile") result = reconcileWorkspace(cwd, options.id);
   else if (resource === "workspace" && action === "get") result = readRequired(recordPath(cwd, "identities", options.id), "workspace_not_found");
   else if (resource === "hook" && action === "request") result = requestHook(cwd, input);
   else if (resource === "hook" && action === "transition") result = transitionHook(cwd, input);

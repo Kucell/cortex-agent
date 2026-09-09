@@ -155,6 +155,35 @@ async function getDeliveryStatus(opts) {
   };
 }
 
+async function getPipelineJobs(opts) {
+  const { config, token, pipeline_id } = opts;
+  const pid = projectUrl(opts, config);
+  const res = await send("GET", config.host, `/api/v4/projects/${pid}/pipelines/${pipeline_id}/jobs?per_page=100`, token);
+  if (res.status !== 200 || !Array.isArray(res.body)) {
+    throw new Error(`gitlab_pipeline_jobs_failed: HTTP ${res.status} ${res.raw?.slice(0, 200)}`);
+  }
+  return res.body.map((job) => ({
+    id: job.id,
+    name: job.name,
+    stage: job.stage,
+    status: job.status,
+    failure_reason: job.failure_reason || null,
+    allow_failure: job.allow_failure === true,
+    web_url: job.web_url || null,
+  }));
+}
+
+async function getJobTrace(opts) {
+  const { config, token, job_id, max_chars = 12000 } = opts;
+  const pid = projectUrl(opts, config);
+  const res = await send("GET", config.host, `/api/v4/projects/${pid}/jobs/${job_id}/trace`, token);
+  if (res.status !== 200) {
+    throw new Error(`gitlab_job_trace_failed: HTTP ${res.status} ${res.raw?.slice(0, 200)}`);
+  }
+  const trace = res.raw || "";
+  return trace.length > max_chars ? trace.slice(-max_chars) : trace;
+}
+
 async function updatePR(opts) {
   const { config, token, pr_number, title, body, reviewers, ready, close, remove_source, squash } = opts;
   const pid = projectUrl(opts, config);
@@ -239,6 +268,8 @@ module.exports = {
   createPR,
   getStatus,
   getDeliveryStatus,
+  getPipelineJobs,
+  getJobTrace,
   updatePR,
   merge,
   list,

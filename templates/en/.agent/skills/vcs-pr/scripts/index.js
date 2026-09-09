@@ -221,8 +221,8 @@ function loadBody(opts) {
 async function main() {
   const argv = process.argv.slice(2);
   const [command] = argv;
-  if (!command || !["create", "update", "status", "delivery-status", "merge", "list"].includes(command)) {
-    fail("unknown_command", "Usage: vcs-pr create|update|status|delivery-status|merge|list [...opts]");
+  if (!command || !["create", "update", "status", "delivery-status", "pipeline-jobs", "job-trace", "merge", "list"].includes(command)) {
+    fail("unknown_command", "Usage: vcs-pr create|update|status|delivery-status|pipeline-jobs|job-trace|merge|list [...opts]");
   }
   const cfg = loadConfig();
   if (!cfg || !cfg.backend) {
@@ -296,6 +296,34 @@ async function main() {
       pr_number: Number(flag("--pr-number", argv)),
     });
     emit({ ok: true, action: "delivery-status", ...result });
+    return;
+  }
+  if (command === "pipeline-jobs") {
+    if (typeof backend.getPipelineJobs !== "function") {
+      fail("capability_unavailable", `${cfg.backend} backend does not support pipeline-jobs.`);
+    }
+    const pipelineId = Number(flag("--pipeline-id", argv));
+    if (!Number.isInteger(pipelineId) || pipelineId <= 0) {
+      fail("invalid_pipeline_id", "pipeline-jobs requires a positive --pipeline-id.");
+    }
+    const jobs = await backend.getPipelineJobs({ ...optsBase, pipeline_id: pipelineId });
+    emit({ ok: true, action: "pipeline-jobs", pipeline_id: pipelineId, jobs });
+    return;
+  }
+  if (command === "job-trace") {
+    if (typeof backend.getJobTrace !== "function") {
+      fail("capability_unavailable", `${cfg.backend} backend does not support job-trace.`);
+    }
+    const jobId = Number(flag("--job-id", argv));
+    if (!Number.isInteger(jobId) || jobId <= 0) {
+      fail("invalid_job_id", "job-trace requires a positive --job-id.");
+    }
+    const requestedMaxChars = Number(flag("--max-chars", argv) || 12000);
+    const maxChars = Number.isInteger(requestedMaxChars)
+      ? Math.max(1000, Math.min(requestedMaxChars, 12000))
+      : 12000;
+    const trace = await backend.getJobTrace({ ...optsBase, job_id: jobId, max_chars: maxChars });
+    emit({ ok: true, action: "job-trace", job_id: jobId, trace });
     return;
   }
   if (command === "update") {

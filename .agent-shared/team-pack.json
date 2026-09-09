@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "name": "cortex-agent-team-pack",
+  "version": "0.1.0",
+  "requires": {
+    "cortex_agent": ">=1.6.0"
+  },
+  "signers": {
+    "mode": "git_committers",
+    "allowed_committers": [
+      "cortex-agent@local"
+    ],
+    "fallback": "reject"
+  },
+  "includes": [
+    "rules/**/*.md",
+    "workflows/**/*.md",
+    "skills/**",
+    "references/**/*.md",
+    "schemas/**/*.json"
+  ],
+  "excludes": [
+    "**/.DS_Store",
+    "**/*.local.*",
+    "**/*secret*",
+    "**/*token*",
+    "**/.claude/settings.json",
+    "**/.claude/settings.local.json",
+    "**/AGENTS.md",
+    "**/CLAUDE.md",
+    "**/GEMINI.md"
+  ],
+  "files": [
+    {
+      "path": "references/team-goals.md",
+      "sha256": "b42ec5697740a400895c8e201aefd9eb45fe7c17e69f7edc812affdd52d88829",
+      "mode": "add"
+    }
+  ]
+}

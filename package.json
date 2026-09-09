@@ -9,6 +9,7 @@
   "files": [
     "bin",
     "lib",
+    "scripts",
     "templates",
     "hooks",
     "agents",

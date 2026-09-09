@@ -29,6 +29,7 @@ status: stable
 /worktree create T-001 --branch agent/T-001-auth
 /worktree status
 /worktree audit --dirty-only
+/worktree reconcile <workspace-id>
 /worktree handoff T-001 --to ../project-T-001
 /worktree sync
 /worktree commit T-001
@@ -218,6 +219,15 @@ node .agent/skills/worktree-audit/scripts/index.js --dirty-only --json
 - `locks_to_release`
 - `locks_to_acquire`
 - `artifact_refs`
+
+在创建 handoff 前，`/worktree` 必须调用受控 checkpoint（owner 与 Git HEAD 均会校验），再运行只读 reconcile：
+
+```bash
+node .agent/workspaces/scripts/workspace-runtime.js workspace checkpoint --payload-json '{"workspace_id":"WS-...","agent_id":"...","head_commit":"<git-head>","queue_item_id":"...","lock_scope":"task:...","artifact_ref":".agent/artifacts/..."}'
+node .agent/workspaces/scripts/workspace-runtime.js workspace reconcile --id WS-...
+```
+
+`reconciled=false` 时不得 handoff、merge 或把任务标记完成；必须先通过 owner-owned checkpoint 修正身份投影。该接口只允许追加 Queue/Lock/Artifact 引用和已验证的当前 HEAD，不能任意覆盖 Identity。
 
 交接完成后，来源 Agent 应释放不再持有的 lock，目标 Agent 在写入前重新获取 lock。
 

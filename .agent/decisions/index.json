@@ -1,6 +1,87 @@
 {
   "decisions": [
     {
+      "decision_id": "D-FAE-004a-pi-launch-15b05e07",
+      "path": ".agent/decisions/D-FAE-004a-pi-launch-15b05e07.json",
+      "type": "approval",
+      "status": "approved",
+      "gate_action": "architecture",
+      "resource_ref": "proposal:.agent/plans/proposals/projects/full-automation-evolution/proposals/FAE-004a-governed-pi-launch.md@15b05e07885bfeea912eb609124e01f7e391a0fc17f56d636df25cc6b42167f6",
+      "updated_at": "2026-09-09T11:32:19.912Z"
+    },
+    {
+      "decision_id": "D-FAE-004a-pi-launch-48b5ea43",
+      "path": ".agent/decisions/D-FAE-004a-pi-launch-48b5ea43.json",
+      "type": "approval",
+      "status": "approved",
+      "gate_action": "architecture",
+      "resource_ref": "proposal:.agent/plans/proposals/projects/full-automation-evolution/proposals/FAE-004a-governed-pi-launch.md@48b5ea43502fe9c01f05fe6cf8de321a981628374af35cadd2fdcc6844b94196",
+      "updated_at": "2026-09-09T11:28:25.861Z"
+    },
+    {
+      "decision_id": "D-TKR-MERGE-001",
+      "path": ".agent/decisions/D-TKR-MERGE-001.json",
+      "type": "approval",
+      "status": "approved",
+      "gate_action": "merge",
+      "resource_ref": "merge:T-TKR-001@8459e035c1dba72bf78f3cc36f0e46c83332fdf2",
+      "updated_at": "2026-09-09T02:44:18.406Z"
+    },
+    {
+      "decision_id": "D-P007-TKR-CAP-EXT",
+      "path": ".agent/decisions/D-P007-TKR-CAP-EXT.json",
+      "type": "approval",
+      "status": "approved",
+      "gate_action": "architecture",
+      "resource_ref": "capability-extension:P-007@d8ac4c0be601442c1e5738c97394c54e41ab693bdf8acc4195bbadfcdb759a1b",
+      "updated_at": "2026-09-09T02:20:55.510Z"
+    },
+    {
+      "decision_id": "D-ATR-P002-ratification-821c463e",
+      "path": ".agent/decisions/D-ATR-P002-ratification-821c463e.json",
+      "type": "architecture",
+      "status": "open",
+      "gate_action": "architecture",
+      "resource_ref": "proposal:.agent/plans/proposals/audit-trail/phase-2/cortex-agent-audit-trail-phase2-proposal.md@821c463e7a13de39829d5987d054bd0efa47efced9006ceea7a9124c403d2b79",
+      "updated_at": "2026-09-09T02:01:51.156Z"
+    },
+    {
+      "decision_id": "D-TKR-001",
+      "path": ".agent/decisions/D-TKR-001.json",
+      "type": "approval",
+      "status": "approved",
+      "gate_action": "architecture",
+      "resource_ref": "proposal:.agent/plans/proposals/projects/team-knowledge-recall/index.md@a5944baf9ae3eb86b8a8ccdbc788d564008ce3a49974a08f826df8c653aac1a3",
+      "updated_at": "2026-09-09T01:49:15.088Z"
+    },
+    {
+      "decision_id": "D-TCP-P010-shadow-ledger-0062e8ca",
+      "path": ".agent/decisions/D-TCP-P010-shadow-ledger-0062e8ca.json",
+      "type": "architecture",
+      "status": "approved",
+      "gate_action": "architecture",
+      "resource_ref": "proposal:.agent/plans/proposals/projects/token-control-plane/proposals/P-010-codex-shadow-observation-ledger-proposal.md@0062e8cad8d8c5c3e4d19bc4ec61f0bb934b2d950761eec319d741be32fc3d1e",
+      "updated_at": "2026-09-08T05:20:39.396Z"
+    },
+    {
+      "decision_id": "D-TCP-P009-public-observer-66c3da50",
+      "path": ".agent/decisions/D-TCP-P009-public-observer-66c3da50.json",
+      "type": "architecture",
+      "status": "approved",
+      "gate_action": "architecture",
+      "resource_ref": "proposal:.agent/plans/proposals/projects/token-control-plane/proposals/P-009-governed-codex-public-shadow-observer-proposal.md@66c3da50cd2e01ac539bc8d53957a6b334632ce306142180e725b942d056ea11",
+      "updated_at": "2026-09-03T11:25:11.031Z"
+    },
+    {
+      "decision_id": "D-TCP-P008-codex-shadow-0c8bfe67",
+      "path": ".agent/decisions/D-TCP-P008-codex-shadow-0c8bfe67.json",
+      "type": "architecture",
+      "status": "approved",
+      "gate_action": "architecture",
+      "resource_ref": "proposal:.agent/plans/proposals/projects/token-control-plane/proposals/P-008-codex-only-shadow-pilot-proposal.md@0c8bfe67c204b4e07f7b3a97869e8f2ca8f5c3e865824a7e6cd19a5c4a4f44a5",
+      "updated_at": "2026-09-03T09:50:03.667Z"
+    },
+    {
       "decision_id": "D-M033-rm-hmi-platform-fix-regen-contracts-rc10-318fe9bd",
       "path": ".agent/decisions/D-M033-rm-hmi-platform-fix-regen-contracts-rc10-318fe9bd.json",
       "type": "approval",

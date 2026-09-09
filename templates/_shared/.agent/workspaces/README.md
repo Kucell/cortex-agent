@@ -13,6 +13,7 @@ This directory defines the stable data boundary for Cortex Agent workspace orche
 ## Ownership and safety
 
 - `/worktree` owns WorkspaceIdentity lifecycle transitions.
+- `/worktree` must checkpoint a verified Git `HEAD` and its Queue/Lock/Artifact refs before handoff or merge; `workspace reconcile` is read-only and reports identity drift.
 - The workflow that invokes a hook owns HookLifecycle transitions and evidence.
 - A future local lease manager owns ResourceLease allocation and release; read-only queries never clean state.
 - `/mission` or `/parallel` owns CompositeWorkspace planning; each repository keeps its own worktree, branch, commits, validation, and merge approval.

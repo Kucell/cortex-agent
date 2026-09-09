@@ -4,7 +4,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
-const { spawnSync } = require("node:child_process");
+const { execFileSync, spawnSync } = require("node:child_process");
 const test = require("node:test");
 
 const ROOT = path.resolve(__dirname, "..", "..");
@@ -33,6 +33,54 @@ function workspace(id, agent = `agent-${id}`) {
     agent_id: agent
   };
 }
+
+function git(cwd, ...args) {
+  return execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
+}
+
+function initGitWorkspace(cwd) {
+  git(cwd, "init", "-q", "--initial-branch=main");
+  git(cwd, "config", "user.email", "test@example.com");
+  git(cwd, "config", "user.name", "Test");
+  fs.writeFileSync(path.join(cwd, "README.md"), "base\n");
+  git(cwd, "add", "README.md");
+  git(cwd, "commit", "-qm", "base");
+  return git(cwd, "rev-parse", "HEAD");
+}
+
+test("workspace checkpoint verifies HEAD, appends relations, and reconcile reports later drift", (t) => {
+  const cwd = project(t);
+  const base = initGitWorkspace(cwd);
+  const input = { ...workspace("WS-checkpoint", "agent-checkpoint"), root: cwd, worktree_path: cwd, base_commit: base };
+  assert.equal(run(cwd, "workspace", "create", input).status, 0);
+
+  const checkpoint = run(cwd, "workspace", "checkpoint", {
+    workspace_id: input.workspace_id,
+    agent_id: input.agent_id,
+    head_commit: base,
+    queue_item_id: "Q-item",
+    lock_scope: "task:T-001",
+    artifact_ref: ".agent/artifacts/T-001/001.json"
+  });
+  assert.equal(checkpoint.status, 0);
+  const saved = JSON.parse(checkpoint.stdout).result;
+  assert.equal(saved.head_commit, base);
+  assert.deepEqual(saved.relations.queue_item_ids, ["Q-item"]);
+
+  const clean = run(cwd, "workspace", "reconcile", undefined);
+  assert.equal(clean.status, 2, "reconcile requires an explicit identity id");
+  const reconciled = spawnSync(process.execPath, [RUNTIME, "workspace", "reconcile", "--id", input.workspace_id], { cwd, encoding: "utf8" });
+  assert.equal(reconciled.status, 0);
+  assert.equal(JSON.parse(reconciled.stdout).result.reconciled, true);
+
+  fs.writeFileSync(path.join(cwd, "README.md"), "next\n");
+  git(cwd, "commit", "-am", "next");
+  const stale = spawnSync(process.execPath, [RUNTIME, "workspace", "reconcile", "--id", input.workspace_id], { cwd, encoding: "utf8" });
+  const result = JSON.parse(stale.stdout).result;
+  assert.equal(result.reconciled, false);
+  assert.equal(result.drift[0].field, "head_commit");
+  assert.equal(run(cwd, "workspace", "checkpoint", { workspace_id: input.workspace_id, agent_id: input.agent_id, head_commit: base }).status, 2);
+});
 
 function hook(id, workspaceId, agentId, overrides = {}) {
   return {
