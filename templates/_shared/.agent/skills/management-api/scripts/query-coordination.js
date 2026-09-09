@@ -7,6 +7,17 @@ function readJson(file) {
   try { return JSON.parse(fs.readFileSync(file, "utf8")); } catch (_) { return null; }
 }
 
+// MS-003 / runtime-layout compat: prefer the new .agent/runtime/coordination
+// namespace, and fall back to the legacy .agent-runtime/coordination for
+// projects that have not yet been migrated. This mirrors the resolver logic
+// but stays self-contained because this script is distributed to consumers
+// and must not require lib/runtime-layout.
+function coordinationDir(root) {
+  const newDir = path.join(root, ".agent", "runtime", "coordination");
+  if (fs.existsSync(newDir)) return newDir;
+  return path.join(root, ".agent-runtime", "coordination");
+}
+
 function option(args, name) {
   const marker = `--${name}`;
   const index = args.indexOf(marker);
@@ -62,7 +73,7 @@ function listEvents(journalDir) {
 }
 
 function queryCoordination({ root, args, projection }) {
-  const runtime = path.join(root, ".agent-runtime", "coordination");
+  const runtime = coordinationDir(root);
   const taskId = option(args, "task");
   if (projection === "coordination-tasks") {
     let tasks = listSnapshots(path.join(runtime, "tasks"));
