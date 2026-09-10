@@ -529,6 +529,13 @@ async function initModeGeneral() {
       if (!l1Ctx.options.dryRun) installStateGithooks({ cwd, lang });
       break;
     case "update":
+      // Help must be a zero-write operation. In particular, do not enter
+      // upgrade(), which can reconcile managed scripts and write an update
+      // report before it discovers that the caller only wanted usage.
+      if (ctx.args.includes("--help") || ctx.args.includes("-h")) {
+        args.includes("--json") ? cliHelp(ctx) : printHelp();
+        break;
+      }
       l1Ctx.options.updateScripts = true;
       if (l1Ctx.options.team) {
         l1Ctx.options.teamPhase = "L1-then-L2";
