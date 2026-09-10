@@ -7,15 +7,17 @@ function readJson(file) {
   try { return JSON.parse(fs.readFileSync(file, "utf8")); } catch (_) { return null; }
 }
 
-// MS-003 / runtime-layout compat: prefer the new .agent/runtime/coordination
-// namespace, and fall back to the legacy .agent-runtime/coordination for
-// projects that have not yet been migrated. This mirrors the resolver logic
-// but stays self-contained because this script is distributed to consumers
-// and must not require lib/runtime-layout.
+// MS-003 / runtime-layout compat: use the new .agent/runtime/coordination
+// namespace only after the layout activation marker is present. Before then,
+// a legacy runtime takes precedence even if an earlier failed write left an
+// empty new runtime directory behind. This mirrors the resolver's write rule
+// while staying self-contained for distribution to consumer projects.
 function coordinationDir(root) {
   const newDir = path.join(root, ".agent", "runtime", "coordination");
-  if (fs.existsSync(newDir)) return newDir;
-  return path.join(root, ".agent-runtime", "coordination");
+  const legacyDir = path.join(root, ".agent-runtime", "coordination");
+  const activated = fs.existsSync(path.join(root, ".agent", "runtime", "layout.json"));
+  if (activated || !fs.existsSync(legacyDir)) return newDir;
+  return legacyDir;
 }
 
 function option(args, name) {

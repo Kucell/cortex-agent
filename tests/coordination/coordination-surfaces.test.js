@@ -294,6 +294,30 @@ test("focused Management API projections read runtime state without writing", ()
   fs.rmSync(project, { recursive: true, force: true });
 });
 
+test("Management API reads legacy task state before layout activation despite a stale new runtime", () => {
+  const project = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-coordination-query-legacy-"));
+  const legacyRuntime = path.join(project, ".agent-runtime", "coordination");
+  const staleNewRuntime = path.join(project, ".agent", "runtime", "coordination");
+  fs.mkdirSync(path.join(legacyRuntime, "tasks"), { recursive: true });
+  fs.mkdirSync(path.join(staleNewRuntime, "tasks"), { recursive: true });
+  fs.writeFileSync(path.join(legacyRuntime, "tasks", "T-LEGACY.json"), JSON.stringify({
+    schemaVersion: "1.0",
+    payload: { taskId: "T-LEGACY", state: "CREATED" },
+  }));
+  try {
+    const { queryCoordination } = require("../../templates/_shared/.agent/skills/management-api/scripts/query-coordination");
+    const result = queryCoordination({
+      root: project,
+      args: ["--task", "T-LEGACY"],
+      projection: "coordination-tasks",
+    });
+    assert.equal(result.tasks.length, 1);
+    assert.equal(result.tasks[0].taskId, "T-LEGACY");
+  } finally {
+    fs.rmSync(project, { recursive: true, force: true });
+  }
+});
+
 test("Team Pack allows policy but rejects coordination runtime records", () => {
   const project = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-coordination-pack-"));
   fs.mkdirSync(path.join(project, "source"), { recursive: true });
