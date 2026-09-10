@@ -90,6 +90,27 @@ test("linkGlobalConfig: creates a relative symlink when none exists", (t) => {
   assert.equal(resolved, realHomeAgent, "symlink must resolve to current ~/.agent");
 });
 
+test("linkGlobalConfig: preserves an existing shared-skills directory", (t) => {
+  const { project, fakeHome } = withHomeAndProject(t);
+  const globalSkills = path.join(fakeHome, ".agents", "skills");
+  const sharedSkills = path.join(project, ".agent", "global-shared-skills");
+  fs.mkdirSync(globalSkills, { recursive: true });
+  fs.mkdirSync(sharedSkills, { recursive: true });
+  const sentinel = path.join(sharedSkills, "local-skill.md");
+  fs.writeFileSync(sentinel, "keep this directory", "utf8");
+  const warnings = [];
+  const originalWarn = console.warn;
+  console.warn = (message) => warnings.push(String(message));
+  t.after(() => { console.warn = originalWarn; });
+
+  setup.linkGlobalConfig({ cwd: project, lang: "en" });
+
+  assert.equal(fs.lstatSync(sharedSkills).isSymbolicLink(), false);
+  assert.equal(fs.readFileSync(sentinel, "utf8"), "keep this directory");
+  assert.match(warnings.join("\n"), /preserving local content/);
+  assert.doesNotMatch(warnings.join("\n"), /EEXIST/);
+});
+
 // ---------------------------------------------------------------------------
 // 3. Existing link with correct target → no rebuild (preserves marker file)
 // ---------------------------------------------------------------------------
