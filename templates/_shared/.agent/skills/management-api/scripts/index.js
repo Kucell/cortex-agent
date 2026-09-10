@@ -911,7 +911,10 @@ function requestDecision() {
   const decisionId = safeId(option("--decision-id", payload.decision_id), "D");
   const type = String(option("--type", payload.type || "")).trim();
   if (!DECISION_TYPES.has(type)) fail("invalid_decision_type", `--type must be one of: ${[...DECISION_TYPES].join(", ")}.`);
-  const decisionGate = payload.gate || { action: option("--gate-action"), resource_ref: option("--resource-ref") };
+  const decisionGate = payload.gate || {
+    action: option("--gate-action") || option("--action"),
+    resource_ref: option("--resource-ref"),
+  };
   const gateError = validateDecisionGate(decisionGate);
   if (gateError) fail("invalid_decision_gate", gateError);
   const requestedBy = String(option("--requested-by", payload.requested_by || "")).trim();
