@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cortex-agent.local/schemas/dispatch/orchestration-plan.schema.json",
+  "title": "Cortex Agent Orchestration Plan (Read-Only)",
+  "description": "A read-only cross-workflow plan. It delegates all state changes to existing owners and cannot authorize Task, Lease, Operation, Run, Decision, Waitpoint, worktree, or host-process writes.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "taskId", "entry", "ownedFiles", "resources", "dependencies", "hostRequirement", "gates", "result", "blockers"],
+  "properties": {
+    "schemaVersion": { "const": "1.0" },
+    "taskId": { "type": "string", "minLength": 1 },
+    "entry": { "enum": ["start-task", "plan", "mission", "parallel", "arch-design"] },
+    "ownedFiles": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "resources": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "dependencies": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "hostRequirement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["capabilities", "degradedAllowed"],
+      "properties": {
+        "capabilities": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "degradedAllowed": { "type": "boolean" }
+      }
+    },
+    "gates": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["decision", "waitpoint"],
+      "properties": {
+        "decision": { "type": "string", "minLength": 1 },
+        "waitpoint": { "type": "string", "minLength": 1 }
+      }
+    },
+    "result": { "enum": ["would_proceed", "blocked"] },
+    "blockers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code", "owner", "nextAction"],
+        "properties": {
+          "code": { "type": "string", "minLength": 1 },
+          "owner": { "type": "string", "minLength": 1 },
+          "nextAction": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  }
+}
