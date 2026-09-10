@@ -47,7 +47,8 @@ test("coordination: help is read-only and never creates runtime state", () => {
   } finally {
     output = restore();
   }
-  assert.match(output, /task <create\|assign/);
+  assert.match(output, /task create --project <path> --task <id>/);
+  assert.doesNotMatch(output, /event-json/);
   // Under the new runtime layout the coordination namespace lives under .agent/runtime.
   assert.equal(fs.existsSync(path.join(root, ".agent/runtime")), false);
 });

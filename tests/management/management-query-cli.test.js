@@ -6,7 +6,7 @@ const os = require("node:os");
 const path = require("node:path");
 const { spawnSync } = require("node:child_process");
 const test = require("node:test");
-const { createEvent, STATES } = require("../../lib/coordination/contract");
+const { STATES } = require("../../lib/coordination/contract");
 
 const ROOT = path.resolve(__dirname, "..", "..");
 const CLI = path.join(ROOT, "bin", "cli.js");
@@ -121,22 +121,12 @@ test("task create is readable by later status and list CLI processes after layou
   fs.mkdirSync(path.join(project, ".agent", "runtime"), { recursive: true });
   fs.writeFileSync(path.join(project, ".agent", "runtime", "layout.json"), "{}\n", "utf8");
   const taskId = "T-CROSS-PROCESS";
-  const event = createEvent({
-    eventId: "CE-CROSS-PROCESS-CREATE",
-    projectId: "project",
-    taskId,
-    correlationId: "CORR-CROSS-PROCESS",
-    producer: { actorId: "coordinator", kind: "coordinator" },
-    targets: [],
-    eventType: "task.created",
-    previousState: null,
-    currentState: STATES.CREATED,
-    timestamp: "2026-09-10T00:00:00.000Z",
-    repository: { repositoryId: "repo" },
-    notification: { policy: "journal_only", dedupeKey: "cross-process" },
-  });
-
-  const created = run(project, ["task", "create", "--project", project, "--event-json", JSON.stringify(event)]);
+  const created = run(project, [
+    "task", "create", "--project", project, "--task", taskId,
+    "--actor", "coordinator", "--session", "S-CROSS-PROCESS",
+    "--project-id", "project", "--correlation-id", "CORR-CROSS-PROCESS",
+    "--repository-id", "repo",
+  ]);
   assert.equal(created.status, 0, created.stderr);
   const status = run(project, ["task", "status", "--project", project, "--task", taskId]);
   assert.equal(status.status, 0, status.stderr);

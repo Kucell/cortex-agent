@@ -38,6 +38,54 @@ test("task CLI delegates writes and reads without duplicating state rules", () =
   assert.equal(calls.length, 2);
 });
 
+test("task create, assign, and accept construct events from restricted fields", () => {
+  const events = [];
+  const service = {
+    submit(event) {
+      events.push(event);
+      return { event, task: { state: event.currentState } };
+    },
+    getTask(taskId) {
+      if (taskId !== "T-FIELDS") return null;
+      if (events.length === 0) return null;
+      const last = events.at(-1);
+      return {
+        taskId,
+        projectId: "project",
+        correlationId: "CORR-FIELDS",
+        state: last.currentState,
+      };
+    },
+  };
+  const common = ["--task", "T-FIELDS", "--actor", "coordinator", "--session", "S-1"];
+  const created = executeCoordinationCommand([
+    "task", "create", ...common, "--project-id", "project", "--correlation-id", "CORR-FIELDS",
+  ], { service });
+  assert.equal(created.ok, true);
+  assert.equal(events[0].eventType, "task.created");
+  assert.equal(events[0].currentState, STATES.CREATED);
+
+  const assigned = executeCoordinationCommand([
+    "task", "assign", ...common, "--assignee", "pi",
+  ], { service });
+  assert.equal(assigned.ok, true);
+  assert.deepEqual(events[1].targets, [{ actorId: "pi", kind: "agent" }]);
+
+  const accepted = executeCoordinationCommand([
+    "task", "accept", "--task", "T-FIELDS", "--actor", "pi", "--session", "S-PI",
+  ], { service });
+  assert.equal(accepted.ok, true);
+  assert.equal(events[2].eventType, "task.accepted");
+  assert.equal(events[2].producer.kind, "agent");
+
+  const rejected = executeCoordinationCommand([
+    "task", "create", ...common, "--project-id", "project", "--correlation-id", "CORR-INVALID",
+    "--unexpected", "value",
+  ], { service });
+  assert.equal(rejected.ok, false);
+  assert.equal(rejected.error.code, "UNKNOWN_OPTIONS_REJECTED");
+});
+
 test("task CLI accepts only the bounded auth context contract", () => {
   const calls = [];
   const service = {
