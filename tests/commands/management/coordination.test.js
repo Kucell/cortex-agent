@@ -38,8 +38,9 @@ test("coordination: help is read-only and never creates runtime state", () => {
   const root = mkRoot();
   const { restore } = captureStdout();
   let output;
+  let result;
   try {
-    const result = coordination({
+    result = coordination({
       args: ["task", "create", "--help"], cwd: root, options: {}, lang: "en",
     });
     assert.equal(result.ok, true);
@@ -47,7 +48,14 @@ test("coordination: help is read-only and never creates runtime state", () => {
   } finally {
     output = restore();
   }
-  assert.match(output, /task <create\|assign/);
+  // P-009: `task create --help` must return the create contract, not the
+  // namespace overview usage. The contract carries its own usage block and is
+  // surfaced both as text and on the structured result.
+  assert.match(output, /task create --project/);
+  assert.match(output, /--event-json/);
+  assert.match(result.contract, /task create --project/);
+  assert.equal(result.action, "create");
+  assert.doesNotMatch(output, /task <create\|assign/);
   // Under the new runtime layout the coordination namespace lives under .agent/runtime.
   assert.equal(fs.existsSync(path.join(root, ".agent/runtime")), false);
 });

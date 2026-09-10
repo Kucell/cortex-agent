@@ -167,11 +167,23 @@ const { eventBusCommand } = require("../lib/event-bus/cli");
 const { stateSync, installStateGithooks, fireAndForgetSync } = require("../lib/state-sync/index.js");
 const { shouldAutoSyncCoordination } = require("../lib/commands/management/coordination.js");
 
+// M-035 MS-003 (P-009): .help/ contract dispatch.
+//
+// Subcommands whose public contract lives in the tracked top-level .help/
+// directory resolve their `--help` there before any argument validation runs.
+// This keeps help discoverable even when required flags are missing (the
+// original P-009 defect: `lease acquire --help` failed with ERR_ARG_REQUIRED
+// because usage was only reachable after parsing). Strictly additive: when no
+// contract matches, dispatch falls through to the pre-existing handlers.
+const { dispatchHelp } = require("../lib/commands/agent/help-dispatch.js");
+
 // ─── Context ──────────────────────────────────────────────────────────────────
 
 const cwd = process.cwd();
 const args = process.argv.slice(2);
 const command = args[0];
+
+if (dispatchHelp(args)) return;
 
 if (command === "--version" || command === "-v") {
   const { version } = require("../package.json");

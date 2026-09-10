@@ -36,7 +36,7 @@ cortex-agent query coordination-events --project . --task T-001
 cortex-agent runs checkpoint --project . --run-id R-T005 --task-id T-005 --type validation_started --phase validating --activity "Running focused tests"
 cortex-agent queues upsert --project . --queue-id Q-batch-1 --gate parallel --name "Batch 1" --concurrency-limit 2
 cortex-agent sessions heartbeat --project . --session-id S-dashboard --agent-id dashboard-manager --activity "Refreshing dashboard"
-cortex-agent decisions request --project . --decision-id D-merge --gate mission --type merge --requested-by coordinator --prompt "Approve merge?" --action merge --resource-ref branch:integration
+cortex-agent decisions request --project . --decision-id D-merge --gate mission --type merge --requested-by coordinator --prompt "Approve merge?" --gate-action merge --resource-ref branch:integration --options '["approve","revise","reject"]'
 cortex-agent decisions resolve --project . --decision-id D-merge --gate user --status approved --selected-option approve --resolved-by maintainer --rationale "Validation passed"
 cortex-agent waitpoints create --project . --waitpoint-id WP-merge --gate mission --owner-workflow /checkpoint-merge --reason "Merge approval required" --action merge --resource-ref branch:integration --decision-id D-merge
 cortex-agent waitpoints release --project . --waitpoint-id WP-merge --gate owner --owner-workflow /checkpoint-merge --decision-id D-merge --released-by coordinator

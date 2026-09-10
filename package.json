@@ -15,6 +15,7 @@
     "agents",
     "commands",
     "skills",
+    ".help",
     ".claude-plugin"
   ],
   "engines": {
