@@ -378,8 +378,9 @@ test("probeGateway delegates to probeMod and forces auth_state='unknown'", () =>
 
 test("discoverSkills delegates to skillDiscovery", () => {
   const descriptors = gateway.discoverSkills("/tmp/__nonexistent__");
-  // 21 portable paths including both Pi user roots.
-  assert.equal(descriptors.length, 21);
+  // 33 portable paths including both Pi user roots; M-031 MS-002 added the
+  // dsh / codey / minimax hosts (4 paths each) on top of the pre-MS-002 21.
+  assert.equal(descriptors.length, 33);
 });
 
 // ─── GovernedToolError class ──────────────────────────────────────────────
