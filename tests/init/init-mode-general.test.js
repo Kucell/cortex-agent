@@ -193,6 +193,58 @@ test("init --mode general: missing templates/_base/.agent surfaces a clear error
 
 // ─── 3. additive-only guard ───────────────────────────────────────────────────
 
+test("init --mode general: overlays shared capabilities so Tasks persist across processes", { skip: !fs.existsSync(BASE_TEMPLATES) && "templates/_base/.agent missing — MS-001 still in flight" }, () => {
+  if (!fs.existsSync(BASE_TEMPLATES)) return;
+  const dir = mkTmp("cortex-init-general-capabilities-");
+  try {
+    const init = runCli(dir, ["init", "--mode", "general"]);
+    assert.equal(init.status, 0, `cli exit=${init.status}\nstdout=${init.stdout}\nstderr=${init.stderr}`);
+
+    // General mode ships no coordination runtime of its own, so the public
+    // read path has to be overlaid from templates/_shared. Without these two
+    // modules `task create` succeeds but every later process fails closed with
+    // MANAGEMENT_API_UNAVAILABLE, because the query script requires the task
+    // state module at a project-relative path.
+    const readEntry = path.join(dir, ".agent", "skills", "management-api", "scripts", "index.js");
+    const taskState = path.join(dir, ".agent", "tasks", "scripts", "task-state.js");
+    assert.ok(fs.existsSync(readEntry), `missing public read path ${readEntry}`);
+    assert.ok(fs.existsSync(taskState), `missing task state module ${taskState}`);
+
+    const taskId = "T-GENERAL-CROSS-PROCESS";
+    const created = runCli(dir, [
+      "task", "create", "--project", dir, "--task", taskId,
+      "--actor", "coordinator", "--session", "S-GENERAL-CROSS-PROCESS",
+      "--project-id", "general", "--correlation-id", "CORR-GENERAL-CROSS-PROCESS",
+      "--repository-id", "repo",
+    ]);
+    assert.equal(created.status, 0, `task create stderr=${created.stderr}`);
+    assert.equal(
+      JSON.parse(created.stdout).ok,
+      true,
+      `task create must not report failure: ${created.stdout}`,
+    );
+
+    // A brand-new process must hydrate the Task from disk rather than report
+    // on in-process memory of the write.
+    const status = runCli(dir, ["task", "status", "--project", dir, "--task", taskId]);
+    assert.equal(status.status, 0, `task status stderr=${status.stderr}`);
+    const statusPayload = JSON.parse(status.stdout);
+    assert.ok(statusPayload.task, `task status returned null for ${taskId}: ${status.stdout}`);
+    assert.equal(statusPayload.task.state, "CREATED");
+
+    const listed = runCli(dir, ["task", "list", "--project", dir]);
+    assert.equal(listed.status, 0, `task list stderr=${listed.stderr}`);
+    assert.ok(
+      JSON.parse(listed.stdout).tasks.some((task) => task.taskId === taskId),
+      "task list must include the Task created in the previous process",
+    );
+  } finally {
+    rmrf(dir);
+  }
+});
+
+// ─── 3. additive-only guard ───────────────────────────────────────────────────
+
 test("MS-002 is additive: only the 3 owned files changed since base", () => {
   const base = readBaseCommit();
   const diff = spawnSync(

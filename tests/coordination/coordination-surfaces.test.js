@@ -366,6 +366,79 @@ test("Management API reads legacy task state before layout activation despite a 
   }
 });
 
+// Regression: the layout activation marker proves the new namespace owns
+// future writes; it does not prove every pre-existing record was migrated. A
+// Task snapshot that only exists under .agent-runtime/ must stay readable, and
+// a committed lease in the same legacy namespace must stay visible, otherwise
+// the public task read path reports null for work that really exists.
+test("Management API falls back to legacy coordination records after layout activation", () => {
+  const project = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-coordination-query-activated-legacy-"));
+  const legacyRuntime = path.join(project, ".agent-runtime", "coordination");
+  const newRuntime = path.join(project, ".agent", "runtime", "coordination");
+  fs.mkdirSync(path.join(legacyRuntime, "tasks"), { recursive: true });
+  fs.mkdirSync(path.join(legacyRuntime, "journal"), { recursive: true });
+  fs.mkdirSync(path.join(legacyRuntime, "leases"), { recursive: true });
+  fs.mkdirSync(path.join(newRuntime, "tasks"), { recursive: true });
+  // Activation marker present: new layout is active for writes.
+  fs.writeFileSync(path.join(project, ".agent", "runtime", "layout.json"), "{}\n");
+  fs.writeFileSync(path.join(legacyRuntime, "tasks", "T-LEGACY-ONLY.json"), JSON.stringify({
+    schemaVersion: "1.0",
+    payload: { taskId: "T-LEGACY-ONLY", state: "CREATED" },
+  }));
+  fs.writeFileSync(path.join(legacyRuntime, "tasks", "T-BOTH.json"), JSON.stringify({
+    schemaVersion: "1.0",
+    payload: { taskId: "T-BOTH", state: "FAILED" },
+  }));
+  fs.writeFileSync(path.join(newRuntime, "tasks", "T-BOTH.json"), JSON.stringify({
+    schemaVersion: "1.0",
+    payload: { taskId: "T-BOTH", state: "READY_FOR_REVIEW" },
+  }));
+  fs.writeFileSync(path.join(legacyRuntime, "journal", "events-000001.jsonl"), [
+    JSON.stringify({
+      v: 1,
+      event: { eventId: "CE-LEGACY-1", taskId: "T-LEGACY-ONLY", eventType: "task.created" },
+      prevHash: "0".repeat(64),
+      hash: "2".repeat(64),
+    }),
+    "",
+  ].join("\n"));
+  fs.writeFileSync(path.join(legacyRuntime, "leases", "state.json"), JSON.stringify({
+    version: 1,
+    leases: [{ leaseId: "LEASE-LEGACY", scope: "src/**", owner: "claude", taskId: "T-LEGACY-ONLY" }],
+    takeovers: [],
+    audit: [],
+  }));
+  try {
+    const { queryCoordination } = require("../../templates/_shared/.agent/skills/management-api/scripts/query-coordination");
+    const tasks = queryCoordination({ root: project, args: [], projection: "coordination-tasks" });
+    const ids = tasks.tasks.map((task) => task.taskId).sort();
+    assert.deepEqual(ids, ["T-BOTH", "T-LEGACY-ONLY"]);
+    // New-layout record wins for an identity present in both namespaces.
+    assert.equal(tasks.tasks.find((task) => task.taskId === "T-BOTH").state, "READY_FOR_REVIEW");
+
+    const exact = queryCoordination({
+      root: project,
+      args: ["--task", "T-LEGACY-ONLY"],
+      projection: "coordination-tasks",
+    });
+    assert.equal(exact.tasks.length, 1);
+    assert.equal(exact.tasks[0].taskId, "T-LEGACY-ONLY");
+
+    const events = queryCoordination({ root: project, args: [], projection: "coordination-events" });
+    assert.ok(events.events.some((event) => event.eventId === "CE-LEGACY-1"));
+
+    const ownership = queryCoordination({
+      root: project,
+      args: ["--task", "T-LEGACY-ONLY"],
+      projection: "coordination-ownership",
+    });
+    assert.equal(ownership.ownership.length, 1);
+    assert.equal(ownership.ownership[0].leaseId, "LEASE-LEGACY");
+  } finally {
+    fs.rmSync(project, { recursive: true, force: true });
+  }
+});
+
 test("Team Pack allows policy but rejects coordination runtime records", () => {
   const project = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-coordination-pack-"));
   fs.mkdirSync(path.join(project, "source"), { recursive: true });

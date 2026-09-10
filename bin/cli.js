@@ -399,7 +399,7 @@ function runSession(args) {
 // addition to the data layer. Pure addition — no changes to _base/ or
 // to the existing init() function.
 async function initModeGeneral() {
-  const { copyRecursive } = require("../lib/setup/index.js");
+  const { copyRecursive, overlayGeneralCapabilities } = require("../lib/setup/index.js");
   const { writeVersionFile } = require("../lib/commands/patches.js");
   const { writePublicAnchor } = require("../lib/commands/anchor.js");
   const { applyGitExclusion } = require("../lib/platform/index.js");
@@ -449,6 +449,24 @@ async function initModeGeneral() {
   } else {
     console.warn(
       "⚠️  templates/general/.agent not found; skipped template layer copy (general workflow contracts unavailable).",
+    );
+  }
+
+  // Shared capability layer: general mode owns no coordination runtime of its
+  // own, so without this overlay `task create` succeeds but a later process
+  // cannot read the Task back (MANAGEMENT_API_UNAVAILABLE). Code-mode init
+  // already layers templates/_shared/.agent over the project; general mode
+  // needs at least skills/management-api + tasks/scripts for the public
+  // `task status` / `task list` read path to exist. Additive only.
+  const templatesRoot = path.join(__dirname, "..", "templates");
+  const overlaid = overlayGeneralCapabilities(templatesRoot, baseDest);
+  if (overlaid.length > 0) {
+    console.log(
+      `✅ general mode init: overlaid shared capabilities (${overlaid.join(", ")})`,
+    );
+  } else {
+    console.warn(
+      "⚠️  templates/_shared/.agent capability layer not found; skipped overlay (public task read commands will fail closed).",
     );
   }
 
