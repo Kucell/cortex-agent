@@ -231,3 +231,76 @@ test("VC-013-05-13 executeDispatch records fencingToken from the lease in the ex
     assert.equal(result.run.host_profile_ref, `H-${baseArgs(root).host}`);
   } finally { rmProject(root); }
 });
+
+// ─── M-031 MS-002 / VC-031-002-03 — SUPPORTED_HOSTS P-007 expansion ───────────
+//
+// P-007 §4.6 — `lib/dispatch/execute.js#SUPPORTED_HOSTS` extends with
+// `dsh` / `codey` / `minimax` (additive; the four existing entries are
+// preserved in stable order). VC-031-002-03 asserts
+// "SUPPORTED_HOSTS contains cursor, dsh, codey, and minimax without
+// regressing the existing four hosts" — the test below pins both halves.
+
+test("VC-031-002-03 SUPPORTED_HOSTS contains cursor, dsh, codey, and minimax", () => {
+  const hosts = dispatchExecute.SUPPORTED_HOSTS;
+  assert.ok(hosts.includes("cursor"));
+  assert.ok(hosts.includes("dsh"));
+  assert.ok(hosts.includes("codey"));
+  assert.ok(hosts.includes("minimax"));
+});
+
+test("VC-031-002-03 SUPPORTED_HOSTS preserves the existing four hosts without regression", () => {
+  const hosts = dispatchExecute.SUPPORTED_HOSTS;
+  // Pre-M-031 four hosts.
+  assert.ok(hosts.includes("claude-code"));
+  assert.ok(hosts.includes("pi"));
+  assert.ok(hosts.includes("codex"));
+  // cursor was already in the pre-M-031 four; re-check to keep both halves
+  // of the contract in one place.
+  assert.ok(hosts.includes("cursor"));
+});
+
+test("VC-031-002-03 SUPPORTED_HOSTS ordering keeps the four pre-M-031 hosts before the three new", () => {
+  const hosts = dispatchExecute.SUPPORTED_HOSTS;
+  // The original four must come before the three additive entries so any
+  // audit projection (CSV / JSON dump) stays stable across releases.
+  const order = ["claude-code", "pi", "codex", "cursor", "dsh", "codey", "minimax"];
+  for (let i = 0; i < order.length; i += 1) {
+    assert.equal(hosts[i], order[i], `position ${i} must be ${order[i]} (was ${hosts[i]})`);
+  }
+});
+
+test("VC-031-002-03 executeDispatch accepts dsh (happy path validation)", () => {
+  const root = mkProject();
+  try {
+    seedApproval(root, "T-M031-MS002-dsh");
+    const result = dispatchExecute.executeDispatch(
+      baseArgs(root, { host: "dsh", taskId: "T-M031-MS002-dsh", idempotencyKey: "m031-ms002-dsh" }),
+    );
+    assert.equal(result.ok, true);
+    assert.equal(result.run.host_profile_ref, "H-dsh");
+  } finally { rmProject(root); }
+});
+
+test("VC-031-002-03 executeDispatch accepts codey (happy path validation)", () => {
+  const root = mkProject();
+  try {
+    seedApproval(root, "T-M031-MS002-codey");
+    const result = dispatchExecute.executeDispatch(
+      baseArgs(root, { host: "codey", taskId: "T-M031-MS002-codey", idempotencyKey: "m031-ms002-codey" }),
+    );
+    assert.equal(result.ok, true);
+    assert.equal(result.run.host_profile_ref, "H-codey");
+  } finally { rmProject(root); }
+});
+
+test("VC-031-002-03 executeDispatch accepts minimax (happy path validation)", () => {
+  const root = mkProject();
+  try {
+    seedApproval(root, "T-M031-MS002-minimax");
+    const result = dispatchExecute.executeDispatch(
+      baseArgs(root, { host: "minimax", taskId: "T-M031-MS002-minimax", idempotencyKey: "m031-ms002-minimax" }),
+    );
+    assert.equal(result.ok, true);
+    assert.equal(result.run.host_profile_ref, "H-minimax");
+  } finally { rmProject(root); }
+});
