@@ -61,3 +61,43 @@ test("writer gates and atomic failures use stable exit classes", (t) => {
   assert.equal(result.status, 5, result.stderr);
   assert.equal(JSON.parse(result.stdout).error.code, "ATOMIC_WRITE_FAILED");
 });
+
+test("decisions request help and writer accept the documented gate-action and options contract", (t) => {
+  const project = createProject();
+  t.after(() => fs.rmSync(project, { recursive: true, force: true }));
+
+  const help = spawnSync(process.execPath, [CLI, "help", "--json"], {
+    cwd: project,
+    encoding: "utf8",
+    env: { ...process.env, LANG: "en_US.UTF-8" },
+  });
+  assert.equal(help.status, 0, help.stderr);
+  const usage = JSON.parse(help.stdout).contract.management.writer_usage["decisions request"];
+  assert.match(usage, /--gate-action <action>/);
+  assert.match(usage, /--options <json-array>/);
+  assert.match(usage, /--action <action> legacy alias/);
+
+  let result = run(project, project, [
+    "decisions", "request", "--decision-id", "D-GATE-ACTION", "--gate", "mission",
+    "--type", "architecture", "--requested-by", "coordinator", "--prompt", "Approve?",
+    "--gate-action", "architecture", "--resource-ref", "proposal:test", "--options", '["approve","reject"]',
+  ]);
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(JSON.parse(result.stdout).decision.gate.action, "architecture");
+
+  result = run(project, project, [
+    "decisions", "request", "--decision-id", "D-GATE-ACTION-PRIORITY", "--gate", "mission",
+    "--type", "architecture", "--requested-by", "coordinator", "--prompt", "Approve?",
+    "--gate-action", "architecture", "--action", "merge", "--resource-ref", "proposal:priority", "--options", '["approve","reject"]',
+  ]);
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(JSON.parse(result.stdout).decision.gate.action, "architecture");
+
+  result = run(project, project, [
+    "decisions", "request", "--decision-id", "D-LEGACY-ACTION", "--gate", "mission",
+    "--type", "architecture", "--requested-by", "coordinator", "--prompt", "Approve?",
+    "--action", "architecture", "--resource-ref", "proposal:legacy", "--options", '["approve","reject"]',
+  ]);
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(JSON.parse(result.stdout).decision.gate.action, "architecture");
+});

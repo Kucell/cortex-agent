@@ -872,6 +872,124 @@ describe("Legacy .agent/runtime/ Schema Migration", { concurrency: 1 }, () => {
 });
 
 
+// ─── Schemas-Only Migration (csm-view-1 scenario) ────────────────────────────
+//
+// VC-011 (regression): When `.agent-runtime/` is absent but
+// `.agent/runtime/*.schema.json` (legacy schemas) remain in place, the planner
+// must NOT no-op. It must produce a plan that moves the legacy schemas to
+// `.agent/contracts/runtime-state/` and writes the activation marker. This is
+// the csm-view-1 / clean-init scenario.
+
+describe("Schemas-Only Migration (no `.agent-runtime/`, schemas in `.agent/runtime/`)", { concurrency: 1 }, () => {
+  const fixtures = [];
+
+  function createSchemasOnlyFixture(root) {
+    // No `.agent-runtime/` directory at all.
+    // Only `.agent/runtime/*.schema.json` legacy schemas remain.
+    const agentDir = path.join(root, AGENT_DIR_SEGMENT);
+    const runtimeDir = path.join(agentDir, RUNTIME_DIR);
+    fs.mkdirSync(runtimeDir, { recursive: true });
+    fs.writeFileSync(path.join(runtimeDir, "authorization.schema.json"), "{\"a\":1}");
+    fs.writeFileSync(path.join(runtimeDir, "evidence-ref.schema.json"), "{\"e\":1}");
+    fs.writeFileSync(path.join(runtimeDir, "runtime-state-projection.schema.json"), "{\"r\":1}");
+    return root;
+  }
+
+  afterEach(() => {
+    for (const fixture of fixtures) {
+      try { fs.rmSync(fixture, { recursive: true, force: true }); } catch {}
+    }
+    fixtures.length = 0;
+  });
+
+  it("planner produces a non-noop plan with schema moves and activation only", () => {
+    const fixtureRoot = fs.mkdtempSync(path.join(require("node:os").tmpdir(), "schemas-only-plan-"));
+    fixtures.push(fixtureRoot);
+    createSchemasOnlyFixture(fixtureRoot);
+
+    const ctx = { cwd: fixtureRoot };
+    const plan = buildMigrationPlan(ctx, { dryRun: true });
+
+    assert.strictEqual(plan.is_noop, false, "must not noop when legacy schemas exist");
+    assert.strictEqual(plan.has_legacy, true, "has_legacy reflects schemas-only state");
+
+    const types = plan.actions.map((a) => a.type);
+    assert.ok(!types.includes(ACTION_TYPES.INSPECT_LEGACY), "must not include INSPECT_LEGACY without legacy");
+    assert.ok(!types.includes(ACTION_TYPES.COPY_RUNTIME_PORTABLE), "must not copy portable namespaces without legacy");
+    assert.ok(!types.includes(ACTION_TYPES.RETAIN_LEGACY_FALLBACK), "must not retain a non-existent legacy");
+    assert.ok(types.includes(ACTION_TYPES.INSPECT_LEGACY_SCHEMAS), "must inspect legacy schemas");
+    assert.ok(types.includes(ACTION_TYPES.MOVE_LEGACY_SCHEMAS), "must move legacy schemas");
+    assert.ok(types.includes(ACTION_TYPES.COPY_CONTRACTS), "must seed contracts");
+    assert.ok(types.includes(ACTION_TYPES.ACTIVATE_LAYOUT), "must activate layout");
+    assert.ok(types.includes(ACTION_TYPES.SEED_LOCAL_BINDING), "must seed local binding placeholder");
+
+    const moves = plan.actions.filter((a) => a.type === ACTION_TYPES.MOVE_LEGACY_SCHEMAS);
+    assert.strictEqual(moves.length, 3, "must move 3 legacy schemas");
+    const moveTargets = moves.map((a) => a.target_ref).sort();
+    assert.deepStrictEqual(moveTargets, [
+      ".agent/contracts/runtime-state/authorization.schema.json",
+      ".agent/contracts/runtime-state/evidence-ref.schema.json",
+      ".agent/contracts/runtime-state/runtime-state-projection.schema.json",
+    ]);
+  });
+
+  it("apply moves schemas to contracts and writes activation marker", () => {
+    const fixtureRoot = fs.mkdtempSync(path.join(require("node:os").tmpdir(), "schemas-only-apply-"));
+    fixtures.push(fixtureRoot);
+    createSchemasOnlyFixture(fixtureRoot);
+    const ctx = { cwd: fixtureRoot };
+
+    const plan = buildMigrationPlan(ctx, { dryRun: false });
+    const result = applyMigration(ctx, plan);
+    assert.ok(result.ok, "apply must succeed: " + JSON.stringify(result.errors));
+
+    // Sources removed
+    assert.ok(!fs.existsSync(path.join(fixtureRoot, ".agent/runtime/authorization.schema.json")));
+    assert.ok(!fs.existsSync(path.join(fixtureRoot, ".agent/runtime/evidence-ref.schema.json")));
+    assert.ok(!fs.existsSync(path.join(fixtureRoot, ".agent/runtime/runtime-state-projection.schema.json")));
+
+    // Targets present with identical content
+    const contractsDir = path.join(fixtureRoot, ".agent/contracts/runtime-state");
+    assert.ok(fs.existsSync(contractsDir), "contracts dir must exist");
+    assert.strictEqual(
+      fs.readFileSync(path.join(contractsDir, "authorization.schema.json"), "utf8"),
+      "{\"a\":1}",
+    );
+    assert.strictEqual(
+      fs.readFileSync(path.join(contractsDir, "evidence-ref.schema.json"), "utf8"),
+      "{\"e\":1}",
+    );
+    assert.strictEqual(
+      fs.readFileSync(path.join(contractsDir, "runtime-state-projection.schema.json"), "utf8"),
+      "{\"r\":1}",
+    );
+
+    // Activation marker written
+    const markerPath = path.join(fixtureRoot, ".agent/runtime/layout.json");
+    assert.ok(fs.existsSync(markerPath), "activation marker must be written");
+    const marker = JSON.parse(fs.readFileSync(markerPath, "utf8"));
+    assert.strictEqual(marker.layout_version, RUNTIME_LAYOUT_VERSION);
+    assert.ok(marker.activated_at && marker.plan_id && marker.source === "runtime-layout-migration");
+  });
+
+  it("second update after schemas-only migration is a true no-op", () => {
+    const fixtureRoot = fs.mkdtempSync(path.join(require("node:os").tmpdir(), "schemas-only-noop-"));
+    fixtures.push(fixtureRoot);
+    createSchemasOnlyFixture(fixtureRoot);
+    const ctx = { cwd: fixtureRoot };
+
+    const plan1 = buildMigrationPlan(ctx, { dryRun: false });
+    const result1 = applyMigration(ctx, plan1);
+    assert.ok(result1.ok);
+
+    const plan2 = buildMigrationPlan(ctx, { dryRun: true });
+    assert.ok(plan2.is_noop, "second plan must be noop after schemas-only migration");
+
+    const result2 = applyMigration(ctx, plan2);
+    assert.ok(result2.ok && result2.noop, "second apply must succeed and be noop");
+  });
+});
+
 // ─── Helper Functions ────────────────────────────────────────────────────────
 
 function getAllFiles(dir, base = "") {

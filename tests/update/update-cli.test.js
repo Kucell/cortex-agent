@@ -72,3 +72,18 @@ test("help exposes the update command", () => {
   assert.equal(result.status, 0);
   assert.match(result.stdout, /update \[options\]\s+Add files and safely refresh/);
 });
+
+test("update --help is read-only", (t) => {
+  const { cwd, target, current } = fixture();
+  t.after(() => fs.rmSync(cwd, { recursive: true, force: true }));
+  const manifest = path.join(cwd, ".agent", ".script-manifest.json");
+  const beforeManifest = fs.readFileSync(manifest, "utf8");
+
+  const result = run(cwd, ["update", "--help"]);
+
+  assert.equal(result.status, 0, `${result.stderr}\n${result.stdout}`);
+  assert.match(result.stdout, /update \[options\]\s+Add files and safely refresh/);
+  assert.equal(fs.readFileSync(target, "utf8"), current);
+  assert.equal(fs.readFileSync(manifest, "utf8"), beforeManifest);
+  assert.equal(fs.existsSync(path.join(cwd, ".agent", "updates", "latest.json")), false);
+});

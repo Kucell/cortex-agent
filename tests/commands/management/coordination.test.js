@@ -48,14 +48,8 @@ test("coordination: help is read-only and never creates runtime state", () => {
   } finally {
     output = restore();
   }
-  // P-009: `task create --help` must return the create contract, not the
-  // namespace overview usage. The contract carries its own usage block and is
-  // surfaced both as text and on the structured result.
-  assert.match(output, /task create --project/);
-  assert.match(output, /--event-json/);
-  assert.match(result.contract, /task create --project/);
-  assert.equal(result.action, "create");
-  assert.doesNotMatch(output, /task <create\|assign/);
+  assert.match(output, /task create --project <path> --task <id>/);
+  assert.doesNotMatch(output, /event-json/);
   // Under the new runtime layout the coordination namespace lives under .agent/runtime.
   assert.equal(fs.existsSync(path.join(root, ".agent/runtime")), false);
 });

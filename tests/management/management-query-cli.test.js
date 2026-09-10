@@ -6,6 +6,7 @@ const os = require("node:os");
 const path = require("node:path");
 const { spawnSync } = require("node:child_process");
 const test = require("node:test");
+const { STATES } = require("../../lib/coordination/contract");
 
 const ROOT = path.resolve(__dirname, "..", "..");
 const CLI = path.join(ROOT, "bin", "cli.js");
@@ -112,6 +113,27 @@ test("generic query delegates every registered core projection", (t) => {
     assert.equal(payload.project.root, fs.realpathSync(project));
     assert.equal(payload.project.agent_root, fs.realpathSync(path.join(project, ".agent")));
   }
+});
+
+test("task create is readable by later status and list CLI processes after layout activation", (t) => {
+  const project = createProject("cortex-management-coordination-process-");
+  t.after(() => fs.rmSync(project, { recursive: true, force: true }));
+  fs.mkdirSync(path.join(project, ".agent", "runtime"), { recursive: true });
+  fs.writeFileSync(path.join(project, ".agent", "runtime", "layout.json"), "{}\n", "utf8");
+  const taskId = "T-CROSS-PROCESS";
+  const created = run(project, [
+    "task", "create", "--project", project, "--task", taskId,
+    "--actor", "coordinator", "--session", "S-CROSS-PROCESS",
+    "--project-id", "project", "--correlation-id", "CORR-CROSS-PROCESS",
+    "--repository-id", "repo",
+  ]);
+  assert.equal(created.status, 0, created.stderr);
+  const status = run(project, ["task", "status", "--project", project, "--task", taskId]);
+  assert.equal(status.status, 0, status.stderr);
+  assert.equal(JSON.parse(status.stdout).task.state, STATES.CREATED);
+  const listed = run(project, ["task", "list", "--project", project]);
+  assert.equal(listed.status, 0, listed.stderr);
+  assert.ok(JSON.parse(listed.stdout).tasks.some((task) => task.taskId === taskId));
 });
 
 test("operation lifecycle projections filter through the public CLI and redact private fields", (t) => {

@@ -37,3 +37,16 @@ test("query help can discover real project capabilities", () => {
   assert.equal(payload.management_capabilities.projections.some((entry) => entry.name === "activity"), true);
   assert.equal(payload.project.root, ROOT);
 });
+
+test("task help publishes the restricted create, assign, and accept contracts", () => {
+  const result = spawnSync(process.execPath, [CLI, "help", "task", "--json"], { cwd: ROOT, encoding: "utf8" });
+  assert.equal(result.status, 0, result.stderr);
+  const payload = JSON.parse(result.stdout);
+  assert.equal(payload.contract.commands[0].name, "task");
+  const usage = payload.contract.management.coordination.task_writer_usage;
+  assert.match(usage["task create"], /--task <id>/);
+  assert.match(usage["task create"], /--project-id <id>/);
+  assert.match(usage["task assign"], /--assignee <agent-id>/);
+  assert.match(usage["task accept"], /--actor <assignee-id>/);
+  assert.doesNotMatch(usage["task create"], /event-json/);
+});
