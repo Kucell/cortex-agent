@@ -118,6 +118,37 @@ test("public task CLI opens the real Application Service for writes", () => {
   fs.rmSync(project, { recursive: true, force: true });
 });
 
+test("public task CLI keeps task state with leases in the legacy runtime before activation", () => {
+  const project = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-coordination-legacy-cli-"));
+  const legacyRuntime = path.join(project, ".agent-runtime", "coordination");
+  fs.mkdirSync(legacyRuntime, { recursive: true });
+  const event = createEvent({
+    eventId: "CE-legacy-cli-create",
+    projectId: "project",
+    taskId: "T-LEGACY-CLI",
+    correlationId: "CORR-LEGACY-CLI",
+    producer: { actorId: "coordinator", kind: "coordinator" },
+    targets: [],
+    eventType: "task.created",
+    previousState: null,
+    currentState: STATES.CREATED,
+    timestamp: "2026-09-10T00:00:00.000Z",
+    repository: { repositoryId: "repo" },
+    notification: { policy: "journal_only", dedupeKey: "legacy-cli" },
+  });
+  try {
+    const result = spawnSync(process.execPath, [
+      path.join(ROOT, "bin/cli.js"), "task", "create", "--project", project,
+      "--event-json", JSON.stringify(event),
+    ], { cwd: ROOT, encoding: "utf8" });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(fs.readdirSync(path.join(legacyRuntime, "tasks")).length, 1);
+    assert.equal(fs.existsSync(path.join(project, ".agent", "runtime", "coordination", "tasks")), false);
+  } finally {
+    fs.rmSync(project, { recursive: true, force: true });
+  }
+});
+
 test("public task CLI resolves workflow gates from the project mission registry", () => {
   const project = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-coordination-gate-"));
   const run = (action, event, authContext) => spawnSync(process.execPath, [
