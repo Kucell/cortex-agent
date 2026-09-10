@@ -7,6 +7,17 @@ function readJson(file) {
   try { return JSON.parse(fs.readFileSync(file, "utf8")); } catch (_) { return null; }
 }
 
+// Use the activated portable namespace; during the compatibility window the
+// legacy namespace remains authoritative even when an empty new directory is
+// present from an earlier attempt.
+function coordinationDir(root) {
+  const newDir = path.join(root, ".agent", "runtime", "coordination");
+  const legacyDir = path.join(root, ".agent-runtime", "coordination");
+  const activated = fs.existsSync(path.join(root, ".agent", "runtime", "layout.json"));
+  if (activated || !fs.existsSync(legacyDir)) return newDir;
+  return legacyDir;
+}
+
 function option(args, name) {
   const marker = `--${name}`;
   const index = args.indexOf(marker);
@@ -62,7 +73,7 @@ function listEvents(journalDir) {
 }
 
 function queryCoordination({ root, args, projection }) {
-  const runtime = path.join(root, ".agent-runtime", "coordination");
+  const runtime = coordinationDir(root);
   const taskId = option(args, "task");
   if (projection === "coordination-tasks") {
     let tasks = listSnapshots(path.join(runtime, "tasks"));
