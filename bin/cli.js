@@ -263,6 +263,13 @@ for (let i = 0; i < args.length; i++) {
   if (arg === "--strict") {
     options.strict = true;
   }
+  // P-002: explicit active-agent selection for project-scoped operations.
+  if (arg === "--agent") {
+    const value = args[i + 1];
+    options.agent = value && !value.startsWith("--") ? value : "";
+  } else if (arg && arg.startsWith("--agent=")) {
+    options.agent = arg.slice("--agent=".length);
+  }
   if (arg === "--stdin") {
     const value = args[i + 1];
     options.stdin = value && !value.startsWith("--") ? value : "";
@@ -626,6 +633,7 @@ async function initModeGeneral() {
     case "trigger":     phaseZeroAutomation(ctx); break;
     case "dashboard":   dashboard(ctx); break;
     case "team":        await teamPack(ctx); break;
+    case "agents":      agentRegistryCommand(ctx); break; // P-002: plural alias for agent registry CLI
     case "secrets":     secrets(l1Ctx); break;
     case "agent": {
       // Subcommand peek: M-002 MS-003 owns discover/invoke; M-008 owns

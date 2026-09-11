@@ -47,6 +47,25 @@
       "items": { "type": "string" },
       "description": "Capabilities the agent self-declares (e.g. schema_design, javascript, testing, vision, code_review)."
     },
+    "projects": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+        "maxLength": 32,
+        "description": "Project id (normalized kebab-case) this agent subscribes to."
+      },
+      "uniqueItems": true,
+      "maxItems": 32,
+      "default": [],
+      "description": "P-002 project scope: authorization-free subscription/identity scope. Absent or [] means no project scope. Changing these values is additive and does not change schema_version."
+    },
+    "recall": {
+      "type": "string",
+      "enum": ["enabled", "disabled"],
+      "default": "disabled",
+      "description": "P-002 recall opt-in flag: whether the agent participates in team knowledge recall precheck."
+    },
     "external": {
       "type": ["object", "null"],
       "description": "External agent adapter metadata (v1.11). null for first-party agents.",
