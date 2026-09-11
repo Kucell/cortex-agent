@@ -68,6 +68,49 @@ node .agent/skills/friction/scripts/record-signal.js --read --project <root>
 Parses the JSONL, skips malformed lines (reports how many), prints the
 canonical events.
 
+## Friction Score
+
+`friction-score.js` reads canonical redacted FS events and returns a
+**non-persistent** assessment: `{score, coverage, signals, recommendation}`.
+
+- `coverage` is always part of the output: observed / derived / not_observed /
+  not_supported / absent per signal. A signal with no events but declared
+  not_supported/not_observed contributes ZERO to the score - and the output
+  states that explicitly (never an inferred zero-friction).
+- `recommendation` is `none` | `consider` | `suggest`. It is derived from
+  score AND matrix coverage; `suggest` requires observed/derived support.
+- The assessment is aggregate-only: counts, signal names, observability
+  levels, coverage - no prompts, messages, args, output, credentials.
+
+```bash
+node .agent/skills/friction/scripts/friction-score.js --project <root> [--session <S-id>] [--host-matrix dsh|pi]
+```
+
+## Human-Gated Draft (/share-learnings)
+
+`share-learnings.js` creates an experience draft ONLY after explicit user
+confirmation:
+
+```bash
+node .agent/skills/friction/scripts/share-learnings.js --session <S-id> --title <title> [--body <path>] [--confirm]
+```
+
+- WITHOUT `--confirm`: refuses (exit 2) and creates NOTHING. A score
+  recommendation NEVER auto-creates a draft.
+- WITH `--confirm`: writes `/tmp/exp-<session-id>-draft.md` and prints a diff
+  for human review. The draft is not committed, not upvoted, not promoted.
+
+## Assessment State Machine
+
+`FrictionAssessment` journals transitions append-only:
+
+```text
+observed -> assessed -> suggested -> user_approved | dismissed | expired
+```
+
+Terminal states (`user_approved` / `dismissed` / `expired`) are preserved -
+no transition out of them is legal. Journal lines carry only stable ids,
+state names, an actor label and an opaque `evidence_ref` (redaction guard).
 ## No terminal parsing
 
 Events are produced only through the owned runtime writer / run journal path.
