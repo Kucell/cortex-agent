@@ -90,8 +90,10 @@ test("P-003a: valid receipt writes manifest with correct kind states", () => {
   const m = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
   assert.equal(m.manifest_version, 1);
   assert.equal(m.corpus_id, "test-2026-09-11-1.0.0-b1b2c3d4e5f6");
-  assert.equal(m.kinds.episodic.enabled, true);
-  assert.equal(m.kinds.semantic.enabled, true);
+  // P-003b contract: memory kinds stay disabled until P-003c (real upstream records).
+  assert.equal(m.kinds.episodic.enabled, false, "episodic gated until P-003c");
+  assert.equal(m.kinds.episodic.status, "disabled_missing_source");
+  assert.equal(m.kinds.semantic.enabled, false, "semantic gated until P-003c");
   assert.equal(m.kinds.procedural.enabled, false, "procedural stays disabled");
   assert.equal(m.kinds.procedural.status, "disabled_no_consent");
   fs.rmSync(tmp, { recursive: true, force: true });
