@@ -403,6 +403,7 @@ async function initModeGeneral() {
   const { writeVersionFile } = require("../lib/commands/patches.js");
   const { writePublicAnchor } = require("../lib/commands/anchor.js");
   const { applyGitExclusion } = require("../lib/platform/index.js");
+  const { linkGlobalConfig } = require("../lib/setup/index.js");
   const baseSrc = path.join(__dirname, "..", "templates", "_base", ".agent");
   if (!fs.existsSync(baseSrc)) {
     console.error(
@@ -489,6 +490,11 @@ async function initModeGeneral() {
   } catch (_) {
     // best-effort: never fail general-mode init because of git exclusion
   }
+
+  // Wire global config links (~/.agent + ~/.agents/skills) the same way
+  // code-mode init does, so general-mode projects get the symlink for
+  // .agent/global-shared-skills -> ~/.agents/skills/ on first init.
+  linkGlobalConfig({ cwd, lang });
 
   console.log("\n🎉 Cortex Agent (general mode) initialized successfully!");
   console.log(
