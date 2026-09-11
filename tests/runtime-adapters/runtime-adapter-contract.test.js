@@ -697,3 +697,143 @@ test("frozen validator does not share mutable references between calls", () => {
   // path were weakened). Test by reading only.
   assert.notStrictEqual(out1.host, out2.host);
 });
+
+// ─── P-003 friction signal extension (M-003A) ─────────────────────────────
+
+test("capability vocabulary exposes the P-003 friction signal extension", () => {
+  assert.ok(Array.isArray(cap.FRICTION_SIGNAL_NAMES));
+  assert.ok(Object.isFrozen(cap.FRICTION_SIGNAL_NAMES));
+  for (const name of [
+    "tool_denied",
+    "tool_failed",
+    "tool_retried",
+    "user_interrupted",
+    "user_correction",
+    "lifecycle_stop",
+  ]) {
+    assert.ok(cap.FRICTION_SIGNAL_NAMES.includes(name), `missing signal ${name}`);
+  }
+  for (const level of ["observed", "derived", "not_observed", "not_supported"]) {
+    assert.ok(cap.FRICTION_OBSERVABILITY.includes(level), `missing observability ${level}`);
+  }
+  for (const level of ["aggregate_only", "full"]) {
+    assert.ok(cap.FRICTION_REDACTION_LEVELS.includes(level), `missing redaction level ${level}`);
+  }
+  assert.equal(cap.FRICTION_SIGNAL_NAMES_MAX, 6);
+  assert.equal(cap.FRICTION_LIFECYCLE_EVENTS_MAX, 32);
+});
+
+test("validateCapabilityDescriptor accepts a friction_signals block", () => {
+  const desc = baseDescriptor();
+  desc.friction_signals = {
+    tool_denied: "not_supported",
+    tool_failed: "observed",
+    tool_retried: "derived",
+    user_interrupted: "not_observed",
+    user_correction: "not_observed",
+    lifecycle_stop: "observed",
+  };
+  desc.friction_lifecycle_events = ["Stop", "PreCompact"];
+  desc.redaction_level = "aggregate_only";
+  const out = cap.validateCapabilityDescriptor(desc);
+  assert.equal(out.friction_signals.tool_failed, "observed");
+  assert.deepEqual(out.friction_lifecycle_events, ["Stop", "PreCompact"]);
+  assert.equal(out.redaction_level, "aggregate_only");
+  assert.equal(Object.isFrozen(out.friction_signals), true);
+  assert.equal(Object.isFrozen(out.friction_lifecycle_events), true);
+});
+
+test("validateCapabilityDescriptor rejects unknown friction signal name", () => {
+  const desc = baseDescriptor();
+  desc.friction_signals = { made_up_signal: "observed" };
+  assert.throws(
+    () => cap.validateCapabilityDescriptor(desc),
+    (err) => err.code === "ERR_FIELD_UNKNOWN" && err.details.key === "made_up_signal"
+  );
+});
+
+test("validateCapabilityDescriptor rejects unknown friction observability value", () => {
+  const desc = baseDescriptor();
+  desc.friction_signals = { tool_failed: "probably" };
+  assert.throws(
+    () => cap.validateCapabilityDescriptor(desc),
+    (err) => err.code === "ERR_FRICTION_OBSERVABILITY_UNKNOWN"
+  );
+});
+
+test("validateCapabilityDescriptor rejects unknown redaction_level value", () => {
+  const desc = baseDescriptor();
+  desc.redaction_level = "verbose";
+  assert.throws(
+    () => cap.validateCapabilityDescriptor(desc),
+    (err) => err.code === "ERR_REDACTION_LEVEL_UNKNOWN"
+  );
+});
+
+test("validateCapabilityDescriptor enforces FRICTION_LIFECYCLE_EVENTS_MAX", () => {
+  const desc = baseDescriptor();
+  desc.friction_lifecycle_events = new Array(cap.FRICTION_LIFECYCLE_EVENTS_MAX + 1).fill("Stop");
+  assert.throws(
+    () => cap.validateCapabilityDescriptor(desc),
+    (err) => err.code === "ERR_FIELD_TOO_LONG"
+  );
+});
+
+test("validateCapabilityDescriptor rejects duplicate lifecycle event names", () => {
+  const desc = baseDescriptor();
+  desc.friction_lifecycle_events = ["Stop", "Stop"];
+  assert.throws(
+    () => cap.validateCapabilityDescriptor(desc),
+    (err) => err.code === "ERR_FRICTION_LIFECYCLE_DUPLICATE"
+  );
+});
+
+test("validateCapabilityDescriptor rejects friction_signals that is not an object", () => {
+  const desc = baseDescriptor();
+  desc.friction_signals = "not-an-object";
+  assert.throws(
+    () => cap.validateCapabilityDescriptor(desc),
+    (err) => err.code === "ERR_FRICTION_SIGNALS_NOT_OBJECT"
+  );
+});
+
+test("validateCapabilityDescriptor rejects friction_lifecycle_events that is not an array", () => {
+  const desc = baseDescriptor();
+  desc.friction_lifecycle_events = "not-an-array";
+  assert.throws(
+    () => cap.validateCapabilityDescriptor(desc),
+    (err) => err.code === "ERR_FRICTION_LIFECYCLE_NOT_ARRAY"
+  );
+});
+
+test("validateCapabilityDescriptor preserves descriptors that omit the friction extension", () => {
+  // Backwards compatibility: descriptors built before M-003A stay valid.
+  const desc = baseDescriptor();
+  const out = cap.validateCapabilityDescriptor(desc);
+  assert.equal(out.friction_signals, undefined);
+  assert.equal(out.friction_lifecycle_events, undefined);
+  assert.equal(out.redaction_level, undefined);
+});
+
+test("DSH adapter descriptor validates against the friction extension", () => {
+  const { DshAdapter } = require("../../lib/agents/adapters/dsh");
+  const adapter = new DshAdapter({ bin: "/bin/true" });
+  const descriptor = adapter.discover().capability_descriptor;
+  const out = cap.validateCapabilityDescriptor(descriptor);
+  assert.equal(out.friction_signals.tool_failed, "derived");
+  assert.equal(out.friction_signals.lifecycle_stop, "derived");
+  assert.equal(out.friction_signals.tool_denied, "not_observed");
+  assert.deepEqual(out.friction_lifecycle_events, ["session.end"]);
+  assert.equal(out.redaction_level, "aggregate_only");
+});
+
+test("Pi absent descriptor validates against the friction extension", () => {
+  const { detectPi } = require("../../lib/runtime-adapters/pi-adapter");
+  const probe = detectPi({ binary: "definitely-not-a-real-binary-xyz", timeoutMs: 250 });
+  const out = probe.descriptor;
+  for (const name of cap.FRICTION_SIGNAL_NAMES) {
+    assert.equal(out.friction_signals[name], "not_supported", `signal ${name} must be not_supported`);
+  }
+  assert.deepEqual(out.friction_lifecycle_events, []);
+  assert.equal(out.redaction_level, "full");
+});
