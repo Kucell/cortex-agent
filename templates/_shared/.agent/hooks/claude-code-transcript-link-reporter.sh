@@ -47,7 +47,7 @@ SESSION_ID=$(printf '%s' "$PAYLOAD" | jq -r '.session_id // ""')
 [ -f "$TRANSCRIPT" ] || exit 0
 
 # Compute 4 metadata fields
-SHA=$(sha256sum "$TRANSCRIPT" | awk '{print $1}')
+SHA=$( (shasum -a 256 "$TRANSCRIPT" 2>/dev/null || sha256sum "$TRANSCRIPT") | awk '{print $1}' )
 SIZE=$(stat -f%z "$TRANSCRIPT" 2>/dev/null || stat -c%s "$TRANSCRIPT")
 TURNS=$(grep -c '"role":"user"' "$TRANSCRIPT" 2>/dev/null || echo 0)
 FIRST=$(head -1 "$TRANSCRIPT" | jq -r '.timestamp // ""' 2>/dev/null || echo "")

@@ -246,53 +246,20 @@ Append to your `~/.claude/settings.json`:
 }
 ```
 
-### Reporter shell
+### Reporter shell (single source of truth)
 
-`~/.claude/hooks/claude-code-transcript-link-reporter.sh`:
+The authoritative reporter script is NOT inlined here (it drifts). Install from:
 
-```bash
-#!/usr/bin/env bash
-# ~/.claude/hooks/claude-code-transcript-link-reporter.sh
-# Push the current transcript path + 4 metadata fields (sha256, byte_size,
-# turn_count, first/last timestamps) into the active run. Framework NEVER
-# reads transcript content — only stores path references.
-#
-# Mirrors the token-reporter pattern (line 40). Reads CLAUDE_RUN_ID from env
-# (set by orchestration layer when starting a session); skips silently when
-# absent (does NOT pollute state, does NOT crash session).
-set -euo pipefail
+    templates/_shared/.agent/hooks/claude-code-transcript-link-reporter.sh
 
-PAYLOAD="${1:-}"
-[ -z "$PAYLOAD" ] && exit 0
+Copy it into your host hooks dir and make it executable:
 
-RUN_ID="${CLAUDE_RUN_ID:-}"
-[ -z "$RUN_ID" ] && exit 0
+    cp templates/_shared/.agent/hooks/claude-code-transcript-link-reporter.sh ~/.claude/hooks/
+    chmod +x ~/.claude/hooks/claude-code-transcript-link-reporter.sh
 
-TRANSCRIPT=$(printf '%s' "$PAYLOAD" | jq -r '.transcript_path // ""')
-SESSION_ID=$(printf '%s' "$PAYLOAD" | jq -r '.session_id // ""')
-[ -f "$TRANSCRIPT" ] || exit 0
+Behavior contract and privacy invariants below; the script itself is the single
+source of truth and is verified byte-identical to the template by tests.
 
-SHA=$(sha256sum "$TRANSCRIPT" | awk '{print $1}')
-SIZE=$(stat -f%z "$TRANSCRIPT" 2>/dev/null || stat -c%s "$TRANSCRIPT")
-TURNS=$(grep -c '"role":"user"' "$TRANSCRIPT" 2>/dev/null || echo 0)
-FIRST=$(head -1 "$TRANSCRIPT" | jq -r '.timestamp // ""' 2>/dev/null || echo "")LAST=$(tail -1 "$TRANSCRIPT" | jq -r '.timestamp // ""' 2>/dev/null || echo "")
-
-# Project root = grandparent of transcript_path
-# ~/.claude/projects/<encoded-cwd>/<uuid>.jsonl → cd to parent of projects/
-CLAUDE_PROJECT_DIR=$(dirname "$TRANSCRIPT")
-cd "$(dirname "$CLAUDE_PROJECT_DIR")"
-
-node .agent/skills/management-api/scripts/index.js runs transcript-link \
-  --gate agent --source claude-code \
-  --run-id "$RUN_ID" --session-id "$SESSION_ID" \
-  --transcript-path "$TRANSCRIPT" \
-  --transcript-sha256 "$SHA" --byte-size "$SIZE" --turn-count "$TURNS" \
-  --first-turn-at "$FIRST" --last-turn-at "$LAST" \
-  >/dev/null 2>&1 || {
-  echo "transcript-link reporter failed (non-fatal)" >&2
-  exit 0
-}
-```
 
 ### Behavior contract
 

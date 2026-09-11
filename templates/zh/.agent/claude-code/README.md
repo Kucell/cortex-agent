@@ -239,51 +239,19 @@ node .agent/skills/runtime-continuity/scripts/index.js restore \
 }
 ```
 
-### Reporter 脚本
+### Reporter 脚本(单一事实源)
 
-`~/.claude/hooks/claude-code-transcript-link-reporter.sh`:
+权威脚本不再内联在本文(会漂移)。从模板安装:
 
-```bash
-#!/usr/bin/env bash
-# ~/.claude/hooks/claude-code-transcript-link-reporter.sh
-# 把当前 transcript 路径 + 4 个元数据字段(sha256、byte_size、turn_count、
-# first/last 时间戳)推入当前 run。框架**绝不**读 transcript 内容——只存路径引用。
-#
-# 复用 token-reporter 模式(第 40 行)。从环境变量 CLAUDE_RUN_ID 读取 run id
-# (由 orchestration 层启动 session 时设置);未设置则静默跳过(不污染状态,不中断会话)。
-set -euo pipefail
+    templates/_shared/.agent/hooks/claude-code-transcript-link-reporter.sh
 
-PAYLOAD="${1:-}"
-[ -z "$PAYLOAD" ] && exit 0
+复制到 host hooks 目录并设为可执行:
 
-RUN_ID="${CLAUDE_RUN_ID:-}"
-[ -z "$RUN_ID" ] && exit 0
+    cp templates/_shared/.agent/hooks/claude-code-transcript-link-reporter.sh ~/.claude/hooks/
+    chmod +x ~/.claude/hooks/claude-code-transcript-link-reporter.sh
 
-TRANSCRIPT=$(printf '%s' "$PAYLOAD" | jq -r '.transcript_path // ""')
-SESSION_ID=$(printf '%s' "$PAYLOAD" | jq -r '.session_id // ""')
-[ -f "$TRANSCRIPT" ] || exit 0
+行为契约与隐私不变量见下文;脚本行为以模板文件为唯一事实源,由测试保证与模板字节级一致。
 
-SHA=$(sha256sum "$TRANSCRIPT" | awk '{print $1}')
-SIZE=$(stat -f%z "$TRANSCRIPT" 2>/dev/null || stat -c%s "$TRANSCRIPT")
-TURNS=$(grep -c '"role":"user"' "$TRANSCRIPT" 2>/dev/null || echo 0)
-FIRST=$(head -1 "$TRANSCRIPT" | jq -r '.timestamp // ""' 2>/dev/null || echo "")LAST=$(tail -1 "$TRANSCRIPT" | jq -r '.timestamp // ""' 2>/dev/null || echo "")
-
-# 项目根目录 = transcript_path 的上两级
-# ~/.claude/projects/<encoded-cwd>/<uuid>.jsonl → cd 到 projects/ 的父目录
-CLAUDE_PROJECT_DIR=$(dirname "$TRANSCRIPT")
-cd "$(dirname "$CLAUDE_PROJECT_DIR")"
-
-node .agent/skills/management-api/scripts/index.js runs transcript-link \
-  --gate agent --source claude-code \
-  --run-id "$RUN_ID" --session-id "$SESSION_ID" \
-  --transcript-path "$TRANSCRIPT" \
-  --transcript-sha256 "$SHA" --byte-size "$SIZE" --turn-count "$TURNS" \
-  --first-turn-at "$FIRST" --last-turn-at "$LAST" \
-  >/dev/null 2>&1 || {
-  echo "transcript-link reporter failed (non-fatal)" >&2
-  exit 0
-}
-```
 
 ### 行为契约
 
