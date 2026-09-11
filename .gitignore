@@ -23,6 +23,10 @@ metrics/agent-dashboard.html
 /.agent/**/*.local.env
 /.agent/**/secrets/
 
+# Governed learning corpus (P-003 §5 invariant 5): local destination must be
+# excluded from Git and team-pack. Never commit corpus records or manifests.
+.agent-runtime/corpus/
+
 # Pi coding-agent runtime / cache directories — local-only state, never commit.
 .pi-glla/
 .pi/
