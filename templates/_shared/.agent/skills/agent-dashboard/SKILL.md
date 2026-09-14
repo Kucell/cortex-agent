@@ -1,8 +1,6 @@
 ---
 name: agent-dashboard
 description: Generate a local HTML dashboard for task progress, worktree collaboration, active agents, locks, handoffs, and recommended next actions.
-area: aiapp
-summary: Generate a local HTML dashboard for task progress, worktree collaboration, active agents, locks, handoffs, and recommended next actions.
 ---
 
 # Agent Dashboard Skill
@@ -47,6 +45,20 @@ GET /api/preview?path=<project-relative-path>
 ```
 
 Only `.agent/**`, `docs/**`, and root `README.md`, `AGENTS.md`, `CLAUDE.md`, or `GEMINI.md` files with Markdown, JSON, or text extensions are allowed. Absolute paths, traversal, escaped symlinks, directories, and files over 1 MiB are rejected.
+
+## Sessions Panel (P-002d, 1.14.0)
+
+The runtime sessions table renders seven columns:
+
+- `agent` — agent_id or session_id
+- `role` — session role
+- `status` — pill (running / paused / closed / stale)
+- `phase` — pill or activity text
+- `metadata` — worktree short path + current_run_id + current_task_id
+- `attachments` — `H N` (handoffs) + `A N` (artifacts) badges aggregated by `current_task_id`
+- `heartbeat` — last heartbeat or started_at
+
+Attachment counts are pure aggregation in `enrichSessionAttachments(sessions, handoffs, artifacts)`; the function never opens files. When a session has no `current_task_id`, both badges are hidden.
 
 ## Data Sources
 

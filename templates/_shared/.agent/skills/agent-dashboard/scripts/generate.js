@@ -303,6 +303,11 @@ const I18N = {
     runs: "Runs",
     queues: "Queues",
     sessions: "Sessions",
+    metadata: "元数据",
+    attachments: "附件",
+    run: "运行",
+    worktree: "工作树",
+    noneAttach: "-",
     currentActivity: "当前活动",
     phase: "阶段",
     event: "事件",
@@ -421,6 +426,11 @@ const I18N = {
     runs: "Runs",
     queues: "Queues",
     sessions: "Sessions",
+    metadata: "Metadata",
+    attachments: "Attachments",
+    run: "Run",
+    worktree: "Worktree",
+    noneAttach: "-",
     currentActivity: "Current Activity",
     phase: "Phase",
     event: "Event",
@@ -583,6 +593,29 @@ function parseArtifacts() {
       count: Array.isArray(state.artifacts) ? state.artifacts.length : 0,
       updated: state.updated_at || state.last_updated || "",
     };
+  });
+}
+
+// P-002d (1.14.0): enrich each session with attachment counts (handoffs + artifacts)
+// linked via current_task_id. Pure function (no I/O).
+function enrichSessionAttachments(sessions, handoffs, artifacts) {
+  if (!Array.isArray(sessions)) return [];
+  const handoffByTask = new Map();
+  for (const h of handoffs || []) {
+    const tid = h.task_id || "";
+    if (!tid) continue;
+    handoffByTask.set(tid, (handoffByTask.get(tid) || 0) + 1);
+  }
+  const artifactByTask = new Map();
+  for (const a of artifacts || []) {
+    artifactByTask.set(a.task_id || "", a);
+  }
+  return sessions.map((s) => {
+    const tid = s.current_task_id || "";
+    const handoffCount = tid ? (handoffByTask.get(tid) || 0) : 0;
+    const artifact = tid ? artifactByTask.get(tid) : null;
+    const artifactCount = artifact ? (artifact.count || 0) : 0;
+    return { ...s, handoff_count: handoffCount, artifact_count: artifactCount };
   });
 }
 
@@ -936,7 +969,8 @@ function main() {
   const prd = managed?.prd_summary ? prdSummaryFromManaged(managed.prd_summary, prds) : prdSummary(prds);
   const runs = Array.isArray(managed?.runs) ? managed.runs : [];
   const queues = Array.isArray(managed?.queues) ? managed.queues : [];
-  const sessions = Array.isArray(managed?.sessions) ? managed.sessions : [];
+  const baseSessions = Array.isArray(managed?.sessions) ? managed.sessions : [];
+  const sessions = enrichSessionAttachments(baseSessions, handoffs, artifacts);
   const inbox = Array.isArray(managed?.inbox) ? managed.inbox : [];
   const decisions = Array.isArray(managed?.decisions) ? managed.decisions : [];
   const waitpoints = Array.isArray(managed?.waitpoints) ? managed.waitpoints : [];
@@ -999,7 +1033,7 @@ main{min-width:0}.topbar{padding:20px 28px;border-bottom:1px solid var(--line);d
 .trace-summary{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));border:1px solid var(--line);border-radius:8px;overflow:hidden}.trace-stage{min-width:0;padding:11px 12px;background:var(--panel2);border-right:1px solid var(--line)}.trace-stage:last-child{border-right:0}.trace-stage>span,.trace-stage small{display:block;color:var(--muted);font-size:12px}.trace-stage strong{display:block;margin:5px 0;overflow-wrap:anywhere}.trace-table{margin:14px 0 18px;overflow-x:auto}.trace-table code{white-space:normal;overflow-wrap:anywhere}.trace-table table{min-width:820px}
 .timeline{display:grid;gap:10px}.timeline-item{display:grid;grid-template-columns:140px minmax(0,1fr);gap:12px;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:11px}.timeline-item p{margin:2px 0;color:var(--muted)}
 table{width:100%;border-collapse:collapse}th,td{padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top;text-align:left}th{color:var(--muted);font-weight:600}code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:#d9e7ff}.empty{color:var(--muted);padding:10px 0}.pill{display:inline-block;border:1px solid var(--line);border-radius:999px;padding:2px 8px;color:var(--muted);white-space:nowrap}.status-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--muted);margin-right:7px}.status-dot.running,.status-dot.in_progress,.status-dot.invoking_agent{background:var(--accent)}.status-dot.done,.status-dot.ready,.status-dot.clean,.status-dot.approved{background:var(--ok)}.status-dot.blocked,.status-dot.dirty,.status-dot.stale{background:var(--bad)}
-.done,.ready,.validated,.clean,.approved,.published,.pass{color:var(--ok);border-color:rgba(88,214,141,.45)}.blocked,.validation_failed,.failed,.fail,.dirty,.stale{color:var(--bad);border-color:rgba(255,107,107,.45)}.active,.in_progress,.running,.locked,.merge_ready,.handoff_required,.held,.draft,.review,.needs_validation,.needs_evidence,.not_ready,.partial,.not_run{color:var(--warn);border-color:rgba(241,180,76,.45)}pre{white-space:pre-wrap;background:#0d1016;border:1px solid var(--line);border-radius:6px;padding:10px;overflow:auto;max-height:260px}
+.done,.ready,.validated,.clean,.approved,.published,.pass{color:var(--ok);border-color:rgba(88,214,141,.45)}.blocked,.validation_failed,.failed,.fail,.dirty,.stale{color:var(--bad);border-color:rgba(255,107,107,.45)}.active,.in_progress,.running,.locked,.merge_ready,.handoff_required,.held,.draft,.review,.needs_validation,.needs_evidence,.not_ready,.partial,.not_run{color:var(--warn);border-color:rgba(241,180,76,.45)}.session-meta{display:grid;gap:3px;min-width:180px}.session-meta-row{display:flex;gap:6px;align-items:center;font-size:12px;color:var(--muted)}.session-meta-row code{font-size:11px;padding:1px 6px;background:#0d1016;border:1px solid var(--line);border-radius:4px}.session-meta-row .mini{min-width:auto}.attachments{display:flex;gap:5px;align-items:center}.attach-badge{display:inline-block;padding:2px 8px;border-radius:999px;background:var(--panel2);border:1px solid var(--line);font-size:11px;color:var(--text);font-weight:600;letter-spacing:0.2px}.attach-badge:hover{border-color:var(--accent);color:var(--accent)}pre{white-space:pre-wrap;background:#0d1016;border:1px solid var(--line);border-radius:6px;padding:10px;overflow:auto;max-height:260px}
 .preview-dialog{width:min(1080px,calc(100vw - 32px));height:min(860px,calc(100vh - 32px));max-width:none;max-height:none;padding:0;color:var(--text);background:var(--panel);border:1px solid var(--line);border-radius:8px}.preview-dialog::backdrop{background:rgba(0,0,0,.72)}.preview-dialog>header{position:sticky;top:0;z-index:2;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:16px 20px;background:var(--panel);border-bottom:1px solid var(--line)}.preview-dialog>header h2{margin:0;font-size:18px;overflow-wrap:anywhere}.preview-dialog>header button{width:34px;height:34px;padding:0;border:1px solid var(--line);border-radius:6px;background:var(--panel2);color:var(--text);font-size:22px;cursor:pointer}.preview-dialog>section{padding:18px 22px 32px}.preview-meta{display:grid;grid-template-columns:minmax(0,1fr) minmax(260px,.55fr);gap:18px;padding-bottom:18px;border-bottom:1px solid var(--line)}.preview-meta h3{margin:0 0 8px;font-size:13px;color:var(--muted)}.preview-meta p,.preview-meta ul{margin:0}.preview-meta ul{padding-left:20px}.preview-meta a{color:var(--accent);overflow-wrap:anywhere}.markdown-body{max-width:880px;margin:0 auto;padding:24px 0;color:var(--text);font-size:15px;line-height:1.7;overflow-wrap:anywhere}.markdown-body>:first-child{margin-top:0}.markdown-body>:last-child{margin-bottom:0}.markdown-body h1,.markdown-body h2,.markdown-body h3,.markdown-body h4{margin:1.6em 0 .65em;line-height:1.25}.markdown-body h1{padding-bottom:.35em;border-bottom:1px solid var(--line);font-size:2em}.markdown-body h2{padding-bottom:.3em;border-bottom:1px solid var(--line);font-size:1.5em}.markdown-body h3{font-size:1.2em}.markdown-body p,.markdown-body ul,.markdown-body ol,.markdown-body blockquote,.markdown-body table,.markdown-body pre{margin:0 0 1em}.markdown-body ul,.markdown-body ol{padding-left:2em}.markdown-body li+li{margin-top:.3em}.markdown-body blockquote{padding:.2em 1em;color:var(--muted);border-left:4px solid var(--accent);background:rgba(90,167,255,.06)}.markdown-body blockquote>:last-child{margin-bottom:0}.markdown-body a{color:var(--accent);text-decoration:none}.markdown-body a:hover{text-decoration:underline}.markdown-body code{padding:.15em .35em;border-radius:4px;background:#0d1016}.markdown-body pre{max-height:none;padding:14px;white-space:pre;overflow:auto}.markdown-body pre code{padding:0;background:transparent;color:#d9e7ff}.markdown-body table{display:block;width:max-content;max-width:100%;overflow:auto;border-collapse:collapse}.markdown-body th,.markdown-body td{border:1px solid var(--line);padding:7px 11px}.markdown-body th{background:var(--panel2);color:var(--text)}.markdown-body tr:nth-child(2n){background:rgba(255,255,255,.025)}.markdown-body hr{height:1px;margin:24px 0;border:0;background:var(--line)}.markdown-body img{display:block;max-width:100%;height:auto;margin:16px auto;border:1px solid var(--line);border-radius:6px}.markdown-body del{color:var(--muted)}
 .preview-meta{display:block}
 @media(max-width:1100px){.shell{display:block}aside{position:static;height:auto}.status-strip,.command-panel,.phase-rail,.lanes,.trace-summary{grid-template-columns:1fr}.trace-stage{border-right:0;border-bottom:1px solid var(--line)}.trace-stage:last-child{border-bottom:0}.panel,.third,.quarter{grid-column:span 12}.section,.topbar{padding:16px}.timeline-item{grid-template-columns:1fr}}
@@ -1112,7 +1146,21 @@ table{width:100%;border-collapse:collapse}th,td{padding:8px 10px;border-bottom:1
       <div class="section-head"><h2 data-i18n="runtime">${I18N.zh.runtime}</h2><span>${pill(runtimeState)}</span></div>
       <div class="grid">
         <section class="panel wide"><h2 data-i18n="eventTimeline">${I18N.zh.eventTimeline}</h2>${recentEvents.length ? `<div class="timeline">${recentEvents.map(({ run, event }) => `<div class="timeline-item"><div><code>${esc(run.run_id || run.path)}</code><div class="mini">${esc(formatDisplayTime(event.at))}</div></div><div>${event.phase ? pill(event.phase) : ""} ${event.status ? pill(event.status) : ""}<p>${esc(event.message || event.activity || event.type || "")}</p></div></div>`).join("")}</div>` : `<div class="empty" data-i18n="empty">${I18N.zh.empty}</div>`}</section>
-        <section class="panel"><h2 data-i18n="sessions">${I18N.zh.sessions}</h2>${renderTable(["agent","role","status","phase","heartbeat"], sessions.map((s) => `<tr><td>${esc(s.agent_id || s.session_id)}</td><td>${esc(s.role || "")}</td><td>${pill(s.status)}</td><td>${s.phase ? pill(s.phase) : esc(s.activity || "")}</td><td data-volatile="heartbeat">${esc(formatDisplayTime(s.last_heartbeat_at || s.started_at))}</td></tr>`))}</section>
+        <section class="panel"><h2 data-i18n="sessions">${I18N.zh.sessions}</h2>${renderTable(
+          ["agent","role","status","phase","metadata","attachments","heartbeat"],
+          sessions.map((s) => {
+            const parts = (s.worktree_path || "").split("/").filter(Boolean);
+            const shortWorktree = parts.length >= 2 ? parts.slice(-2).join("/") : (parts[0] || "-");
+            const runLink = s.current_run_id ? `<code>${esc(s.current_run_id)}</code>` : `<span class="mini">-</span>`;
+            const taskLink = s.current_task_id ? `<code>${esc(s.current_task_id)}</code>` : `<span class="mini">-</span>`;
+            const metadata = `<div class="session-meta"><div class="session-meta-row"><span class="mini" data-i18n="worktree">${I18N.zh.worktree}</span>: <code>${esc(shortWorktree || "-")}</code></div><div class="session-meta-row"><span class="mini" data-i18n="run">${I18N.zh.run}</span>: ${runLink}</div><div class="session-meta-row"><span class="mini" data-i18n="task">${I18N.zh.task}</span>: ${taskLink}</div></div>`;
+            const totalAttach = (s.handoff_count || 0) + (s.artifact_count || 0);
+            const attachments = totalAttach > 0
+              ? `<div class="attachments"><span class="attach-badge" title="handoffs">H ${s.handoff_count || 0}</span><span class="attach-badge" title="artifacts">A ${s.artifact_count || 0}</span></div>`
+              : `<span class="mini" data-i18n="noneAttach">-</span>`;
+            return `<tr><td>${esc(s.agent_id || s.session_id)}</td><td>${esc(s.role || "")}</td><td>${pill(s.status)}</td><td>${s.phase ? pill(s.phase) : esc(s.activity || "")}</td><td>${metadata}</td><td>${attachments}</td><td data-volatile="heartbeat">${esc(formatDisplayTime(s.last_heartbeat_at || s.started_at))}</td></tr>`;
+          })
+        )}</section>
         <section class="panel"><h2 data-i18n="runs">${I18N.zh.runs}</h2>${renderTable(["id","kind","status","phase","message"], runs.slice(0, 8).map((r) => `<tr><td><code>${esc(r.run_id || r.path)}</code></td><td>${esc(r.kind || "")}</td><td>${pill(r.status)}</td><td>${r.phase ? pill(r.phase) : ""}</td><td>${esc(r.activity || r.last_event?.message || "")}</td></tr>`))}</section>
         ${renderTokenUsageSection(tokenUsage)}
         ${renderRetrievalTraceSection(retrievalTrace)}

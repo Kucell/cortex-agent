@@ -9,6 +9,111 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- 下一个版本的条目写在这里 -->
 
+## [1.14.0] - 2026-09-14
+
+> **Minor**: 自 v1.13.1 以来 ~30 commits 的累积发布。核心增量 = **governed learning corpus（P-003）全套交付** + **friction 摩擦信号/评分/人工门控（M-003A/B）** + **team-pack manifest v2 项目作用域** + **M-031 多宿主发现/派发（cursor observer + 7-host whitelist/skill discovery）** + **governed CLI runtime contract（M-035 P-009）** + **transcript-reference 治理（P-002c）**。
+> **基础**: `1792b05` (v1.13.1, 2026-09-08) → ~30 commits
+> **安装**: `npm i -g cortex-agent@1.14.0`；已有项目 `cortex-agent update` 同步模板
+> **发布**: npmjs 2026-09-14；git tag `v1.14.0`
+> **决策**: D-ATR-P002-ratification / D-ATR-MS5-memory-records / D-ATR-P003-governed-corpus / D-ATR-P003e-pilot-export（全部 approved）
+
+### Added
+
+- **Governed learning corpus (P-003) — 新公开 CLI skill `learning-harvest`** — 把 `.agent/` 的结构化 source（activities / decisions / runtime-continuity archives / experiences / memory records）抽取成可审计、可复现的本地学习语料，遵循六不变量（无 transcript body、无凭证例外、显式 opt-in consent、可撤回 tombstone、不进 Git/Team Pack、不跨项目自动合并）。
+  - **extract 命令**（`node .agent/skills/learning-harvest/scripts/harvest.js extract --project … --corpus-id … --kinds … --consent-receipt …`）：四类源 `intent_execution / approval_judgement / investigation_narrative / failure_recovery` 全量抽取，episodic/semantic 从 MS-5 真实 memory record 启用，procedural 保持 disabled（无 extractor，不以 stub 通过）
+  - **redaction 模块**（`redact.js`，7 fixtures：credential / email / phone / id_card / credit_card / absolute_path / free_text，确定性 node-stdlib 规则，写前后双 scan abort）
+  - **P-003d 安全闸**：corpus-id 冲突 → tombstone + exit 1；stale `.harvest.lock` → fail-closed；per-run lock 自动清理
+  - **audit 命令**（P-003e Pilot）：6 项验收（redaction_clean / provenance_100% / manifest_validation / record_accounting / per_project_consent / stable_rerun），产出 `pilot-report.json`
+  - **export 命令**（P-003e）：仅在显式 approved `external_side_effect` Decision 下生成 `corpus.tar.gz` + sha256 + provenance manifest
+  - **schemas**：`consent-receipt.schema.json`（opt-in + 可撤回）、`manifest.schema.json`（7 kinds enabled/disabled 状态机 + Merkle）、`kind.schema.json`（canonical JSON record + provenance + redaction policy version + full SHA-256）
+  - **隔离**：`.agent-runtime/corpus/` 入 `.gitignore`，team-pack `includes` 不匹配（双重隔离验证）
+  - **测试**：`learning-harvest-p003a.test.js` (8) + `p003b` (6) + `p003c` (4) + `p003d` (5) + `p003e` (5) = **28/28 PASS**
+  - **Pilot 交付**：cortex-agent 本地 corpus（161 records，6 enabled kinds，Merkle root `63aa94a2…`）+ tarball 50KB / sha256 `235005986…` / provenance manifest
+
+- **Friction signal/assessment (M-003A + M-003B)** — 把"破坏性经验"的发现 → 评分 → 人工门控 → 沉淀成完整闭环，append-only journal + 零 `auto-upvote` / `auto-promotion`。
+  - `lib/friction/signal.js` + `record-signal.js`：摩擦信号契约（7 维 posture、host matrix、redaction 边界），自包含零依赖 CLI + `--read` 回读
+  - `lib/friction/assessment.js` + `share-learnings.js`：摩擦评分与人工门控（actor + 脱敏 evidence_ref 单写者；无 `--confirm` 拒绝 exit 2 且零写入；确认后写 `/tmp/exp-<session>-draft.md` + 打印 diff）
+  - `lib/friction/score.js` + `friction-score.js` CLI：可复现的评分脚本 + 终态保留
+  - **测试**：`tests/friction/{friction-signal,assessment,friction-score,share-learnings}.test.js` = **242/242 PASS**（M-003A 119 + M-003B 123）
+  - **任务**：T-TKR-003 / M-038（MS-001 + MS-002）
+
+- **Team-pack manifest v2 项目作用域 (e89e567)** — `team install|update --agent` 支持文件级项目范围，scoped 文件缺失 `--agent` 时 `ERR_AGENT_SELECTION_REQUIRED` fail-closed；重复目标路径 `ERR_TEAM_PACK_DUPLICATE_TARGET` fail-closed。
+  - `lib/team-pack/index.js` + `lib/agents/registry.js` + `lib/agents/cli.js` + `lib/commands/team-pack.js`
+  - `templates/_base/.agent/agents/{agent.schema.json,sample.json}`
+  - **测试**：`tests/agents/projects.test.js` (116) + `tests/team-pack/project-scope.test.js` (203) = **319 项回归全绿 + CLI E2E**
+  - **任务**：T-TKR-002 / M-037 / MS-001
+
+- **Host adapter 扩展 (M-031)** — DSH 等多宿主发现与派发支持：cursor observer + 7-host dispatch whitelist + skill discovery + cursor registry。
+  - `lib/agents/adapters/cursor.js` + `cursor-bootstrap.js` + `index.js`
+  - `lib/runtime-adapters/host-runtime-snapshots.js`（host runtime snapshots，214 行）
+  - `lib/runtime-adapters/minimax-cli-skill-discovery.js`（skill discovery 扩展）
+  - `lib/dispatch/execute.js`（派发 hardened）
+  - **测试**：`tests/agent/agent-adapter-cursor.test.js` (260) + `tests/dispatch/dispatch-execute.test.js` (73) + `tests/runtime-adapters/minimax-cli-skill-discovery.test.js` + `host-runtime-snapshots.test.js` (196) + `skill-discovery.test.js` = **740+ 项回归**
+  - **任务**：M-031 / MS-002 controlled integration
+
+- **Governed CLI runtime contract (M-035 P-009)** — Decision 请求写入契约 + help-dispatch + coordination gate hardening。
+  - `lib/cli/contract.js` + `lib/commands/management/coordination.js` + `lib/commands/management/write.js` (112 行新增) + `lib/commands/agent/help-dispatch.js`
+  - `lib/commands/surface/lease.js` 调整
+  - `templates/_shared/.agent/skills/graphify/scripts/preflight.mjs`（graphify 预检）
+  - **测试**：`tests/cli/{decisions-gate-action,graphify-preflight,help-distribution}.test.js` = **285 行新增测试**
+  - **任务**：M-035 / P-009
+
+- **Transcript-reference governance (P-002c)** — Claude Code 单一事实源 hook + 双平台 sha256。
+  - `templates/_shared/.agent/hooks/claude-code-transcript-link-reporter.sh`：dual-platform sha256（`shasum -a 256` preferred，`sha256sum` fallback）
+  - `templates/{en,zh}/.agent/claude-code/README.md`：drop inline reporter copy，reference shared hook template（消除 6 副本漂移）
+  - **测试**：`tests/management/transcript-link-reporter.test.js`（**8/8 PASS**，覆盖 no-input/no-run/missing/valid/writer-failure + macOS/Linux tool paths + README single-source guard）
+  - **决策**：D-ATR-P002-ratification-821c463e（approved）
+
+- **Architecture docs (M-004)** — 沉淀 3 份长期架构参考：
+  - `docs/architecture/capability-gated-auto-recall.md`（P-001 / `8459e035`，104 行）
+  - `docs/architecture/project-scope-team-pack.md`（P-002 / `e89e567`，56 行）
+  - `docs/architecture/friction-assisted-learning.md`（P-003 / `99d502b + 6e9b7ba`，60 行）
+  - **任务**：D-TKR-001/002/003（项目 index done）
+
+- **Windows DPAPI secrets backend (f9bec85)** — Windows 平台 secret 存储后端：`backends/win-dpapi.ps1` + `index.js` 多 backend 分发 + templates `{zh|en}/.agent/skills/secrets/SKILL.md` 文档更新
+  - **测试**：`tests/templates/secrets-win-dpapi.test.js`
+  - **PR**：#14 `Kucell/fix/windows-secrets-dpapi`
+
+- **Dashboard upgrade (P-002d partial, 1.14.0)** — `agent-dashboard` sessions 表格 7 列化（read-only，写入路径推 1.15.0）：
+  - 新增 **Metadata 列**：`worktree_path` 短路径（取最后 2 段）+ `current_run_id` + `current_task_id` 三行内联显示
+  - 新增 **📎 Attachments 列**：`H N` handoffs 徽标 + `A N` artifacts 徽标（按 `current_task_id` 聚合，无关联时显示占位 `-`）
+  - 新增 CSS 类 `.session-meta` / `.session-meta-row` / `.attachments` / `.attach-badge`（紧凑布局、状态色一致）
+  - 新增 i18n 标签 zh：`metadata=元数据 / attachments=附件 / run=运行 / worktree=工作树 / noneAttach=-`；en：`metadata=Metadata / attachments=Attachments / run=Run / worktree=Worktree / noneAttach=-`
+  - 新增纯函数 `enrichSessionAttachments(sessions, handoffs, artifacts)`（无 I/O，按 `current_task_id` 聚合；缺 task_id 时 attachments=0）
+  - SKILL.md 新增 "Sessions Panel (P-002d, 1.14.0)" 节说明 7 列结构
+  - **测试**：`tests/dashboard/dashboard-p002d-sessions.test.js` **6/6 PASS**（纯函数 2 + 7 列渲染 1 + i18n 标签 1 + CSS 1 + 实际 row 渲染 1）
+  - **Out of scope (1.15.0)**：HTML5 拖拽 task card、inline 任务配置/批准、server-side POST 端点（需新 auth gate + write audit）
+
+### Changed — `.agent/` 从主仓内嵌目录改为 nested submodule（`git@github.com:Kucell/cortex-agent-agent.git`），主仓不再直接 track `.agent/*` 内容（`ed18e51`，删除 9320 行旧文件）
+- **Coordination CLI hardening** — `cortex-agent` CLI 的 coordination surfaces 接受受限字段、支持 legacy task state 读取、保留 legacy runtime（`c092864` + `64ba963` + `f8ce573` + `ca1478a`）
+- **Runtime layout migration** — `cortex-agent update` 处理 legacy schema 缺 `.agent-runtime/` 情况（`2a52332`，132 行迁移逻辑重写）
+- **Init/update shared skills** — `.agent/global-shared-skills` 改为 symlink 到 `~/.agents/skills`（`fd1742a`，216 行测试覆盖）；preserve existing shared skills directory（`2a20ff0`）
+- **`cortex-agent update help` read-only** — 不再触发更新流程（`cf2800f`）
+
+### Fixed
+
+- **Graphify 预检与 minimax 适配对齐** — minimax governed-tool `discoverSkills` 计数与 MS-002 对齐（`c6a1634`）
+- **CLI Decision 请求写入契约** — 明确 Decision 请求字段必填与校验（`f174709`）
+- **Coordination 持久化** — general-mode tasks 持久化 + 读 legacy runtime records（`c092864`）
+
+### Security & Privacy
+
+- **P-003 隐私不变量** — framework 永不读取 transcript body；manifest 中只存 `path + sha256/byte_size/turn_count/first/last` 元数据
+- **Consent receipt 撤销** — receipt `status=revoked` 触发 tombstone + 拒绝新输出
+- **Team-pack 排除 corpus** — `includes` 列表明确不含 `.agent-runtime/`，且 `excludes` 含 `*secret*` / `*token*`
+- **Redaction 7 fixtures 零误伤** — phone 不误伤 `D-20260819` 类数字 ID；absolute_path 仅匹配机器绝对路径
+
+### Migration
+
+- **`.agent/` 是 nested submodule** — 已有项目首次 `cortex-agent update` 1.14.0 会自动迁移（如未迁移：`git rm -rf .agent && git submodule add git@github.com:Kucell/cortex-agent-agent.git .agent`）
+- **Team-pack scoped files** — 1.14.0 起 `team install|update` 需要 `--agent` 指定 scoped 目标
+- **Coordination legacy state** — 1.14.0 自动从 legacy `task_runtime` 迁移到 management API
+
+### Dependencies
+
+- **无运行时依赖变更**（cortex-agent 包本身仍为零运行时依赖；新增功能依赖项目本地 templates）
+- **测试 dev 依赖不变**（`test-runner.cjs` 自包含）
+
 ## [1.13.0-rc.4] - 2026-08-20
 
 > **Pre-release**: 1.13.0 候选线首个实际发布版本（rc.1/rc.2/rc.3 为草稿未发布）。核心增量 = **proposal-share 提案包共享工作流**（T-H14 双仓联合提案场景）+ 构建目录规划。
@@ -537,114 +642,3 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Security
 
 - Operation 创建采用原子 create-if-absent，同一 ID 的并发不同 plan 写入
-  fail closed；Authorization 使用持久单次消费 ledger 与活进程锁保护。
-- Notification delivery 不自动 ACK，ACK 不授予权限或推断任务完成；自动
-  dispatch 与常驻 daemon 继续默认关闭。
-- Management API 对运行态投影执行字段和值级脱敏，拒绝 prompt、工具负载、
-  凭证、私有路径和私有 transcript。
-
-## [1.7.0] - 2026-07-27
-
-### Added
-
-- **v1.7.0 Phase 0 自动化词汇与契约骨架**：统一 `Dispatch / Daemon / Trigger` 术语，新增三份 shared Schema、双语边界文档与 fail-closed CLI stub；Daemon 默认关闭，Trigger 不是授权，Management API 不承担调度职责。
-
-- **v1.7.0 Team Agent Pack（M-TAP L1 capability）**：在 `.agent-shared/` 与 `.agent/` 之间引入 L1 Provider / L2 Team Pack / L3 Local 三层模型；`.agent-shared/` 是 Git 可提交的团队分发源，`.agent/` 仍是唯一运行时入口。
-  - **CLI**:`cortex-agent team <init|status|install|update|publish|verify>` 六个子命令；`update --team` 串联 L1 apply → Team Pack apply；`upgrade --team` 显式拒绝（exit=3，指向 P-002 §4）；`doctor --fix` 在 Team Pack 上下文只允许创建 receipt 骨架，绝不触碰 `.agent-shared/`。
-  - **manifest schema**（`lib/team-pack.js` + `lib/cli-contract.js` 的 `team` section）:`schema_version=1`、`files[].mode ∈ {add, merge}`、`signers.mode=git_committers` + `fallback=reject`、排除 5 类宿主入口文件（`.claude/settings.json`、`AGENTS.md`、`CLAUDE.md`、`GEMINI.md`、`.claude/settings.local.json`）。
-  - **三方合并 planner**:`base=receipt.baseline` + `local=.agent/` + `incoming=pack`；cold-start base 固定为空（不把 `.agent/` 现有内容误判为冲突）；conflict 文件保留 local + 写 `.agent/team-sync/conflicts/<ts>-<n>-conflict.json`；**conflict 不推进 receipt baseline**，是 alice 本地修改不被下次 update 静默覆盖的关键安全保证。
-  - **secret-scan**（`lib/secret-scan.js`，17/17 单测 PASS）：9 类规则（PEM 私钥头 / AWS `AKIA*` / GitHub `ghp_*` `gho_*` / OpenAI `sk-proj-` / Anthropic `sk-ant-` / Slack `xoxb-` / URL userinfo / `env_assignment_token` / 本机绝对路径）+ `.env` body 检测；严格 redact 防侧信道；供 `team publish/verify` 与 PostToolUse 共用。
-  - **machine contract**：`cortex-agent help --json` 暴露 `team` 命令域、3 个新选项（`--team`、`--paths <path...>`、`--strict`）、顶层 `team` section（`pack_layout` / `init|status|install|update|publish|verify` 各命令契约 + `boundary_with_update` + `safety` 数组 6 条）。
-  - **用户文档**:`docs/architecture/team-agent-pack.md` 三层模型 + CLI 速查 + 与 `update`/`upgrade`/`doctor` 的边界 + manifest schema + 三方合并表 + 安全不变量 + SamHMI 实战回流边界。
-  - **测试**:64/64 PASS（`lib/secret-scan.test.js` 17 + `tests/team-pack/team-pack-core` 25 + `merge-matrix` 7 + `install-dry-run` 4 + `publish-verify` 6 + `samhmi-pilot` 2 + `cross-developer-conflict` 3）；CI-friendly：`team verify --strict` 可在 CI 只读运行。
-  - **关联提案**:`.agent/plans/proposals/projects/team-agent-pack/`（P-001 / P-002 / D-001 全部翻 done）；**Mission `M-TAP` 已 COMPLETE**，4 commits `841d026` / `ae57fe0` / `abbfe13` / `300bd9b` 已 push 到 `origin/main`。
-
-### Changed
-
-- `lib/cli-contract.js` 增加 `team` 命令域、3 个新选项（`--team` / `--paths <path...>` / `--strict`）与顶层 `team` section；`--json` 文案扩展为"Emit machine-readable output when supported, including help and Phase 0 stubs"。
-
-### Security
-
-- Team Pack 默认拒绝符号链接、绝对路径、设备文件、`..` 逃逸；写入使用同目录临时文件 + 原子 rename；`.agent-shared/` 中的脚本不是授权（仍需 Decision / Waitpoint gate）；publish 不自动 commit / push / PR。
-- `upgrade --team` 显式拒绝（`upgrade` 是 additive-only 不接触 Team Pack）；`doctor --fix` 永远不触碰 `.agent-shared/`。
-
-## [1.6.0] - 2026-07-21
-
-### Added
-
-- **`.agent/memory/` 轻量笔记机制**：在 `.agent/` 下建立 `user / feedback / project / reference` 四类笔记（4 type frontmatter 严格 schema，per-type 硬上限 user 10/feedback 30/project 20/reference 50，200 行 / 25KB MEMORY.md 启动 cap 对齐 Claude Code Auto Memory 官方）；填坑 collab-runtime proposal (M-002) 提议的 approved-but-not-built `.agent/knowledge/` 目录。
-- **`SessionStart` hook 自动加载 MEMORY.md 索引**：在 `templates/{zh,en}/.agent/hooks/hooks.json` 新增 `[Cortex] Memory index loaded` 输出；topic 文件按需 Read（不自动加载）；`core-principles.md` 新增"读 MEMORY.md"硬步骤。
-- **`memory-protocol.md` 行为规则**：4 type 写入/读取/过期/归档协议，body 模板（feedback/project 类必含 `**Why:**` + `**How to apply:**`），write protocol（先写文件再加 MEMORY.md 索引、save 必须在 reply 完成前、写前查 staleness/duplicate），9 节规范（包含显式回应 P-006 反 MEMORY 立场的 Non-Goals）。
-- **`agent-update` Step 4.5 memory feedback capture**：与 Step 4 experience capture 并列，区分"轻量 session 观察"（memory/feedback）和"commit-anchored 教训"（experiences）。
-- **`update-refs` Step 7 reference pointer**：references 新增/重大更新时在 `memory/reference/` 留指针（不复制内容）。
-- **L1 模板双语同步**（`templates/zh/.agent/` + `templates/en/.agent/`）+ L3 主仓库工作实例同步升级 + 治理审批（proposal `cortex-agent-memory-proposal.md` supersedes collab-runtime knowledge/）。
-
-### Changed
-
-- **`hooks.json` 删除不工作的 `PostCommit` 段**：Claude Code 从未支持 `PostCommit` 事件，原配置静默忽略。L0 熵清理和 Graphify 增量改由手动 `/post-commit-maintenance` 承担（`~/.claude/rules/git-workflow.md`）。
-- **`hooks.json` `SessionStart` 新增 MEMORY.md loader 节点**：在已有 task-progress 提示旁加 memory index 输出。
-- **`memory.schema.json` 字段扩展**：slug regex 从 `^[a-z0-9-]+$` 改为 `^[a-z0-9_-]+$`（对齐 Claude Code 实施级），新增可选 `metadata` 字段（Claude Code 兼容），新增 `path_segments ≤20` / `path_bytes ≤1024` / `per_file_size ≤100KB` 软约束。
-
-### Removed
-
-- **`.agent/hooks/hooks.json` 的 `PostCommit` 段**：3 个 hooks.json 全部清空（zh 模板 / en 模板 / L3 主仓库）；不工作配置在每次 SessionStart 弹警告 `Unknown hook event "PostCommit" was ignored`。
-
-## [1.5.0] - 2026-07-20
-
-### Added
-
-- **Communication Runtime（协作运行时）**：在 Management API 之上落地 inbox / decisions / waitpoints 三个通信对象，支持 8 个 workflow gate 受控写入命令（`decisions request/resolve/supersede`、`inbox send/transition`、`waitpoints create/release/cancel`）；所有 mutation 强制走 `--gate mission|agent|user|owner` 校验。
-- **统一查询投影**：`query dashboard-state` 一次输出 tasks / worktrees / agents / runs / queues / sessions / locks / handoffs / artifacts / prds / inbox / decisions / waitpoints / approvals / git_status / derived / summary 17 个段，Dashboard、CLI、MCP 只读适配器共享同一份 projection。
-- **运行态 MCP 只读适配器（双模板）**：通过 stdio 把 dashboard-state 投影暴露给 Claude Code / Cursor 等 MCP 客户端，不直接读 `.agent/`，未安装时 Dashboard 与 CLI 路径不受影响。
-- **事件与证据基础契约**：Run / Queue item / Session 增加 phase / activity / events / last_event 字段，Management API 支持 `runs upsert / event / checkpoint` 受控写入。
-- **Agent 评审与本地基准技能**：新增 `skills/agent-review` 与本地基线脚本，为多 agent 协调提供评审基线。
-- **工作区编排基础契约与生命周期**：新增工作区生命周期与资源租约实现，支持多任务并行工作区隔离。
-- **协作看板开发模式**：CLI 增加 `cortex-agent dev` 命令，启动 Dashboard + 注册 Session + 自动端口选择 + 独立心跳。
-- **运行态接入检查能力**：在 governance 层加入运行态接入检查，确保新功能与 Communication Runtime 一致。
-
-### Changed
-
-- **Dashboard PRD UI 重设计**：左侧导航、Overview / PRD Studio / Delivery / Runtime / Knowledge 分区、PRD 完整度探测、首屏状态条、执行阶段轨道与事件时间线。
-- **本地 PRD 资产层 MVP**：新增 `.agent/prd/` schema/index/README、`/prd` workflow、PRD 文档模板，Dashboard 优先消费 API PRD 状态。
-- **项目级提案治理**：`/approve` 支持指定整个项目、milestone 或子提案，`/plan` 从 `index.md` 读取批准范围，`/publish-docs` 先发布定稿总览。
-- **领域调试产物目录规则 + 跨机证据时间基准**：branch slug 使用可逆编码避免碰撞，detached HEAD 拒绝写入。
-- **README 同步 Communication Runtime**：新增协作运行时核心价值、Management API 用法示例、`.agent/` 目录结构更新、文档索引补 `agent-collaboration-runtime.md`。
-
-### Fixed
-
-- **dev-cli port=0 校验失败 + management-api 残留进程**：CLI `--port` 定义从 `min: 1` 调整为 `min: 0`，management-api main() 末尾显式 `process.exit(process.exitCode || 0)` 避免 dev-cli spawnSync 串联时的孤儿进程。
-- **Dashboard preview API 状态码映射**：补 `path_outside_allowed_roots → 403`、size 检查先于 extension 检查，macOS canonical path（`/var → /private/var`）与 `.agent` symlink 特殊处理，避免误报 400。
-- **管理 API 重启时模板与本地不同步**：新增 inbox / decisions / waitpoints schema / index / README，并补 15 文件双模板同步。
-- **CRI 节命令示例 flag 不一致**：自举跑通 decisions request 时发现真实 flag 是 `--gate-action`（不是 `--action`，waitpoints create 才用 `--action`），统一修正 5 处工作流示例（approve.md / arch-design.md / release.md / worktree.md）。
-
-## [1.4.1] - 2026-07-15
-
-### Fixed
-
-- Dashboard 时间戳显示导致频繁 reload（仅生成时间变化时触发重载）。
-
-## [1.1.0] - 2026-06-28
-
-### Added
-
-- 工作流状态机与 LINT/REVIEW 阶段 Gate。
-- 双层 Hooks（linter 先行 + AI 后行）。
-- 上下文预算基础设施：`context-index.json` + `skills/context-budget`。
-- 熵治理闭环：PostCommit L0 自动清理 + `entropy-scanner` sub-agent。
-- 渐进式退化：`harness-manifest.yml` + `maturity-tracker`。
-
-## [1.0.0] - 2026-05-12
-
-### Added
-
-- 首次稳定发布。核心 CLI：`init / upgrade / doctor / untrack / link-global`。
-- 双语模板（zh / en）+ 11 平台集成（Cline、Cursor、Claude Code、Windsurf、Gemini CLI 等）。
-- Conventional Commits 工作流 + 规则文件。
-- 语言规则模板：TypeScript / Python / Go / Java / Swift。
-- `bin/cli.js` 拆分为 5 个 lib 模块（registry / platform / setup / git / commands）。
-
-[Unreleased]: https://github.com/Kucell/cortex-agent/compare/v1.8.0...HEAD
-[1.8.0]: https://github.com/Kucell/cortex-agent/compare/v1.7.0...v1.8.0
-[1.7.0]: https://github.com/Kucell/cortex-agent/compare/v1.5.0...v1.7.0
-[1.5.0]: https://github.com/Kucell/cortex-agent/compare/v1.4.1...v1.5.0
-[1.4.1]: https://github.com/Kucell/cortex-agent/compare/v1.1.0...v1.4.1
