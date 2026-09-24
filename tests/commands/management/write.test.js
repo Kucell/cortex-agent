@@ -487,3 +487,247 @@ test("sessions: action='open' falls through to managementWrite", () => {
   });
 });
 
+
+
+// ─── GitHub issue #15: --help must short-circuit and return non-mutating result ─
+//
+// Before the fix, `waitpoints create --help` and `inbox send --help` flowed
+// into `managementWrite`, which forwarded `--help` to the Management API;
+// the API rejected the request, but `bin/cli.js` then ran `fireAndForgetSync`
+// unconditionally, sweeping pre-existing dirty state into an automatic commit
+// + push. The fix introduces two contracts:
+//   1. `--help` short-circuits in the wrapper and returns
+//      `{ ok: true, mutated: false, help: true }`.
+//   2. `managementWrite` returns `{ ok, mutated }` so `bin/cli.js` can gate
+//      the `fireAndForgetSync` tail on a real, successful mutation.
+
+test("waitpoints: --help short-circuits to waitpointsCreateContract with ok=true, mutated=false, help=true", () => {
+  let invokeCalled = false;
+  withMockedDeps({
+    invokeManagementProject: () => { invokeCalled = true; return { ok: true, payload: {}, project: { root: "/r", agent_root: "/r/.agent" } }; },
+  }, {}, () => {
+    const { waitpoints } = require("../../../lib/commands/management/write");
+    const { restore } = captureStdout();
+    try {
+      const result = waitpoints({ args: ["waitpoints", "create", "--help"], lang: "en" });
+      assert.equal(invokeCalled, false, "--help must never reach the Management API");
+      assert.deepEqual(result, { ok: true, mutated: false, help: true });
+    } finally {
+      const out = restore();
+      assert.match(out, /Usage: cortex-agent waitpoints create/);
+      assert.match(out, /--gate <workflow>/);
+      assert.match(out, /--waitpoint-id <id>/);
+    }
+  });
+});
+
+test("waitpoints: bare --help prints waitpointsUsage (action-agnostic) with mutated=false", () => {
+  let invokeCalled = false;
+  withMockedDeps({
+    invokeManagementProject: () => { invokeCalled = true; return { ok: true, payload: {}, project: { root: "/r", agent_root: "/r/.agent" } }; },
+  }, {}, () => {
+    const { waitpoints } = require("../../../lib/commands/management/write");
+    const { restore } = captureStdout();
+    try {
+      const result = waitpoints({ args: ["waitpoints", "--help"], lang: "en" });
+      assert.equal(invokeCalled, false);
+      assert.equal(result.ok, true);
+      assert.equal(result.mutated, false);
+      assert.equal(result.help, true);
+    } finally {
+      const out = restore();
+      assert.match(out, /Usage: cortex-agent waitpoints <create\|release\|cancel>/);
+    }
+  });
+});
+
+test("waitpoints: -h short-circuits the same way as --help", () => {
+  let invokeCalled = false;
+  withMockedDeps({
+    invokeManagementProject: () => { invokeCalled = true; return { ok: true, payload: {}, project: { root: "/r", agent_root: "/r/.agent" } }; },
+  }, {}, () => {
+    const { waitpoints } = require("../../../lib/commands/management/write");
+    const { restore } = captureStdout();
+    try {
+      const result = waitpoints({ args: ["waitpoints", "create", "-h"], lang: "en" });
+      assert.equal(invokeCalled, false);
+      assert.deepEqual(result, { ok: true, mutated: false, help: true });
+    } finally {
+      restore();
+    }
+  });
+});
+
+test("inbox: --help short-circuits to inboxSendContract with ok=true, mutated=false, help=true", () => {
+  let invokeCalled = false;
+  withMockedDeps({
+    invokeManagementProject: () => { invokeCalled = true; return { ok: true, payload: {}, project: { root: "/r", agent_root: "/r/.agent" } }; },
+  }, {}, () => {
+    const { inbox } = require("../../../lib/commands/management/write");
+    const { restore } = captureStdout();
+    try {
+      const result = inbox({ args: ["inbox", "send", "--help"], lang: "en" });
+      assert.equal(invokeCalled, false, "--help must never reach the Management API");
+      assert.deepEqual(result, { ok: true, mutated: false, help: true });
+    } finally {
+      const out = restore();
+      assert.match(out, /Usage: cortex-agent inbox send/);
+      assert.match(out, /--gate <workflow>/);
+    }
+  });
+});
+
+test("decisions: --help still short-circuits and now returns the structured result (no breaking change)", () => {
+  withMockedDeps({}, {}, () => {
+    const { decisions } = require("../../../lib/commands/management/write");
+    const { restore } = captureStdout();
+    try {
+      const result = decisions({ args: ["decisions", "request", "--help"], lang: "en" });
+      assert.deepEqual(result, { ok: true, mutated: false, help: true });
+    } finally {
+      const out = restore();
+      assert.match(out, /--gate-action/);
+    }
+  });
+});
+
+test("runs/queues/sessions: --help short-circuits before any read or write path", () => {
+  withMockedDeps({
+    invokeManagementProject: () => { throw new Error("must not run for --help"); },
+  }, {
+    queryManagementApi: () => { throw new Error("query must not run for --help"); },
+  }, () => {
+    const { runs, queues, sessions } = require("../../../lib/commands/management/write");
+    const { restore } = captureStdout();
+    try {
+      assert.deepEqual(runs({ args: ["runs", "--help"], lang: "en" }), { ok: true, mutated: false, help: true });
+      assert.deepEqual(queues({ args: ["queues", "--help"], lang: "en" }), { ok: true, mutated: false, help: true });
+      assert.deepEqual(sessions({ args: ["sessions", "--help"], lang: "en" }), { ok: true, mutated: false, help: true });
+    } finally {
+      restore();
+    }
+  });
+});
+
+// ─── GitHub issue #15: managementWrite result contract ───────────────────────
+
+test("managementWrite: ok=true → returns { ok: true, mutated: true }", () => {
+  withMockedDeps({
+    invokeManagementProject: () => ({
+      ok: true,
+      payload: { wrote: true },
+      project: { root: "/repo", agent_root: "/repo/.agent" },
+    }),
+  }, {}, () => {
+    const { managementWrite } = require("../../../lib/commands/management/write");
+    const { restore } = captureStdout();
+    try {
+      const result = managementWrite(
+        { args: ["decisions", "request", "--id", "d-1"], lang: "en" },
+        "decisions",
+        ["request", "resolve"],
+      );
+      assert.deepEqual(result, { ok: true, mutated: true });
+    } finally {
+      restore();
+    }
+  });
+});
+
+test("managementWrite: ok=false → returns { ok: false, mutated: false, code }", () => {
+  withMockedDeps({
+    invokeManagementProject: () => ({
+      ok: false,
+      error: { code: "WORKFLOW_GATE_REQUIRED", message: "--gate must be one of: mission, agent", details: {} },
+      exitCode: 4,
+    }),
+  }, {}, () => {
+    const { managementWrite } = require("../../../lib/commands/management/write");
+    const { restore: restoreOut } = captureStdout();
+    const { restore: restoreErr } = captureStderr();
+    // managementApiError sets process.exitCode to the API error's exitCode
+    // (4 here). Save and restore so the runner doesn't see the synthetic
+    // exit code and treat the test as failed.
+    let result;
+    const prevExit = process.exitCode;
+    try {
+      result = managementWrite(
+        { args: ["waitpoints", "create"], lang: "en" },
+        "waitpoints",
+        ["create", "release", "cancel"],
+      );
+    } finally {
+      process.exitCode = prevExit;
+      restoreOut();
+      restoreErr();
+    }
+    assert.equal(result.ok, false);
+    assert.equal(result.mutated, false);
+    assert.equal(result.code, "WORKFLOW_GATE_REQUIRED");
+  });
+});
+
+test("managementWrite: missing action → returns { ok: false, mutated: false, code: INVALID_USAGE }", () => {
+  withMockedDeps({}, {}, () => {
+    const { managementWrite } = require("../../../lib/commands/management/write");
+    const { restore: restoreErr } = captureStderr();
+    // invalidManagementUsage sets process.exitCode = 2; capture/restore so the
+    // runner doesn't see the synthetic exit code and treat the test as failed.
+    const prevExit = process.exitCode;
+    let result;
+    try {
+      result = managementWrite(
+        { args: ["waitpoints"], lang: "en" },
+        "waitpoints",
+        ["create", "release", "cancel"],
+      );
+    } finally {
+      process.exitCode = prevExit;
+      restoreErr();
+    }
+    assert.deepEqual(result, { ok: false, mutated: false, code: "INVALID_USAGE" });
+  });
+});
+
+// ─── GitHub issue #15: shouldAutoSyncManagementWriter gating ────────────────
+
+test("shouldAutoSyncManagementWriter: true only for ok + mutated (the happy path)", () => {
+  const { shouldAutoSyncManagementWriter } = require("../../../lib/commands/management/write");
+  assert.equal(
+    shouldAutoSyncManagementWriter(["waitpoints", "create"], { ok: true, mutated: true }),
+    true,
+  );
+  assert.equal(
+    shouldAutoSyncManagementWriter(["decisions", "request"], { ok: true, mutated: true }),
+    true,
+  );
+});
+
+test("shouldAutoSyncManagementWriter: false for help / read / error / missing keys (issue #15)", () => {
+  const { shouldAutoSyncManagementWriter } = require("../../../lib/commands/management/write");
+  assert.equal(
+    shouldAutoSyncManagementWriter(["waitpoints", "create", "--help"], { ok: true, mutated: false, help: true }),
+    false,
+  );
+  assert.equal(
+    shouldAutoSyncManagementWriter(["runs", "list"], { ok: true, mutated: false, read: true }),
+    false,
+  );
+  assert.equal(
+    shouldAutoSyncManagementWriter(["waitpoints"], { ok: false, mutated: false, code: "INVALID_USAGE" }),
+    false,
+  );
+  assert.equal(
+    shouldAutoSyncManagementWriter(
+      ["waitpoints", "create"],
+      { ok: false, mutated: false, code: "WORKFLOW_GATE_REQUIRED" },
+    ),
+    false,
+  );
+  assert.equal(shouldAutoSyncManagementWriter(["x"], undefined), false);
+  assert.equal(shouldAutoSyncManagementWriter(["x"], null), false);
+  assert.equal(
+    shouldAutoSyncManagementWriter(["x"], { ok: true, mutated: false }),
+    false,
+  );
+});

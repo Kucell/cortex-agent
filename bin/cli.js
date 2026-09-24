@@ -17,12 +17,6 @@ const {
   untrackAgent,
   linkGlobal,
   doctor,
-  runs,
-  queues,
-  sessions,
-  decisions,
-  inbox,
-  waitpoints,
   coordination,
   lease,
   notification,
@@ -166,6 +160,25 @@ const { eventBusCommand } = require("../lib/event-bus/cli");
 // "lib/commands.js has 0 changes vs base f8a1d38" stays intact.
 const { stateSync, installStateGithooks, fireAndForgetSync } = require("../lib/state-sync/index.js");
 const { shouldAutoSyncCoordination } = require("../lib/commands/management/coordination.js");
+
+// GitHub issue #15: decisions / inbox / waitpoints write wrappers now return
+// a structured `{ ok, mutated, code? }` result. `shouldAutoSyncManagementWriter`
+// short-circuits the `fireAndForgetSync` tail when no mutation happened, so a
+// --help probe or invalid-arg error never sweeps pre-existing dirty state
+// into a commit + push. Imported directly from the write module so the
+// M-001 invariant "lib/commands.js has 0 changes vs base" stays intact.
+// runs / queues / sessions stay here too: they keep their existing zero-tail
+// dispatch (no fireAndForgetSync today) and only return a result for
+// consistency with the new contract.
+const {
+  runs,
+  queues,
+  sessions,
+  decisions,
+  inbox,
+  waitpoints,
+  shouldAutoSyncManagementWriter,
+} = require("../lib/commands/management/write.js");
 
 // M-035 MS-003 (P-009): .help/ contract dispatch.
 //
@@ -609,9 +622,30 @@ async function initModeGeneral() {
     case "queues":      queues(ctx); break;
     case "sessions":    sessions(ctx); break;
     case "session":     runSession(args); break;
-    case "decisions":   decisions(ctx); fireAndForgetSync(l1Ctx).catch(() => {}); break;
-    case "inbox":       inbox(ctx); fireAndForgetSync(l1Ctx).catch(() => {}); break;
-    case "waitpoints":  waitpoints(ctx); fireAndForgetSync(l1Ctx).catch(() => {}); break;
+    case "decisions": {
+      // GitHub issue #15: only run state-sync on a successful mutation. Help
+      // probes and invalid-arg errors must not sweep pre-existing dirty state
+      // into a commit + push.
+      const result = decisions(ctx);
+      if (shouldAutoSyncManagementWriter(args, result)) {
+        fireAndForgetSync(l1Ctx).catch(() => {});
+      }
+      break;
+    }
+    case "inbox": {
+      const result = inbox(ctx);
+      if (shouldAutoSyncManagementWriter(args, result)) {
+        fireAndForgetSync(l1Ctx).catch(() => {});
+      }
+      break;
+    }
+    case "waitpoints": {
+      const result = waitpoints(ctx);
+      if (shouldAutoSyncManagementWriter(args, result)) {
+        fireAndForgetSync(l1Ctx).catch(() => {});
+      }
+      break;
+    }
     case "task":
     case "event": {
       const result = coordination(ctx);
