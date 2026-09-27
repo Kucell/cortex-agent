@@ -598,9 +598,7 @@ async function initModeGeneral() {
   // continues to call lib/commands.js init() exactly as before.
   if (
     command === "init" &&
-    (options.mode === "general" ||
-      args.includes("--mode") ||
-      args.includes("-m"))
+    options.mode === "general"
   ) {
     if (options.mode && options.mode !== "general") {
       console.error(
