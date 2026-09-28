@@ -857,6 +857,23 @@ function isExpired(waitpoint, nowMs) {
   return Number.isFinite(ts) && ts <= nowMs;
 }
 
+function isValidOwnerWorkflow(value) {
+  return typeof value === "string" && /^\/[A-Za-z0-9][A-Za-z0-9-]*$/.test(value);
+}
+
+function waitpointIndexEntry(record, file) {
+  return {
+    waitpoint_id: record.waitpoint_id,
+    path: rel(file),
+    status: record.status,
+    owner_workflow: record.owner_workflow,
+    gate_action: record.gate && record.gate.action,
+    resource_ref: record.gate && record.gate.resource_ref,
+    decision_id: record.decision_id === undefined ? null : record.decision_id,
+    updated_at: record.updated_at,
+  };
+}
+
 function queryInbox() {
   const items = listJsonObjects(path.join(agentRoot, "inbox"))
     .map(({ file, data }) => ({ ...data, path: rel(file) }))
@@ -1194,7 +1211,9 @@ function createWaitpoint() {
   const payload = parsePayload();
   const waitpointId = safeId(option("--waitpoint-id", payload.waitpoint_id), "WP");
   const ownerWorkflow = String(option("--owner-workflow", payload.owner_workflow || "")).trim();
-  if (!ownerWorkflow) fail("invalid_waitpoint_owner", "--owner-workflow is required.");
+  if (!isValidOwnerWorkflow(ownerWorkflow)) {
+    fail("invalid_waitpoint_owner", "--owner-workflow must match /<workflow-name>.");
+  }
   const reason = String(option("--reason", payload.reason || "")).trim();
   if (!reason) fail("invalid_waitpoint_reason", "--reason is required.");
   const action = String(option("--action", payload.gate?.action || "")).trim();
@@ -1229,14 +1248,12 @@ function createWaitpoint() {
     workflow_gate: gate,
   };
   writeJson(file, next);
-  upsertIndexEntry("waitpoints", "waitpoints", {
-    waitpoint_id: waitpointId,
-    path: rel(file),
-    status: next.status,
-    owner_workflow: ownerWorkflow,
-    decision_id: next.decision_id,
-    updated_at: timestamp,
-  }, (entry, current) => entry.waitpoint_id === current.waitpoint_id);
+  upsertIndexEntry(
+    "waitpoints",
+    "waitpoints",
+    waitpointIndexEntry(next, file),
+    (entry, current) => entry.waitpoint_id === current.waitpoint_id,
+  );
   printJson({
     ok: true,
     action: "waitpoints create",
@@ -1268,14 +1285,12 @@ function cancelWaitpoint() {
     workflow_gate: gate,
   };
   writeJson(file, next);
-  upsertIndexEntry("waitpoints", "waitpoints", {
-    waitpoint_id: waitpointId,
-    path: rel(file),
-    status: "canceled",
-    owner_workflow: existing.owner_workflow,
-    decision_id: existing.decision_id,
-    updated_at: timestamp,
-  }, (entry, current) => entry.waitpoint_id === current.waitpoint_id);
+  upsertIndexEntry(
+    "waitpoints",
+    "waitpoints",
+    waitpointIndexEntry(next, file),
+    (entry, current) => entry.waitpoint_id === current.waitpoint_id,
+  );
   printJson({
     ok: true,
     action: "waitpoints cancel",
@@ -1330,14 +1345,12 @@ function releaseWaitpoint() {
     workflow_gate: gate,
   };
   writeJson(file, next);
-  upsertIndexEntry("waitpoints", "waitpoints", {
-    waitpoint_id: waitpointId,
-    path: rel(file),
-    status: "released",
-    owner_workflow: existing.owner_workflow,
-    decision_id: decisionId,
-    updated_at: timestamp,
-  }, (entry, current) => entry.waitpoint_id === current.waitpoint_id);
+  upsertIndexEntry(
+    "waitpoints",
+    "waitpoints",
+    waitpointIndexEntry(next, file),
+    (entry, current) => entry.waitpoint_id === current.waitpoint_id,
+  );
   printJson({
     ok: true,
     action: "waitpoints release",
@@ -1367,14 +1380,12 @@ function releaseMatchingWaitpoints(decisionId, resolvedBy, rationale, timestamp)
     writeJson(file, next);
     changedPaths.push(rel(file));
     changedResources.push(`waitpoint:${data.waitpoint_id}`);
-    upsertIndexEntry("waitpoints", "waitpoints", {
-      waitpoint_id: data.waitpoint_id,
-      path: rel(file),
-      status: "released",
-      owner_workflow: data.owner_workflow,
-      decision_id: decisionId,
-      updated_at: timestamp,
-    }, (entry, current) => entry.waitpoint_id === current.waitpoint_id);
+    upsertIndexEntry(
+      "waitpoints",
+      "waitpoints",
+      waitpointIndexEntry(next, file),
+      (entry, current) => entry.waitpoint_id === current.waitpoint_id,
+    );
   }
   if (changedPaths.length > 0) {
     changedPaths.push(rel(path.join(agentRoot, "waitpoints", "index.json")));
