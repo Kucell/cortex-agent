@@ -94,7 +94,7 @@ function seedDirtyState(agentDir, files) {
 }
 
 function readPorcelain(agentDir) {
-  const r = git(["status", "--porcelain"], agentDir);
+  const r = git(["status", "--porcelain", "--untracked-files=all"], agentDir);
   if (r.status !== 0) throw new Error(r.stderr);
   return r.stdout;
 }
@@ -295,7 +295,7 @@ test("issue #15: successful waitpoints write DOES push state (positive control)"
 
   const afterDirty = readPorcelain(agentDir);
   for (const rel of PRE_EXISTING) {
-    assert.ok(afterDirty.includes(rel), rel + " must remain dirty locally; status=" + JSON.stringify(afterDirty));
+    assert.ok(afterDirty.includes(rel), rel + " must remain dirty locally");
   }
   assert.notEqual(afterDirty, "", "unrelated dirty state must remain after exact-path sync");
 
