@@ -4,10 +4,10 @@
 //
 // Coverage: lib/state-sync.js
 // - parsePorcelain: porcelain status line → { staged, unstaged, untracked }
-// - isStatePath: 9 state classes correctly classified
+// - isStatePath: 10 state classes correctly classified
 // - suggestCommitMessage: deterministic conventional-commit output
 // - scanState: detects dirty / staged changes in inner-`.agent/` repo
-// - addState: actually stages the 9 state classes
+// - addState: actually stages the 10 state classes
 // - commitState: actually commits and returns a SHA
 // - end-to-end: --dry-run → --add → --commit flow on a temp git repo
 
@@ -98,10 +98,11 @@ test("parsePorcelain: rename picks the destination", () => {
   assert.equal(entries[0].staged, true);
 });
 
-test("isStatePath: 9 state classes return true", () => {
+test("isStatePath: 10 state classes return true", () => {
   assert.equal(isStatePath("decisions"), true);
   assert.equal(isStatePath("decisions/D-001.json"), true);
   assert.equal(isStatePath("waitpoints/WP-x.json"), true);
+  assert.equal(isStatePath("inbox/IM-001.json"), true);
   assert.equal(isStatePath("tasks/T-001.json"), true);
   assert.equal(isStatePath("missions/M-007/gate.md"), true);
   assert.equal(isStatePath("plans/proposals/foo.md"), true);
@@ -146,8 +147,8 @@ test("suggestCommitMessage: empty input still produces a message", () => {
   assert.match(msg, /^chore\(state-sync\): sync 0 file\(s\)/);
 });
 
-test("STATE_DIRS has 8 entries, STATE_FILES has 1 (total 9)", () => {
-  assert.equal(STATE_DIRS.length, 8);
+test("STATE_DIRS has 9 entries, STATE_FILES has 1 (total 10)", () => {
+  assert.equal(STATE_DIRS.length, 9);
   assert.equal(STATE_FILES.length, 1);
   assert.equal(STATE_FILES[0], "branches/registry.json");
 });
@@ -204,7 +205,7 @@ test("scanState: non-git dir returns ok=false with error", () => {
   assert.match(res.error, /not a git repository/);
 });
 
-test("addState: stages the 9 state classes", () => {
+test("addState: stages the 10 state classes", () => {
   const { agentDir } = mkAgentRepo();
   touchStateFile(agentDir, "decisions/D-001.json");
   touchStateFile(agentDir, "branches/registry.json", "{}");
