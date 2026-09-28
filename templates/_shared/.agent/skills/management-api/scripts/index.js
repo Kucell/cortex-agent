@@ -1376,6 +1376,13 @@ function releaseMatchingWaitpoints(decisionId, resolvedBy, rationale, timestamp)
       updated_at: timestamp,
     }, (entry, current) => entry.waitpoint_id === current.waitpoint_id);
   }
+  if (changedPaths.length > 0) {
+    changedPaths.push(rel(path.join(agentRoot, "waitpoints", "index.json")));
+  }
+  return {
+    paths: [...new Set(changedPaths)],
+    resources: [...new Set(changedResources)],
+  };
 }
 
 function upsertIndexEntry(dir, key, entry, match) {
