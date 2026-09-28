@@ -159,6 +159,7 @@ const { eventBusCommand } = require("../lib/event-bus/cli");
 // bin/cli.js (not lib/commands.js) so M-001 shadow-init's invariant
 // "lib/commands.js has 0 changes vs base f8a1d38" stays intact.
 const { stateSync, installStateGithooks, fireAndForgetSync } = require("../lib/state-sync/index.js");
+const { governanceIndexCommand } = require("../lib/governance-index/cli.js");
 const { shouldAutoSyncCoordination } = require("../lib/commands/management/coordination.js");
 
 // GitHub issue #15: decisions / inbox / waitpoints write wrappers now return
