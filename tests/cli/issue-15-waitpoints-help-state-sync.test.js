@@ -117,15 +117,16 @@ function originTree(originDir) {
   return r.stdout.split(/\r?\n/).filter(Boolean);
 }
 
-function runCli(project, args) {
+function runCli(project, args, extraEnv = {}) {
   return spawnSync(process.execPath, [CLI, ...args, "--project", project], {
     cwd: project,
     encoding: "utf8",
     env: {
       ...process.env,
       LANG: "en_US.UTF-8",
-      // Do NOT set CORTEX_STATE_SYNC=off — the regression we test is that
-      // state-sync auto must NOT be invoked when no mutation happened.
+      ...extraEnv,
+      // Do NOT set CORTEX_STATE_SYNC=off by default — the regression we test
+      // is that state-sync auto must be safe on both non-mutation and success.
     },
   });
 }
@@ -306,6 +307,64 @@ test("issue #15: successful waitpoints write DOES push state (positive control)"
     assert.equal(remoteFiles.includes(rel), false, rel + " must not be swept into remote commit");
   }
   assert.ok(beforeDirty.length > 0, "fixture must start with unrelated dirty state");
+});
+
+test("decision resolve reports every auto-released waitpoint path", (t) => {
+  const { project } = mkInnerRepoWithOrigin();
+  t.after(() => fs.rmSync(project, { recursive: true, force: true }));
+  seedManagementScripts(project);
+  const env = { CORTEX_STATE_SYNC: "off" };
+
+  let result = runCli(project, [
+    "decisions", "request",
+    "--decision-id", "D-MULTI",
+    "--gate", "mission",
+    "--gate-action", "architecture",
+    "--type", "approval",
+    "--requested-by", "test",
+    "--prompt", "approve?",
+    "--resource-ref", "resource:test",
+    "--options", '["approve","reject"]',
+  ], env);
+  assert.equal(result.status, 0, result.stderr + result.stdout);
+
+  result = runCli(project, [
+    "waitpoints", "create",
+    "--waitpoint-id", "WP-MULTI",
+    "--gate", "mission",
+    "--owner-workflow", "/mission",
+    "--reason", "wait",
+    "--action", "architecture",
+    "--resource-ref", "resource:test",
+    "--decision-id", "D-MULTI",
+  ], env);
+  assert.equal(result.status, 0, result.stderr + result.stdout);
+
+  result = runCli(project, [
+    "decisions", "resolve",
+    "--decision-id", "D-MULTI",
+    "--gate", "user",
+    "--status", "approved",
+    "--selected-option", "approve",
+    "--resolved-by", "test-user",
+    "--rationale", "approved",
+  ], env);
+  assert.equal(result.status, 0, result.stderr + result.stdout);
+
+  const body = JSON.parse(result.stdout);
+  const paths = new Set(body.changed_paths || []);
+  for (const expected of [
+    ".agent/decisions/D-MULTI.json",
+    ".agent/decisions/index.json",
+    ".agent/waitpoints/WP-MULTI.json",
+    ".agent/waitpoints/index.json",
+  ]) {
+    assert.ok(paths.has(expected), "missing changed path " + expected);
+  }
+  assert.deepEqual(
+    new Set(body.changed_resources || []),
+    new Set(["decision:D-MULTI", "waitpoint:WP-MULTI"]),
+  );
 });
 
 // helpers ─────────────────────────────────────────────────────────────────────
