@@ -735,6 +735,13 @@ async function initModeGeneral() {
     case "pr":          prCommand(ctx); break;
     case "event-bus":   eventBusCommand(ctx); break;
     case "state-sync":  await stateSync(l1Ctx); break;
+    case "governance-index": {
+      const result = governanceIndexCommand(ctx);
+      if (result && result.ok && result.effect && result.effect.kind === "mutation" && result.effect.committed) {
+        fireAndForgetSync({ ...l1Ctx, cwd: result.project_root }, { paths: result.effect.paths }).catch(() => {});
+      }
+      break;
+    }
     case "help":        args.includes("--json") ? cliHelp(ctx) : printHelp(); break;
     case "dev":         await dev(ctx); break;
     case undefined:
