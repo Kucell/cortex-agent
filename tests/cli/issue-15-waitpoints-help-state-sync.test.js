@@ -238,7 +238,7 @@ test("issue #15: invalid gate value fails closed (exit != 0) and does not push s
     "create",
     "--waitpoint-id", "WP-rejected",
     "--gate", "hacker",  // invalid gate value
-    "--owner-workflow", "test",
+    "--owner-workflow", "/test",
     "--reason", "regression",
     "--action", "release",
     "--resource-ref", "branch:main",
@@ -276,7 +276,7 @@ test("issue #15: successful waitpoints write DOES push state (positive control)"
     "create",
     "--waitpoint-id", "WP-OK",
     "--gate", "mission",
-    "--owner-workflow", "test",
+    "--owner-workflow", "/test",
     "--reason", "regression control",
     "--action", "release",
     "--resource-ref", "branch:main",
@@ -303,6 +303,13 @@ test("issue #15: successful waitpoints write DOES push state (positive control)"
   const remoteFiles = originTree(originDir);
   assert.ok(remoteFiles.includes("waitpoints/WP-OK.json"), "mutation-owned waitpoint must reach remote");
   assert.ok(remoteFiles.includes("waitpoints/index.json"), "mutation-owned index must reach remote");
+
+  const waitpointIndex = JSON.parse(fs.readFileSync(path.join(agentDir, "waitpoints", "index.json"), "utf8"));
+  const entry = waitpointIndex.waitpoints.find((item) => item.waitpoint_id === "WP-OK");
+  assert.equal(entry.owner_workflow, "/test");
+  assert.equal(entry.gate_action, "release");
+  assert.equal(entry.resource_ref, "branch:main");
+
   for (const rel of PRE_EXISTING) {
     assert.equal(remoteFiles.includes(rel), false, rel + " must not be swept into remote commit");
   }
