@@ -52,6 +52,7 @@ test("syncable pathspecs are derived from registry", () => {
 test("registry validation rejects duplicate paths", () => {
   assert.throws(() => validateRegistry({
     schema_version: "1.0",
+    policies: ["tracked", "local", "derived", "evidence", "legacy", "ignored"],
     classes: [
       { id: "a", path: "x", kind: "directory", authority: "a", sync_policy: "tracked", runtime_scope: "portable", rebuildable: false },
       { id: "b", path: "x", kind: "directory", authority: "b", sync_policy: "local", runtime_scope: "portable", rebuildable: false },
