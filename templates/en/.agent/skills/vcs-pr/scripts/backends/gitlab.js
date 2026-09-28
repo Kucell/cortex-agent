@@ -48,7 +48,7 @@ function projectUrl({ org, repo }, config) {
 }
 
 async function createPR(opts) {
-  const { config, token, head, base, title, body } = opts;
+  const { config, token, head, base, title, body, labels } = opts;
   const pid = projectUrl(opts, config);
   const draftTitle = /^(?:Draft:|WIP:)/i.test(title || "") ? title : `Draft: ${title || ""}`;
   const res = await send("POST", config.host, `/api/v4/projects/${pid}/merge_requests`, token, {
@@ -56,6 +56,7 @@ async function createPR(opts) {
     target_branch: base || "main",
     title: draftTitle,
     description: body || "",
+    ...(Array.isArray(labels) && labels.length > 0 ? { labels: labels.join(",") } : {}),
   });
   if (res.status !== 201) throw new Error(`gitlab_create_failed: HTTP ${res.status} ${res.raw?.slice(0, 200)}`);
   return {
@@ -64,6 +65,7 @@ async function createPR(opts) {
     state: res.body.state,
     head: res.body.source_branch,
     base: res.body.target_branch,
+    labels: res.body.labels || [],
     raw: res.body,
   };
 }
@@ -185,7 +187,7 @@ async function getJobTrace(opts) {
 }
 
 async function updatePR(opts) {
-  const { config, token, pr_number, title, body, reviewers, ready, close, remove_source, squash } = opts;
+  const { config, token, pr_number, title, body, reviewers, ready, close, remove_source, squash, add_labels, remove_labels } = opts;
   const pid = projectUrl(opts, config);
   const payload = {};
 
@@ -194,6 +196,15 @@ async function updatePR(opts) {
   if (close) payload.state_event = "close";
   if (remove_source) payload.remove_source_branch = true;
   if (squash) payload.squash = true;
+
+  // GitLab PUT MR API uses add_labels / remove_labels (set semantics
+  // requires GET-then-PUT to avoid clobbering).  Both are comma-separated.
+  if (Array.isArray(add_labels) && add_labels.length > 0) {
+    payload.add_labels = add_labels.join(",");
+  }
+  if (Array.isArray(remove_labels) && remove_labels.length > 0) {
+    payload.remove_labels = remove_labels.join(",");
+  }
 
   if (Array.isArray(reviewers) && reviewers.length > 0) {
     const reviewerIds = [];
@@ -231,6 +242,7 @@ async function updatePR(opts) {
     title: res.body.title,
     draft: res.body.draft,
     reviewers: (res.body.reviewers || []).map((reviewer) => reviewer.username),
+    labels: res.body.labels || [],
     raw: res.body,
   };
 }
@@ -263,6 +275,36 @@ async function list(opts) {
   })) : [];
 }
 
+
+// Trigger a fresh pipeline on the given ref.  Used by the
+// `vcs-pr trigger-pipeline` command to re-run mirror jobs without
+// touching the GitLab UI (D-003 artifact release operations).
+//
+// GitLab returns HTTP 201 on success with the new pipeline payload;
+// HTTP 4xx surfaces the actual reason (e.g. "ref not found", "no .gitlab-ci.yml").
+async function createPipeline(opts) {
+  const { config, token, ref } = opts;
+  if (!ref) throw new Error("createPipeline requires a non-empty ref");
+  const pid = projectUrl(opts, config);
+  const res = await send(
+    "POST",
+    config.host,
+    `/api/v4/projects/${pid}/pipeline?ref=${encodeURIComponent(ref)}`,
+    token
+  );
+  if (res.status !== 201) {
+    throw new Error(`gitlab_pipeline_create_failed: HTTP ${res.status} ${res.raw?.slice(0, 200)}`);
+  }
+  return {
+    id: res.body.id,
+    status: res.body.status,
+    ref: res.body.ref,
+    sha: res.body.sha,
+    web_url: res.body.web_url || null,
+    raw: res.body,
+  };
+}
+
 module.exports = {
   backend: "gitlab",
   createPR,
@@ -273,6 +315,7 @@ module.exports = {
   updatePR,
   merge,
   list,
+  createPipeline,
   _send: send,
   _projectUrl: projectUrl,
   _isDraftMergeRequest: isDraftMergeRequest,

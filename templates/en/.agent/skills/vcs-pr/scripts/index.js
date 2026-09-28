@@ -250,7 +250,12 @@ async function main() {
 
   if (command === "create") {
     const bodyRaw = flag("--body-file", argv)
-      ? fs.readFileSync(path.join(process.cwd(), flag("--body-file", argv)), "utf8")
+      ? fs.readFileSync(
+          path.isAbsolute(flag("--body-file", argv))
+            ? flag("--body-file", argv)
+            : path.join(process.cwd(), flag("--body-file", argv)),
+          "utf8"
+        )
       : loadBody({
           bodyFile: flag("--body-file", argv),
           bodyFromRun: flag("--body-from-run", argv),

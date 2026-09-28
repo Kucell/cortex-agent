@@ -12,6 +12,7 @@ summary: VCS Pull Request 创建 / 状态 / 合并 — 通过 secret://<ref> 间
 ## When to Use
 
 - Phase 1 session-triage 开启的 mission 干完一轮验证后 → `vcs-pr create --head feat/foo --base main --title "..."`
+- PR Ready promotion / 标签补全 / reviewer 调整 → `vcs-pr update --pr-number N --ready --reviewers @x --labels a,b,c`
 - 想看 PR 现在 merged/closed 没 → `vcs-pr status --pr-number 5`
 - 显式 user gate 合并 PR → `vcs-pr merge --pr-number 5 --gate user`
 - 列已开 PR → `vcs-pr list --state open`
@@ -24,6 +25,16 @@ node .agent/skills/vcs-pr/scripts/index.js create \
   --head feat/foo --base main \
   --title "feat: ..." \
   [--body-file .agent/pr-bodies/foo.md | --body-from-run R-session-001] \
+  [--labels "area/swe,mission/M-XXX"] \
+  --run-id R-session-001 --gate user
+
+node .agent/skills/vcs-pr/scripts/index.js update \
+  --backend gitlab \
+  --pr-number 5 \
+  [--title "..."] [--body-file .agent/pr-bodies/foo.md] \
+  [--reviewers "@alice,@bob"] [--labels "area/swe,mission/M-XXX"] \
+  [--add-labels "milestone/MS-001"] [--remove-labels "stale/old"] \
+  [--ready | --close] [--remove-source-branch] [--squash] \
   --run-id R-session-001 --gate user
 
 node .agent/skills/vcs-pr/scripts/index.js status \
@@ -42,8 +53,10 @@ node .agent/skills/vcs-pr/scripts/index.js list \
 PR 创建后,vcs-pr 自动:
 1. 调 `secrets get --ref <cfg.token_ref> --no-mask --gate user` 取 token(只 vcs-pr 自己拿,**不**透传 agent)
 2. 调对应 backend 的 `createPR()` — token 注入 `Authorization` header
-3. 写 `runs/<run-id>.json#events[]` 一条 `vcs_pr_opened` event(pr_number / url / head / base)
-4. 输出 JSON `{ok: true, action: "create", number, url, ...}`,**不含** token
+3. 写 `runs/<run-id>.json#events[]` 一条 `vcs_pr_opened` event(pr_number / url / head / base / labels)
+4. 输出 JSON `{ok: true, action: "create", number, url, ..., labels: [...]}`,**不含** token
+
+`update` 操作写一条 `vcs_pr_updated` event（含 pr_number / reviewers / add_labels / remove_labels / ready 状态）。GitLab PUT MR API 的 labels 是 add/remove 语义，`--labels` 默认映射 add_labels；set 语义需要 GET-then-PUT，留 v1.3。
 
 ## Configuration
 
@@ -124,7 +137,8 @@ default:
 - ❌ 不读 token 给 agent
 - ❌ 不主动创建 PR(必须 host 显式调用)
 - ❌ 不做 auto-merge 默认 — merge 必须 user gate
-- ❌ 不做 review / assign / label(留 v1.1)
+- ❌ 不做 set-labels 语义(GitLab PUT 只支持 add/remove;set 需要 GET-then-PUT,留 v1.3)
+- ❌ 不做 gitea/github backend labels(留 v1.3;v1.2 仅 GitLab)
 - ❌ 不替代项目级 `.agent/workflows/pull-request.md` 工作流(workflow orchestration 在该层,本 skill 是底层)
 
 ## Relation
