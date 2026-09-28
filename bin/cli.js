@@ -146,10 +146,9 @@ const { eventBusCommand } = require("../lib/event-bus/cli");
 
 // T-FOLLOW-002 v2: `.agent/` state sync CLI surface.
 // `state-sync [--dry-run|--add|--commit|--push]` lives in
-// lib/state-sync.js. It scans the 9 state-class directories
-// (decisions/ waitpoints/ tasks/ missions/ plans/ dispatch/ workflows/
-// skills/ branches/registry.json) inside the inner .agent/ git repo
-// and stages/commits/pushes them so project-management state stays
+// lib/state-sync/index.js. It resolves syncable state through the versioned
+// State Class Registry contract in templates/_shared/.agent/contracts/
+// state-classes.json and stages/commits/pushes that project state so it stays
 // in lock-step across machines. Strictly additive: no changes to
 // lib/commands.js; the new subcommand is added to the case dispatch below.
 //
