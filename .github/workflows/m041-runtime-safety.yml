@@ -35,3 +35,9 @@ jobs:
         run: node --test tests/state-sync/state-sync.test.js
       - name: Issue 15 integration
         run: node --test tests/cli/issue-15-waitpoints-help-state-sync.test.js
+      - name: Module load smoke
+        run: |
+          node -e "require('./lib/cli/effect'); require('./lib/commands/management/write'); require('./lib/state-sync')"
+          node --check templates/_shared/.agent/skills/management-api/scripts/index.js
+      - name: Package manifest smoke
+        run: npm pack --dry-run --json > /tmp/m041-pack.json
