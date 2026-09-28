@@ -13,6 +13,7 @@ on:
       - "tests/state-registry/**"
       - "tests/state-sync/**"
       - "tests/governance-index/**"
+      - "tests/management/management-writer-cli.test.js"
       - "tests/cli/issue-15-waitpoints-help-state-sync.test.js"
       - ".github/workflows/m042-state-registry-index.yml"
   workflow_dispatch:
@@ -40,6 +41,8 @@ jobs:
           node --test tests/install/install-state-githooks.test.js
       - name: M-041 exact-sync regression
         run: node --test tests/cli/issue-15-waitpoints-help-state-sync.test.js
+      - name: Management writer projection contract
+        run: node --test tests/management/management-writer-cli.test.js
       - name: Syntax and module smoke
         run: |
           bash -n templates/_shared/.agent/.githooks/pre-commit
