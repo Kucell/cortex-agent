@@ -295,7 +295,7 @@ test("issue #15: successful waitpoints write DOES push state (positive control)"
 
   const afterDirty = readPorcelain(agentDir);
   for (const rel of PRE_EXISTING) {
-    assert.ok(afterDirty.includes(rel), rel + " must remain dirty locally");
+    assert.ok(afterDirty.includes(rel), rel + " must remain dirty locally; status=" + JSON.stringify(afterDirty));
   }
   assert.notEqual(afterDirty, "", "unrelated dirty state must remain after exact-path sync");
 
