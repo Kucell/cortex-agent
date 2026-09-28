@@ -101,3 +101,40 @@ test("decisions request help and writer accept the documented gate-action and op
   assert.equal(result.status, 0, result.stderr);
   assert.equal(JSON.parse(result.stdout).decision.gate.action, "architecture");
 });
+
+
+test("waitpoint writer rejects non-schema owner workflow and writes schema-complete index entries", (t) => {
+  const project = createProject();
+  t.after(() => fs.rmSync(project, { recursive: true, force: true }));
+
+  let result = run(project, project, [
+    "waitpoints", "create",
+    "--waitpoint-id", "WP-OWNER-BAD",
+    "--gate", "mission",
+    "--owner-workflow", "test",
+    "--reason", "schema guard",
+    "--action", "architecture",
+    "--resource-ref", "mission:M-TEST",
+  ]);
+  assert.notEqual(result.status, 0);
+  assert.equal(JSON.parse(result.stdout).error.code, "INVALID_WAITPOINT_OWNER");
+
+  result = run(project, project, [
+    "waitpoints", "create",
+    "--waitpoint-id", "WP-OWNER-GOOD",
+    "--gate", "mission",
+    "--owner-workflow", "/test",
+    "--reason", "schema guard",
+    "--action", "architecture",
+    "--resource-ref", "mission:M-TEST",
+  ]);
+  assert.equal(result.status, 0, result.stderr + result.stdout);
+
+  const index = JSON.parse(fs.readFileSync(path.join(project, ".agent", "waitpoints", "index.json"), "utf8"));
+  const entry = index.waitpoints.find((item) => item.waitpoint_id === "WP-OWNER-GOOD");
+  assert.ok(entry);
+  assert.equal(entry.owner_workflow, "/test");
+  assert.equal(entry.gate_action, "architecture");
+  assert.equal(entry.resource_ref, "mission:M-TEST");
+  assert.equal(entry.decision_id, null);
+});
