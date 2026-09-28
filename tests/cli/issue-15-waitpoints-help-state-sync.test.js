@@ -111,6 +111,12 @@ function originHeadSha(originDir) {
   return r.stdout.trim();
 }
 
+function originTree(originDir) {
+  const r = git(["ls-tree", "-r", "--name-only", "main"], originDir);
+  if (r.status !== 0) throw new Error(r.stderr);
+  return r.stdout.split(/\r?\n/).filter(Boolean);
+}
+
 function runCli(project, args) {
   return spawnSync(process.execPath, [CLI, ...args, "--project", project], {
     cwd: project,
@@ -257,6 +263,10 @@ test("issue #15: successful waitpoints write DOES push state (positive control)"
   t.after(() => fs.rmSync(project, { recursive: true, force: true }));
   seedManagementScripts(project);
 
+  // Leave unrelated dirty state in the same state classes. A successful
+  // mutation must sync only its own changed_paths, not sweep these files.
+  seedDirtyState(agentDir, PRE_EXISTING);
+  const beforeDirty = readPorcelain(agentDir);
   const beforeHead = headSha(agentDir);
   const beforeOrigin = originHeadSha(originDir);
 
@@ -282,6 +292,20 @@ test("issue #15: successful waitpoints write DOES push state (positive control)"
   const afterOrigin = originHeadSha(originDir);
   assert.notEqual(afterHead, beforeHead, "successful write must commit");
   assert.notEqual(afterOrigin, beforeOrigin, "successful write must push");
+
+  const afterDirty = readPorcelain(agentDir);
+  for (const rel of PRE_EXISTING) {
+    assert.ok(afterDirty.includes(rel), rel + " must remain dirty locally");
+  }
+  assert.notEqual(afterDirty, "", "unrelated dirty state must remain after exact-path sync");
+
+  const remoteFiles = originTree(originDir);
+  assert.ok(remoteFiles.includes("waitpoints/WP-OK.json"), "mutation-owned waitpoint must reach remote");
+  assert.ok(remoteFiles.includes("waitpoints/index.json"), "mutation-owned index must reach remote");
+  for (const rel of PRE_EXISTING) {
+    assert.equal(remoteFiles.includes(rel), false, rel + " must not be swept into remote commit");
+  }
+  assert.ok(beforeDirty.length > 0, "fixture must start with unrelated dirty state");
 });
 
 // helpers ─────────────────────────────────────────────────────────────────────
