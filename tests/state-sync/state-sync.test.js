@@ -23,6 +23,8 @@ const {
   suggestCommitMessage,
   scanState,
   addState,
+  addStatePaths,
+  normalizeExactStatePaths,
   commitState,
   STATE_DIRS,
   STATE_FILES,
@@ -253,4 +255,51 @@ test("end-to-end: touch → scan → add → commit", () => {
   scan = scanState(agentDir);
   assert.equal(scan.dirty.length, 0);
   assert.equal(scan.staged.length, 0);
+});
+
+
+test("normalizeExactStatePaths: strips .agent prefix and rejects unsafe/non-state paths", () => {
+  assert.deepEqual(
+    normalizeExactStatePaths([
+      ".agent/waitpoints/WP-1.json",
+      "waitpoints/index.json",
+      "../outside",
+      "/absolute/path",
+      "README.md",
+      ".agent/waitpoints/WP-1.json",
+    ]),
+    ["waitpoints/WP-1.json", "waitpoints/index.json"],
+  );
+});
+
+test("addStatePaths + commitState(paths): commit exact state files only", () => {
+  const { agentDir } = mkAgentRepo();
+  touchStateFile(agentDir, "waitpoints/WP-owned.json", "{}");
+  touchStateFile(agentDir, "waitpoints/WP-unrelated.json", "{}");
+  touchStateFile(agentDir, "decisions/D-unrelated.json", "{}");
+
+  // Pre-stage an unrelated file to prove path-scoped commit does not sweep it.
+  let r = spawnSync("git", ["-C", agentDir, "add", "decisions/D-unrelated.json"], { encoding: "utf8" });
+  assert.equal(r.status, 0, r.stderr);
+
+  const add = addStatePaths(agentDir, [".agent/waitpoints/WP-owned.json"]);
+  assert.equal(add.ok, true, add.error);
+  assert.deepEqual(add.paths, ["waitpoints/WP-owned.json"]);
+
+  const commit = commitState(
+    agentDir,
+    "chore(state-sync): exact path",
+    ["waitpoints/WP-owned.json"],
+  );
+  assert.equal(commit.ok, true, commit.error);
+
+  const show = spawnSync("git", ["-C", agentDir, "show", "--name-only", "--pretty=format:", "HEAD"], { encoding: "utf8" });
+  assert.equal(show.status, 0, show.stderr);
+  const committed = show.stdout.split(/\r?\n/).filter(Boolean);
+  assert.deepEqual(committed, ["waitpoints/WP-owned.json"]);
+
+  const status = spawnSync("git", ["-C", agentDir, "status", "--porcelain"], { encoding: "utf8" });
+  assert.equal(status.status, 0, status.stderr);
+  assert.match(status.stdout, /D-unrelated\.json/, "pre-staged unrelated file must remain staged");
+  assert.match(status.stdout, /WP-unrelated\.json/, "untracked unrelated file must remain untracked");
 });
