@@ -1,6 +1,14 @@
 "use strict";
 
-const protocol = require("@cortex-agent/protocol");
+let protocol;
+try {
+  protocol = require("@cortex-agent/protocol");
+} catch (error) {
+  // Root cortex-agent compatibility: the meta/CLI package ships workspace
+  // sources together, but npm does not create workspace links inside that
+  // package. Standalone @cortex-agent/sdk installs resolve the package name.
+  protocol = require("../../protocol/src/index.js");
+}
 
 function requireTransport(transport) {
   if (!transport || typeof transport.query !== "function") {
@@ -14,7 +22,9 @@ function requireTransport(transport) {
 function createCortexClient(options = {}) {
   const transport = requireTransport(options.transport);
 
-  async function query(projection, filters = {}) {
+  // Deliberately not declared async: local/root CLI transports are synchronous,
+  // while remote transports may return Promises. Callers can await either.
+  function queryProjection(projection, filters = {}) {
     return transport.query(projection, filters);
   }
 
@@ -28,25 +38,29 @@ function createCortexClient(options = {}) {
     capabilities: Object.freeze({
       discover: typeof transport.discoverCapabilities === "function"
         ? () => transport.discoverCapabilities()
-        : async () => ({ protocol_version: protocol.PROTOCOL_VERSION, capabilities: [] }),
+        : () => ({ protocol_version: protocol.PROTOCOL_VERSION, capabilities: [] }),
+    }),
+    management: Object.freeze({
+      query: queryProjection,
+      capabilities: () => queryProjection("capabilities"),
     }),
     tasks: Object.freeze({
-      get: (taskId) => query("task-state", { task: taskId }),
+      get: (taskId) => queryProjection("task-state", { task: taskId }),
     }),
     runs: Object.freeze({
-      list: () => query("runs"),
-      get: (runId) => query("run-state", { run: runId }),
+      list: () => queryProjection("runs"),
+      get: (runId) => queryProjection("run-state", { run: runId }),
     }),
     decisions: Object.freeze({
-      list: () => query("decisions"),
+      list: () => queryProjection("decisions"),
     }),
     waitpoints: Object.freeze({
-      list: () => query("waitpoints"),
+      list: () => queryProjection("waitpoints"),
     }),
     coordination: Object.freeze({
       tasks: Object.freeze({
-        list: (filters = {}) => query("coordination-tasks", filters),
-        get: (taskId) => query("coordination-tasks", { task: taskId }),
+        list: (filters = {}) => queryProjection("coordination-tasks", filters),
+        get: (taskId) => queryProjection("coordination-tasks", { task: taskId }),
       }),
     }),
     topology: Object.freeze({
