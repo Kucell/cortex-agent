@@ -7,3 +7,11 @@ settings:
 importers:
 
   .: {}
+
+  packages/protocol: {}
+
+  packages/sdk:
+    dependencies:
+      '@cortex-agent/protocol':
+        specifier: workspace:*
+        version: link:../protocol
