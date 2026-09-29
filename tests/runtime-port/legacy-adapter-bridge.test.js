@@ -110,3 +110,26 @@ test("legacy bridge does not expose a second raw run id beside canonical run_ref
   assert.equal(Object.prototype.hasOwnProperty.call(status, "run_id"), false);
   assert.equal(Object.prototype.hasOwnProperty.call(status, "report"), false);
 });
+
+test("observer-only legacy adapters do not gain invoke/cancel capabilities from method presence", () => {
+  const adapter = fakeAdapter();
+  const originalDiscover = adapter.discover;
+  adapter.discover = () => ({
+    ...originalDiscover(),
+    observer: true,
+    invoke_supported: false,
+    cancel_supported: false,
+  });
+
+  const port = createLegacyAdapterRuntimePort(adapter);
+  assert.equal(port.descriptor.capabilities.includes("runtime.run.create"), false);
+  assert.equal(port.descriptor.capabilities.includes("runtime.run.cancel"), false);
+  assert.throws(
+    () => port.createRun({ task: "forbidden" }),
+    (error) => error.code === "ERR_RUNTIME_CAPABILITY_UNSUPPORTED",
+  );
+  assert.throws(
+    () => port.cancel("run:R-1"),
+    (error) => error.code === "ERR_RUNTIME_CAPABILITY_UNSUPPORTED",
+  );
+});
