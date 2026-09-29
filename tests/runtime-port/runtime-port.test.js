@@ -57,3 +57,20 @@ test("RuntimePort rejects non-runtime protocol descriptors", () => {
     (error) => error.code === "ERR_RUNTIME_PROTOCOL_REQUIRED",
   );
 });
+
+test("RuntimePort never exposes an undeclared capability even when an operation function is supplied", () => {
+  let invoked = false;
+  const port = runtime.createRuntimePort({
+    descriptor: descriptor(["runtime.health"]),
+    operations: {
+      health() { return { ready: true }; },
+      createRun() { invoked = true; return { run_ref: "run:unexpected" }; },
+    },
+  });
+
+  assert.throws(
+    () => port.createRun({ task: "must-not-run" }),
+    (error) => error.code === "ERR_RUNTIME_CAPABILITY_UNSUPPORTED",
+  );
+  assert.equal(invoked, false);
+});
