@@ -42,3 +42,6 @@ importers:
       '@cortex-agent/runtime-port':
         specifier: workspace:*
         version: link:../runtime-port
+    peerDependencies:
+      '@getpaseo/client':
+        specifier: ^0.10.0
