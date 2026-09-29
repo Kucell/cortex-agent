@@ -18,6 +18,7 @@ on:
       - "tests/protocol/**"
       - "tests/sdk/**"
       - "tests/runtime-port/**"
+      - "tests/runtime-paseo/**"
       - "tests/control-service/**"
       - "tests/event-bridge/**"
       - "tests/extensions/**"
@@ -43,6 +44,7 @@ on:
       - "tests/event-bridge/**"
       - "tests/control-service/**"
       - "tests/runtime-port/**"
+      - "tests/runtime-paseo/**"
       - "tests/management/management-query-cli.test.js"
       - ".github/workflows/m040-validation.yml"
 
