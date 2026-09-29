@@ -10,6 +10,32 @@ Cortex Agent now uses a progressive pnpm workspace to isolate stable contracts a
 
 The root `cortex-agent` package remains the primary CLI/template distribution package.
 
+## Repository boundary: monorepo does not include .agent governance
+
+The progressive monorepo applies **only to `Kucell/cortex-agent`**.
+
+`Kucell/cortex-agent-agent` remains an independent repository that manages development of Cortex Agent through the project's `.agent` governance state.
+
+Therefore:
+
+- `packages/*` are product/source package boundaries;
+- `cortex-agent-agent` is not a pnpm workspace member;
+- the root npm artifact must not package the project's private development `.agent`;
+- CI may materialize the governance repository into a temporary `.agent` path only to reproduce the development/test environment;
+- package publishing and runtime installation must remain independent of the governance repository.
+
+```text
+Kucell/cortex-agent
+  ├─ package.json
+  ├─ packages/*
+  ├─ lib/*
+  └─ ...
+
+Kucell/cortex-agent-agent
+  └─ independent project-development governance repository
+     (mounted/materialized as cortex-agent/.agent when required)
+```
+
 ## 2. Workspace layout
 
 ```text
