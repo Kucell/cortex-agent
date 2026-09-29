@@ -1,4 +1,4 @@
-name: M-040 Lock Preview
+name: M-040 Lock Regenerator
 
 on:
   push:
@@ -9,14 +9,16 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  preview:
+  regenerate:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: feat/m040-runtime-control-architecture
       - uses: actions/setup-node@v4
         with:
           node-version: "24.19.0"
@@ -24,24 +26,16 @@ jobs:
         run: |
           corepack enable
           corepack prepare pnpm@11.13.1 --activate
-      - name: Generate lockfile
+      - name: Regenerate lockfile
         run: pnpm install --no-frozen-lockfile --lockfile-only
-      - name: Print runtime-paseo importer
+      - name: Commit generated lockfile
         run: |
-          node - <<'NODE'
-          const fs = require("node:fs");
-          const text = fs.readFileSync("pnpm-lock.yaml", "utf8");
-          const start = text.indexOf("  packages/runtime-paseo:");
-          if (start < 0) throw new Error("runtime-paseo importer missing");
-          const rest = text.slice(start);
-          const match = rest.slice(2).search(/\n  packages\//);
-          process.stdout.write(match < 0 ? rest : rest.slice(0, match + 2));
-          NODE
-      - name: Show Paseo lock presence
-        run: |
-          if grep -q "@getpaseo/client" pnpm-lock.yaml; then
-            echo "PASEO_LOCK_ENTRY_PRESENT=true"
-            grep -n "@getpaseo/client" pnpm-lock.yaml | head -20
-          else
-            echo "PASEO_LOCK_ENTRY_PRESENT=false"
+          if git diff --quiet -- pnpm-lock.yaml; then
+            echo "pnpm-lock.yaml already current"
+            exit 0
           fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add pnpm-lock.yaml
+          git commit -m "chore(m040): regenerate pnpm lockfile"
+          git push origin HEAD:feat/m040-runtime-control-architecture
