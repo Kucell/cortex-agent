@@ -11,11 +11,13 @@ on:
       - "packages/**"
       - "lib/sdk/**"
       - "lib/runtime-port/**"
+      - "lib/control-service/**"
       - "lib/commands/management/query.js"
       - "tests/architecture/**"
       - "tests/protocol/**"
       - "tests/sdk/**"
       - "tests/runtime-port/**"
+      - "tests/control-service/**"
       - "tests/management/management-query-cli.test.js"
       - ".github/workflows/m040-validation.yml"
   pull_request:
