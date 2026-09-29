@@ -1,0 +1,17 @@
+{
+  "name": "@cortex-agent/runtime-port",
+  "version": "0.0.0",
+  "private": true,
+  "description": "RuntimePort contracts for Cortex Agent execution backends",
+  "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@cortex-agent/protocol": "workspace:*"
+  }
+}
