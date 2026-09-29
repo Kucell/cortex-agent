@@ -39,7 +39,7 @@
     "release:major": "npm version major && npm publish --registry https://registry.npmjs.org/",
     "pub": "npm publish --registry https://registry.npmjs.org/",
     "heartbeat": "node .agent/scripts/heartbeat.js",
-    "test:m040": "node --test tests/architecture/m040-monorepo-boundary.test.js tests/sdk/cortex-client.test.js"
+    "test:m040": "node --test tests/architecture/m040-monorepo-boundary.test.js tests/sdk/cortex-client.test.js tests/sdk/local-transport.test.js"
   },
   "keywords": [
     "ai",
