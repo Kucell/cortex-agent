@@ -15,3 +15,9 @@ importers:
       '@cortex-agent/protocol':
         specifier: workspace:*
         version: link:../protocol
+
+  packages/runtime-port:
+    dependencies:
+      '@cortex-agent/protocol':
+        specifier: workspace:*
+        version: link:../protocol
