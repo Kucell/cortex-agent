@@ -74,3 +74,43 @@ test("management namespace exposes raw projection compatibility through the SDK"
     { projection: "runs", filters: {} },
   ]);
 });
+
+test("SDK capability negotiation uses the local descriptor and fails closed on missing requirements", () => {
+  const client = createCortexClient({
+    transport: {
+      query() { return {}; },
+      discoverCapabilities() {
+        return {
+          protocol: "cortex",
+          protocol_version: "1.2",
+          implementation: "local-test",
+          capabilities: ["runs.read", "tasks.read"],
+        };
+      },
+    },
+  });
+
+  const negotiated = client.capabilities.negotiate({
+    protocol: "cortex",
+    protocol_version: "1.1",
+    implementation: "remote-test",
+    capabilities: ["runs.read", "decisions.read"],
+  }, {
+    required_capabilities: ["runs.read"],
+  });
+
+  assert.equal(negotiated.negotiated_version, "1.1");
+  assert.deepEqual(negotiated.capabilities, ["runs.read"]);
+
+  assert.throws(
+    () => client.capabilities.negotiate({
+      protocol: "cortex",
+      protocol_version: "1.1",
+      implementation: "remote-test",
+      capabilities: ["decisions.read"],
+    }, {
+      required_capabilities: ["runs.read"],
+    }),
+    (error) => error.code === "ERR_REQUIRED_CAPABILITY_MISSING",
+  );
+});
