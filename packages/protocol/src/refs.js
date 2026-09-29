@@ -7,6 +7,7 @@ const REF_KINDS = Object.freeze([
   "agent",
   "host",
   "runtime",
+  "runtime-endpoint",
   "session",
 ]);
 
