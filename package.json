@@ -40,7 +40,7 @@
     "release:major": "npm version major && npm publish --registry https://registry.npmjs.org/",
     "pub": "npm publish --registry https://registry.npmjs.org/",
     "heartbeat": "node .agent/scripts/heartbeat.js",
-    "test:m040": "node --test tests/architecture/m040-monorepo-boundary.test.js tests/protocol/capabilities.test.js tests/protocol/negotiation.test.js tests/sdk/cortex-client.test.js tests/sdk/local-transport.test.js tests/runtime-port/runtime-port.test.js tests/runtime-port/topology.test.js tests/runtime-port/native-endpoint.test.js tests/runtime-port/capability-router.test.js tests/runtime-port/legacy-adapter-bridge.test.js tests/management/management-query-cli.test.js tests/control-service/control-service.test.js tests/control-service/control-boundary.test.js tests/control-service/local-control-service.test.js"
+    "test:m040": "node --test tests/architecture/m040-monorepo-boundary.test.js tests/protocol/capabilities.test.js tests/protocol/negotiation.test.js tests/sdk/cortex-client.test.js tests/sdk/local-transport.test.js tests/runtime-port/runtime-port.test.js tests/runtime-port/topology.test.js tests/runtime-port/native-endpoint.test.js tests/runtime-port/capability-router.test.js tests/runtime-port/legacy-adapter-bridge.test.js tests/management/management-query-cli.test.js tests/control-service/control-service.test.js tests/control-service/control-boundary.test.js tests/control-service/local-control-service.test.js tests/protocol/events.test.js"
   },
   "keywords": [
     "ai",
