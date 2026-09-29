@@ -1,7 +1,7 @@
 lockfileVersion: '9.0'
 
 settings:
-  autoInstallPeers: true
+  autoInstallPeers: false
   excludeLinksFromLockfile: false
 
 importers:
@@ -30,9 +30,9 @@ importers:
       '@cortex-agent/runtime-port':
         specifier: workspace:*
         version: link:../runtime-port
+    peerDependencies:
       '@getpaseo/client':
         specifier: ^0.10.0
-        version: 0.10.0
 
   packages/runtime-port:
     dependencies:
@@ -45,75 +45,3 @@ importers:
       '@cortex-agent/protocol':
         specifier: workspace:*
         version: link:../protocol
-
-packages:
-
-  '@getpaseo/client@0.10.0':
-    resolution: {integrity: sha512-SR7HRZlbaQbKcOZ37zm+784Qj7MA6t7NmfPDkgaOy+63Mb8adWgCbJZAtXl7q/0ly099DB5fbH3HsJ+FeKNrxg==}
-
-  '@getpaseo/protocol@0.10.0':
-    resolution: {integrity: sha512-pQLCZIOLUzWcrCFQo7Rti0JxNOqPz95b0Ar2WwRUszf600R9xIMTfWV1jd+vAAWW+QPv7zGxd1V49wdAr/uz/g==}
-
-  '@getpaseo/relay@0.10.0':
-    resolution: {integrity: sha512-VQ4L0uRYKsy3nnfJNr+K2B9tEufoQaxfyfthxtEJeGVRfV9eu1DDyRc458z9XTyTe8l3MvmoTWBIggBVdvtgrQ==}
-
-  base64-js@1.5.1:
-    resolution: {integrity: sha512-AKpaYlHn8t4SVbOHCy+b5+KKgvR4vrsD8vbvrbiQJps7fKDTkjkDry6ji0rUJjC0kzbNePLwzxq8iypo41qeWA==}
-
-  semver@7.8.5:
-    resolution: {integrity: sha512-Y7/KDsb8LjooZpwaqGyulO6DQlksgCncchHGk+sZIY4SBvUocMBEFH5Ur1fI4dV+Jvl0w6cjvucaIi40puRioA==}
-    engines: {node: '>=10'}
-    hasBin: true
-
-  tweetnacl@1.0.3:
-    resolution: {integrity: sha512-6rt+RN7aOi1nGMyC4Xa5DdYiukl2UWCbcJft7YhxReBGQD7OAM8Pbxw6YMo4r2diNEA8FEmu32YOn9rhaiE5yw==}
-
-  ws@8.22.0:
-    resolution: {integrity: sha512-Ydggc987+RO0AnWtZ/7Wq9FtNvcrL1b/RO0ud9mWjUPgDrsAAwQSF51sm2hm1XofbU/4jkpGEsLFsZZxU+1DOg==}
-    engines: {node: '>=10.0.0'}
-    peerDependencies:
-      bufferutil: ^4.0.1
-      utf-8-validate: '>=5.0.2'
-    peerDependenciesMeta:
-      bufferutil:
-        optional: true
-      utf-8-validate:
-        optional: true
-
-  zod@4.6.5:
-    resolution: {integrity: sha512-v5l/aFXZQeai4awLbOpSoHecE9UiMrnfx75tEXLjNonXVARxQ5mOeipTjROUchszUNCqnE+hqAMujRsRHsut2Q==}
-
-snapshots:
-
-  '@getpaseo/client@0.10.0':
-    dependencies:
-      '@getpaseo/protocol': 0.10.0
-      '@getpaseo/relay': 0.10.0
-      zod: 4.6.5
-    transitivePeerDependencies:
-      - bufferutil
-      - utf-8-validate
-
-  '@getpaseo/protocol@0.10.0':
-    dependencies:
-      semver: 7.8.5
-      zod: 4.6.5
-
-  '@getpaseo/relay@0.10.0':
-    dependencies:
-      base64-js: 1.5.1
-      tweetnacl: 1.0.3
-      ws: 8.22.0
-    transitivePeerDependencies:
-      - bufferutil
-      - utf-8-validate
-
-  base64-js@1.5.1: {}
-
-  semver@7.8.5: {}
-
-  tweetnacl@1.0.3: {}
-
-  ws@8.22.0: {}
-
-  zod@4.6.5: {}
