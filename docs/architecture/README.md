@@ -30,6 +30,7 @@
 - [Protocol, SDK and Progressive Monorepo](./protocol-sdk-monorepo.md)
 - [Protocol Versioning and Capability Negotiation](./protocol-negotiation.md)
 - [RuntimePort v1 and Native Adapter Compatibility](./runtime-port-v1.md)
+- [Host / Runtime Topology and Capability Routing](./runtime-topology-routing.md)
 - [Branch Management Design](./branch-management-design.md)
 - [Catalog Bridge](./catalog-bridge.md)
 - [Context Optimization v2](./context-optimization-v2.md)
