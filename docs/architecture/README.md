@@ -33,6 +33,7 @@
 - [Host / Runtime Topology and Capability Routing](./runtime-topology-routing.md)
 - [Control Service and Daemon Boundary](./control-service-boundary.md)
 - [CortexEvent v1 and Timeline Contract](./cortex-event-timeline.md)
+- [Extension and Permission Architecture](./extension-permission-architecture.md)
 - [Branch Management Design](./branch-management-design.md)
 - [Catalog Bridge](./catalog-bridge.md)
 - [Context Optimization v2](./context-optimization-v2.md)
