@@ -28,6 +28,7 @@
 - [Agent Runtime Continuity](./agent-runtime-continuity.md)
 - [Runtime, Control and Integration Ownership](./runtime-control-ownership.md)
 - [Protocol, SDK and Progressive Monorepo](./protocol-sdk-monorepo.md)
+- [Protocol Versioning and Capability Negotiation](./protocol-negotiation.md)
 - [Branch Management Design](./branch-management-design.md)
 - [Catalog Bridge](./catalog-bridge.md)
 - [Context Optimization v2](./context-optimization-v2.md)
