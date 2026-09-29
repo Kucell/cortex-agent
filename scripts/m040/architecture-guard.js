@@ -65,6 +65,15 @@ function runArchitectureGuard() {
 
   const rootPkgFile = path.join(ROOT, "package.json");
   const rootPkg = JSON.parse(fs.readFileSync(rootPkgFile, "utf8"));
+  if (Array.isArray(rootPkg.files) && rootPkg.files.some((item) =>
+    item === ".agent" || item.startsWith(".agent/"))) {
+    fail(
+      violations,
+      "governance-repo-not-packaged",
+      rootPkgFile,
+      "root npm package must not ship the independent cortex-agent-agent/.agent governance repository",
+    );
+  }
   for (const field of ["dependencies", "optionalDependencies", "peerDependencies"]) {
     if (rootPkg[field] && rootPkg[field]["@getpaseo/client"]) {
       fail(violations, "paseo-optional-root", rootPkgFile, `Paseo declared in root ${field}`);
