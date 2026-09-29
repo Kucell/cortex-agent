@@ -43,3 +43,34 @@ test("SDK maps canonical methods to existing Management projections", async () =
 test("SDK fails closed without a query transport", () => {
   assert.throws(() => createCortexClient(), (error) => error.code === "ERR_SDK_TRANSPORT_REQUIRED");
 });
+
+test("SDK supports synchronous local transports without forcing async CLI conversion", () => {
+  const client = createCortexClient({
+    transport: {
+      query(projection, filters = {}) {
+        return { projection, filters };
+      },
+    },
+  });
+  const result = client.tasks.get("T-SYNC");
+  assert.equal(typeof result.then, "undefined");
+  assert.deepEqual(result, { projection: "task-state", filters: { task: "T-SYNC" } });
+});
+
+test("management namespace exposes raw projection compatibility through the SDK", () => {
+  const calls = [];
+  const client = createCortexClient({
+    transport: {
+      query(projection, filters = {}) {
+        calls.push({ projection, filters });
+        return { ok: true, projection };
+      },
+    },
+  });
+  assert.equal(client.management.capabilities().projection, "capabilities");
+  assert.equal(client.management.query("runs").projection, "runs");
+  assert.deepEqual(calls, [
+    { projection: "capabilities", filters: {} },
+    { projection: "runs", filters: {} },
+  ]);
+});
