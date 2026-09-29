@@ -5,4 +5,5 @@ module.exports = {
   ...require("./version"),
   ...require("./result"),
   ...require("./capabilities"),
+  ...require("./negotiation"),
 };
