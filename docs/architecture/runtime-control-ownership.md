@@ -10,6 +10,27 @@ Cortex remains a governance and orchestration framework. M-040 does not replace 
 
 Instead, later milestones introduce stable contracts **over** existing authoritative owners.
 
+## Repository governance boundary
+
+Cortex Agent uses two repositories with different authority:
+
+```text
+Kucell/cortex-agent
+  = product/framework repository
+  = CLI, packages, lib implementation, templates and product documentation
+
+Kucell/cortex-agent-agent
+  = independent development-governance repository for cortex-agent
+  = the project's .agent
+  = Missions, Decisions, Waitpoints, Rules, Skills, Workflows and development evidence
+```
+
+`cortex-agent-agent` is **not** a workspace package inside the Cortex monorepo, is not shipped as part of the root npm package, and is not a RuntimePort/Project Integration backend.
+
+When CI copies or materializes `cortex-agent-agent` under a checkout as `cortex/.agent/`, that is only a test/development fixture that reconstructs the project's development-governance environment. It does not transfer repository ownership or collapse the two repositories.
+
+This boundary is architectural and must remain explicit.
+
 ## 2. Layer model
 
 ```mermaid
@@ -52,7 +73,7 @@ The future SDK and protocol own no new persistence.
 
 | Concern | Authoritative owner | Notes |
 | :--- | :--- | :--- |
-| Mission / Milestone / workflow truth | existing `.agent` mission/workflow state | governance truth |
+| Mission / Milestone / workflow truth | `Kucell/cortex-agent-agent` mounted/materialized as the project's `.agent` | independent development-governance truth |
 | Coordination task lifecycle | `lib/coordination/contract.js`, `state.js`, journal/service | deterministic fail-closed state machine |
 | Management projections | Management API | query/projection boundary |
 | Run / Queue / Session records | existing Management/Collaboration contracts | observable/governance runtime records |
