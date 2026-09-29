@@ -309,3 +309,22 @@ test("Paseo RunRef accepts only the adapter namespace", () => {
     (error) => error.code === "ERR_PASEO_RUN_REF",
   );
 });
+
+test("Paseo remains optional to the root Cortex package", () => {
+  const fs = require("node:fs");
+  const rootPkg = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8"));
+  const paseoPkg = JSON.parse(fs.readFileSync(
+    path.join(ROOT, "packages", "runtime-paseo", "package.json"),
+    "utf8",
+  ));
+
+  for (const field of ["dependencies", "optionalDependencies", "peerDependencies"]) {
+    assert.equal(
+      Boolean(rootPkg[field] && rootPkg[field]["@getpaseo/client"]),
+      false,
+      `root package must not declare Paseo in ${field}`,
+    );
+  }
+  assert.equal(paseoPkg.peerDependencies["@getpaseo/client"], "^0.10.0");
+  assert.equal(paseoPkg.peerDependenciesMeta["@getpaseo/client"].optional, true);
+});
