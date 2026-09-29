@@ -1,0 +1,32 @@
+name: M-040 Full Repository Regression
+
+on:
+  push:
+    branches:
+      - "feat/m040-runtime-control-architecture"
+    paths:
+      - ".github/workflows/m040-full-regression.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  full-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.19.0"
+      - name: Enable pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.13.1 --activate
+      - name: Install workspace
+        run: pnpm install --frozen-lockfile
+      - name: Run architecture guard
+        run: pnpm guard:m040
+      - name: Run full repository test suite
+        run: pnpm test
