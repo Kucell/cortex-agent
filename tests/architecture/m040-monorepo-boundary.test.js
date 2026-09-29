@@ -59,3 +59,13 @@ test("management query surface consumes the SDK facade rather than Management cl
   assert.match(text, /createLocalCortexClient/);
   assert.equal(text.includes("queryManagementProject"), false);
 });
+
+test("ProjectRef identity is derived from topology before directory basename fallback", () => {
+  const text = fs.readFileSync(
+    path.join(ROOT, "lib", "sdk", "local-transport.js"),
+    "utf8",
+  );
+  assert.match(text, /current\.self\.project_id/);
+  assert.match(text, /path\.basename\(project\.root\)/);
+  assert.ok(text.indexOf("current.self.project_id") < text.indexOf("path.basename(project.root)"));
+});
