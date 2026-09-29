@@ -19,6 +19,13 @@ function requireTransport(transport) {
   return transport;
 }
 
+function normalizeDescriptor(value) {
+  if (value && typeof value.then === "function") {
+    return value.then((resolved) => protocol.createCapabilityDescriptor(resolved));
+  }
+  return protocol.createCapabilityDescriptor(value);
+}
+
 function createCortexClient(options = {}) {
   const transport = requireTransport(options.transport);
 
@@ -26,6 +33,19 @@ function createCortexClient(options = {}) {
   // while remote transports may return Promises. Callers can await either.
   function queryProjection(projection, filters = {}) {
     return transport.query(projection, filters);
+  }
+
+  function discoverCapabilities() {
+    const raw = typeof transport.discoverCapabilities === "function"
+      ? transport.discoverCapabilities()
+      : {
+          protocol: protocol.PROTOCOL_NAME,
+          protocol_version: protocol.PROTOCOL_VERSION,
+          implementation: "cortex-sdk-transport",
+          implementation_version: null,
+          capabilities: [],
+        };
+    return normalizeDescriptor(raw);
   }
 
   return Object.freeze({
@@ -36,9 +56,14 @@ function createCortexClient(options = {}) {
         : undefined,
     }),
     capabilities: Object.freeze({
-      discover: typeof transport.discoverCapabilities === "function"
-        ? () => transport.discoverCapabilities()
-        : () => ({ protocol_version: protocol.PROTOCOL_VERSION, capabilities: [] }),
+      discover: discoverCapabilities,
+      negotiate: (remoteDescriptor, options = {}) => {
+        const local = discoverCapabilities();
+        if (local && typeof local.then === "function") {
+          return local.then((resolved) => protocol.negotiateProtocol(resolved, remoteDescriptor, options));
+        }
+        return protocol.negotiateProtocol(local, remoteDescriptor, options);
+      },
     }),
     management: Object.freeze({
       query: queryProjection,
