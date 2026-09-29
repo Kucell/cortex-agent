@@ -56,7 +56,10 @@ function createDescriptorOnlyProjectAdapter(descriptorInput) {
     operations.listArtifacts = () => descriptor.artifacts;
   }
 
-  return createProjectAdapter({ descriptor, operations });
+  // Pass the original closed-schema input into createProjectAdapter().
+  // The normalized descriptor contains the computed project_ref field, which
+  // intentionally is not accepted as external manifest input.
+  return createProjectAdapter({ descriptor: descriptorInput, operations });
 }
 
 module.exports = {
