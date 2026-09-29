@@ -33,3 +33,12 @@ importers:
       '@cortex-agent/protocol':
         specifier: workspace:*
         version: link:../protocol
+
+  packages/runtime-paseo:
+    dependencies:
+      '@cortex-agent/protocol':
+        specifier: workspace:*
+        version: link:../protocol
+      '@cortex-agent/runtime-port':
+        specifier: workspace:*
+        version: link:../runtime-port
