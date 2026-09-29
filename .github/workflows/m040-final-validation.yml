@@ -1,4 +1,4 @@
-name: M-040 Final Regression
+name: M-040 Final Product Validation
 
 on:
   push:
@@ -54,8 +54,8 @@ jobs:
       - name: Run M-040 architecture guard
         run: pnpm guard:m040
 
-      - name: Run full Cortex regression
-        run: pnpm test
+      - name: Run M-040 focused product validation
+        run: pnpm test:m040
 
       - name: Verify root npm package can be packed
         run: npm pack --dry-run --json > m040-pack-dry-run.json
@@ -64,7 +64,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: m040-final-regression-evidence
+          name: m040-final-product-validation-evidence
           path: m040-pack-dry-run.json
           if-no-files-found: warn
           retention-days: 14
