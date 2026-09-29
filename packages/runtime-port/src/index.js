@@ -74,7 +74,7 @@ function createRuntimePort(options = {}) {
         capability,
       });
     }
-    port[method] = typeof implementation === "function"
+    port[method] = declared.has(capability)
       ? implementation
       : (...args) => unsupported(capability, { method, args_count: args.length });
   }
