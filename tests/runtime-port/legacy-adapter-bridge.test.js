@@ -65,7 +65,6 @@ test("legacy invoke maps to createRun and preserves a canonical RunRef", async (
   const port = createLegacyAdapterRuntimePort(adapter);
   const result = await port.createRun({ task: "test" }, { projectRoot: "/tmp/project" });
   assert.equal(result.run_ref, "run:R-FAKE-1");
-  assert.equal(result.run_id, "R-FAKE-1");
   assert.equal(result.status, "completed");
   assert.deepEqual(result.result, { answer: 42 });
   assert.equal(adapter.calls[0][0], "invoke");
@@ -88,7 +87,8 @@ test("legacy wait polls report until terminal state", async () => {
   const port = createLegacyAdapterRuntimePort(adapter);
   const result = await port.wait("run:R-FAKE-1", { timeout_ms: 100, interval_ms: 1 });
   assert.equal(result.status, "completed");
-  assert.equal(result.report.result.answer, 42);
+  assert.equal(result.result.answer, 42);
+  assert.equal(result.evidence.result_present, true);
 });
 
 test("legacy bridge fails closed for unsupported send/timeline/archive", () => {
@@ -100,4 +100,13 @@ test("legacy bridge fails closed for unsupported send/timeline/archive", () => {
   ]) {
     assert.throws(call, (error) => error.code === "ERR_RUNTIME_CAPABILITY_UNSUPPORTED");
   }
+});
+
+test("legacy bridge does not expose a second raw run id beside canonical run_ref", async () => {
+  const port = createLegacyAdapterRuntimePort(fakeAdapter());
+  const created = await port.createRun({ task: "test" });
+  assert.equal(Object.prototype.hasOwnProperty.call(created, "run_id"), false);
+  const status = await port.getStatus(created.run_ref);
+  assert.equal(Object.prototype.hasOwnProperty.call(status, "run_id"), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(status, "report"), false);
 });
