@@ -95,6 +95,7 @@ function assertRuntimeCapability(port, capability) {
 }
 
 module.exports = {
+  ...require("./topology"),
   RUNTIME_PORT_CAPABILITIES,
   METHOD_CAPABILITY,
   RuntimePortError,
