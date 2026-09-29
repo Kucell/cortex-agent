@@ -1,0 +1,107 @@
+name: M-040 Axrail Connected Project Pilot
+
+on:
+  push:
+    branches:
+      - "feat/m040-*"
+    paths:
+      - "packages/project-sdk/**"
+      - "scripts/m040/**"
+      - "tests/project-sdk/**"
+      - "tests/project-integration/**"
+      - ".github/workflows/m040-axrail-pilot.yml"
+  pull_request:
+    paths:
+      - "packages/project-sdk/**"
+      - "scripts/m040/**"
+      - "tests/project-sdk/**"
+      - "tests/project-integration/**"
+      - ".github/workflows/m040-axrail-pilot.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  axrail-connected-project:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout Cortex
+        uses: actions/checkout@v4
+        with:
+          path: cortex
+
+      - name: Checkout Axrail pilot
+        uses: actions/checkout@v4
+        with:
+          repository: Kucell/axrail
+          ref: feat/cortex-project-integration-pilot
+          path: axrail
+
+      - name: Setup Node for descriptor validation
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24.19.0"
+
+      - name: Validate Axrail connected-project descriptor
+        working-directory: cortex
+        run: |
+          node scripts/m040/validate-connected-project.js             ../axrail             --expect-project axrail             --expect-repository Kucell/axrail             | tee ../axrail-cortex-project-validation.json
+
+      - name: Verify Axrail protected authority boundary
+        working-directory: cortex
+        run: |
+          node - <<'NODE'
+          const fs = require("node:fs");
+          const result = JSON.parse(fs.readFileSync("../axrail-cortex-project-validation.json", "utf8"));
+          const required = [
+            "HarnessRuntime",
+            "ToolRuntime",
+            "Policy",
+            "Validation",
+            "Approval",
+            "TransactionRuntime",
+            "EventStore",
+            "EngineeringAdapters",
+          ];
+          for (const name of required) {
+            if (!result.protected_components.includes(name)) {
+              throw new Error("missing protected Axrail authority: " + name);
+            }
+          }
+          if (result.authoritative_domain !== "axrail" || result.authoritative_runtime !== "axrail") {
+            throw new Error("Axrail authority boundary drift");
+          }
+          if (result.cortex_role !== "governance-orchestration") {
+            throw new Error("unexpected Cortex role: " + result.cortex_role);
+          }
+          NODE
+
+      - name: Enable Axrail pnpm
+        working-directory: axrail
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.6.5 --activate
+          pnpm --version
+
+      - name: Install Axrail workspace
+        working-directory: axrail
+        run: pnpm install --frozen-lockfile
+
+      - name: Execute declared Axrail release validation profile
+        working-directory: axrail
+        run: |
+          pnpm release:dry-run 2>&1 | tee ../axrail-release-dry-run.log
+
+      - name: Upload pilot evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: m040-axrail-connected-project-evidence
+          path: |
+            axrail-cortex-project-validation.json
+            axrail-release-dry-run.log
+          if-no-files-found: error
+          retention-days: 14
