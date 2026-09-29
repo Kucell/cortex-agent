@@ -1,2 +1,7 @@
 packages:
   - "packages/*"
+
+# Runtime/provider SDKs such as Paseo are optional peers. They must be
+# installed intentionally by the consumer or integration-specific CI, not
+# auto-installed into the core Cortex workspace.
+autoInstallPeers: false
