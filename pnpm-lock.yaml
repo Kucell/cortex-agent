@@ -27,3 +27,9 @@ importers:
       '@cortex-agent/protocol':
         specifier: workspace:*
         version: link:../protocol
+
+  packages/project-sdk:
+    dependencies:
+      '@cortex-agent/protocol':
+        specifier: workspace:*
+        version: link:../protocol
