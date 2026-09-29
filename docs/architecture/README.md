@@ -36,6 +36,7 @@
 - [Extension and Permission Architecture](./extension-permission-architecture.md)
 - [External Project Integration Contract](./project-integration.md)
 - [Paseo Runtime Adapter](./paseo-runtime-adapter.md)
+- [M-040 Runtime / Project Integration Runbook](./m040-integration-runbook.md)
 - [Branch Management Design](./branch-management-design.md)
 - [Catalog Bridge](./catalog-bridge.md)
 - [Context Optimization v2](./context-optimization-v2.md)
