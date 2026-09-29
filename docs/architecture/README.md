@@ -26,6 +26,7 @@
 - [AI-Native SDLC 闭环治理](./ai-native-sdlc-governance.md)
 - [Agent Workspace Orchestration](./agent-workspace-orchestration.md)
 - [Agent Runtime Continuity](./agent-runtime-continuity.md)
+- [Runtime, Control and Integration Ownership](./runtime-control-ownership.md)
 - [Branch Management Design](./branch-management-design.md)
 - [Catalog Bridge](./catalog-bridge.md)
 - [Context Optimization v2](./context-optimization-v2.md)
