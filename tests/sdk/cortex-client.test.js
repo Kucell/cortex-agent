@@ -1,0 +1,45 @@
+"use strict";
+
+const assert = require("node:assert/strict");
+const path = require("node:path");
+const test = require("node:test");
+
+const ROOT = path.resolve(__dirname, "..", "..");
+const { createCortexClient } = require(path.join(ROOT, "packages", "sdk", "src", "index.js"));
+
+test("SDK maps canonical methods to existing Management projections", async () => {
+  const calls = [];
+  const client = createCortexClient({
+    transport: {
+      async query(projection, filters = {}) {
+        calls.push({ projection, filters });
+        return { projection, filters };
+      },
+      async getTopology() {
+        return { self: { project_id: "cortex-agent" }, peers: [] };
+      },
+    },
+  });
+
+  await client.tasks.get("T-1");
+  await client.runs.list();
+  await client.runs.get("R-1");
+  await client.decisions.list();
+  await client.waitpoints.list();
+  await client.coordination.tasks.get("T-2");
+  const topology = await client.topology.get();
+
+  assert.deepEqual(calls, [
+    { projection: "task-state", filters: { task: "T-1" } },
+    { projection: "runs", filters: {} },
+    { projection: "run-state", filters: { run: "R-1" } },
+    { projection: "decisions", filters: {} },
+    { projection: "waitpoints", filters: {} },
+    { projection: "coordination-tasks", filters: { task: "T-2" } },
+  ]);
+  assert.equal(topology.self.project_id, "cortex-agent");
+});
+
+test("SDK fails closed without a query transport", () => {
+  assert.throws(() => createCortexClient(), (error) => error.code === "ERR_SDK_TRANSPORT_REQUIRED");
+});
