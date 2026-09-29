@@ -45,3 +45,17 @@ test("canonical refs are typed opaque strings", () => {
   assert.equal(refs.isRef("runtime:paseo-local", "runtime"), true);
   assert.equal(refs.isRef("paseo:raw", "runtime"), false);
 });
+
+test("root cortex-agent package ships workspace contract sources for CLI compatibility", () => {
+  const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8"));
+  assert.ok(pkg.files.includes("packages"));
+});
+
+test("management query surface consumes the SDK facade rather than Management client directly", () => {
+  const text = fs.readFileSync(
+    path.join(ROOT, "lib", "commands", "management", "query.js"),
+    "utf8",
+  );
+  assert.match(text, /createLocalCortexClient/);
+  assert.equal(text.includes("queryManagementProject"), false);
+});
