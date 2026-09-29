@@ -115,3 +115,37 @@ test("unknown or runtime-specific capabilities cannot leak into Project Integrat
     (error) => error.code === "ERR_PROJECT_CAPABILITY_NAMESPACE",
   );
 });
+
+test("Project Adapter execution remains behind an explicit operation owner", async () => {
+  const calls = [];
+  const value = descriptor();
+  const adapter = project.createProjectAdapter({
+    descriptor: value,
+    operations: {
+      discoverProject() { return project.normalizeProjectDescriptor(value); },
+      listValidationProfiles() {
+        return project.normalizeProjectDescriptor(value).validation.profiles;
+      },
+      async runValidation(profileId, context) {
+        calls.push({ profileId, context });
+        return { status: "passed", evidence_ref: "ci:axrail:123" };
+      },
+      listArtifacts() {
+        return project.normalizeProjectDescriptor(value).artifacts;
+      },
+      readEvents() {
+        return [];
+      },
+    },
+  });
+
+  const result = await adapter.runValidation("release-dry-run", {
+    authorization_ref: "decision:D-AXRAIL",
+  });
+  assert.equal(result.status, "passed");
+  assert.equal(result.evidence_ref, "ci:axrail:123");
+  assert.deepEqual(calls, [{
+    profileId: "release-dry-run",
+    context: { authorization_ref: "decision:D-AXRAIL" },
+  }]);
+});
