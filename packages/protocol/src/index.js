@@ -5,5 +5,7 @@ module.exports = {
   ...require("./version"),
   ...require("./result"),
   ...require("./capabilities"),
+  ...require("./events"),
+  ...require("./timeline"),
   ...require("./negotiation"),
 };
