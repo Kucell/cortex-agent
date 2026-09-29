@@ -69,3 +69,18 @@ test("ProjectRef identity is derived from topology before directory basename fal
   assert.match(text, /path\.basename\(project\.root\)/);
   assert.ok(text.indexOf("current.self.project_id") < text.indexOf("path.basename(project.root)"));
 });
+
+test("@cortex-agent/runtime-port depends only on portable protocol contracts", () => {
+  const pkg = JSON.parse(fs.readFileSync(
+    path.join(ROOT, "packages", "runtime-port", "package.json"),
+    "utf8",
+  ));
+  assert.deepEqual(Object.keys(pkg.dependencies || {}), ["@cortex-agent/protocol"]);
+  const text = fs.readFileSync(
+    path.join(ROOT, "packages", "runtime-port", "src", "index.js"),
+    "utf8",
+  );
+  assert.equal(text.includes("../../lib"), false);
+  assert.equal(text.includes("node:fs"), false);
+  assert.equal(text.includes("child_process"), false);
+});
