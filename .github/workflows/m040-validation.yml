@@ -20,6 +20,7 @@ on:
       - "tests/runtime-port/**"
       - "tests/control-service/**"
       - "tests/event-bridge/**"
+      - "tests/extensions/**"
       - "tests/management/management-query-cli.test.js"
       - ".github/workflows/m040-validation.yml"
   pull_request:
