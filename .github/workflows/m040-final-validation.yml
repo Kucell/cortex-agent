@@ -1,0 +1,70 @@
+name: M-040 Final Regression
+
+on:
+  push:
+    branches:
+      - "feat/m040-runtime-control-architecture"
+    paths:
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - "packages/**"
+      - "lib/**"
+      - "scripts/m040/**"
+      - "tests/**"
+      - "docs/architecture/**"
+      - ".github/workflows/m040-final-validation.yml"
+  pull_request:
+    paths:
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - "packages/**"
+      - "lib/**"
+      - "scripts/m040/**"
+      - "tests/**"
+      - "docs/architecture/**"
+      - ".github/workflows/m040-final-validation.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  full-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.19.0"
+
+      - name: Enable pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.13.1 --activate
+          pnpm --version
+
+      - name: Frozen workspace install
+        run: pnpm install --frozen-lockfile
+
+      - name: Run M-040 architecture guard
+        run: pnpm guard:m040
+
+      - name: Run full Cortex regression
+        run: pnpm test
+
+      - name: Verify root npm package can be packed
+        run: npm pack --dry-run --json > m040-pack-dry-run.json
+
+      - name: Upload final validation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: m040-final-regression-evidence
+          path: m040-pack-dry-run.json
+          if-no-files-found: warn
+          retention-days: 14
