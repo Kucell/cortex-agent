@@ -54,3 +54,5 @@
 - [Host Adapter](./host-adapter/)
 - [MCP Bridge](./mcp-bridge.md)
 - [PlatformHealth v1](./platform-health-v1.md)
+
+- [Control Service Daemon v1](./control-service-daemon-v1.md)
