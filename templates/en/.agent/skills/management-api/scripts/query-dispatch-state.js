@@ -100,7 +100,8 @@ function summarizeQueues(queues) {
   for (const queue of queues) {
     if (!queue.items) continue;
     for (const item of queue.items) {
-      if (item.status === "pending" || item.status === "queued") {
+      const state = item.state || item.status;
+      if (state === "pending" || state === "queued") {
         queued.push({ task_id: item.task_id || item.id, queue_id: queue.queue_id });
       }
     }
