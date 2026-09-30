@@ -53,3 +53,4 @@
 - [Harness Optimization Design](./harness-optimization-design.md)
 - [Host Adapter](./host-adapter/)
 - [MCP Bridge](./mcp-bridge.md)
+- [PlatformHealth v1](./platform-health-v1.md)
