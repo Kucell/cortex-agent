@@ -105,17 +105,18 @@ function expectRpcError(promise) {
 
 // ─── protocol basics ─────────────────────────────────────────────────────────
 
-test("tools/list returns exactly the 11 P-002 tools", async () => {
+test("tools/list returns the legacy tools plus M-041 project platform reads", async () => {
   const root = makeFixture();
   try {
     const h = makeHandler(root);
     const result = await call(h, { jsonrpc: "2.0", id: 1, method: "tools/list", params: {} });
     const names = result.tools.map((t) => t.name);
-    assert.equal(names.length, 11);
+    assert.equal(names.length, 14);
     for (const expected of [
       "design/list", "design/show", "design/install", "design/resolved",
       "prototype/list", "prototype/show", "prd/list", "prd/show",
       "template/list", "plugin/list", "skill/browse",
+      "project/list", "project/inspect", "platform/health",
     ]) {
       assert.ok(names.includes(expected), `missing ${expected}`);
     }
@@ -123,10 +124,11 @@ test("tools/list returns exactly the 11 P-002 tools", async () => {
 });
 
 test("toolDefinitions and resourceTemplates match handler surface", () => {
-  assert.equal(toolDefinitions().length, 11);
-  assert.equal(resourceTemplates().length, 4);
+  assert.equal(toolDefinitions().length, 14);
+  assert.equal(resourceTemplates().length, 7);
   assert.deepEqual(resourceTemplates().map((r) => r.uri), [
     "design://resolved", "design://systems/{id}", "prototype://{taskId}/{path}", "prd://{prdId}/{file}",
+    "cortex://projects", "cortex://projects/{id}", "cortex://platform-health",
   ]);
 });
 
@@ -367,4 +369,73 @@ test("defaultInstallSystem maps design install exit codes to status", () => {
   const result = defaultInstallSystem("definitely-not-in-catalog", { cwd: process.cwd() });
   assert.ok(["rejected", "network_error", "error"].includes(result.status), result.status);
   assert.ok(typeof result.message === "string");
+});
+
+test("project/list and platform/health expose the injected project read model", async () => {
+  const root = makeFixture();
+  try {
+    const h = makeHandler(root, {
+      createProjectReadModel: () => ({
+        list: async () => ({ schema_version: "1", projects: [{ project_id: "axrail", project_ref: "project:axrail" }] }),
+        inspect: async (id) => id === "axrail"
+          ? { schema_version: "1", project: { project_id: "axrail", project_ref: "project:axrail" } }
+          : null,
+        health: async () => ({
+          schema_version: "1",
+          generated_at: "2026-09-30T03:10:00.000Z",
+          overall: "healthy",
+          components: [{ id: "project:axrail", status: "healthy" }],
+        }),
+      }),
+    });
+
+    const list = await call(h, {
+      jsonrpc: "2.0", id: 101, method: "tools/call",
+      params: { name: "project/list", arguments: {} },
+    });
+    assert.equal(list.isError, false);
+    assert.equal(list.structuredContent.projects[0].project_id, "axrail");
+
+    const inspect = await call(h, {
+      jsonrpc: "2.0", id: 102, method: "tools/call",
+      params: { name: "project/inspect", arguments: { project: "axrail" } },
+    });
+    assert.equal(inspect.structuredContent.project.project_ref, "project:axrail");
+
+    const health = await call(h, {
+      jsonrpc: "2.0", id: 103, method: "tools/call",
+      params: { name: "platform/health", arguments: {} },
+    });
+    assert.equal(health.structuredContent.overall, "healthy");
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test("MCP resources expose the same project/health read models", async () => {
+  const root = makeFixture();
+  try {
+    const h = makeHandler(root, {
+      createProjectReadModel: () => ({
+        list: async () => ({ schema_version: "1", projects: [{ project_id: "axrail" }] }),
+        inspect: async () => ({ schema_version: "1", project: { project_id: "axrail" } }),
+        health: async () => ({ schema_version: "1", overall: "healthy", components: [] }),
+      }),
+    });
+    const projects = await call(h, {
+      jsonrpc: "2.0", id: 104, method: "resources/read",
+      params: { uri: "cortex://projects" },
+    });
+    assert.equal(JSON.parse(projects.contents[0].text).projects[0].project_id, "axrail");
+
+    const project = await call(h, {
+      jsonrpc: "2.0", id: 105, method: "resources/read",
+      params: { uri: "cortex://projects/axrail" },
+    });
+    assert.equal(JSON.parse(project.contents[0].text).project.project_id, "axrail");
+
+    const health = await call(h, {
+      jsonrpc: "2.0", id: 106, method: "resources/read",
+      params: { uri: "cortex://platform-health" },
+    });
+    assert.equal(JSON.parse(health.contents[0].text).overall, "healthy");
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
