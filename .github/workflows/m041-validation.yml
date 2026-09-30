@@ -7,9 +7,32 @@ on:
     paths:
       - "packages/**"
       - "lib/platform-health/**"
+      - "lib/platform/**"
+      - "lib/project-registry/**"
+      - "lib/control-service/**"
+      - "lib/commands/project-platform.js"
+      - "lib/commands/daemon.js"
+      - "lib/mcp/**"
+      - "lib/dashboard/**"
+      - "bin/cli.js"
+      - "templates/_shared/.agent/dispatch/**"
+      - "templates/_shared/.agent/skills/management-api/scripts/query-dispatch-state.js"
+      - "templates/en/.agent/skills/management-api/scripts/query-dispatch-state.js"
+      - "templates/zh/.agent/skills/management-api/scripts/query-dispatch-state.js"
+      - "templates/_shared/.agent/skills/agent-dashboard/**"
       - "tests/platform-health/**"
+      - "tests/platform/**"
+      - "tests/project-registry/**"
+      - "tests/control-service/**"
+      - "tests/commands/project-platform.test.js"
+      - "tests/commands/m041-daemon-cli.test.js"
+      - "tests/mcp/**"
+      - "tests/dashboard/**"
+      - "tests/architecture/m041-*.test.js"
+      - "scripts/m041/**"
       - "docs/architecture/platform-health-v1.md"
       - "docs/architecture/m041-public-package-eligibility.md"
+      - "docs/architecture/control-service-daemon-v1.md"
       - "package.json"
       - "pnpm-lock.yaml"
       - "pnpm-workspace.yaml"
@@ -18,19 +41,43 @@ on:
     paths:
       - "packages/**"
       - "lib/platform-health/**"
+      - "lib/platform/**"
+      - "lib/project-registry/**"
+      - "lib/control-service/**"
+      - "lib/commands/project-platform.js"
+      - "lib/commands/daemon.js"
+      - "lib/mcp/**"
+      - "lib/dashboard/**"
+      - "bin/cli.js"
+      - "templates/_shared/.agent/dispatch/**"
+      - "templates/_shared/.agent/skills/management-api/scripts/query-dispatch-state.js"
+      - "templates/en/.agent/skills/management-api/scripts/query-dispatch-state.js"
+      - "templates/zh/.agent/skills/management-api/scripts/query-dispatch-state.js"
+      - "templates/_shared/.agent/skills/agent-dashboard/**"
       - "tests/platform-health/**"
+      - "tests/platform/**"
+      - "tests/project-registry/**"
+      - "tests/control-service/**"
+      - "tests/commands/project-platform.test.js"
+      - "tests/commands/m041-daemon-cli.test.js"
+      - "tests/mcp/**"
+      - "tests/dashboard/**"
+      - "tests/architecture/m041-*.test.js"
+      - "scripts/m041/**"
       - "docs/architecture/platform-health-v1.md"
       - "docs/architecture/m041-public-package-eligibility.md"
+      - "docs/architecture/control-service-daemon-v1.md"
       - "package.json"
       - "pnpm-lock.yaml"
       - "pnpm-workspace.yaml"
       - ".github/workflows/m041-validation.yml"
 
+
 permissions:
   contents: read
 
 jobs:
-  contract-freeze:
+  platformization:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
