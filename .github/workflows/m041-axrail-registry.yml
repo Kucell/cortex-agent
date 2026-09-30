@@ -1,0 +1,84 @@
+name: M-041 Axrail Registry Validation
+
+on:
+  push:
+    branches:
+      - "feat/m041-*"
+    paths:
+      - "lib/project-registry/**"
+      - "lib/topology/**"
+      - "packages/project-sdk/**"
+      - "packages/sdk/**"
+      - "packages/protocol/src/health.js"
+      - ".github/workflows/m041-axrail-registry.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  axrail-registry:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout Cortex
+        uses: actions/checkout@v4
+        with:
+          path: cortex
+      - name: Checkout Axrail main
+        uses: actions/checkout@v4
+        with:
+          repository: Kucell/axrail
+          ref: main
+          path: axrail
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.19.0"
+      - name: Validate generic connected-project registry against Axrail
+        run: |
+          node - <<'NODE'
+          const fs = require("node:fs");
+          const os = require("node:os");
+          const path = require("node:path");
+          const registry = require("./cortex/lib/project-registry");
+          const protocol = require("./cortex/packages/protocol/src");
+          const root = fs.mkdtempSync(path.join(os.tmpdir(), "m041-registry-"));
+          try {
+            const registered = registry.registerConnectedProject(root, path.resolve("axrail"));
+            if (!registered.registered) throw new Error("Axrail was not registered");
+            const listed = registry.listConnectedProjects(root);
+            if (listed.length !== 1 || listed[0].project_ref !== "project:axrail") {
+              throw new Error("Axrail discovery mismatch");
+            }
+            const detail = registry.getConnectedProject(root, "project:axrail");
+            if (!detail || detail.drift.detected) throw new Error("Axrail descriptor drift detected unexpectedly");
+            if (detail.repository_slug !== "Kucell/axrail") throw new Error("Axrail repository identity mismatch");
+
+            const producer = registry.createConnectedProjectHealthProducer(root);
+            Promise.resolve(producer.produce({ now: "2026-09-30T02:45:00.000Z" }))
+              .then((components) => {
+                const health = protocol.normalizePlatformHealth({
+                  generated_at: "2026-09-30T02:45:00.000Z",
+                  components,
+                });
+                if (health.overall !== "healthy") {
+                  throw new Error("Axrail registry health is not healthy: " + health.overall);
+                }
+                process.stdout.write(JSON.stringify({
+                  ok: true,
+                  project: detail.project_ref,
+                  repository: detail.repository_slug,
+                  capabilities: detail.capabilities,
+                  health: health.overall,
+                }, null, 2) + "\n");
+              })
+              .finally(() => fs.rmSync(root, { recursive: true, force: true }))
+              .catch((error) => {
+                console.error(error);
+                process.exitCode = 1;
+              });
+          } catch (error) {
+            fs.rmSync(root, { recursive: true, force: true });
+            throw error;
+          }
+          NODE
