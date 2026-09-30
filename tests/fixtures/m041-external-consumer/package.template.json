@@ -1,0 +1,9 @@
+{
+  "name": "m041-external-consumer",
+  "version": "0.0.0",
+  "private": true,
+  "description": "External consumer fixture for Cortex public-candidate packages",
+  "scripts": {
+    "test": "node consumer.cjs"
+  }
+}
