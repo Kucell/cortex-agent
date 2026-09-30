@@ -11,7 +11,7 @@
   "current_run_id": "R-M-006",
   "current_task_id": null,
   "current_mission_id": "M-006",
-  "worktree_path": "/Users/xueyq/myworks/cortex-agent",
+  "worktree_path": "/path/to/worktree",
   "started_at": "2026-07-23T03:14:14.795Z",
   "last_heartbeat_at": "2026-07-23T03:36:37.806Z",
   "updated_at": "2026-07-23T03:36:37.806Z",

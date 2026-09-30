@@ -95,7 +95,7 @@ const reconciled = gateway.reconcileAsyncJob(null, jobDescriptor, { now: ... });
 ## Do not
 
 - Invoke any `mmx` command outside the three allow-listed families.
-- Read, print, or persist any value from `/Users/xueyq/.mmx/*` or env `MINIMAX_API_KEY` / `MINIMAX_TOKEN`.
+- Read, print, or persist any value from `~/.mmx/*` or env `MINIMAX_API_KEY` / `MINIMAX_TOKEN`.
 - Surface `auth_state` other than `unknown` (requires separate authorization).
 - Enable automatic dispatch or a persistent daemon.
 - Commit, stage, push, publish, release, reset, stash, delete user files.

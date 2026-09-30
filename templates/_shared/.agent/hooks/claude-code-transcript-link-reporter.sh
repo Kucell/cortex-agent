@@ -58,8 +58,8 @@ LAST=$(tail -1 "$TRANSCRIPT" | jq -r '.timestamp // ""' 2>/dev/null || echo "")
 #     starting Claude Code session — reliable, no path-decoding guesswork).
 #   Fallback:  decode ~/.claude/projects/<encoded-cwd>/ → /encoded-cwd
 #     (Claude Code replaces path slashes with `-`, prepends `-` for absolute paths).
-# Example: ~/.claude/projects/-Users-xueyq-myworks-cortex-agent/<uuid>.jsonl
-#   → /Users/xueyq/myworks/cortex-agent
+# Example: ~/.claude/projects/-Users-<user>-myworks-cortex-agent/<uuid>.jsonl
+#   → /Users/<user>/myworks/cortex-agent
 if [ -n "${CORTEX_PROJECT_DIR:-}" ] && [ -d "$CORTEX_PROJECT_DIR" ]; then
   cd "$CORTEX_PROJECT_DIR"
 else
