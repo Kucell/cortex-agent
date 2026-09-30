@@ -132,6 +132,7 @@ const { imageCommand } = require("../lib/commands/image");
 // the new subcommand is added to the case dispatch below.
 const { branchCommand } = require("../lib/commands/branch");
 const { projectPlatformCommand } = require("../lib/commands/project-platform");
+const { daemonCommand } = require("../lib/commands/daemon");
 
 // Explicit user-gated PR merge facade. The implementation delegates to the
 // existing vcs-pr runtime so credential isolation and audit events stay owned
@@ -665,7 +666,7 @@ async function initModeGeneral() {
     case "query":       managementQuery(ctx); break;
     case "memory":      memoryCommand(ctx); break;
     case "dispatch":    await dispatchCommand(ctx); break;
-    case "daemon":
+    case "daemon":      await daemonCommand(l1Ctx); break;
     case "trigger":     phaseZeroAutomation(ctx); break;
     case "dashboard":   dashboard(ctx); break;
     case "team":        await teamPack(ctx); break;
