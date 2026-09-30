@@ -9,7 +9,30 @@ const assert = require("assert").strict;
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
-const { describe, test } = require("node:test");
+let passed = 0;
+let failed = 0;
+
+function describe(name, fn) {
+  process.stdout.write("\n" + name + "\n");
+  fn();
+}
+
+function test(name, fn) {
+  try {
+    fn();
+    passed += 1;
+    process.stdout.write("  ✓ " + name + "\n");
+  } catch (error) {
+    failed += 1;
+    process.stderr.write("  ✗ " + name + "\n");
+    process.stderr.write((error && error.stack ? error.stack : String(error)) + "\n");
+  }
+}
+
+process.on("exit", () => {
+  process.stdout.write("\n" + (failed === 0 ? "PASS" : "FAIL") + ": " + passed + " passed, " + failed + " failed\n");
+  if (failed > 0) process.exitCode = 1;
+});
 
 const t = require("../../lib/team-pack/index.js");
 
