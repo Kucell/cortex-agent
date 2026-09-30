@@ -1,7 +1,18 @@
+---
+title: "Memory 协议规则"
+description: "定义 .agent/memory/ 下 4 类笔记（user / feedback / project / reference）的写入、读取、过期与归档协议。"
+type: rule
+scope: L1
+applicable_to:
+  - all
+owner: Kucell
+last_verified: 2026-09-30
+status: stable
+---
 # Memory 协议规则
 
 > 本规则定义 `.agent/memory/` 下的 4 类笔记（user / feedback / project / reference）的写入、读取、过期和归档协议。
-> 配套机制：`templates/{zh,en}/.agent/memory/`（机制）+ `templates/{zh,en}/.agent/hooks/hooks.json`（自动加载）+ 本规则（行为约束）。
+> 配套机制：`.agent/memory/`（机制）+ `.agent/hooks/hooks.json`（自动加载）+ 本规则（行为约束）。
 
 ## 1. 适用范围
 
@@ -97,7 +108,7 @@
 2. **不替代** `.agent/state/` 和 checkpoint
 3. **不替代** `.agent/handoffs/`
 4. **不实现**"无限增长的事实/技能/规则/可重放历史"——每类有硬上限
-5. **不替代** `.agent/docs/` `.agent/rules/`
+5. **不替代** `.agent/references/` `.agent/rules/`
 6. **不**自动加载 topic 文件（用 cap + 按需 Read 代替）
 7. **不**实现跨项目 memory 同步
 8. **不**写入个人隐私或凭证（feedback/project 严禁放 token、密码、内部 URL）
@@ -128,7 +139,7 @@ memory 是**被 Agent recall 的轻量笔记**，不是"长期归档"。
 
 ## 9. 实施兼容性（对偶 Claude Code）
 
-本设计参考 Claude Code v2.1.216 binary 内部 prompt 字符串（`/Users/xueyq/.local/bin/claude` 的 `strings` 提取），与官方 Auto Memory 字段（`name` / `description` / `metadata`）兼容：
+本设计参考 Claude Code v2.1.216 binary 内部 prompt 字符串（`~/.local/bin/claude` 的 `strings` 提取），与官方 Auto Memory 字段（`name` / `description` / `metadata`）兼容：
 
 - `metadata` 字段为可选（cortex-agent 顶层 `type` 仍为正典）
 - slug regex 含下划线（与 Claude Code 一致）
