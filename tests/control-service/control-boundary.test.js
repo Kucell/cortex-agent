@@ -24,12 +24,15 @@ test("Control Service core owns no filesystem/process/network persistence", () =
   }
 });
 
-test("daemon and trigger public CLI remain Phase 0 fail-closed while Control Service core stabilizes", () => {
+test("M-041 daemon host is opt-in while trigger remains Phase 0 fail-closed", () => {
   const contract = require(path.join(ROOT, "lib", "cli", "contract.js"));
-  for (const name of ["daemon", "trigger"]) {
-    const entry = contract.commands.find((item) => item.name === name);
-    assert.equal(entry.mode, "phase0_stub");
-    assert.equal(entry.implemented, false);
-    assert.equal(entry.default_enabled === false || name === "trigger", true);
-  }
+  const daemon = contract.commands.find((item) => item.name === "daemon");
+  assert.equal(daemon.mode, "control_service_daemon");
+  assert.equal(daemon.implemented, true);
+  assert.equal(daemon.default_enabled, false);
+  assert.equal(daemon.automatic_dispatch_enabled, false);
+
+  const trigger = contract.commands.find((item) => item.name === "trigger");
+  assert.equal(trigger.mode, "phase0_stub");
+  assert.equal(trigger.implemented, false);
 });
