@@ -1,0 +1,76 @@
+name: M-040 Architecture Validation
+
+on:
+  push:
+    branches:
+      - "feat/m040-*"
+    paths:
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - "packages/**"
+      - "lib/sdk/**"
+      - "lib/runtime-port/**"
+      - "lib/control-service/**"
+      - "lib/event-bridge/**"
+      - "lib/commands/management/query.js"
+      - "tests/architecture/**"
+      - "tests/protocol/**"
+      - "tests/sdk/**"
+      - "tests/runtime-port/**"
+      - "tests/runtime-paseo/**"
+      - "tests/control-service/**"
+      - "tests/event-bridge/**"
+      - "tests/extensions/**"
+      - "tests/project-sdk/**"
+      - "tests/management/management-query-cli.test.js"
+      - ".github/workflows/m040-validation.yml"
+  pull_request:
+    paths:
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - "packages/**"
+      - "lib/sdk/**"
+      - "lib/event-bridge/**"
+      - "lib/control-service/**"
+      - "lib/runtime-port/**"
+      - "lib/commands/management/query.js"
+      - "tests/architecture/**"
+      - "tests/protocol/**"
+      - "tests/sdk/**"
+      - "tests/project-sdk/**"
+      - "tests/extensions/**"
+      - "tests/event-bridge/**"
+      - "tests/control-service/**"
+      - "tests/runtime-port/**"
+      - "tests/runtime-paseo/**"
+      - "tests/management/management-query-cli.test.js"
+      - ".github/workflows/m040-validation.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  protocol-sdk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.19.0"
+
+      - name: Enable Corepack and pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.13.1 --activate
+          pnpm --version
+
+      - name: Install workspace
+        run: pnpm install --frozen-lockfile
+
+      - name: Run M-040 focused validation
+        run: pnpm test:m040
