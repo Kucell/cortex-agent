@@ -110,6 +110,72 @@ function runManagement(args, timeoutMs = 5000) {
   });
 }
 
+function runProjectPlatform(args, timeoutMs = 5000) {
+  const cliPath = process.env.CORTEX_AGENT_CLI_PATH;
+  if (!cliPath || !fs.existsSync(cliPath)) {
+    return {
+      ok: false,
+      status: 127,
+      error: "cortex_cli_unavailable",
+      stderr: "CORTEX_AGENT_CLI_PATH is missing or invalid",
+    };
+  }
+  const result = spawnSync(
+    process.execPath,
+    [cliPath, "project", ...args, "--json"],
+    {
+      cwd: root,
+      encoding: "utf8",
+      timeout: timeoutMs,
+      killSignal: "SIGKILL",
+      stdio: ["ignore", "pipe", "pipe"],
+    },
+  );
+  if (result.status !== 0) {
+    return {
+      ok: false,
+      status: result.status,
+      error: "project_platform_query_failed",
+      stderr: String(result.stderr || "").trim(),
+    };
+  }
+  try {
+    return {
+      ok: true,
+      status: 0,
+      data: JSON.parse(result.stdout),
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      status: 1,
+      error: "project_platform_invalid_json",
+      stderr: error.message,
+    };
+  }
+}
+
+function serveProjectPlatform(res, args) {
+  const result = runProjectPlatform(args);
+  if (!result.ok) {
+    res.writeHead(result.status === 127 ? 503 : 500, {
+      "Content-Type": "application/json; charset=utf-8",
+      "Cache-Control": "no-store",
+    });
+    res.end(JSON.stringify({
+      ok: false,
+      error: result.error,
+      message: result.stderr,
+    }));
+    return;
+  }
+  res.writeHead(200, {
+    "Content-Type": "application/json; charset=utf-8",
+    "Cache-Control": "no-store",
+  });
+  res.end(JSON.stringify(result.data));
+}
+
 function openSession(url, port) {
   const result = runManagement([
     "sessions", "open",
@@ -325,6 +391,37 @@ const server = http.createServer((req, res) => {
   if (parsed.pathname === "/status.json") {
     res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
     res.end(JSON.stringify({ ok: last.ok !== false, last }, null, 2));
+    return;
+  }
+
+  if (parsed.pathname === "/api/projects") {
+    if (req.method !== "GET") {
+      res.writeHead(405, { Allow: "GET", "Cache-Control": "no-store" });
+      res.end(JSON.stringify({ ok: false, error: "method_not_allowed" }));
+      return;
+    }
+    serveProjectPlatform(res, ["list"]);
+    return;
+  }
+
+  if (parsed.pathname === "/api/platform-health") {
+    if (req.method !== "GET") {
+      res.writeHead(405, { Allow: "GET", "Cache-Control": "no-store" });
+      res.end(JSON.stringify({ ok: false, error: "method_not_allowed" }));
+      return;
+    }
+    serveProjectPlatform(res, ["health"]);
+    return;
+  }
+
+  const projectMatch = /^\/api\/projects\/([^/]+)$/.exec(parsed.pathname || "");
+  if (projectMatch) {
+    if (req.method !== "GET") {
+      res.writeHead(405, { Allow: "GET", "Cache-Control": "no-store" });
+      res.end(JSON.stringify({ ok: false, error: "method_not_allowed" }));
+      return;
+    }
+    serveProjectPlatform(res, ["inspect", decodeURIComponent(projectMatch[1])]);
     return;
   }
 
