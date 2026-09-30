@@ -131,6 +131,7 @@ const { imageCommand } = require("../lib/commands/image");
 // lib/commands/branch.js. Strictly additive: no changes to lib/commands.js;
 // the new subcommand is added to the case dispatch below.
 const { branchCommand } = require("../lib/commands/branch");
+const { projectPlatformCommand } = require("../lib/commands/project-platform");
 
 // Explicit user-gated PR merge facade. The implementation delegates to the
 // existing vcs-pr runtime so credential isolation and audit events stay owned
@@ -614,6 +615,7 @@ async function initModeGeneral() {
     case "reconcile":   minimaxCliReconcile(ctx); break;
     case "bridge":      bridge(l1Ctx); break;
     case "topology":    topology(l1Ctx); break;
+    case "project":     await projectPlatformCommand(l1Ctx); break;
     case "automation":  automation(l1Ctx); break;
     case "local-publish-validate": localPublishValidate(ctx); break;
     case "proposal-share": proposalShare(ctx); break;
