@@ -1,0 +1,265 @@
+{
+  "schema_version": "1.0",
+  "policies": [
+    "tracked",
+    "local",
+    "derived",
+    "evidence",
+    "legacy",
+    "ignored"
+  ],
+  "classes": [
+    {
+      "id": "governance.decisions.index",
+      "path": "decisions/index.json",
+      "kind": "file",
+      "authority": "projection",
+      "sync_policy": "derived",
+      "runtime_scope": "portable",
+      "rebuildable": true
+    },
+    {
+      "id": "governance.decisions",
+      "path": "decisions",
+      "kind": "directory",
+      "authority": "governance-record",
+      "sync_policy": "tracked",
+      "runtime_scope": "portable",
+      "rebuildable": false
+    },
+    {
+      "id": "governance.waitpoints.index",
+      "path": "waitpoints/index.json",
+      "kind": "file",
+      "authority": "projection",
+      "sync_policy": "derived",
+      "runtime_scope": "portable",
+      "rebuildable": true
+    },
+    {
+      "id": "governance.waitpoints",
+      "path": "waitpoints",
+      "kind": "directory",
+      "authority": "governance-record",
+      "sync_policy": "tracked",
+      "runtime_scope": "portable",
+      "rebuildable": false
+    },
+    {
+      "id": "governance.inbox.index",
+      "path": "inbox/index.json",
+      "kind": "file",
+      "authority": "projection",
+      "sync_policy": "derived",
+      "runtime_scope": "portable",
+      "rebuildable": true
+    },
+    {
+      "id": "governance.inbox",
+      "path": "inbox",
+      "kind": "directory",
+      "authority": "governance-record",
+      "sync_policy": "tracked",
+      "runtime_scope": "portable",
+      "rebuildable": false
+    },
+    {
+      "id": "governance.tasks",
+      "path": "tasks",
+      "kind": "directory",
+      "authority": "governance-record",
+      "sync_policy": "tracked",
+      "runtime_scope": "portable",
+      "rebuildable": false
+    },
+    {
+      "id": "governance.missions",
+      "path": "missions",
+      "kind": "directory",
+      "authority": "governance-record",
+      "sync_policy": "tracked",
+      "runtime_scope": "portable",
+      "rebuildable": false
+    },
+    {
+      "id": "governance.plans",
+      "path": "plans",
+      "kind": "directory",
+      "authority": "governance-record",
+      "sync_policy": "tracked",
+      "runtime_scope": "portable",
+      "rebuildable": false
+    },
+    {
+      "id": "governance.branches",
+      "path": "branches/registry.json",
+      "kind": "file",
+      "authority": "governance-record",
+      "sync_policy": "tracked",
+      "runtime_scope": "portable",
+      "rebuildable": false
+    },
+    {
+      "id": "governance.operations",
+      "path": "operations",
+      "kind": "directory",
+      "authority": "event-sourced-operational",
+      "sync_policy": "tracked",
+      "runtime_scope": "portable",
+      "rebuildable": false
+    },
+    {
+      "id": "governance.authorizations",
+      "path": "authorizations",
+      "kind": "directory",
+      "authority": "governance-record",
+      "sync_policy": "tracked",
+      "runtime_scope": "portable",
+      "rebuildable": false
+    },
+    {
+      "id": "governance.readiness",
+      "path": "readiness",
+      "kind": "directory",
+      "authority": "governance-record",
+      "sync_policy": "tracked",
+      "runtime_scope": "portable",
+      "rebuildable": false
+    },
+    {
+      "id": "governance.checkpoints",
+      "path": "checkpoints",
+      "kind": "directory",
+      "authority": "evidence-record",
+      "sync_policy": "tracked",
+      "runtime_scope": "portable",
+      "rebuildable": false
+    },
+    {
+      "id": "framework.dispatch",
+      "path": "dispatch",
+      "kind": "directory",
+      "authority": "governance-record",
+      "sync_policy": "tracked",
+      "runtime_scope": "portable",
+      "rebuildable": false
+    },
+    {
+      "id": "framework.workflows",
+      "path": "workflows",
+      "kind": "directory",
+      "authority": "framework-config",
+      "sync_policy": "tracked",
+      "runtime_scope": "portable",
+      "rebuildable": false
+    },
+    {
+      "id": "framework.skills",
+      "path": "skills",
+      "kind": "directory",
+      "authority": "framework-config",
+      "sync_policy": "tracked",
+      "runtime_scope": "portable",
+      "rebuildable": false
+    },
+    {
+      "id": "runtime.coordination",
+      "path": "runtime/coordination",
+      "kind": "directory",
+      "authority": "event-sourced-operational",
+      "sync_policy": "tracked",
+      "runtime_scope": "portable",
+      "rebuildable": false
+    },
+    {
+      "id": "runtime.dispatch",
+      "path": "runtime/dispatch",
+      "kind": "directory",
+      "authority": "operational",
+      "sync_policy": "tracked",
+      "runtime_scope": "portable",
+      "rebuildable": false
+    },
+    {
+      "id": "runtime.cross-project",
+      "path": "runtime/cross-project",
+      "kind": "directory",
+      "authority": "transport",
+      "sync_policy": "tracked",
+      "runtime_scope": "portable",
+      "rebuildable": false
+    },
+    {
+      "id": "runtime.continuity",
+      "path": "runtime/continuity",
+      "kind": "directory",
+      "authority": "evidence-transport",
+      "sync_policy": "tracked",
+      "runtime_scope": "portable",
+      "rebuildable": false
+    },
+    {
+      "id": "runtime.evidence",
+      "path": "runtime/evidence",
+      "kind": "directory",
+      "authority": "evidence",
+      "sync_policy": "evidence",
+      "runtime_scope": "portable",
+      "rebuildable": false
+    },
+    {
+      "id": "runtime.hosts",
+      "path": "runtime/hosts",
+      "kind": "directory",
+      "authority": "machine-local",
+      "sync_policy": "local",
+      "runtime_scope": "machine-local",
+      "rebuildable": true
+    },
+    {
+      "id": "runtime.worktrees",
+      "path": "runtime/worktrees",
+      "kind": "directory",
+      "authority": "machine-local",
+      "sync_policy": "local",
+      "runtime_scope": "instance-local",
+      "rebuildable": true
+    },
+    {
+      "id": "evidence.runtime",
+      "path": "runtime-evidence",
+      "kind": "directory",
+      "authority": "evidence",
+      "sync_policy": "evidence",
+      "runtime_scope": "portable",
+      "rebuildable": false
+    },
+    {
+      "id": "evidence.activities",
+      "path": "activities",
+      "kind": "directory",
+      "authority": "evidence",
+      "sync_policy": "evidence",
+      "runtime_scope": "portable",
+      "rebuildable": false
+    },
+    {
+      "id": "transport.event-bus",
+      "path": "event-bus",
+      "kind": "directory",
+      "authority": "transport",
+      "sync_policy": "evidence",
+      "runtime_scope": "portable",
+      "rebuildable": false
+    },
+    {
+      "id": "legacy.runtime-continuity",
+      "path": "runtime-continuity",
+      "kind": "directory",
+      "authority": "compatibility",
+      "sync_policy": "legacy",
+      "runtime_scope": "portable",
+      "rebuildable": false
+    }
+  ]
+}
