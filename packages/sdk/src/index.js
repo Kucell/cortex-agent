@@ -54,6 +54,20 @@ function createCortexClient(options = {}) {
       resolve: typeof transport.resolveProject === "function"
         ? () => transport.resolveProject()
         : undefined,
+      connected: Object.freeze({
+        list: typeof transport.listConnectedProjects === "function"
+          ? () => transport.listConnectedProjects()
+          : undefined,
+        get: typeof transport.getConnectedProject === "function"
+          ? (projectRefOrId, options = {}) => transport.getConnectedProject(projectRefOrId, options)
+          : undefined,
+        register: typeof transport.registerConnectedProject === "function"
+          ? (projectRoot, options = {}) => transport.registerConnectedProject(projectRoot, options)
+          : undefined,
+        unregister: typeof transport.unregisterConnectedProject === "function"
+          ? (projectRefOrId) => transport.unregisterConnectedProject(projectRefOrId)
+          : undefined,
+      }),
     }),
     capabilities: Object.freeze({
       discover: discoverCapabilities,
