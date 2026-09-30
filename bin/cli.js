@@ -178,6 +178,7 @@ const {
   inbox,
   waitpoints,
   shouldAutoSyncManagementWriter,
+  managementSyncPaths,
 } = require("../lib/commands/management/write.js");
 
 // M-035 MS-003 (P-009): .help/ contract dispatch.
@@ -628,21 +629,36 @@ async function initModeGeneral() {
       // into a commit + push.
       const result = decisions(ctx);
       if (shouldAutoSyncManagementWriter(args, result)) {
-        fireAndForgetSync(l1Ctx).catch(() => {});
+        const syncPaths = managementSyncPaths(result);
+        if (syncPaths) {
+          fireAndForgetSync(l1Ctx, { paths: syncPaths }).catch(() => {});
+        } else {
+          console.warn("⚠️  state-sync auto skipped: writer did not report exact changed paths; run `cortex-agent update` and retry.");
+        }
       }
       break;
     }
     case "inbox": {
       const result = inbox(ctx);
       if (shouldAutoSyncManagementWriter(args, result)) {
-        fireAndForgetSync(l1Ctx).catch(() => {});
+        const syncPaths = managementSyncPaths(result);
+        if (syncPaths) {
+          fireAndForgetSync(l1Ctx, { paths: syncPaths }).catch(() => {});
+        } else {
+          console.warn("⚠️  state-sync auto skipped: writer did not report exact changed paths; run `cortex-agent update` and retry.");
+        }
       }
       break;
     }
     case "waitpoints": {
       const result = waitpoints(ctx);
       if (shouldAutoSyncManagementWriter(args, result)) {
-        fireAndForgetSync(l1Ctx).catch(() => {});
+        const syncPaths = managementSyncPaths(result);
+        if (syncPaths) {
+          fireAndForgetSync(l1Ctx, { paths: syncPaths }).catch(() => {});
+        } else {
+          console.warn("⚠️  state-sync auto skipped: writer did not report exact changed paths; run `cortex-agent update` and retry.");
+        }
       }
       break;
     }
