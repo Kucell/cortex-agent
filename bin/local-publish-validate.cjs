@@ -192,17 +192,24 @@ function main() {
   console.log('');
 
   // ── 0. Pre-flight checks ────────────────────────────────────────────────
+  // A dirty tree always needs --force. --skip-commit does NOT relax this: it
+  // only means "don't commit or tag", and a tarball built from uncommitted work
+  // is indistinguishable from a release once it is installed by name+version.
+  // (The workflow doc used to claim --skip-commit permitted a dirty tree; that
+  // was wrong, and contradicted its own 注意事项 6. Fixed there too.)
   if (!opts.dryRun) {
-    if (isDirty(cwd) && !opts.force && !opts.skipCommit) {
-      console.error('❌ Working tree is dirty. Commit / stash first, or pass --force (with --skip-commit or explicit accept).');
-      process.exit(1);
-    }
-    if (isDirty(cwd) && !opts.force && opts.skipCommit) {
-      console.error('❌ Working tree is dirty and --skip-commit set; refusing to pack a dirty tree.');
+    if (isDirty(cwd) && !opts.force) {
+      console.error('❌ Working tree is dirty.');
+      console.error('   Commit / stash first, or pass --force to accept packing uncommitted work.');
+      console.error('   --skip-commit does not bypass this; it only skips commit + tag.');
       process.exit(1);
     }
   } else {
-    if (isDirty(cwd)) console.log('⚠️  [DRY-RUN] Working tree is dirty; would block real run');
+    // --dry-run skips the guard above, so mirror it faithfully: warn only when a
+    // real run would actually be blocked.
+    if (isDirty(cwd) && !opts.force) {
+      console.log('⚠️  [DRY-RUN] Working tree is dirty; a real run would need --force');
+    }
   }
 
   // ── 1. Bump version (optional) ──────────────────────────────────────────
