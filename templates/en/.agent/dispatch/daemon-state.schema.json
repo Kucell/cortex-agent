@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://cortex-agent.local/schemas/dispatch/daemon-state.schema.json",
   "title": "Cortex Agent Dispatch Daemon State",
-  "description": "Recoverable local state for a future opt-in user-space daemon. Phase 0 does not create this file.",
+  "description": "Contract for the opt-in Control Service daemon. Runtime instances persist this shape under .agent-runtime/control-service/daemon-state.json; the development-governance .agent repository remains state-authoritative only for governance artifacts, not process PID/heartbeat state.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -20,33 +20,89 @@
     "last_error"
   ],
   "properties": {
-    "schema_version": { "const": 1 },
-    "enabled": { "type": "boolean", "default": false },
-    "status": { "enum": ["disabled", "starting", "running", "stopping", "stopped", "degraded"] },
-    "agent_root": { "type": "string", "minLength": 1 },
-    "pid": {
-      "anyOf": [
-        { "type": "null" },
-        { "type": "integer", "minimum": 1 }
+    "schema_version": {
+      "const": 1
+    },
+    "enabled": {
+      "type": "boolean",
+      "default": false
+    },
+    "status": {
+      "enum": [
+        "disabled",
+        "starting",
+        "running",
+        "stopping",
+        "stopped",
+        "degraded"
       ]
     },
-    "poll_interval_ms": { "type": "integer", "minimum": 1000 },
-    "started_at": { "$ref": "#/$defs/nullableDateTime" },
-    "last_heartbeat_at": { "$ref": "#/$defs/nullableDateTime" },
-    "stopped_at": { "$ref": "#/$defs/nullableDateTime" },
-    "last_trigger_id": { "type": ["string", "null"] },
-    "last_dispatch_run_id": { "type": ["string", "null"] },
+    "agent_root": {
+      "type": "string",
+      "minLength": 1
+    },
+    "pid": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "integer",
+          "minimum": 1
+        }
+      ]
+    },
+    "poll_interval_ms": {
+      "type": "integer",
+      "minimum": 1000
+    },
+    "started_at": {
+      "$ref": "#/$defs/nullableDateTime"
+    },
+    "last_heartbeat_at": {
+      "$ref": "#/$defs/nullableDateTime"
+    },
+    "stopped_at": {
+      "$ref": "#/$defs/nullableDateTime"
+    },
+    "last_trigger_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "last_dispatch_run_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
     "last_error": {
       "anyOf": [
-        { "type": "null" },
+        {
+          "type": "null"
+        },
         {
           "type": "object",
           "additionalProperties": false,
-          "required": ["code", "message", "at"],
+          "required": [
+            "code",
+            "message",
+            "at"
+          ],
           "properties": {
-            "code": { "type": "string", "minLength": 1 },
-            "message": { "type": "string", "minLength": 1 },
-            "at": { "type": "string", "format": "date-time" }
+            "code": {
+              "type": "string",
+              "minLength": 1
+            },
+            "message": {
+              "type": "string",
+              "minLength": 1
+            },
+            "at": {
+              "type": "string",
+              "format": "date-time"
+            }
           }
         }
       ]
@@ -55,8 +111,13 @@
   "$defs": {
     "nullableDateTime": {
       "anyOf": [
-        { "type": "null" },
-        { "type": "string", "format": "date-time" }
+        {
+          "type": "null"
+        },
+        {
+          "type": "string",
+          "format": "date-time"
+        }
       ]
     }
   }
