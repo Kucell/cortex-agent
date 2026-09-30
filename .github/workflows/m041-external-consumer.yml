@@ -1,0 +1,104 @@
+name: M-041 External Consumer Validation
+
+on:
+  push:
+    branches:
+      - "feat/m041-*"
+    paths:
+      - "packages/**"
+      - "tests/fixtures/m041-external-consumer/**"
+      - "scripts/m041/inspect-package-tarballs.js"
+      - ".github/workflows/m041-external-consumer.yml"
+  pull_request:
+    paths:
+      - "packages/**"
+      - "tests/fixtures/m041-external-consumer/**"
+      - "scripts/m041/inspect-package-tarballs.js"
+      - ".github/workflows/m041-external-consumer.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  external-consumer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.19.0"
+
+      - name: Enable pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.13.1 --activate
+
+      - name: Install Cortex workspace
+        run: pnpm install --frozen-lockfile
+
+      - name: Pack public-candidate packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          ARTIFACTS="$(mktemp -d)"
+          echo "ARTIFACTS=$ARTIFACTS" >> "$GITHUB_ENV"
+          for pkg in protocol sdk runtime-port project-sdk extension-sdk; do
+            pnpm --dir "packages/$pkg" pack --pack-destination "$ARTIFACTS"
+          done
+          ls -la "$ARTIFACTS"
+
+      - name: Inspect package tarball contents
+        run: |
+          node scripts/m041/inspect-package-tarballs.js "$ARTIFACTS"/*.tgz             | tee "$ARTIFACTS/package-inspection.json"
+
+      - name: Create external consumer outside workspace
+        shell: bash
+        run: |
+          set -euo pipefail
+          CONSUMER="$(mktemp -d)"
+          echo "CONSUMER=$CONSUMER" >> "$GITHUB_ENV"
+          cp tests/fixtures/m041-external-consumer/package.template.json "$CONSUMER/package.json"
+          cp tests/fixtures/m041-external-consumer/consumer.cjs "$CONSUMER/consumer.cjs"
+
+      - name: Install packed Cortex contracts externally
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$CONSUMER"
+          npm install --ignore-scripts "$ARTIFACTS"/*.tgz
+
+      - name: Run external consumer smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$CONSUMER"
+          npm test | tee "$ARTIFACTS/external-consumer.log"
+
+      - name: Verify no monorepo-private dependency paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$CONSUMER"
+          node - <<'NODE'
+          const fs = require("node:fs");
+          const lock = fs.readFileSync("package-lock.json", "utf8");
+          for (const forbidden of ["workspace:*", "../protocol", "../../lib", ".agent/"]) {
+            if (lock.includes(forbidden)) {
+              throw new Error("external lock contains forbidden dependency reference: " + forbidden);
+            }
+          }
+          NODE
+
+      - name: Upload external consumer evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: m041-external-consumer-evidence
+          path: |
+            ${{ env.ARTIFACTS }}/package-inspection.json
+            ${{ env.ARTIFACTS }}/external-consumer.log
+          if-no-files-found: warn
+          retention-days: 14
