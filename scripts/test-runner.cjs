@@ -351,6 +351,64 @@ function printResult(r, idx, total) {
 
 // ---- Main ---------------------------------------------------------------
 
+// ─── Runtime-artifact guard ───────────────────────────────────────────────────
+// Several suites (openviking/*, activity-recording, upgrade-dry-run) exercise the
+// real `.agent/` state instead of a tmpdir, so a run silently rewrites tracked
+// runtime artifacts in the developer's working copy. Snapshot them up front and
+// restore afterwards, and report which suites touched them so the non-hermetic
+// tests can be migrated to tmpdir over time.
+//
+// A `~/` entry targets the developer's home directory instead of the repo, for
+// suites that warm a real user cache (design-catalog) and would otherwise leave
+// it mutated for the rest of the day.
+
+const GUARDED_ARTIFACTS = Object.freeze([
+  '.agent/context-index.json',
+  '.agent/memory/MEMORY.md',
+  '.agent/registry/uri-map.json',
+  '.agent/plans/context-manifest.json',
+  '.agent/metrics/self-check-report.json',
+  '.agent/metrics/reality-reconciliation-report.json',
+  '~/.agent/cache/design-catalog-cache.json',
+]);
+
+function resolveArtifact(rel) {
+  return rel.startsWith('~/')
+    ? path.join(os.homedir(), rel.slice(2))
+    : path.join(ROOT, rel);
+}
+
+function snapshotGuardedArtifacts() {
+  return new Map(GUARDED_ARTIFACTS.map((rel) => {
+    const abs = resolveArtifact(rel);
+    try {
+      return [rel, { existed: true, content: fs.readFileSync(abs) }];
+    } catch {
+      return [rel, { existed: false, content: null }];
+    }
+  }));
+}
+
+function restoreGuardedArtifacts(snapshot) {
+  const touched = [];
+  for (const [rel, prev] of snapshot) {
+    const abs = resolveArtifact(rel);
+    let current = null;
+    try { current = fs.readFileSync(abs); } catch { /* absent */ }
+    const changed = prev.existed !== (current !== null)
+      || (prev.existed && current !== null && !prev.content.equals(current));
+    if (!changed) continue;
+    touched.push(rel);
+    if (prev.existed) {
+      fs.mkdirSync(path.dirname(abs), { recursive: true });
+      fs.writeFileSync(abs, prev.content);
+    } else {
+      try { fs.unlinkSync(abs); } catch { /* already gone */ }
+    }
+  }
+  return touched;
+}
+
 async function main() {
   const opts = parseArgs(process.argv);
   if (opts.help) { showHelp(); return; }
@@ -390,6 +448,7 @@ async function main() {
   }
 
   const t0 = Date.now();
+  const artifactSnapshot = snapshotGuardedArtifacts();
   let results;
   if (opts.serial || files.length === 1) {
     results = await runSerial(files, opts.timeoutSec * Math.max(1, files.length));
@@ -398,6 +457,15 @@ async function main() {
   }
   if (globalTimer) clearTimeout(globalTimer);
   const total = Date.now() - t0;
+
+  const touchedArtifacts = restoreGuardedArtifacts(artifactSnapshot);
+  if (touchedArtifacts.length) {
+    console.log(colorize(
+      `[test-runner] restored ${touchedArtifacts.length} runtime artifact(s) rewritten by the suite: ` +
+      touchedArtifacts.join(', ') + ' — these tests are not hermetic',
+      'yellow', useColor,
+    ));
+  }
 
   const pass = results.filter(r => r.ok).length;
   const fail = results.length - pass;

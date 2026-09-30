@@ -51,14 +51,28 @@ test("loadAllKinds: respects injected upstream", () => {
 // ─── loadAllKindsAsync: design-system delegation ─────────────────────────────
 
 test("loadAllKindsAsync: returns 4 kinds with starter fallback on upstream error", async () => {
-  const idx = await loadAllKindsAsync({
-    fetcher: () => Promise.reject(new Error("network down")),
-  });
-  for (const kind of KIND_LIST) {
-    assert.ok(idx.kinds[kind].entries.length > 0, `${kind} should have entries`);
+  const fs = require("node:fs");
+  const os = require("node:os");
+  const path = require("node:path");
+  // Isolate cachePath for the same reason as the sibling test below: without it
+  // this falls back to the user's real ~/.agent/cache/design-catalog-cache.json,
+  // and a cache that is still inside its 24h TTL makes the fallback report
+  // "upstream" instead of "starter" — a pass/fail flip that depends on whether
+  // the machine happens to have run a catalog fetch that day.
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-registry-fallback-"));
+  try {
+    const idx = await loadAllKindsAsync({
+      fetcher: () => Promise.reject(new Error("network down")),
+      cachePath: path.join(tmpDir, "cache.json"),
+    });
+    for (const kind of KIND_LIST) {
+      assert.ok(idx.kinds[kind].entries.length > 0, `${kind} should have entries`);
+    }
+    // design-system falls back to starter or cache
+    assert.equal(idx.kinds["design-system"].source, "starter");
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
   }
-  // design-system falls back to starter or cache
-  assert.equal(idx.kinds["design-system"].source, "starter");
 });
 
 test("loadAllKindsAsync: design-system source=upstream on success", async () => {

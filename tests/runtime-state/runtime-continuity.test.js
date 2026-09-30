@@ -53,6 +53,10 @@ function makeProject() {
   fs.writeFileSync(path.join(root, "README.md"), "# rc-p001 fixture\n");
   spawnSync("git", ["add", "."], { cwd: root });
   spawnSync("git", ["commit", "-q", "-m", "init"], { cwd: root });
+  // Redirected HOME so the skill writes its contexts under the fixture instead
+  // of the developer's real ~/.agent/contexts/. Created after the commit so it
+  // stays out of the fixture's git history.
+  fs.mkdirSync(path.join(root, ".fakehome"), { recursive: true });
   // Set up a stub active run so the script's appendRunEvent() has a target.
   const runsDir = path.join(root, ".agent", "runs");
   fs.mkdirSync(runsDir, { recursive: true });
@@ -68,10 +72,17 @@ function makeProject() {
   return root;
 }
 
+// The skill resolves CONTEXT_HOME from os.homedir(), so every spawn must run
+// with a fixture HOME. Without this the suite writes into the real
+// ~/.agent/contexts/ of whoever runs it. Callers may still override via `env`.
+function fixtureEnv(project, env) {
+  return { ...process.env, HOME: path.join(project, ".fakehome"), ...env };
+}
+
 function runCli(project, args, env = {}) {
   return spawnSync(process.execPath, [cli, "session", ...args], {
     cwd: project,
-    env: { ...process.env, ...env },
+    env: fixtureEnv(project, env),
     encoding: "utf8",
   });
 }
@@ -79,7 +90,7 @@ function runCli(project, args, env = {}) {
 function runScript(project, args, env = {}) {
   return spawnSync(process.execPath, [skillScript, ...args], {
     cwd: project,
-    env: { ...process.env, ...env },
+    env: fixtureEnv(project, env),
     encoding: "utf8",
   });
 }
