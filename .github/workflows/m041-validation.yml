@@ -1,0 +1,50 @@
+name: M-041 Platformization Validation
+
+on:
+  push:
+    branches:
+      - "feat/m041-*"
+    paths:
+      - "packages/**"
+      - "lib/platform-health/**"
+      - "tests/platform-health/**"
+      - "docs/architecture/platform-health-v1.md"
+      - "docs/architecture/m041-public-package-eligibility.md"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - ".github/workflows/m041-validation.yml"
+  pull_request:
+    paths:
+      - "packages/**"
+      - "lib/platform-health/**"
+      - "tests/platform-health/**"
+      - "docs/architecture/platform-health-v1.md"
+      - "docs/architecture/m041-public-package-eligibility.md"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - ".github/workflows/m041-validation.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  contract-freeze:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.19.0"
+      - name: Enable pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.13.1 --activate
+      - name: Install workspace
+        run: pnpm install --frozen-lockfile
+      - name: Run M-040 compatibility baseline
+        run: pnpm test:m040
+      - name: Run M-041 contract-freeze validation
+        run: pnpm test:m041
