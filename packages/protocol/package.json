@@ -1,0 +1,14 @@
+{
+  "name": "@cortex-agent/protocol",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Canonical portable contracts for Cortex Agent",
+  "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  },
+  "license": "MIT"
+}

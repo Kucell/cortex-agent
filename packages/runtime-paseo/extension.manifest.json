@@ -1,0 +1,55 @@
+{
+  "schema_version": "1",
+  "id": "paseo-cortex-governance",
+  "version": "0.1.0",
+  "type": "ui-surface",
+  "cortex": {
+    "protocol": "cortex-extension",
+    "min_version": "1.0",
+    "max_version_exclusive": "2.0"
+  },
+  "capabilities": {
+    "provided": [],
+    "required": [
+      "management.query"
+    ]
+  },
+  "permissions": {
+    "filesystem": {
+      "read": [],
+      "write": []
+    },
+    "git": {
+      "read": false,
+      "commit": false,
+      "push": false
+    },
+    "process": {
+      "spawn": false
+    },
+    "network": {
+      "allow": []
+    },
+    "secrets": {
+      "read": []
+    }
+  },
+  "entry_points": {
+    "client": "src/governance-surface.js"
+  },
+  "config_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "mission_id": {
+        "type": "string"
+      },
+      "milestone_id": {
+        "type": "string"
+      },
+      "task_id": {
+        "type": "string"
+      }
+    }
+  }
+}

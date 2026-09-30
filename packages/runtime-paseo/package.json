@@ -1,0 +1,26 @@
+{
+  "name": "@cortex-agent/runtime-paseo",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Optional Paseo RuntimePort adapter for Cortex Agent",
+  "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@cortex-agent/protocol": "workspace:*",
+    "@cortex-agent/runtime-port": "workspace:*"
+  },
+  "peerDependencies": {
+    "@getpaseo/client": "^0.10.0"
+  },
+  "peerDependenciesMeta": {
+    "@getpaseo/client": {
+      "optional": true
+    }
+  }
+}

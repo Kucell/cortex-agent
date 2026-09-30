@@ -42,18 +42,20 @@ function withExitCode(fn) {
 
 // ─── module-cache swap helper ─────────────────────────────────────────────────
 //
-// `query.js` directly requires `../../management-client` for
-// queryManagementProject + formatQueryPayload, and `./api-helpers` for
+// `query.js` now routes queries through `../../sdk/local-client`, while still
+// importing `formatQueryPayload` from the Management client and `./api-helpers` for
 // managementApiError + printManagementPayload + invalidManagementUsage.
 // All three are destructure-imported, so we must swap the cache AND evict
 // `query.js` from the cache before re-requiring it.
 
 function withMockedDeps(clientOverrides, apiHelpersOverrides, fn) {
   const clientTarget = require.resolve("../../../lib/management/client");
+  const sdkTarget = require.resolve("../../../lib/sdk/local-client");
   const helpersTarget = require.resolve("../../../lib/commands/management/api-helpers");
   const queryTarget = require.resolve("../../../lib/commands/management/query");
 
   const origClient = require.cache[clientTarget];
+  const origSdk = require.cache[sdkTarget];
   const origHelpers = require.cache[helpersTarget];
   const origQuery = require.cache[queryTarget];
 
@@ -108,11 +110,59 @@ function withMockedDeps(clientOverrides, apiHelpersOverrides, fn) {
     }),
   };
 
+  const clientExports = { ...defaultClient, ...clientOverrides };
   require.cache[clientTarget] = {
     id: clientTarget,
     filename: clientTarget,
     loaded: true,
-    exports: { ...defaultClient, ...clientOverrides },
+    exports: clientExports,
+  };
+  require.cache[sdkTarget] = {
+    id: sdkTarget,
+    filename: sdkTarget,
+    loaded: true,
+    exports: {
+      createLocalCortexClient(ctx) {
+        function invoke(projection, filters = {}) {
+          const args = [];
+          for (const [key, value] of Object.entries(filters)) {
+            if (Array.isArray(value)) {
+              for (const item of value) args.push(`--${key}`, String(item));
+            } else if (value !== undefined && value !== null) {
+              args.push(`--${key}`, String(value));
+            }
+          }
+          const result = clientExports.queryManagementProject(ctx, projection, args);
+          if (!result.ok) {
+            const error = new Error(result.error.message);
+            error.code = result.error.code;
+            error.details = result.error.details;
+            error.exitCode = result.exitCode;
+            throw error;
+          }
+          return result.payload;
+        }
+        return {
+          management: {
+            capabilities: () => invoke("capabilities"),
+            query: invoke,
+          },
+          project: {
+            resolve() {
+              const result = clientExports.resolveManagementProject(ctx);
+              if (!result.ok) {
+                const error = new Error(result.error.message);
+                error.code = result.error.code;
+                error.details = result.error.details;
+                error.exitCode = result.exitCode;
+                throw error;
+              }
+              return result.project;
+            },
+          },
+        };
+      },
+    },
   };
   require.cache[helpersTarget] = {
     id: helpersTarget,
@@ -127,6 +177,8 @@ function withMockedDeps(clientOverrides, apiHelpersOverrides, fn) {
   } finally {
     if (origClient) require.cache[clientTarget] = origClient;
     else delete require.cache[clientTarget];
+    if (origSdk) require.cache[sdkTarget] = origSdk;
+    else delete require.cache[sdkTarget];
     if (origHelpers) require.cache[helpersTarget] = origHelpers;
     else delete require.cache[helpersTarget];
     if (origQuery) require.cache[queryTarget] = origQuery;
