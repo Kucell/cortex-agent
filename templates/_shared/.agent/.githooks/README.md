@@ -1,14 +1,24 @@
-# `.agent/.githooks/` — versioned git hooks for the inner .agent repo
+# `.agent/.githooks/` — versioned git hooks for the `.agent/` directory
 
 These hooks are committed so they stay in lock-step with the state-sync flow.
-They are **not** active by default; each clone opts in once with
-`core.hooksPath`.
+They are **not** active by default. These hooks apply only when `.agent/` is
+itself a Git repository; in a managed project with a plain `.agent/` directory,
+Git never invokes them.
 
-## One-time setup
+`core.hooksPath` is repository-level configuration. Only enable these hooks
+after confirming that `.agent/` is a separate Git repository. Otherwise,
+`git -C .agent config core.hooksPath .githooks` would change the outer
+project's hook path.
+
+## One-time setup (separate `.agent/` repository only)
 
 ```bash
 git -C .agent config core.hooksPath .githooks
 ```
+
+`cortex-agent init` / `upgrade` wires the hook only when `.agent/` is a
+separate repository. If `.agent/` is a plain directory, leaving it inactive
+is expected.
 
 ## State classification
 

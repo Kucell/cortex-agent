@@ -1,0 +1,108 @@
+#!/bin/bash
+# Cortex Agent — development pre-commit hook
+#
+# Installed by: node scripts/install-dev-hooks.js
+# Tracked source of truth: hooks/git/pre-commit
+#
+# Two gates:
+#   1. L3 distribution boundary — L3 self-bootstrap content must never reach
+#      templates/**, which init/upgrade ships to every managed project.
+#      See .agent/rules/agent-scope.md.
+#   2. Per-staged-file checks via .claude/hooks/pre-commit-check.sh, plus the
+#      memory-integrity gate.
+#
+# Both gates degrade to a no-op when their dependency is absent, so adopting
+# this hook in a project without the framework's own scripts is safe.
+
+set -euo pipefail
+
+HOOK_SCRIPT=".claude/hooks/pre-commit-check.sh"
+L3_CHECK="scripts/check-l3-boundary.js"
+
+STAGED_FILES=$(git diff --cached --name-only --diff-filter=ACM 2>/dev/null || echo "")
+
+if [ -z "$STAGED_FILES" ]; then
+  exit 0
+fi
+
+# ── Gate 1: L3 distribution boundary ─────────────────────────────────────────
+# Scoped to templates/ on purpose: the leak can enter no other way, and this is
+# a whole-tree scan. Both guards matter — without the file check the `node`
+# invocation would fail for a project that does not ship lib/l3-boundary.
+#
+# Fails closed: a gate that cannot decide must not let a commit through. The
+# output is captured so a crash is reported as "the gate itself failed" rather
+# than being mistaken for a detected violation.
+if [ -f "$L3_CHECK" ] && echo "$STAGED_FILES" | grep -q '^templates/'; then
+  L3_OUT=$(node "$L3_CHECK" 2>&1) || L3_STATUS=$?
+  L3_STATUS=${L3_STATUS:-0}
+  if [ "$L3_STATUS" -ne 0 ]; then
+    echo "$L3_OUT"
+    echo ""
+    if echo "$L3_OUT" | grep -q 'L3 Distribution Boundary Report'; then
+      echo "❌ L3 分发边界检查失败，提交已阻断。"
+      echo "   L3 内容只能留在 <repo>/.agent/（标记 scope: L3），不得进入 templates/。"
+      echo "   归属依据见 .agent/rules/agent-scope.md"
+    else
+      echo "❌ L3 分发边界门禁自身无法运行（非检测到违规），提交已阻断。"
+      echo "   请修复门禁后重试，或手动运行： node $L3_CHECK"
+    fi
+    exit 1
+  fi
+fi
+
+if [ ! -f "$HOOK_SCRIPT" ]; then
+  exit 0
+fi
+
+FAILED=0
+
+while IFS= read -r file; do
+  if [ -f "$file" ]; then
+    # 构造与 Claude Code PostToolUse 相同格式的 JSON 上下文，复用检查脚本
+    RESULT=$(echo "{\"tool_input\":{\"file_path\":\"$file\"}}" | bash "$HOOK_SCRIPT" 2>&1) || {
+      echo "$RESULT"
+      FAILED=1
+    }
+  fi
+done <<< "$STAGED_FILES"
+
+if [ "$FAILED" -ne 0 ]; then
+  echo ""
+  echo "❌ Git pre-commit 检查失败，提交已阻断。请修复以上问题后重新提交。"
+  exit 1
+fi
+
+# ── memory integrity (T-MEM-INT / memory-integrity-validation-proposal §3.5) ──
+# Hard fail on V-1 drift / V-2 missing / V-4 orphan; warn on V-3 schema /
+# V-5 duplicate / over-cap.
+if [ -f .agent/memory/MEMORY.md ]; then
+  MEM_EXIT=0
+  MEM_JSON=$(cortex-agent memory validate --output json 2>/dev/null) || MEM_EXIT=$?
+  HARD_FAIL=$(echo "$MEM_JSON" | node -e "
+    let s=''; process.stdin.on('data',d=>s+=d); process.stdin.on('end',()=>{
+      try{const r=JSON.parse(s);const sum=r.summary||{};
+        const hard=((sum.drift||0)+(sum.missing||0)+(sum.orphan||0))>0?1:0;
+        console.log(hard);
+      }catch(e){console.log(0)}
+    })" 2>/dev/null)
+  if [ "$MEM_EXIT" -ne 0 ] && [ "$HARD_FAIL" = "1" ]; then
+    echo ""
+    echo "❌ memory integrity hard-fail (drift/missing/orphan). Run:"
+    echo "   cortex-agent memory validate"
+    echo "   cortex-agent memory validate --fix --yes"
+    exit 1
+  fi
+  SOFT_WARN=$(echo "$MEM_JSON" | node -e "
+    let s=''; process.stdin.on('data',d=>s+=d); process.stdin.on('end',()=>{
+      try{const r=JSON.parse(s);const sum=r.summary||{};
+        const soft=((sum.schema||0)+(sum.duplicate||0)+(sum['over-cap']||0))>0?1:0;
+        console.log(soft);
+      }catch(e){console.log(0)}
+    })" 2>/dev/null)
+  if [ "$SOFT_WARN" = "1" ]; then
+    echo "⚠️  memory integrity warnings (schema/duplicate/over-cap). Run 'cortex-agent memory validate'."
+  fi
+fi
+
+exit 0
