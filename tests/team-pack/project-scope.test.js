@@ -5,7 +5,7 @@
 // global / project_intersection / project_miss selection with receipt
 // evidence, duplicate-target conflict and scoped safety scans.
 
-const assert = require("node:assert/strict");
+const assert = require("assert").strict;
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
