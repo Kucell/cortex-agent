@@ -388,8 +388,44 @@ function createStructuredArchive(project, note, opts, markdownArchive) {
   return { archive, archiveJsonPath: archivePath, latestJsonPath: latestPath };
 }
 
+// Resolve a `--project` value to a single context-directory name.
+//
+// `--project` is a project NAME here, but the rest of the CLI documents the
+// same flag as a project root PATH (e.g. `.help/decisions-request.md`:
+// "Project root directory."). Two forms are accepted and address the same
+// directory: `--project myproj` and `--project /a/b/myproj`.
+//
+// Anything carrying a path separator is reduced to its last segment
+// unconditionally — not only when that directory already exists. A
+// conditional fallback looked safer but was not: for a project with no archive
+// yet, `archive --project /a/b/myproj` would fall through to the raw path and
+// recreate ~/.agent/contexts/a/b/myproj/. A directory name can never contain a
+// separator, so basenaming can only ever narrow a value, never corrupt one.
+function resolveProjectName(raw) {
+  const value = String(raw == null ? "" : raw).trim().replace(/[/\\]+$/, "");
+  if (!value) return "";
+  return /[/\\]/.test(value) ? path.basename(value) : value;
+}
+
+// Single choke point for every CONTEXT_HOME lookup. `path.join` collapses "."
+// to its parent, so an unvalidated `--project .` wrote ctx_*.md and latest.md
+// straight into the contexts root and `--project ..` would have escaped into
+// ~/.agent — both reporting ok:true. Fails closed instead.
+function contextDir(project) {
+  const name = resolveProjectName(project);
+  if (!name || name === "." || name === "..") {
+    fail(
+      "invalid_project",
+      `--project must name a project (e.g. --project myproj), got ${JSON.stringify(
+        String(project == null ? "" : project)
+      )}. A directory path is accepted and reduced to its last segment.`
+    );
+  }
+  return path.join(CONTEXT_HOME, name);
+}
+
 function archiveProject(project, note, opts = {}) {
-  const dir = path.join(CONTEXT_HOME, project);
+  const dir = contextDir(project);
   fs.mkdirSync(dir, { recursive: true });
   const stamp = opts.stamp || ts();
   const file = path.join(dir, `ctx_${stamp}.md`);
@@ -635,7 +671,7 @@ function startOrRenewContinuityGuard(project) {
 
 // ─── Mode 3 — restore ────────────────────────────────────────────────────────
 function listContexts(project) {
-  const dir = path.join(CONTEXT_HOME, project);
+  const dir = contextDir(project);
   if (!fs.existsSync(dir)) return [];
   return fs.readdirSync(dir)
     .filter((n) => n.startsWith("ctx_") && n.endsWith(".md"))
@@ -648,7 +684,7 @@ function listContexts(project) {
 }
 
 function resolveLatest(project) {
-  const dir = path.join(CONTEXT_HOME, project);
+  const dir = contextDir(project);
   const latest = path.join(dir, "latest.md");
   if (fs.existsSync(latest)) return latest;
   const entries = listContexts(project);
@@ -658,7 +694,14 @@ function resolveLatest(project) {
 
 function loadContext(project, mode) {
   if (mode === "list") {
-    return { ok: true, action: "list", project, contexts: listContexts(project) };
+    const dir = contextDir(project);
+    return {
+      ok: true,
+      action: "list",
+      project: path.basename(dir),
+      requested_project: project,
+      contexts: listContexts(project),
+    };
   }
   if (mode === "auto") {
     const markdown = resolveLatest(project);
@@ -1064,12 +1107,28 @@ function continuityGuardStatus() {
 }
 
 function statusReport(project) {
-  const dir = path.join(CONTEXT_HOME, project);
+  const dir = contextDir(project);
+  const name = path.basename(dir);
   if (!fs.existsSync(dir)) {
-    return { ok: true, action: "status", project, exists: false, guard: continuityGuardStatus() };
+    // Surface what is actually available so a wrong --project is self-evident
+    // instead of an unexplained exists:false.
+    const known = fs.existsSync(CONTEXT_HOME)
+      ? fs.readdirSync(CONTEXT_HOME).filter((n) => !n.startsWith("."))
+      : [];
+    return {
+      ok: true,
+      action: "status",
+      project: name,
+      requested_project: project,
+      exists: false,
+      known_projects: known,
+      guard: continuityGuardStatus(),
+    };
   }
-  const entries = listContexts(project);
-  if (!entries.length) return { ok: true, action: "status", project, exists: true, count: 0, guard: continuityGuardStatus() };
+  const entries = listContexts(name);
+  if (!entries.length) {
+    return { ok: true, action: "status", project: name, exists: true, count: 0, guard: continuityGuardStatus() };
+  }
   const mostRecent = path.join(dir, entries[0].name);
   const stat = fs.statSync(mostRecent);
   const ageHrs = (Date.now() - stat.mtimeMs) / (1000 * 60 * 60);
@@ -1077,7 +1136,11 @@ function statusReport(project) {
   return {
     ok: true,
     action: "status",
-    project,
+    project: name,
+    requested_project: project,
+    // Always present: consumers must not have to infer existence from the
+    // absence of this field.
+    exists: true,
     latest: entries[0].name,
     mtime: stat.mtime.toISOString(),
     age_hours: Number(ageHrs.toFixed(2)),
@@ -1100,7 +1163,7 @@ function warmPrompt() {
       "---",
       "准备就绪，等候工作指令。",
     ].join("\n"),
-    session_continuity_skill_hint: "/Users/xueyq/.agent/contexts/",
+    session_continuity_skill_hint: "~/.agent/contexts/",
     duration_hours: 5,
     checkpoint_reminder_hours: 4,
   };
