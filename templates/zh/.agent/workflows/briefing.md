@@ -9,7 +9,7 @@ linked_skills: []
 linked_rules: []
 linked_workflows: []
 owner: Kucell
-last_verified: 2026-08-06
+last_verified: 2026-10-02
 status: stable
 ---
 
@@ -58,6 +58,40 @@ node .agent/skills/runtime-continuity/scripts/index.js resume-bundle --project "
 - **核心数据**：详细阅读 `.agent/plans/task-progress.md`，提取当前的 Roadmap 阶段和总体百分比。
 - **昨日成就**：扫描 `task-progress.md` 的 "Accomplishments" 部分，汇总最近完成的关键里程碑。
 - **(可选) 代码动态**: 如果配置了 `git-plugin`，**调用它来获取最近 3-5 次的 Git 提交历史**，以了解代码层面的实际进展。
+
+## 1.5 项目模块 / 子系统进度（Module / Subsystem Progress）
+
+在总体 Roadmap / Mission 进度之后，必须单独给出项目模块或子系统视图，回答“项目各组成部分分别完成到哪里”。
+
+### 数据来源优先级
+
+按以下优先级读取，不得为了凑表格自行推断：
+
+1. `.agent/references/context-index.json` 与对应模块 reference（若存在）
+2. 当前 Mission / Milestone / Task 的结构化状态
+3. `.agent/plans/task-progress.md` 与相关子计划
+4. Git / PR / CI / validation evidence 仅作为实现证据，不单独等价于“完成”
+
+如果模块索引尚未建立，明确写“模块基线未建立”，并建议运行 `/scan-project`；如果代码已发生重大变化但 reference 陈旧，建议运行 `/update-refs`。
+
+### 输出要求
+
+至少输出：
+
+| 模块 / 子系统 | 当前范围 | 状态 | 完成度 | 证据 / 来源 | 下一缺口 |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| {module} | {scope} | {PASS / IN PROGRESS / BLOCKED / PLANNED} | {显式百分比或“未量化”} | {Mission / Task / Reference / PR / CI} | {next gap} |
+
+规则：
+
+- **不得根据文件数量、commit 数量、PR 数量或主观印象计算完成度。**
+- 只有结构化状态或项目计划明确提供百分比时才显示百分比；否则写“未量化”。
+- Milestone 进度与模块进度必须分开：一个 Milestone 可以跨多个模块，一个模块也可以被多个 Milestone 持续演进。
+- 代码已完成但治理证据、验证契约或合并尚未完成时，状态应写成“Implementation Complete / Governance Pending”之类的分层状态，不得直接写 PASS。
+- 遵循 **EXP-003**：状态维度结构化分离，共享判定只使用一个事实来源；不要把文本中的“通过/完成”字样误解析成真实任务状态。
+- 如果用户要求“项目整体进度”，该模块表是默认输出的一部分，而不是可选附录。
+
+---
 
 ## 2. 活跃现场 (Active Scene)
 - **识别核心任务**：定位 "Active Tasks" 中优先级最高的项。
@@ -220,6 +254,7 @@ node .agent/registry/scripts/coordinator-health.js
 ## 9. 产出”咖啡简报” (The Briefing)
 输出一个极简但包含核心信息的报告：
 - **🚩 总体态势**：[项目处于什么阶段，距离下一里程碑还有多远]
+- **🧩 模块进度**：[按模块 / 子系统列出状态、显式完成度、证据与下一缺口]
 - **✅ 最近进展**：[过去 24h 完成了什么]
 - **🔥 正在进行的重点**：[任务 ID 与当前具体进展点]
 - **🎯 推荐今日接入点**：[建议开发者今天第一个打开哪个文件，从哪行代码或哪个功能点开始]
