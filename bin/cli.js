@@ -160,6 +160,7 @@ const { eventBusCommand } = require("../lib/event-bus/cli");
 // "lib/commands.js has 0 changes vs base f8a1d38" stays intact.
 const { stateSync, installStateGithooks, fireAndForgetSync } = require("../lib/state-sync/index.js");
 const { governanceIndexCommand } = require("../lib/governance-index/cli.js");
+const { governanceMigrateCommand } = require("../lib/governance-migration/cli.js");
 const { shouldAutoSyncCoordination } = require("../lib/commands/management/coordination.js");
 
 // GitHub issue #15: decisions / inbox / waitpoints write wrappers now return
@@ -738,6 +739,13 @@ async function initModeGeneral() {
     case "governance":  governanceCommand(l1Ctx); break;
     case "governance-index": {
       const result = governanceIndexCommand(ctx);
+      if (result && result.ok && result.effect && result.effect.kind === "mutation" && result.effect.committed) {
+        fireAndForgetSync({ ...l1Ctx, cwd: result.project_root }, { paths: result.effect.paths }).catch(() => {});
+      }
+      break;
+    }
+    case "governance-migrate": {
+      const result = governanceMigrateCommand(ctx);
       if (result && result.ok && result.effect && result.effect.kind === "mutation" && result.effect.committed) {
         fireAndForgetSync({ ...l1Ctx, cwd: result.project_root }, { paths: result.effect.paths }).catch(() => {});
       }
