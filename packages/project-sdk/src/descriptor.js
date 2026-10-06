@@ -28,6 +28,7 @@ const TOP_KEYS = new Set([
   "artifacts",
   "events",
   "boundaries",
+  "governance",
 ]);
 const REPO_KEYS = new Set(["slug", "default_branch"]);
 const CAP_KEYS = new Set(["provided", "required"]);
@@ -222,6 +223,7 @@ function normalizeProjectDescriptor(input) {
     artifacts: normalizeArtifacts(input.artifacts),
     events: normalizeEvents(input.events),
     boundaries: normalizeBoundaries(input.boundaries),
+    governance: normalizeGovernanceBinding(input.governance),
   });
 }
 
