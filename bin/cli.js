@@ -52,6 +52,7 @@ const { dispatchCommand } = require("../lib/dispatch/cli.js");
 // `distill`  → lib/memory/distill.js (writes to .agent/memory/ with rollback on failure)
 // Wired via direct require (per FAE-001 / M-013.P0 pattern — keeps lib/commands.js untouched).
 const { memoryCommand } = require("../lib/memory");
+const { governanceCommand } = require("../lib/commands/governance");
 
 // M-002 MS-003: Agent Registry CLI surface (static capability registry).
 // `agent <subcommand>` is split between M-002 (this) and M-008 (lib/commands.js):
@@ -734,6 +735,7 @@ async function initModeGeneral() {
     case "pr":          prCommand(ctx); break;
     case "event-bus":   eventBusCommand(ctx); break;
     case "state-sync":  await stateSync(l1Ctx); break;
+    case "governance":  governanceCommand(l1Ctx); break;
     case "governance-index": {
       const result = governanceIndexCommand(ctx);
       if (result && result.ok && result.effect && result.effect.kind === "mutation" && result.effect.committed) {
