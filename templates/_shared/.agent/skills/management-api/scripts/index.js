@@ -962,7 +962,14 @@ function requestDecision() {
     resource_ref: decisionGate.resource_ref,
     updated_at: timestamp,
   }, (entry, current) => entry.decision_id === current.decision_id);
-  printJson({ ok: true, action: "decisions request", path: rel(file), decision: next });
+  printJson({
+    ok: true,
+    action: "decisions request",
+    path: rel(file),
+    decision: next,
+    changed_paths: [rel(file), rel(path.join(agentRoot, "decisions", "index.json"))],
+    changed_resources: [`decision:${decisionId}`],
+  });
 }
 
 function resolveDecision() {
@@ -1013,8 +1020,19 @@ function resolveDecision() {
     updated_at: timestamp,
   }, (entry, current) => entry.decision_id === current.decision_id);
   // Release any matching waitpoints
-  releaseMatchingWaitpoints(decisionId, resolvedBy, rationale, timestamp);
-  printJson({ ok: true, action: "decisions resolve", path: rel(file), decision: next });
+  const released = releaseMatchingWaitpoints(decisionId, resolvedBy, rationale, timestamp);
+  printJson({
+    ok: true,
+    action: "decisions resolve",
+    path: rel(file),
+    decision: next,
+    changed_paths: [
+      rel(file),
+      rel(path.join(agentRoot, "decisions", "index.json")),
+      ...released.paths,
+    ],
+    changed_resources: [`decision:${decisionId}`, ...released.resources],
+  });
 }
 
 function supersedeDecision() {
@@ -1060,7 +1078,15 @@ function supersedeDecision() {
     resource_ref: next.gate.resource_ref,
     updated_at: timestamp,
   }, (entry, current) => entry.decision_id === current.decision_id);
-  printJson({ ok: true, action: "decisions supersede", path: rel(file), decision: next, replacement: { decision_id: replacementId } });
+  printJson({
+    ok: true,
+    action: "decisions supersede",
+    path: rel(file),
+    decision: next,
+    replacement: { decision_id: replacementId },
+    changed_paths: [rel(file), rel(path.join(agentRoot, "decisions", "index.json"))],
+    changed_resources: [`decision:${decisionId}`],
+  });
 }
 
 function createInbox() {
@@ -1115,7 +1141,14 @@ function createInbox() {
     sender_id: senderId,
     updated_at: timestamp,
   }, (entry, current) => entry.message_id === current.message_id);
-  printJson({ ok: true, action: "inbox send", path: rel(file), message: next });
+  printJson({
+    ok: true,
+    action: "inbox send",
+    path: rel(file),
+    message: next,
+    changed_paths: [rel(file), rel(path.join(agentRoot, "inbox", "index.json"))],
+    changed_resources: [`inbox:${messageId}`],
+  });
 }
 
 function acknowledgeInbox() {
@@ -1146,7 +1179,14 @@ function acknowledgeInbox() {
     sender_id: existing.sender_id,
     updated_at: timestamp,
   }, (entry, current) => entry.message_id === current.message_id);
-  printJson({ ok: true, action: "inbox transition", path: rel(file), message: next });
+  printJson({
+    ok: true,
+    action: "inbox transition",
+    path: rel(file),
+    message: next,
+    changed_paths: [rel(file), rel(path.join(agentRoot, "inbox", "index.json"))],
+    changed_resources: [`inbox:${messageId}`],
+  });
 }
 
 function createWaitpoint() {
@@ -1197,7 +1237,14 @@ function createWaitpoint() {
     decision_id: next.decision_id,
     updated_at: timestamp,
   }, (entry, current) => entry.waitpoint_id === current.waitpoint_id);
-  printJson({ ok: true, action: "waitpoints create", path: rel(file), waitpoint: next });
+  printJson({
+    ok: true,
+    action: "waitpoints create",
+    path: rel(file),
+    waitpoint: next,
+    changed_paths: [rel(file), rel(path.join(agentRoot, "waitpoints", "index.json"))],
+    changed_resources: [`waitpoint:${waitpointId}`],
+  });
 }
 
 function cancelWaitpoint() {
@@ -1229,7 +1276,14 @@ function cancelWaitpoint() {
     decision_id: existing.decision_id,
     updated_at: timestamp,
   }, (entry, current) => entry.waitpoint_id === current.waitpoint_id);
-  printJson({ ok: true, action: "waitpoints cancel", path: rel(file), waitpoint: next });
+  printJson({
+    ok: true,
+    action: "waitpoints cancel",
+    path: rel(file),
+    waitpoint: next,
+    changed_paths: [rel(file), rel(path.join(agentRoot, "waitpoints", "index.json"))],
+    changed_resources: [`waitpoint:${waitpointId}`],
+  });
 }
 
 function releaseWaitpoint() {
@@ -1284,11 +1338,20 @@ function releaseWaitpoint() {
     decision_id: decisionId,
     updated_at: timestamp,
   }, (entry, current) => entry.waitpoint_id === current.waitpoint_id);
-  printJson({ ok: true, action: "waitpoints release", path: rel(file), waitpoint: next });
+  printJson({
+    ok: true,
+    action: "waitpoints release",
+    path: rel(file),
+    waitpoint: next,
+    changed_paths: [rel(file), rel(path.join(agentRoot, "waitpoints", "index.json"))],
+    changed_resources: [`waitpoint:${waitpointId}`],
+  });
 }
 
 function releaseMatchingWaitpoints(decisionId, resolvedBy, rationale, timestamp) {
   const dir = path.join(agentRoot, "waitpoints");
+  const changedPaths = [];
+  const changedResources = [];
   for (const { file, data } of listJsonObjects(dir)) {
     if (data.decision_id !== decisionId) continue;
     if (!["pending", "blocked"].includes(data.status)) continue;
@@ -1302,6 +1365,8 @@ function releaseMatchingWaitpoints(decisionId, resolvedBy, rationale, timestamp)
       updated_at: timestamp,
     };
     writeJson(file, next);
+    changedPaths.push(rel(file));
+    changedResources.push(`waitpoint:${data.waitpoint_id}`);
     upsertIndexEntry("waitpoints", "waitpoints", {
       waitpoint_id: data.waitpoint_id,
       path: rel(file),
@@ -1311,6 +1376,13 @@ function releaseMatchingWaitpoints(decisionId, resolvedBy, rationale, timestamp)
       updated_at: timestamp,
     }, (entry, current) => entry.waitpoint_id === current.waitpoint_id);
   }
+  if (changedPaths.length > 0) {
+    changedPaths.push(rel(path.join(agentRoot, "waitpoints", "index.json")));
+  }
+  return {
+    paths: [...new Set(changedPaths)],
+    resources: [...new Set(changedResources)],
+  };
 }
 
 function upsertIndexEntry(dir, key, entry, match) {

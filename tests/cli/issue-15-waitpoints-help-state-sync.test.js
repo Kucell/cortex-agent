@@ -94,7 +94,7 @@ function seedDirtyState(agentDir, files) {
 }
 
 function readPorcelain(agentDir) {
-  const r = git(["status", "--porcelain"], agentDir);
+  const r = git(["status", "--porcelain", "--untracked-files=all"], agentDir);
   if (r.status !== 0) throw new Error(r.stderr);
   return r.stdout;
 }
@@ -111,15 +111,22 @@ function originHeadSha(originDir) {
   return r.stdout.trim();
 }
 
-function runCli(project, args) {
+function originTree(originDir) {
+  const r = git(["ls-tree", "-r", "--name-only", "main"], originDir);
+  if (r.status !== 0) throw new Error(r.stderr);
+  return r.stdout.split(/\r?\n/).filter(Boolean);
+}
+
+function runCli(project, args, extraEnv = {}) {
   return spawnSync(process.execPath, [CLI, ...args, "--project", project], {
     cwd: project,
     encoding: "utf8",
     env: {
       ...process.env,
       LANG: "en_US.UTF-8",
-      // Do NOT set CORTEX_STATE_SYNC=off — the regression we test is that
-      // state-sync auto must NOT be invoked when no mutation happened.
+      ...extraEnv,
+      // Do NOT set CORTEX_STATE_SYNC=off by default — the regression we test
+      // is that state-sync auto must be safe on both non-mutation and success.
     },
   });
 }
@@ -257,6 +264,10 @@ test("issue #15: successful waitpoints write DOES push state (positive control)"
   t.after(() => fs.rmSync(project, { recursive: true, force: true }));
   seedManagementScripts(project);
 
+  // Leave unrelated dirty state in the same state classes. A successful
+  // mutation must sync only its own changed_paths, not sweep these files.
+  seedDirtyState(agentDir, PRE_EXISTING);
+  const beforeDirty = readPorcelain(agentDir);
   const beforeHead = headSha(agentDir);
   const beforeOrigin = originHeadSha(originDir);
 
@@ -282,6 +293,78 @@ test("issue #15: successful waitpoints write DOES push state (positive control)"
   const afterOrigin = originHeadSha(originDir);
   assert.notEqual(afterHead, beforeHead, "successful write must commit");
   assert.notEqual(afterOrigin, beforeOrigin, "successful write must push");
+
+  const afterDirty = readPorcelain(agentDir);
+  for (const rel of PRE_EXISTING) {
+    assert.ok(afterDirty.includes(rel), rel + " must remain dirty locally");
+  }
+  assert.notEqual(afterDirty, "", "unrelated dirty state must remain after exact-path sync");
+
+  const remoteFiles = originTree(originDir);
+  assert.ok(remoteFiles.includes("waitpoints/WP-OK.json"), "mutation-owned waitpoint must reach remote");
+  assert.ok(remoteFiles.includes("waitpoints/index.json"), "mutation-owned index must reach remote");
+  for (const rel of PRE_EXISTING) {
+    assert.equal(remoteFiles.includes(rel), false, rel + " must not be swept into remote commit");
+  }
+  assert.ok(beforeDirty.length > 0, "fixture must start with unrelated dirty state");
+});
+
+test("decision resolve reports every auto-released waitpoint path", (t) => {
+  const { project } = mkInnerRepoWithOrigin();
+  t.after(() => fs.rmSync(project, { recursive: true, force: true }));
+  seedManagementScripts(project);
+  const env = { CORTEX_STATE_SYNC: "off" };
+
+  let result = runCli(project, [
+    "decisions", "request",
+    "--decision-id", "D-MULTI",
+    "--gate", "mission",
+    "--gate-action", "architecture",
+    "--type", "approval",
+    "--requested-by", "test",
+    "--prompt", "approve?",
+    "--resource-ref", "resource:test",
+    "--options", '["approve","reject"]',
+  ], env);
+  assert.equal(result.status, 0, result.stderr + result.stdout);
+
+  result = runCli(project, [
+    "waitpoints", "create",
+    "--waitpoint-id", "WP-MULTI",
+    "--gate", "mission",
+    "--owner-workflow", "/mission",
+    "--reason", "wait",
+    "--action", "architecture",
+    "--resource-ref", "resource:test",
+    "--decision-id", "D-MULTI",
+  ], env);
+  assert.equal(result.status, 0, result.stderr + result.stdout);
+
+  result = runCli(project, [
+    "decisions", "resolve",
+    "--decision-id", "D-MULTI",
+    "--gate", "user",
+    "--status", "approved",
+    "--selected-option", "approve",
+    "--resolved-by", "test-user",
+    "--rationale", "approved",
+  ], env);
+  assert.equal(result.status, 0, result.stderr + result.stdout);
+
+  const body = JSON.parse(result.stdout);
+  const paths = new Set(body.changed_paths || []);
+  for (const expected of [
+    ".agent/decisions/D-MULTI.json",
+    ".agent/decisions/index.json",
+    ".agent/waitpoints/WP-MULTI.json",
+    ".agent/waitpoints/index.json",
+  ]) {
+    assert.ok(paths.has(expected), "missing changed path " + expected);
+  }
+  assert.deepEqual(
+    new Set(body.changed_resources || []),
+    new Set(["decision:D-MULTI", "waitpoint:WP-MULTI"]),
+  );
 });
 
 // helpers ─────────────────────────────────────────────────────────────────────

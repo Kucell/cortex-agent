@@ -4,10 +4,10 @@
 //
 // Coverage: lib/state-sync.js
 // - parsePorcelain: porcelain status line → { staged, unstaged, untracked }
-// - isStatePath: 9 state classes correctly classified
+// - isStatePath: 10 state classes correctly classified
 // - suggestCommitMessage: deterministic conventional-commit output
 // - scanState: detects dirty / staged changes in inner-`.agent/` repo
-// - addState: actually stages the 9 state classes
+// - addState: actually stages the 10 state classes
 // - commitState: actually commits and returns a SHA
 // - end-to-end: --dry-run → --add → --commit flow on a temp git repo
 
@@ -23,6 +23,8 @@ const {
   suggestCommitMessage,
   scanState,
   addState,
+  addStatePaths,
+  normalizeExactStatePaths,
   commitState,
   STATE_DIRS,
   STATE_FILES,
@@ -96,10 +98,11 @@ test("parsePorcelain: rename picks the destination", () => {
   assert.equal(entries[0].staged, true);
 });
 
-test("isStatePath: 9 state classes return true", () => {
+test("isStatePath: 10 state classes return true", () => {
   assert.equal(isStatePath("decisions"), true);
   assert.equal(isStatePath("decisions/D-001.json"), true);
   assert.equal(isStatePath("waitpoints/WP-x.json"), true);
+  assert.equal(isStatePath("inbox/IM-001.json"), true);
   assert.equal(isStatePath("tasks/T-001.json"), true);
   assert.equal(isStatePath("missions/M-007/gate.md"), true);
   assert.equal(isStatePath("plans/proposals/foo.md"), true);
@@ -144,8 +147,8 @@ test("suggestCommitMessage: empty input still produces a message", () => {
   assert.match(msg, /^chore\(state-sync\): sync 0 file\(s\)/);
 });
 
-test("STATE_DIRS has 8 entries, STATE_FILES has 1 (total 9)", () => {
-  assert.equal(STATE_DIRS.length, 8);
+test("STATE_DIRS has 9 entries, STATE_FILES has 1 (total 10)", () => {
+  assert.equal(STATE_DIRS.length, 9);
   assert.equal(STATE_FILES.length, 1);
   assert.equal(STATE_FILES[0], "branches/registry.json");
 });
@@ -202,7 +205,7 @@ test("scanState: non-git dir returns ok=false with error", () => {
   assert.match(res.error, /not a git repository/);
 });
 
-test("addState: stages the 9 state classes", () => {
+test("addState: stages the 10 state classes", () => {
   const { agentDir } = mkAgentRepo();
   touchStateFile(agentDir, "decisions/D-001.json");
   touchStateFile(agentDir, "branches/registry.json", "{}");
@@ -253,4 +256,51 @@ test("end-to-end: touch → scan → add → commit", () => {
   scan = scanState(agentDir);
   assert.equal(scan.dirty.length, 0);
   assert.equal(scan.staged.length, 0);
+});
+
+
+test("normalizeExactStatePaths: strips .agent prefix and rejects unsafe/non-state paths", () => {
+  assert.deepEqual(
+    normalizeExactStatePaths([
+      ".agent/waitpoints/WP-1.json",
+      "waitpoints/index.json",
+      "../outside",
+      "/absolute/path",
+      "README.md",
+      ".agent/waitpoints/WP-1.json",
+    ]),
+    ["waitpoints/WP-1.json", "waitpoints/index.json"],
+  );
+});
+
+test("addStatePaths + commitState(paths): commit exact state files only", () => {
+  const { agentDir } = mkAgentRepo();
+  touchStateFile(agentDir, "waitpoints/WP-owned.json", "{}");
+  touchStateFile(agentDir, "waitpoints/WP-unrelated.json", "{}");
+  touchStateFile(agentDir, "decisions/D-unrelated.json", "{}");
+
+  // Pre-stage an unrelated file to prove path-scoped commit does not sweep it.
+  let r = spawnSync("git", ["-C", agentDir, "add", "decisions/D-unrelated.json"], { encoding: "utf8" });
+  assert.equal(r.status, 0, r.stderr);
+
+  const add = addStatePaths(agentDir, [".agent/waitpoints/WP-owned.json"]);
+  assert.equal(add.ok, true, add.error);
+  assert.deepEqual(add.paths, ["waitpoints/WP-owned.json"]);
+
+  const commit = commitState(
+    agentDir,
+    "chore(state-sync): exact path",
+    ["waitpoints/WP-owned.json"],
+  );
+  assert.equal(commit.ok, true, commit.error);
+
+  const show = spawnSync("git", ["-C", agentDir, "show", "--name-only", "--pretty=format:", "HEAD"], { encoding: "utf8" });
+  assert.equal(show.status, 0, show.stderr);
+  const committed = show.stdout.split(/\r?\n/).filter(Boolean);
+  assert.deepEqual(committed, ["waitpoints/WP-owned.json"]);
+
+  const status = spawnSync("git", ["-C", agentDir, "status", "--porcelain"], { encoding: "utf8" });
+  assert.equal(status.status, 0, status.stderr);
+  assert.match(status.stdout, /D-unrelated\.json/, "pre-staged unrelated file must remain staged");
+  assert.match(status.stdout, /WP-unrelated\.json/, "untracked unrelated file must remain untracked");
 });

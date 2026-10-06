@@ -511,7 +511,11 @@ test("waitpoints: --help short-circuits to waitpointsCreateContract with ok=true
     try {
       const result = waitpoints({ args: ["waitpoints", "create", "--help"], lang: "en" });
       assert.equal(invokeCalled, false, "--help must never reach the Management API");
-      assert.deepEqual(result, { ok: true, mutated: false, help: true });
+      assert.equal(result.ok, true);
+      assert.equal(result.mutated, false);
+      assert.equal(result.help, true);
+      assert.equal(result.effect.kind, "none");
+      assert.equal(result.effect.committed, false);
     } finally {
       const out = restore();
       assert.match(out, /Usage: cortex-agent waitpoints create/);
@@ -551,7 +555,11 @@ test("waitpoints: -h short-circuits the same way as --help", () => {
     try {
       const result = waitpoints({ args: ["waitpoints", "create", "-h"], lang: "en" });
       assert.equal(invokeCalled, false);
-      assert.deepEqual(result, { ok: true, mutated: false, help: true });
+      assert.equal(result.ok, true);
+      assert.equal(result.mutated, false);
+      assert.equal(result.help, true);
+      assert.equal(result.effect.kind, "none");
+      assert.equal(result.effect.committed, false);
     } finally {
       restore();
     }
@@ -568,7 +576,11 @@ test("inbox: --help short-circuits to inboxSendContract with ok=true, mutated=fa
     try {
       const result = inbox({ args: ["inbox", "send", "--help"], lang: "en" });
       assert.equal(invokeCalled, false, "--help must never reach the Management API");
-      assert.deepEqual(result, { ok: true, mutated: false, help: true });
+      assert.equal(result.ok, true);
+      assert.equal(result.mutated, false);
+      assert.equal(result.help, true);
+      assert.equal(result.effect.kind, "none");
+      assert.equal(result.effect.committed, false);
     } finally {
       const out = restore();
       assert.match(out, /Usage: cortex-agent inbox send/);
@@ -583,7 +595,11 @@ test("decisions: --help still short-circuits and now returns the structured resu
     const { restore } = captureStdout();
     try {
       const result = decisions({ args: ["decisions", "request", "--help"], lang: "en" });
-      assert.deepEqual(result, { ok: true, mutated: false, help: true });
+      assert.equal(result.ok, true);
+      assert.equal(result.mutated, false);
+      assert.equal(result.help, true);
+      assert.equal(result.effect.kind, "none");
+      assert.equal(result.effect.committed, false);
     } finally {
       const out = restore();
       assert.match(out, /--gate-action/);
@@ -600,9 +616,16 @@ test("runs/queues/sessions: --help short-circuits before any read or write path"
     const { runs, queues, sessions } = require("../../../lib/commands/management/write");
     const { restore } = captureStdout();
     try {
-      assert.deepEqual(runs({ args: ["runs", "--help"], lang: "en" }), { ok: true, mutated: false, help: true });
-      assert.deepEqual(queues({ args: ["queues", "--help"], lang: "en" }), { ok: true, mutated: false, help: true });
-      assert.deepEqual(sessions({ args: ["sessions", "--help"], lang: "en" }), { ok: true, mutated: false, help: true });
+      for (const result of [
+        runs({ args: ["runs", "--help"], lang: "en" }),
+        queues({ args: ["queues", "--help"], lang: "en" }),
+        sessions({ args: ["sessions", "--help"], lang: "en" }),
+      ]) {
+        assert.equal(result.ok, true);
+        assert.equal(result.mutated, false);
+        assert.equal(result.help, true);
+        assert.equal(result.effect.kind, "none");
+      }
     } finally {
       restore();
     }
@@ -627,7 +650,12 @@ test("managementWrite: ok=true → returns { ok: true, mutated: true }", () => {
         "decisions",
         ["request", "resolve"],
       );
-      assert.deepEqual(result, { ok: true, mutated: true });
+      assert.equal(result.ok, true);
+      assert.equal(result.mutated, true);
+      assert.equal(result.effect.kind, "mutation");
+      assert.equal(result.effect.committed, true);
+      assert.equal(result.effect.exact_paths, false);
+      assert.deepEqual(result.effect.paths, []);
     } finally {
       restore();
     }
@@ -685,7 +713,10 @@ test("managementWrite: missing action → returns { ok: false, mutated: false, c
       process.exitCode = prevExit;
       restoreErr();
     }
-    assert.deepEqual(result, { ok: false, mutated: false, code: "INVALID_USAGE" });
+    assert.equal(result.ok, false);
+    assert.equal(result.mutated, false);
+    assert.equal(result.code, "INVALID_USAGE");
+    assert.equal(result.effect.kind, "none");
   });
 });
 
@@ -730,4 +761,43 @@ test("shouldAutoSyncManagementWriter: false for help / read / error / missing ke
     shouldAutoSyncManagementWriter(["x"], { ok: true, mutated: false }),
     false,
   );
+});
+
+
+test("managementWrite: exact changed_paths become mutation effect paths", () => {
+  withMockedDeps({
+    invokeManagementProject: () => ({
+      ok: true,
+      payload: {
+        changed_paths: [".agent/waitpoints/WP-1.json", ".agent/waitpoints/index.json"],
+        changed_resources: ["waitpoint:WP-1"],
+        waitpoint: { waitpoint_id: "WP-1" },
+      },
+      project: { root: "/repo", agent_root: "/repo/.agent" },
+    }),
+  }, {}, () => {
+    const { managementWrite, managementSyncPaths } = require("../../../lib/commands/management/write");
+    const { restore } = captureStdout();
+    try {
+      const result = managementWrite(
+        { args: ["waitpoints", "create"], lang: "en" },
+        "waitpoints",
+        ["create", "release", "cancel"],
+      );
+      assert.equal(result.effect.kind, "mutation");
+      assert.equal(result.effect.exact_paths, true);
+      assert.deepEqual(result.effect.resources, ["waitpoint:WP-1"]);
+      assert.deepEqual(
+        managementSyncPaths(result),
+        [".agent/waitpoints/WP-1.json", ".agent/waitpoints/index.json"],
+      );
+    } finally {
+      restore();
+    }
+  });
+});
+
+test("managementSyncPaths: legacy successful mutation without exact paths returns null", () => {
+  const { managementSyncPaths } = require("../../../lib/commands/management/write");
+  assert.equal(managementSyncPaths({ ok: true, mutated: true }), null);
 });
