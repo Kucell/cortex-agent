@@ -2,5 +2,5 @@
 
 module.exports = {
   ...require("./descriptor"),
-  ...require("./adapter"),
+  ...require("./adapter"),\n  ...require("./governance"),
 };
