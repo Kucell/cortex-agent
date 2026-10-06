@@ -7,6 +7,8 @@ try {
   protocol = require("../../protocol/src/index.js");
 }
 
+const { normalizeGovernanceBinding } = require("./governance");
+
 const PROJECT_DESCRIPTOR_SCHEMA_VERSION = "1";
 const PROJECT_INTEGRATION_MODES = Object.freeze([
   "embedded",
@@ -28,6 +30,7 @@ const TOP_KEYS = new Set([
   "artifacts",
   "events",
   "boundaries",
+  "governance",
 ]);
 const REPO_KEYS = new Set(["slug", "default_branch"]);
 const CAP_KEYS = new Set(["provided", "required"]);
@@ -222,6 +225,7 @@ function normalizeProjectDescriptor(input) {
     artifacts: normalizeArtifacts(input.artifacts),
     events: normalizeEvents(input.events),
     boundaries: normalizeBoundaries(input.boundaries),
+    governance: normalizeGovernanceBinding(input.governance),
   });
 }
 
