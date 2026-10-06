@@ -8,6 +8,7 @@ const {
   canResume,
   DISPOSITIONS,
   OBSERVATION_STATUSES,
+  projectReconciliationSummary,
 } = require("../../lib/reconciliation");
 
 function base(overrides = {}) {
@@ -195,4 +196,21 @@ test("change-request revision drift is separate from governance revision namespa
   assert.equal(item.expected, "P-1");
   assert.equal(item.actual, "P-2");
   assert.equal(item.source, "change-request");
+});
+
+
+test("summary projection is consumer-safe and does not recompute reconciliation", () => {
+  const result = reconcile(base({
+    product: { head_revision: "P-2" },
+  }));
+  const summary = projectReconciliationSummary(result);
+  assert.deepEqual(summary, {
+    disposition: "RECONCILIATION_REQUIRED",
+    can_resume: false,
+    drift_count: 1,
+    gate_count: 0,
+    warning_count: 0,
+    observation_count: 1,
+    blocking_reasons: ["workspace:head"],
+  });
 });
