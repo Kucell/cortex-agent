@@ -1,0 +1,55 @@
+name: M-043 Legacy Governance Migration
+
+on:
+  pull_request:
+    paths:
+      - "bin/cli.js"
+      - "lib/cli/contract.js"
+      - "lib/governance-migration/**"
+      - "lib/governance-index/**"
+      - "lib/state-sync/**"
+      - "tests/governance-migration/**"
+      - "tests/governance-index/**"
+      - "tests/state-sync/**"
+      - ".github/workflows/m043-legacy-governance.yml"
+  workflow_dispatch:
+
+jobs:
+  focused:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [18, 22, 24]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - name: Governance migration
+        run: node --test tests/governance-migration/*.test.js
+      - name: Governance index regression
+        run: node --test tests/governance-index/*.test.js
+      - name: State sync regression
+        run: |
+          node --test tests/state-sync/state-sync.test.js
+          node --test tests/state-sync/state-sync-auto.test.js
+      - name: Syntax and module smoke
+        run: |
+          node --check lib/governance-migration/index.js
+          node --check lib/governance-migration/cli.js
+          node -e "require('./lib/governance-migration'); require('./lib/governance-index'); require('./lib/state-sync')"
+      - name: Package contract smoke
+        run: |
+          npm pack --dry-run --json > /tmp/m043-pack.json
+          node - <<'NODE'
+          const fs = require("fs");
+          const data = JSON.parse(fs.readFileSync("/tmp/m043-pack.json", "utf8"));
+          const files = new Set((data[0].files || []).map((entry) => entry.path));
+          for (const required of [
+            "lib/governance-migration/index.js",
+            "lib/governance-migration/cli.js",
+          ]) {
+            if (!files.has(required)) throw new Error("package missing " + required);
+          }
+          NODE
