@@ -54,6 +54,7 @@ function createCortexClient(options = {}) {
       resolve: typeof transport.resolveProject === "function"
         ? () => transport.resolveProject()
         : undefined,
+      health: () => queryProjection("project-health"),
     }),
     capabilities: Object.freeze({
       discover: discoverCapabilities,
