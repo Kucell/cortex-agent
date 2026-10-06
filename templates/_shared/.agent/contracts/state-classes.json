@@ -266,7 +266,7 @@
       "path": "agent-protocols",
       "kind": "directory",
       "authority": "framework-config",
-      "sync_policy": "tracked",
+      "sync_policy": "ignored",
       "runtime_scope": "portable",
       "rebuildable": false
     },
@@ -275,7 +275,7 @@
       "path": "artifacts",
       "kind": "directory",
       "authority": "framework-config",
-      "sync_policy": "tracked",
+      "sync_policy": "ignored",
       "runtime_scope": "portable",
       "rebuildable": false
     },
@@ -284,7 +284,7 @@
       "path": "config",
       "kind": "directory",
       "authority": "framework-config",
-      "sync_policy": "tracked",
+      "sync_policy": "ignored",
       "runtime_scope": "portable",
       "rebuildable": false
     },
@@ -293,7 +293,7 @@
       "path": "contracts",
       "kind": "directory",
       "authority": "framework-config",
-      "sync_policy": "tracked",
+      "sync_policy": "ignored",
       "runtime_scope": "portable",
       "rebuildable": false
     },
@@ -302,7 +302,7 @@
       "path": "coordination",
       "kind": "directory",
       "authority": "framework-config",
-      "sync_policy": "tracked",
+      "sync_policy": "ignored",
       "runtime_scope": "portable",
       "rebuildable": false
     },
@@ -311,7 +311,7 @@
       "path": "design-systems",
       "kind": "directory",
       "authority": "framework-config",
-      "sync_policy": "tracked",
+      "sync_policy": "ignored",
       "runtime_scope": "portable",
       "rebuildable": false
     },
@@ -320,7 +320,7 @@
       "path": "handoffs",
       "kind": "directory",
       "authority": "framework-config",
-      "sync_policy": "tracked",
+      "sync_policy": "ignored",
       "runtime_scope": "portable",
       "rebuildable": false
     },
@@ -329,7 +329,7 @@
       "path": "hooks",
       "kind": "directory",
       "authority": "framework-config",
-      "sync_policy": "tracked",
+      "sync_policy": "ignored",
       "runtime_scope": "portable",
       "rebuildable": false
     },
@@ -338,7 +338,7 @@
       "path": "locks",
       "kind": "directory",
       "authority": "framework-config",
-      "sync_policy": "tracked",
+      "sync_policy": "ignored",
       "runtime_scope": "portable",
       "rebuildable": false
     },
@@ -347,7 +347,7 @@
       "path": "memory",
       "kind": "directory",
       "authority": "framework-config",
-      "sync_policy": "tracked",
+      "sync_policy": "ignored",
       "runtime_scope": "portable",
       "rebuildable": false
     },
@@ -356,7 +356,7 @@
       "path": "metrics",
       "kind": "directory",
       "authority": "framework-config",
-      "sync_policy": "tracked",
+      "sync_policy": "ignored",
       "runtime_scope": "portable",
       "rebuildable": false
     },
@@ -365,7 +365,7 @@
       "path": "motion",
       "kind": "directory",
       "authority": "framework-config",
-      "sync_policy": "tracked",
+      "sync_policy": "ignored",
       "runtime_scope": "portable",
       "rebuildable": false
     },
@@ -374,7 +374,7 @@
       "path": "patches",
       "kind": "directory",
       "authority": "framework-config",
-      "sync_policy": "tracked",
+      "sync_policy": "ignored",
       "runtime_scope": "portable",
       "rebuildable": false
     },
@@ -383,7 +383,7 @@
       "path": "plugins",
       "kind": "directory",
       "authority": "framework-config",
-      "sync_policy": "tracked",
+      "sync_policy": "ignored",
       "runtime_scope": "portable",
       "rebuildable": false
     },
@@ -392,7 +392,7 @@
       "path": "references",
       "kind": "directory",
       "authority": "framework-config",
-      "sync_policy": "tracked",
+      "sync_policy": "ignored",
       "runtime_scope": "portable",
       "rebuildable": false
     },
@@ -401,7 +401,7 @@
       "path": "rules",
       "kind": "directory",
       "authority": "framework-config",
-      "sync_policy": "tracked",
+      "sync_policy": "ignored",
       "runtime_scope": "portable",
       "rebuildable": false
     },
@@ -410,7 +410,7 @@
       "path": "sub-agents",
       "kind": "directory",
       "authority": "framework-config",
-      "sync_policy": "tracked",
+      "sync_policy": "ignored",
       "runtime_scope": "portable",
       "rebuildable": false
     },
@@ -419,7 +419,7 @@
       "path": "prompts",
       "kind": "directory",
       "authority": "framework-config",
-      "sync_policy": "tracked",
+      "sync_policy": "ignored",
       "runtime_scope": "portable",
       "rebuildable": false
     },
@@ -428,7 +428,7 @@
       "path": "workspaces",
       "kind": "directory",
       "authority": "framework-config",
-      "sync_policy": "tracked",
+      "sync_policy": "ignored",
       "runtime_scope": "portable",
       "rebuildable": false
     },
@@ -437,7 +437,7 @@
       "path": "queues",
       "kind": "directory",
       "authority": "framework-config",
-      "sync_policy": "tracked",
+      "sync_policy": "ignored",
       "runtime_scope": "portable",
       "rebuildable": false
     },
@@ -446,7 +446,7 @@
       "path": "runs",
       "kind": "directory",
       "authority": "framework-config",
-      "sync_policy": "tracked",
+      "sync_policy": "ignored",
       "runtime_scope": "portable",
       "rebuildable": false
     },
@@ -455,7 +455,7 @@
       "path": "sessions",
       "kind": "directory",
       "authority": "framework-config",
-      "sync_policy": "tracked",
+      "sync_policy": "ignored",
       "runtime_scope": "portable",
       "rebuildable": false
     },
@@ -464,7 +464,7 @@
       "path": "context-index.json",
       "kind": "file",
       "authority": "framework-config",
-      "sync_policy": "tracked",
+      "sync_policy": "ignored",
       "runtime_scope": "portable",
       "rebuildable": false
     },
@@ -473,7 +473,7 @@
       "path": "entropy-config.yml",
       "kind": "file",
       "authority": "framework-config",
-      "sync_policy": "tracked",
+      "sync_policy": "ignored",
       "runtime_scope": "portable",
       "rebuildable": false
     },
@@ -482,7 +482,7 @@
       "path": "harness-manifest.yml",
       "kind": "file",
       "authority": "framework-config",
-      "sync_policy": "tracked",
+      "sync_policy": "ignored",
       "runtime_scope": "portable",
       "rebuildable": false
     },
@@ -491,7 +491,7 @@
       "path": "package.json",
       "kind": "file",
       "authority": "framework-config",
-      "sync_policy": "tracked",
+      "sync_policy": "ignored",
       "runtime_scope": "portable",
       "rebuildable": false
     },
@@ -500,7 +500,7 @@
       "path": ".gitignore",
       "kind": "file",
       "authority": "framework-config",
-      "sync_policy": "tracked",
+      "sync_policy": "ignored",
       "runtime_scope": "portable",
       "rebuildable": false
     },
@@ -509,7 +509,7 @@
       "path": ".githooks",
       "kind": "directory",
       "authority": "framework-config",
-      "sync_policy": "tracked",
+      "sync_policy": "ignored",
       "runtime_scope": "portable",
       "rebuildable": false
     },
@@ -536,7 +536,7 @@
       "path": "prd",
       "kind": "directory",
       "authority": "framework-config",
-      "sync_policy": "tracked",
+      "sync_policy": "ignored",
       "runtime_scope": "portable",
       "rebuildable": false
     },
@@ -545,7 +545,7 @@
       "path": "registry",
       "kind": "directory",
       "authority": "framework-config",
-      "sync_policy": "tracked",
+      "sync_policy": "ignored",
       "runtime_scope": "portable",
       "rebuildable": false
     },
@@ -554,7 +554,7 @@
       "path": "resources",
       "kind": "directory",
       "authority": "framework-config",
-      "sync_policy": "tracked",
+      "sync_policy": "ignored",
       "runtime_scope": "portable",
       "rebuildable": false
     },
@@ -563,7 +563,7 @@
       "path": "schemas",
       "kind": "directory",
       "authority": "framework-config",
-      "sync_policy": "tracked",
+      "sync_policy": "ignored",
       "runtime_scope": "portable",
       "rebuildable": false
     },
@@ -572,7 +572,7 @@
       "path": "scripts",
       "kind": "directory",
       "authority": "framework-config",
-      "sync_policy": "tracked",
+      "sync_policy": "ignored",
       "runtime_scope": "portable",
       "rebuildable": false
     }
