@@ -260,6 +260,321 @@
       "sync_policy": "legacy",
       "runtime_scope": "portable",
       "rebuildable": false
+    },
+    {
+      "id": "framework.agent-protocols",
+      "path": "agent-protocols",
+      "kind": "directory",
+      "authority": "framework-config",
+      "sync_policy": "ignored",
+      "runtime_scope": "portable",
+      "rebuildable": false
+    },
+    {
+      "id": "framework.artifacts",
+      "path": "artifacts",
+      "kind": "directory",
+      "authority": "framework-config",
+      "sync_policy": "ignored",
+      "runtime_scope": "portable",
+      "rebuildable": false
+    },
+    {
+      "id": "framework.config",
+      "path": "config",
+      "kind": "directory",
+      "authority": "framework-config",
+      "sync_policy": "ignored",
+      "runtime_scope": "portable",
+      "rebuildable": false
+    },
+    {
+      "id": "framework.contracts",
+      "path": "contracts",
+      "kind": "directory",
+      "authority": "framework-config",
+      "sync_policy": "ignored",
+      "runtime_scope": "portable",
+      "rebuildable": false
+    },
+    {
+      "id": "framework.coordination",
+      "path": "coordination",
+      "kind": "directory",
+      "authority": "framework-config",
+      "sync_policy": "ignored",
+      "runtime_scope": "portable",
+      "rebuildable": false
+    },
+    {
+      "id": "framework.design-systems",
+      "path": "design-systems",
+      "kind": "directory",
+      "authority": "framework-config",
+      "sync_policy": "ignored",
+      "runtime_scope": "portable",
+      "rebuildable": false
+    },
+    {
+      "id": "framework.handoffs",
+      "path": "handoffs",
+      "kind": "directory",
+      "authority": "framework-config",
+      "sync_policy": "ignored",
+      "runtime_scope": "portable",
+      "rebuildable": false
+    },
+    {
+      "id": "framework.hooks",
+      "path": "hooks",
+      "kind": "directory",
+      "authority": "framework-config",
+      "sync_policy": "ignored",
+      "runtime_scope": "portable",
+      "rebuildable": false
+    },
+    {
+      "id": "framework.locks",
+      "path": "locks",
+      "kind": "directory",
+      "authority": "framework-config",
+      "sync_policy": "ignored",
+      "runtime_scope": "portable",
+      "rebuildable": false
+    },
+    {
+      "id": "framework.memory",
+      "path": "memory",
+      "kind": "directory",
+      "authority": "framework-config",
+      "sync_policy": "ignored",
+      "runtime_scope": "portable",
+      "rebuildable": false
+    },
+    {
+      "id": "framework.metrics",
+      "path": "metrics",
+      "kind": "directory",
+      "authority": "framework-config",
+      "sync_policy": "ignored",
+      "runtime_scope": "portable",
+      "rebuildable": false
+    },
+    {
+      "id": "framework.motion",
+      "path": "motion",
+      "kind": "directory",
+      "authority": "framework-config",
+      "sync_policy": "ignored",
+      "runtime_scope": "portable",
+      "rebuildable": false
+    },
+    {
+      "id": "framework.patches",
+      "path": "patches",
+      "kind": "directory",
+      "authority": "framework-config",
+      "sync_policy": "ignored",
+      "runtime_scope": "portable",
+      "rebuildable": false
+    },
+    {
+      "id": "framework.plugins",
+      "path": "plugins",
+      "kind": "directory",
+      "authority": "framework-config",
+      "sync_policy": "ignored",
+      "runtime_scope": "portable",
+      "rebuildable": false
+    },
+    {
+      "id": "framework.references",
+      "path": "references",
+      "kind": "directory",
+      "authority": "framework-config",
+      "sync_policy": "ignored",
+      "runtime_scope": "portable",
+      "rebuildable": false
+    },
+    {
+      "id": "framework.rules",
+      "path": "rules",
+      "kind": "directory",
+      "authority": "framework-config",
+      "sync_policy": "ignored",
+      "runtime_scope": "portable",
+      "rebuildable": false
+    },
+    {
+      "id": "framework.sub-agents",
+      "path": "sub-agents",
+      "kind": "directory",
+      "authority": "framework-config",
+      "sync_policy": "ignored",
+      "runtime_scope": "portable",
+      "rebuildable": false
+    },
+    {
+      "id": "framework.prompts",
+      "path": "prompts",
+      "kind": "directory",
+      "authority": "framework-config",
+      "sync_policy": "ignored",
+      "runtime_scope": "portable",
+      "rebuildable": false
+    },
+    {
+      "id": "framework.workspaces",
+      "path": "workspaces",
+      "kind": "directory",
+      "authority": "framework-config",
+      "sync_policy": "ignored",
+      "runtime_scope": "portable",
+      "rebuildable": false
+    },
+    {
+      "id": "governance.queues",
+      "path": "queues",
+      "kind": "directory",
+      "authority": "framework-config",
+      "sync_policy": "ignored",
+      "runtime_scope": "portable",
+      "rebuildable": false
+    },
+    {
+      "id": "governance.runs",
+      "path": "runs",
+      "kind": "directory",
+      "authority": "framework-config",
+      "sync_policy": "ignored",
+      "runtime_scope": "portable",
+      "rebuildable": false
+    },
+    {
+      "id": "governance.sessions",
+      "path": "sessions",
+      "kind": "directory",
+      "authority": "framework-config",
+      "sync_policy": "ignored",
+      "runtime_scope": "portable",
+      "rebuildable": false
+    },
+    {
+      "id": "framework.context-index",
+      "path": "context-index.json",
+      "kind": "file",
+      "authority": "framework-config",
+      "sync_policy": "ignored",
+      "runtime_scope": "portable",
+      "rebuildable": false
+    },
+    {
+      "id": "framework.entropy-config",
+      "path": "entropy-config.yml",
+      "kind": "file",
+      "authority": "framework-config",
+      "sync_policy": "ignored",
+      "runtime_scope": "portable",
+      "rebuildable": false
+    },
+    {
+      "id": "framework.harness-manifest",
+      "path": "harness-manifest.yml",
+      "kind": "file",
+      "authority": "framework-config",
+      "sync_policy": "ignored",
+      "runtime_scope": "portable",
+      "rebuildable": false
+    },
+    {
+      "id": "framework.package",
+      "path": "package.json",
+      "kind": "file",
+      "authority": "framework-config",
+      "sync_policy": "ignored",
+      "runtime_scope": "portable",
+      "rebuildable": false
+    },
+    {
+      "id": "framework.gitignore",
+      "path": ".gitignore",
+      "kind": "file",
+      "authority": "framework-config",
+      "sync_policy": "ignored",
+      "runtime_scope": "portable",
+      "rebuildable": false
+    },
+    {
+      "id": "framework.githooks",
+      "path": ".githooks",
+      "kind": "directory",
+      "authority": "framework-config",
+      "sync_policy": "ignored",
+      "runtime_scope": "portable",
+      "rebuildable": false
+    },
+    {
+      "id": "runtime.debug",
+      "path": "debug",
+      "kind": "directory",
+      "authority": "machine-local",
+      "sync_policy": "local",
+      "runtime_scope": "machine-local",
+      "rebuildable": true
+    },
+    {
+      "id": "framework.global-shared-skills",
+      "path": "global-shared-skills",
+      "kind": "directory",
+      "authority": "external-reference",
+      "sync_policy": "local",
+      "runtime_scope": "machine-local",
+      "rebuildable": true
+    },
+    {
+      "id": "framework.prd",
+      "path": "prd",
+      "kind": "directory",
+      "authority": "framework-config",
+      "sync_policy": "ignored",
+      "runtime_scope": "portable",
+      "rebuildable": false
+    },
+    {
+      "id": "framework.registry",
+      "path": "registry",
+      "kind": "directory",
+      "authority": "framework-config",
+      "sync_policy": "ignored",
+      "runtime_scope": "portable",
+      "rebuildable": false
+    },
+    {
+      "id": "framework.resources",
+      "path": "resources",
+      "kind": "directory",
+      "authority": "framework-config",
+      "sync_policy": "ignored",
+      "runtime_scope": "portable",
+      "rebuildable": false
+    },
+    {
+      "id": "framework.schemas",
+      "path": "schemas",
+      "kind": "directory",
+      "authority": "framework-config",
+      "sync_policy": "ignored",
+      "runtime_scope": "portable",
+      "rebuildable": false
+    },
+    {
+      "id": "framework.scripts",
+      "path": "scripts",
+      "kind": "directory",
+      "authority": "framework-config",
+      "sync_policy": "ignored",
+      "runtime_scope": "portable",
+      "rebuildable": false
     }
   ]
 }
