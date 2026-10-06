@@ -1,38 +1,47 @@
 #!/usr/bin/env bash
-# T-FOLLOW-002 v2: state-class pre-commit reminder
+# State Class Registry pre-commit reminder.
 #
-# When the developer commits, this hook scans working-tree changes
-# against the 9 state classes (decisions/ waitpoints/ tasks/ missions/
-# plans/ dispatch/ workflows/ skills/ branches/registry.json) and
-# prints a reminder if any of them are unstaged / untracked.
+# Reads contracts/state-classes.json from the inner .agent/ repository and
+# reminds when syncable (tracked / derived) state is unstaged or untracked.
 #
-# It does NOT block the commit. The intent is to surface a forgotten
-# `git add` before the commit lands, not to force a workflow.
-#
-# To disable: `git -C .agent commit --no-verify`.
-# To uninstall: `git -C .agent config --unset core.hooksPath`.
-#
-# Wiring (one-time, per clone):
-#   git -C .agent config core.hooksPath .githooks
-#
-# This is part of the state-sync flow. Run
-#   cortex-agent state-sync --add
-# (or --commit / --push) to do the staged work in one shot.
+# It does NOT block the commit.
+# To disable: git -C .agent commit --no-verify
+# To uninstall: git -C .agent config --unset core.hooksPath
 
 set -e
 
-STATE_DIRS=(
-  "decisions"
-  "waitpoints"
-  "tasks"
-  "missions"
-  "plans"
-  "dispatch"
-  "workflows"
-  "skills"
-)
-STATE_FILES=(
-  "branches/registry.json"
+REGISTRY="contracts/state-classes.json"
+
+if [ ! -f "$REGISTRY" ]; then
+  echo "⚠️  state-sync reminder skipped: $REGISTRY is missing; run cortex-agent update."
+  exit 0
+fi
+
+STATE_DIRS=()
+STATE_FILES=()
+
+while IFS=$'\t' read -r kind state_path; do
+  [ -z "$kind" ] && continue
+  if [ "$kind" = "directory" ]; then
+    STATE_DIRS+=("$state_path")
+  elif [ "$kind" = "file" ]; then
+    STATE_FILES+=("$state_path")
+  fi
+done < <(
+  node - "$REGISTRY" <<'NODE'
+const fs = require("fs");
+const file = process.argv[2];
+try {
+  const registry = JSON.parse(fs.readFileSync(file, "utf8"));
+  for (const entry of registry.classes || []) {
+    if (!["tracked", "derived"].includes(entry.sync_policy)) continue;
+    process.stdout.write(entry.kind + "\t" + entry.path + "\n");
+  }
+} catch (error) {
+  process.stderr.write("state-sync registry error: " + error.message + "\n");
+  process.exit(2);
+}
+NODE
 )
 
 is_state_path() {
@@ -50,22 +59,15 @@ is_state_path() {
   return 1
 }
 
-# git status --porcelain --untracked-files=all
-# Lines look like:
-#   " M foo"   unstaged modification
-#   "M  foo"   staged modification
-#   "?? foo"   untracked
 unstaged_state=()
 while IFS= read -r line; do
   [ -z "$line" ] && continue
-  # Extract filename: skip the 2-char XY status + 1 space, then handle " -> " rename.
   rest="${line:3}"
   if [[ "$rest" == *" -> "* ]]; then
     file="${rest##* -> }"
   else
     file="$rest"
   fi
-  # Skip if already staged (XY[0] is not ' ' and not '?').
   xy="${line:0:2}"
   xy_staged_char="${xy:0:1}"
   if [ "$xy_staged_char" != " " ] && [ "$xy_staged_char" != "?" ]; then
@@ -78,13 +80,13 @@ done < <(git status --porcelain --untracked-files=all 2>/dev/null || true)
 
 if [ "${#unstaged_state[@]}" -gt 0 ]; then
   echo ""
-  echo "⚠️  state-sync reminder: ${#unstaged_state[@]} state-class file(s) are unstaged / untracked:"
+  echo "⚠️  state-sync reminder: ${#unstaged_state[@]} registry-managed state file(s) are unstaged / untracked:"
   for f in "${unstaged_state[@]}"; do
     echo "    $f"
   done
   echo ""
-  echo "  Run \`cortex-agent state-sync --add\` to stage them,"
-  echo "  or \`--commit\` / \`--push\` to finish in one shot."
+  echo "  Run `cortex-agent state-sync --add` to stage them,"
+  echo "  or `--commit` / `--push` to finish in one shot."
   echo "  (This is a reminder, not a blocker — proceeding with commit.)"
   echo ""
 fi

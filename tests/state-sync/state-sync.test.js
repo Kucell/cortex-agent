@@ -4,10 +4,10 @@
 //
 // Coverage: lib/state-sync.js
 // - parsePorcelain: porcelain status line → { staged, unstaged, untracked }
-// - isStatePath: 10 state classes correctly classified
+// - isStatePath: registry-managed state classes correctly classified
 // - suggestCommitMessage: deterministic conventional-commit output
 // - scanState: detects dirty / staged changes in inner-`.agent/` repo
-// - addState: actually stages the 10 state classes
+// - addState: actually stages the registry-managed state classes
 // - commitState: actually commits and returns a SHA
 // - end-to-end: --dry-run → --add → --commit flow on a temp git repo
 
@@ -98,7 +98,7 @@ test("parsePorcelain: rename picks the destination", () => {
   assert.equal(entries[0].staged, true);
 });
 
-test("isStatePath: 10 state classes return true", () => {
+test("isStatePath: registry-managed syncable classes return true", () => {
   assert.equal(isStatePath("decisions"), true);
   assert.equal(isStatePath("decisions/D-001.json"), true);
   assert.equal(isStatePath("waitpoints/WP-x.json"), true);
@@ -110,6 +110,9 @@ test("isStatePath: 10 state classes return true", () => {
   assert.equal(isStatePath("workflows/agent-update.md"), true);
   assert.equal(isStatePath("skills/secrets/SKILL.md"), true);
   assert.equal(isStatePath("branches/registry.json"), true);
+  assert.equal(isStatePath("operations/O-001.json"), true);
+  assert.equal(isStatePath("authorizations/A-001.json"), true);
+  assert.equal(isStatePath("runtime/coordination/events.jsonl"), true);
 });
 
 test("isStatePath: non-state paths return false", () => {
@@ -117,6 +120,9 @@ test("isStatePath: non-state paths return false", () => {
   assert.equal(isStatePath("lib/state-sync.js"), false);
   assert.equal(isStatePath("metrics/agent-dashboard.html"), false);
   assert.equal(isStatePath(".gitignore"), false);
+  assert.equal(isStatePath("runtime/hosts/machine/state.json"), false, "machine-local state must not sync");
+  assert.equal(isStatePath("runtime-evidence/run.json"), false, "evidence policy is not automatic sync");
+  assert.equal(isStatePath("runtime-continuity/events/e.json"), false, "legacy path must not auto-sync");
   assert.equal(isStatePath(""), false);
 });
 
@@ -147,10 +153,12 @@ test("suggestCommitMessage: empty input still produces a message", () => {
   assert.match(msg, /^chore\(state-sync\): sync 0 file\(s\)/);
 });
 
-test("STATE_DIRS has 9 entries, STATE_FILES has 1 (total 10)", () => {
-  assert.equal(STATE_DIRS.length, 9);
-  assert.equal(STATE_FILES.length, 1);
-  assert.equal(STATE_FILES[0], "branches/registry.json");
+test("STATE_DIRS / STATE_FILES are registry-derived", () => {
+  assert.ok(STATE_DIRS.includes("decisions"));
+  assert.ok(STATE_DIRS.includes("operations"));
+  assert.ok(STATE_DIRS.includes("runtime/coordination"));
+  assert.equal(STATE_DIRS.includes("runtime/hosts"), false);
+  assert.deepEqual(STATE_FILES, ["branches/registry.json"]);
 });
 
 // ─── Git-backed tests ─────────────────────────────────────────────────────────
@@ -205,7 +213,7 @@ test("scanState: non-git dir returns ok=false with error", () => {
   assert.match(res.error, /not a git repository/);
 });
 
-test("addState: stages the 10 state classes", () => {
+test("addState: stages the registry-managed state classes", () => {
   const { agentDir } = mkAgentRepo();
   touchStateFile(agentDir, "decisions/D-001.json");
   touchStateFile(agentDir, "branches/registry.json", "{}");

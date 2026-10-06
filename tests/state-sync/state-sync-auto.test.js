@@ -147,3 +147,23 @@ test("stateSyncAuto: already-staged change → no new commit, push to origin", a
   const showRes = git(["ls-tree", "-r", "main"], originDir);
   assert.match(showRes.stdout, /decisions\/D-001\.json/);
 });
+
+
+test("stateSyncAuto: machine-local/evidence/legacy classes are not auto-synced", async () => {
+  const { root, agentDir, originDir } = mkAgentRepoWithOrigin();
+  touchStateFile(agentDir, "runtime/hosts/machine/state.json", "{}");
+  touchStateFile(agentDir, "runtime-evidence/run.json", "{}");
+  touchStateFile(agentDir, "runtime-continuity/events/e.json", "{}");
+
+  const before = git(["rev-parse", "main"], originDir).stdout.trim();
+  const res = await stateSyncAuto({ cwd: root });
+  assert.equal(res.ok, true);
+  assert.equal(res.summary, "clean");
+
+  const after = git(["rev-parse", "main"], originDir).stdout.trim();
+  assert.equal(after, before, "remote must not advance for non-syncable classes");
+  const status = git(["status", "--porcelain", "--untracked-files=all"], agentDir).stdout;
+  assert.match(status, /runtime\/hosts\/machine\/state\.json/);
+  assert.match(status, /runtime-evidence\/run\.json/);
+  assert.match(status, /runtime-continuity\/events\/e\.json/);
+});

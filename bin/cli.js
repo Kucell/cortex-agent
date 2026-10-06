@@ -146,10 +146,9 @@ const { eventBusCommand } = require("../lib/event-bus/cli");
 
 // T-FOLLOW-002 v2: `.agent/` state sync CLI surface.
 // `state-sync [--dry-run|--add|--commit|--push]` lives in
-// lib/state-sync.js. It scans the 9 state-class directories
-// (decisions/ waitpoints/ tasks/ missions/ plans/ dispatch/ workflows/
-// skills/ branches/registry.json) inside the inner .agent/ git repo
-// and stages/commits/pushes them so project-management state stays
+// lib/state-sync/index.js. It resolves syncable state through the versioned
+// State Class Registry contract in templates/_shared/.agent/contracts/
+// state-classes.json and stages/commits/pushes that project state so it stays
 // in lock-step across machines. Strictly additive: no changes to
 // lib/commands.js; the new subcommand is added to the case dispatch below.
 //
@@ -159,6 +158,7 @@ const { eventBusCommand } = require("../lib/event-bus/cli");
 // bin/cli.js (not lib/commands.js) so M-001 shadow-init's invariant
 // "lib/commands.js has 0 changes vs base f8a1d38" stays intact.
 const { stateSync, installStateGithooks, fireAndForgetSync } = require("../lib/state-sync/index.js");
+const { governanceIndexCommand } = require("../lib/governance-index/cli.js");
 const { shouldAutoSyncCoordination } = require("../lib/commands/management/coordination.js");
 
 // GitHub issue #15: decisions / inbox / waitpoints write wrappers now return
@@ -734,6 +734,13 @@ async function initModeGeneral() {
     case "pr":          prCommand(ctx); break;
     case "event-bus":   eventBusCommand(ctx); break;
     case "state-sync":  await stateSync(l1Ctx); break;
+    case "governance-index": {
+      const result = governanceIndexCommand(ctx);
+      if (result && result.ok && result.effect && result.effect.kind === "mutation" && result.effect.committed) {
+        fireAndForgetSync({ ...l1Ctx, cwd: result.project_root }, { paths: result.effect.paths }).catch(() => {});
+      }
+      break;
+    }
     case "help":        args.includes("--json") ? cliHelp(ctx) : printHelp(); break;
     case "dev":         await dev(ctx); break;
     case undefined:
