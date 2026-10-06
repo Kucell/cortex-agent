@@ -512,6 +512,69 @@
       "sync_policy": "tracked",
       "runtime_scope": "portable",
       "rebuildable": false
+    },
+    {
+      "id": "runtime.debug",
+      "path": "debug",
+      "kind": "directory",
+      "authority": "machine-local",
+      "sync_policy": "local",
+      "runtime_scope": "machine-local",
+      "rebuildable": true
+    },
+    {
+      "id": "framework.global-shared-skills",
+      "path": "global-shared-skills",
+      "kind": "directory",
+      "authority": "external-reference",
+      "sync_policy": "local",
+      "runtime_scope": "machine-local",
+      "rebuildable": true
+    },
+    {
+      "id": "framework.prd",
+      "path": "prd",
+      "kind": "directory",
+      "authority": "framework-config",
+      "sync_policy": "tracked",
+      "runtime_scope": "portable",
+      "rebuildable": false
+    },
+    {
+      "id": "framework.registry",
+      "path": "registry",
+      "kind": "directory",
+      "authority": "framework-config",
+      "sync_policy": "tracked",
+      "runtime_scope": "portable",
+      "rebuildable": false
+    },
+    {
+      "id": "framework.resources",
+      "path": "resources",
+      "kind": "directory",
+      "authority": "framework-config",
+      "sync_policy": "tracked",
+      "runtime_scope": "portable",
+      "rebuildable": false
+    },
+    {
+      "id": "framework.schemas",
+      "path": "schemas",
+      "kind": "directory",
+      "authority": "framework-config",
+      "sync_policy": "tracked",
+      "runtime_scope": "portable",
+      "rebuildable": false
+    },
+    {
+      "id": "framework.scripts",
+      "path": "scripts",
+      "kind": "directory",
+      "authority": "framework-config",
+      "sync_policy": "tracked",
+      "runtime_scope": "portable",
+      "rebuildable": false
     }
   ]
 }
