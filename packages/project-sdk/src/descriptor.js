@@ -7,7 +7,7 @@ try {
   protocol = require("../../protocol/src/index.js");
 }
 
-const PROJECT_DESCRIPTOR_SCHEMA_VERSION = "1";
+const { normalizeGovernanceBinding } = require("./governance");\n\nconst PROJECT_DESCRIPTOR_SCHEMA_VERSION = "1";
 const PROJECT_INTEGRATION_MODES = Object.freeze([
   "embedded",
   "connected",
