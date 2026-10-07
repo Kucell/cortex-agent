@@ -47,6 +47,67 @@ graph TD
 
 ---
 
+## 一-A、持久项目治理模型
+
+Cortex Agent 的项目状态不再以“某个 Agent 会话 + 某个本地目录”为架构前提。核心模型由三个一等抽象组成：
+
+```mermaid
+flowchart LR
+    PI["ProjectIdentity<br/>稳定项目身份"]
+    GS["GovernanceStore<br/>持久治理事实"]
+    EW["ExecutionWorkspace<br/>代码执行环境"]
+    AG["Execution Agent<br/>临时工作者"]
+
+    PI --> GS
+    PI --> EW
+    AG --> EW
+    AG --> GS
+
+    GS --> FS["FilesystemGovernanceStore"]
+    GS --> GIT["GitGovernanceStore"]
+
+    EW --> LW["local-worktree"]
+    EW --> GR["git-remote"]
+    EW --> CS["cloud-sandbox"]
+    EW --> CW["composite"]
+```
+
+核心不变量：
+
+- **Agent = ephemeral worker**：Chat、IDE、Cloud Sandbox 或本地进程都不是项目治理状态所有者。
+- **Project Governance = durable truth**：Task / Mission / Decision / Waitpoint / Queue / Lock / Handoff / Evidence 等事实独立于单次会话。
+- **ProjectIdentity 稳定**：设备、workspace、治理存储迁移时保持不变。
+- **Code history 与 Governance history 分离**：产品分支可以并行，治理状态不能跟 feature branch 分叉。
+- **Provider 不进入核心语义**：GitHub / GitLab / Gitee / Generic Git 只通过 Provider Adapter 提供 transport/capability。
+- **Shared mutation 使用 CAS**：并发写入必须显式使用 expected revision，禁止 silent last-writer-wins。
+- **Resume 前先 reconcile**：新环境 attach 后先判断 revision / branch / CR / CI / Decision / Waitpoint / Lock，再决定是否继续执行。
+
+### Reconciliation 与 Controlled Resume
+
+```mermaid
+flowchart TD
+    A["Resolve ProjectIdentity"] --> B["Resolve GovernanceStore"]
+    B --> C["Load durable governance"]
+    C --> D["Resolve ExecutionWorkspace"]
+    D --> E["Observe branch / CR / checks"]
+    E --> F["Reconciliation Engine"]
+    F --> R["READY"]
+    F --> B1["BLOCKED"]
+    F --> RR["RECONCILIATION_REQUIRED"]
+    F --> DG["DEGRADED"]
+```
+
+`reconcile` 是只读操作，不会自动释放 Lock、批准 Decision、释放 Waitpoint、rebase/merge 或修改 workspace。Repair 必须进入独立的 governed operation。
+
+### Remote `/parallel`
+
+远程多 Session 保留原有 `shared / locked / worktree / serial` 隔离语义。共享 Queue、logical ProgressLock、`owned_files`、Decision 和 Waitpoint 通过 GovernanceStore revision/CAS 访问；远程 workspace 不要求 `worktree_path`。
+
+详见 [Remote & Detached Governance](architecture/remote-detached-governance.md)。
+
+
+---
+
 ## 二、目录职责一览
 
 | 目录 | 职责 | 修改时机 |
