@@ -27,3 +27,64 @@ Date: 2026-10-07
 MS-012 is **not complete** while mandatory live cross-provider rows remain PENDING-LIVE.
 
 No simulated or conformance-only result may be reported as a live GitLab/Gitee acceptance.
+
+
+## Live cross-provider runner
+
+Manual workflow:
+
+`RDG MS-012 Live Cross-Provider Acceptance`
+
+File:
+
+`.github/workflows/rdg-ms012-live-provider.yml`
+
+The workflow validates a **disposable/test governance repository** on GitLab or Gitee. It never writes to the provider's default branch.
+
+### Required repository secrets
+
+For GitLab:
+
+- `RDG_LIVE_GITLAB_USERNAME`
+- `RDG_LIVE_GITLAB_TOKEN`
+
+For Gitee:
+
+- `RDG_LIVE_GITEE_USERNAME`
+- `RDG_LIVE_GITEE_TOKEN`
+
+The credentials must have permission to create and delete branches in the designated acceptance repository.
+
+### Workflow inputs
+
+- `provider`: `gitlab` or `gitee`
+- `governance_repository`: HTTPS clone URL of the acceptance governance repository
+- `governance_branch`: source branch, normally `main`
+- `product_repository`: product repository identifier, default `Kucell/cortex-agent`
+
+### What the live runner proves
+
+1. Clone the real governance repository twice, representing Session A and Session B.
+2. Record the common remote base revision.
+3. Create a temporary `cortex-rdg-ms012-*` acceptance branch.
+4. Session A commits evidence and pushes with `--force-with-lease=<expected base>`.
+5. Session B commits from the same stale base and performs the same conditional push.
+6. Session B **must be rejected** by the provider.
+7. A fresh third clone must observe Session A's revision/evidence and must not contain Session B's stale evidence.
+8. The temporary branch is deleted using an expected-revision lease.
+
+The workflow uploads `rdg-ms012-live-provider-evidence.json` even when the acceptance run fails.
+
+### Evidence requirements for closing MS-012
+
+The GitLab row may move from `PENDING-LIVE` to `LIVE PASS` only when the workflow artifact shows:
+
+- `provider = gitlab`
+- `status = passed`
+- `stale_writer_rejected = true`
+- `fresh_clone_verified = true`
+- `cleanup_succeeded = true`
+
+The same conditions apply independently to Gitee.
+
+Do not use a production governance repository for this workflow. Use a disposable/test repository because the acceptance intentionally creates commits on a temporary branch.
