@@ -1,6 +1,57 @@
 # 🧠 Cortex Agent Framework
 
-**Cortex Agent** 是一个为 AI 编程助手（Cursor、Claude Code、Windsurf、Gemini CLI 等）设计的治理与指令框架。它通过一套结构化的**规则 (Rules)**、**工作流 (Workflows)** 和**技能 (Skills)**，将 AI 从简单的代码生成器提升为具有架构意识和工程规范的"资深工程师"。
+**Cortex Agent** 是一个面向本地与分布式 AI Agent 的**持久工程治理层（durable engineering governance layer）**。它通过 Project Identity、Governance Store、Execution Workspace、规则、工作流、技能与受控状态机，把项目治理从单个 Agent 会话、单台设备和单一 Git 托管平台中解耦。
+
+> **Develop anywhere. Resume everywhere. Keep one authoritative project state.**
+
+Cortex 管理的是**项目生命周期**，而不是某一次 Agent 会话的生命周期。Agent、设备、Cloud Sandbox 和聊天会话都可以是临时的；Task / Mission / Decision / Waitpoint / Queue / Lock / Handoff / Evidence 等治理事实必须保持持久、可恢复、可审计，并在并发写入时 fail closed。
+
+## Remote & Detached Governance
+
+Cortex Agent 支持从本地 embedded `.agent/` 起步，再无损演进为 detached 或 Git-backed governance，而不改变 Project Identity：
+
+```text
+Cortex Project
+├── ProjectIdentity
+├── GovernanceStore
+│   ├── Filesystem
+│   └── Git-backed
+├── ExecutionWorkspace
+│   ├── local-worktree
+│   ├── git-remote
+│   ├── cloud-sandbox
+│   └── composite
+└── Execution Agent(s)
+    ├── local
+    ├── Web Chat
+    └── Cloud Agent
+```
+
+核心能力包括：
+
+- **稳定 Project Identity**：设备、会话、workspace 或 Governance Store 迁移时保持不变。
+- **Detached / Remote Governance**：治理状态可以与产品代码仓库独立存储。
+- **Revision / CAS 并发保护**：共享 Queue / Lock / governance write 不允许 silent last-writer-wins。
+- **State Reconciliation**：Governance revision、workspace revision、branch、Change Request、CI/checks 与 Decision/Waitpoint/Lock 可统一判断。
+- **Controlled Resume**：新设备、新 Session attach 后先 reconcile，再决定 READY / BLOCKED / RECONCILIATION_REQUIRED / DEGRADED。
+- **Remote `/parallel`**：多 Session 可共享 Queue、logical ProgressLock、owned_files、Decision 和 Waitpoint，仍保持原有安全语义。
+- **统一只读投影**：SDK、MCP、Dashboard 可消费同一个 `project-health` projection。
+
+Provider 验证状态：
+
+| Provider | 支持状态 | 验证等级 |
+| :--- | :--- | :--- |
+| GitHub | 支持 | **Live end-to-end validated** |
+| GitLab | 支持 | Adapter + capability conformance |
+| Gitee | 支持 | Adapter + capability conformance |
+| Generic Git | 支持 | Git protocol/store conformance |
+
+> GitLab / Gitee 当前不宣称已完成 live provider pilot；后续可通过内置 MS-012 live acceptance workflow 补充真实联机证据。
+
+详见：
+- [Remote & Detached Governance](docs/architecture/remote-detached-governance.md)
+- [Provider Capability Matrix](docs/architecture/provider-capability-matrix.md)
+- [MS-012 Acceptance Evidence](docs/validation/rdg-ms012-acceptance.md)
 
 ## 核心价值
 
