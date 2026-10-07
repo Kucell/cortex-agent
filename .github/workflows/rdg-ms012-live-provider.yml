@@ -1,0 +1,103 @@
+name: RDG MS-012 Live Cross-Provider Acceptance
+
+on:
+  workflow_dispatch:
+    inputs:
+      provider:
+        description: "Governance provider to validate"
+        required: true
+        type: choice
+        options:
+          - gitlab
+          - gitee
+      governance_repository:
+        description: "HTTPS clone URL of the disposable/test governance repository"
+        required: true
+        type: string
+      governance_branch:
+        description: "Source branch used as the acceptance baseline"
+        required: true
+        default: main
+        type: string
+      product_repository:
+        description: "Product repository identifier for evidence"
+        required: true
+        default: Kucell/cortex-agent
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  live-provider-acceptance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.19.0"
+
+      - name: Select provider credentials
+        shell: bash
+        env:
+          PROVIDER: ${{ inputs.provider }}
+          GITLAB_USERNAME: ${{ secrets.RDG_LIVE_GITLAB_USERNAME }}
+          GITLAB_TOKEN: ${{ secrets.RDG_LIVE_GITLAB_TOKEN }}
+          GITEE_USERNAME: ${{ secrets.RDG_LIVE_GITEE_USERNAME }}
+          GITEE_TOKEN: ${{ secrets.RDG_LIVE_GITEE_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [[ "$PROVIDER" == "gitlab" ]]; then
+            username="$GITLAB_USERNAME"
+            token="$GITLAB_TOKEN"
+          else
+            username="$GITEE_USERNAME"
+            token="$GITEE_TOKEN"
+          fi
+
+          if [[ -z "$username" || -z "$token" ]]; then
+            echo "::error::Missing RDG live acceptance credentials for $PROVIDER"
+            exit 2
+          fi
+
+          echo "RDG_GIT_USERNAME=$username" >> "$GITHUB_ENV"
+          echo "RDG_GIT_TOKEN=$token" >> "$GITHUB_ENV"
+
+      - name: Configure non-interactive Git askpass
+        shell: bash
+        run: |
+          set -euo pipefail
+          askpass="$RUNNER_TEMP/rdg-ms012-askpass.sh"
+          cat > "$askpass" <<'EOF'
+          #!/bin/sh
+          case "$1" in
+            *Username*) printf '%s\n' "$RDG_GIT_USERNAME" ;;
+            *Password*) printf '%s\n' "$RDG_GIT_TOKEN" ;;
+            *) exit 1 ;;
+          esac
+          EOF
+          chmod 700 "$askpass"
+          echo "GIT_ASKPASS=$askpass" >> "$GITHUB_ENV"
+          echo "GIT_TERMINAL_PROMPT=0" >> "$GITHUB_ENV"
+
+      - name: Execute live cross-provider CAS acceptance
+        env:
+          RDG_PROVIDER: ${{ inputs.provider }}
+          RDG_GOVERNANCE_REPOSITORY: ${{ inputs.governance_repository }}
+          RDG_GOVERNANCE_BRANCH: ${{ inputs.governance_branch }}
+          RDG_PRODUCT_REPOSITORY: ${{ inputs.product_repository }}
+          RDG_ACCEPTANCE_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
+          RDG_EVIDENCE_OUT: rdg-ms012-live-provider-evidence.json
+        run: node scripts/validation/rdg-ms012-live-provider.js
+
+      - name: Upload live acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rdg-ms012-live-${{ inputs.provider }}-evidence
+          path: rdg-ms012-live-provider-evidence.json
+          if-no-files-found: error
+          retention-days: 30
