@@ -91,11 +91,99 @@ npx cortex-agent init --global
 
 ---
 
+## Remote-ready 项目治理
+
+从现在开始，`cortex-agent init` 不只是创建 `.agent/` 模板，也会为项目建立稳定的 `cortex.project.json` Project Identity。默认仍然是简单的 embedded local 模式，但项目从第一天就是 remote-ready：
+
+```text
+cortex-agent init
+    ↓
+stable ProjectIdentity
+    ↓
+governance = filesystem:.agent
+    ↓
+以后可迁移 / rebind，而不创建新项目身份
+```
+
+常用治理命令：
+
+```bash
+# 查看 Project Identity、Governance Binding 和本地解析状态
+cortex-agent governance status
+
+# 绑定已存在的治理存储
+cortex-agent governance attach --kind filesystem --locator ../project-agent
+
+# 显式切换 binding（要求 expected-current，防止并发覆盖）
+cortex-agent governance rebind \
+  --expected-kind filesystem \
+  --expected-locator ../project-agent \
+  --kind git \
+  --locator ../project-agent.git \
+  --ref main
+
+# 非 embedded binding 可 detach；不会删除治理数据
+cortex-agent governance detach \
+  --expected-kind git \
+  --expected-locator ../project-agent.git \
+  --expected-ref main
+```
+
+### 三种常见模式
+
+```text
+Embedded Local
+product/.agent/
+
+Detached Local
+product/.agent -> ../project-agent
+
+Git-backed / Remote-ready
+cortex.project.json
+  governance.kind = git
+  governance.locator = <portable locator>
+```
+
+如果 embedded `.agent` 中已经有 Task / Mission / Decision / Waitpoint 等状态，Cortex 不允许只改 locator 跳到另一个 store；这类切换必须经过 migration / verify / freeze / flip / verify / archive 事务，避免出现双权威源。
+
+### 跨设备 / 跨 Session 恢复
+
+新设备或 Cloud Agent attach 后，恢复流程不是“直接继续写代码”，而是：
+
+```text
+resolve ProjectIdentity
+→ resolve GovernanceStore
+→ load durable governance
+→ resolve ExecutionWorkspace
+→ reconcile branch / revision / CR / CI
+→ check Decision / Waitpoint / Lock
+→ controlled resume
+```
+
+Reconciliation 的结果是：
+
+- `READY`
+- `BLOCKED`
+- `RECONCILIATION_REQUIRED`
+- `DEGRADED`
+
+`DEGRADED` 允许在可选 provider capability 缺失时继续；`BLOCKED` 和 `RECONCILIATION_REQUIRED` 不会被自动 repair。
+
+### Provider 支持声明
+
+- GitHub：已完成 live end-to-end 验证。
+- GitLab：Provider Adapter + capability conformance 已通过；不宣称 live-tested。
+- Gitee：Provider Adapter + capability conformance 已通过；不宣称 live-tested。
+- Generic Git：Git protocol / GovernanceStore conformance 已通过。
+
+
+---
+
 ## CLI 命令参考
 
 | 命令 | 说明 |
 |------|------|
-| `cortex-agent init` | 初始化 `.agent/` 目录，生成平台配置文件和符号链接 |
+| `cortex-agent init` | 初始化 `.agent/`，并创建/保留稳定 `cortex.project.json` Project Identity |
 | `cortex-agent init --lang=en` | 使用英文模板初始化 |
 | `cortex-agent init --global` | 初始化到 `~/.agent`（全局共享配置） |
 | `cortex-agent init --track` | 初始化时同时纳入 Git 追踪（默认本地忽略）|
