@@ -4,6 +4,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
+const crypto = require("node:crypto");
 const { spawnSync } = require("node:child_process");
 const test = require("node:test");
 
@@ -72,6 +73,29 @@ test("update --dry-run --report json emits a machine-readable zero-write plan", 
   assert.deepEqual(after, before);
 });
 
+test("update dry run reports a pre-fix script claim as protected without changing files", (t) => {
+  const cwd = fixture();
+  t.after(() => fs.rmSync(cwd, { recursive: true, force: true }));
+  const rel = "skills/management-api/scripts/index.js";
+  const dest = path.join(cwd, ".agent", rel);
+  fs.mkdirSync(path.dirname(dest), { recursive: true });
+  fs.writeFileSync(dest, "// old custom script\n");
+  const hash = crypto.createHash("sha256").update(fs.readFileSync(dest)).digest("hex");
+  fs.writeFileSync(path.join(cwd, ".agent", ".script-manifest.json"), JSON.stringify({
+    schema_version: 1,
+    scripts: { [rel]: { origin_hash: hash, source_template_sha256: hash } },
+  }));
+  const before = snapshot(cwd);
+
+  const result = runCli(cwd, ["update", "--lang", "en", "--dry-run", "--report", "json"]);
+  assert.equal(result.status, 0, `${result.stderr}\n${result.stdout}`);
+  const report = JSON.parse(result.stdout);
+  assert.ok(report.changes.protected.some((item) =>
+    item.path === `.agent/${rel}` && item.reason === "unverified_legacy_manifest"));
+  assert.ok(!report.changes.updated.some((item) => item.path === `.agent/${rel}`));
+  assert.deepEqual(snapshot(cwd), before);
+});
+
 test("update --dry-run --report=json uses the same JSON contract", (t) => {
   const cwd = fixture();
   t.after(() => fs.rmSync(cwd, { recursive: true, force: true }));
@@ -82,4 +106,3 @@ test("update --dry-run --report=json uses the same JSON contract", (t) => {
   assert.equal(payload.mode, "dry-run");
   assert.equal(payload.changes.added.length, payload.summary.would_add);
 });
-

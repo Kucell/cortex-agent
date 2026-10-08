@@ -21,7 +21,7 @@
 //   const { buildManagedScriptsMap } = require("./helpers/managed-scripts");
 //   const scripts = buildManagedScriptsMap(ROOT);
 //   // Optionally override a single entry (e.g. F2's "installed" content):
-//   scripts[REL] = { origin_hash: sha(installed), sha256: sha(installed) };
+//   scripts[REL] = { origin_hash: sha(installed), sha256: sha(installed), ownership_proof: "template_match" };
 //   fs.writeFileSync(path.join(cwd, ".agent", ".script-manifest.json"),
 //     JSON.stringify({ schema_version: 1, scripts }, null, 2) + "\n");
 
@@ -86,7 +86,7 @@ function buildManagedScriptsMap(root = ROOT) {
   for (const rel of rels) {
     const abs = shared.has(rel) ? shared.get(rel) : en.get(rel);
     const hash = sha(fs.readFileSync(abs));
-    out[rel] = { origin_hash: hash, sha256: hash };
+    out[rel] = { origin_hash: hash, sha256: hash, ownership_proof: "template_match" };
   }
   return out;
 }

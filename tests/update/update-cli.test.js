@@ -31,7 +31,7 @@ function fixture({ userModified = false } = {}) {
   // default fixture takes the stale_template path (project file gets
   // refreshed to the shared template) and the userModified fixture takes
   // the user_modified path (project file preserved, exit 2).
-  scripts[REL] = { origin_hash: sha(installed), sha256: sha(installed) };
+  scripts[REL] = { origin_hash: sha(installed), sha256: sha(installed), ownership_proof: "template_match" };
   fs.writeFileSync(path.join(cwd, ".agent", ".script-manifest.json"), `${JSON.stringify({
     schema_version: 1,
     scripts,
@@ -59,6 +59,27 @@ test("update preserves local script changes and reports partial completion", (t)
   assert.equal(result.status, 2, `${result.stderr}\n${result.stdout}`);
   assert.equal(fs.readFileSync(target, "utf8"), current);
   assert.match(`${result.stdout}\n${result.stderr}`, /Safe update partially complete/);
+});
+
+test("update preserves a script claimed by an unverified legacy manifest", (t) => {
+  const { cwd, target } = fixture();
+  t.after(() => fs.rmSync(cwd, { recursive: true, force: true }));
+  const custom = "// old project custom script\n";
+  fs.writeFileSync(target, custom);
+  const manifestPath = path.join(cwd, ".agent", ".script-manifest.json");
+  const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+  manifest.scripts[REL] = {
+    origin_hash: sha(custom),
+    source_template_sha256: sha(custom),
+  };
+  fs.writeFileSync(manifestPath, JSON.stringify(manifest));
+
+  const result = run(cwd, ["update", "--lang", "en"]);
+  assert.equal(result.status, 2, `${result.stderr}\n${result.stdout}`);
+  assert.equal(fs.readFileSync(target, "utf8"), custom);
+  const report = JSON.parse(fs.readFileSync(path.join(cwd, ".agent", "updates", "latest.json"), "utf8"));
+  assert.ok(report.changes.protected.some((item) =>
+    item.path === `.agent/${REL}` && item.reason === "unverified_legacy_manifest"));
 });
 
 test("unknown commands fail instead of silently printing successful help", () => {

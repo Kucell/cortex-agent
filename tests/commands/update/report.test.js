@@ -204,6 +204,37 @@ test("buildDryRunUpdateReport: counts additive + script + semantic plans", () =>
   assert.deepEqual(report.skipped_checks, ["link-cli"]);
 });
 
+test("buildDryRunUpdateReport reports ownership-ambiguous scripts as protected", () => {
+  const root = mkRoot();
+  const agentDest = path.join(root, ".agent");
+  fs.mkdirSync(agentDest, { recursive: true });
+  const ctx = {
+    cwd: root,
+    lang: "en",
+    command: "update",
+    templateDir: path.join(root, "templates", "en"),
+    options: {},
+    args: [],
+  };
+  const report = buildDryRunUpdateReport(ctx, {
+    agentDest,
+    wouldAdd: [],
+    scriptCandidates: [],
+    protectedScripts: [{ path: "skills/legacy/index.js", reason: "unverified_legacy_manifest" }],
+    skippedChecks: [],
+  });
+  assert.equal(report.summary.protected_scripts, 1);
+  assert.deepEqual(report.changes.protected[0], {
+    path: ".agent/skills/legacy/index.js",
+    layer: "L1",
+    action: "protect",
+    reason: "unverified_legacy_manifest",
+    risk: "medium",
+  });
+  assert.ok(!report.changes.updated.some((item) => item.path === ".agent/skills/legacy/index.js"));
+  assert.ok(report.next_actions.some((action) => action.includes("backup")));
+});
+
 test("buildDryRunUpdateReport: next_actions populated when plan is non-empty", () => {
   const root = mkRoot();
   const agentDest = path.join(root, ".agent");
@@ -248,6 +279,7 @@ test("buildAppliedUpdateReport: shape + counts when status='ok'", () => {
       skipped: [
         { path: "skills/y/index.js", reason: "user_modified" },
         { path: "skills/z/index.js", reason: "unmanaged_cold_start" },
+        { path: "skills/legacy/index.js", reason: "unverified_legacy_manifest" },
         { path: "skills/w/index.js", reason: "other_skip_reason" },
       ],
       failed: [{ path: "skills/broken/index.js", error: "ENOENT" }],
@@ -271,22 +303,22 @@ test("buildAppliedUpdateReport: shape + counts when status='ok'", () => {
   assert.equal(report.changes.added.length, 1);
   assert.equal(report.changes.updated.length, 1);
   assert.equal(report.changes.merged.length, 1);
-  // protected: only user_modified + unmanaged_cold_start (not "other_skip_reason")
-  assert.equal(report.changes.protected.length, 2);
+  // protected: all ownership-ambiguous scripts (not "other_skip_reason")
+  assert.equal(report.changes.protected.length, 3);
   assert.equal(report.changes.failed.length, 1);
   // Summary
   assert.deepEqual(report.summary, {
     added: 1,
     updated: 1,
     merged: 1,
-    protected: 2,
+    protected: 3,
     failed: 1,
     verification_failed: 0,
     verification_skipped: 1,
   });
   // plan = all 5 categories concatenated in order
-  assert.equal(report.plan.length, 6);
-  // 2 protected items → exactly one review-protected next_action.
+  assert.equal(report.plan.length, 7);
+  // 3 protected items → exactly one review-protected next_action.
   // No verification failures → no verify-fix next_action.
   assert.equal(report.next_actions.length, 1);
   assert.match(
