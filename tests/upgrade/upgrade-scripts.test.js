@@ -52,13 +52,13 @@ test("init baseline then template fix flows to project on second upgrade", () =>
   assert.equal(fs.readFileSync(proj(cwd, rel), "utf8"), "// template v2 FIX\n");
 });
 
-test("existing project cold start is conservative, second upgrade updates unmodified", () => {
+test("existing project cold start preserves unknown scripts across repeated upgrades", () => {
   const { templateDir, cwd, rel } = makeTemplate();
 
   // Existing project with an OLD copy, no manifest (simulates pre-feature project).
   writeFile(proj(cwd, rel), "// old copy\n");
 
-  // First upgrade (apply): cold start → skip, but manifest bootstrapped.
+  // First upgrade (apply): cold start must not claim the old script.
   const first = sm.reconcileScripts({ cwd, templateDir, lang: "en", apply: true });
   assert.ok(first.manifestMissing);
   assert.equal(first.applied.length, 0);
@@ -67,10 +67,11 @@ test("existing project cold start is conservative, second upgrade updates unmodi
   // Template ships a new version.
   writeFile(path.join(templateDir, ".agent", rel), "// template v2\n");
 
-  // Second upgrade: file is unmodified since baseline → now updatable.
+  // Second upgrade: an unchanged old script is still not proven managed.
   const second = sm.reconcileScripts({ cwd, templateDir, lang: "en", apply: true });
-  assert.ok(second.applied.includes(rel));
-  assert.equal(fs.readFileSync(proj(cwd, rel), "utf8"), "// template v2\n");
+  assert.ok(!second.applied.includes(rel));
+  assert.ok(second.skipped.some((s) => s.path === rel && s.reason === "unmanaged_cold_start"));
+  assert.equal(fs.readFileSync(proj(cwd, rel), "utf8"), "// old copy\n");
 });
 
 test("user-modified file is protected across upgrades unless forced", () => {

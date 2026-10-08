@@ -108,6 +108,7 @@ test("ensureManifestForInit registers installed scripts with sha256 == origin_ha
     const entry = m.scripts[rel];
     assert.ok(entry, `entry for ${rel}`);
     assert.equal(entry.sha256, entry.origin_hash);
+    assert.equal(entry.ownership_proof, "template_match");
     assert.equal(entry.source_template_lang, "en");
   }
 });
@@ -118,6 +119,38 @@ test("ensureManifestForInit skips template scripts not installed in project", ()
   const m = sm.ensureManifestForInit(cwd, templateDir, "en");
   assert.ok(m.scripts["artifacts/scripts/artifact-bus.js"]);
   assert.ok(!m.scripts["skills/architecture-guard/scripts/index.js"]);
+});
+
+test("ensureManifestForInit does not claim an existing custom script", () => {
+  const { templateDir, cwd } = makeEnv();
+  const rel = "artifacts/scripts/artifact-bus.js";
+  writeFile(projFile(cwd, rel), "user custom script\n");
+
+  const manifest = sm.ensureManifestForInit(cwd, templateDir, "en");
+  assert.equal(manifest.scripts[rel], undefined);
+  assert.equal(fs.readFileSync(projFile(cwd, rel), "utf8"), "user custom script\n");
+});
+
+test("ensureManifestForInit accepts a script copied from the shared template", () => {
+  const { templateDir, cwd } = makeEnv();
+  const rel = "artifacts/scripts/artifact-bus.js";
+  const shared = path.join(path.dirname(templateDir), "_shared", ".agent", rel);
+  writeFile(shared, "shared template script\n");
+  writeFile(projFile(cwd, rel), "shared template script\n");
+
+  const manifest = sm.ensureManifestForInit(cwd, templateDir, "en");
+  assert.equal(manifest.scripts[rel].origin_hash, sm.hashFile(shared));
+});
+
+test("ensureManifestForInit preserves the prior baseline for a modified script", () => {
+  const { templateDir, cwd } = makeEnv();
+  const rel = "artifacts/scripts/artifact-bus.js";
+  copyTemplateInto(templateDir, cwd, rel);
+  const first = sm.ensureManifestForInit(cwd, templateDir, "en");
+  writeFile(projFile(cwd, rel), "user edit after init\n");
+
+  const second = sm.ensureManifestForInit(cwd, templateDir, "en");
+  assert.deepEqual(second.scripts[rel], first.scripts[rel]);
 });
 
 // ─── classify (decision table) ─────────────────────────────────────────────────
@@ -158,11 +191,25 @@ test("classify: unmodified (user==origin) & template newer → update(stale_temp
   const d = sm.classify({
     destAbs: f,
     templateSha: "newtemplatehash",
-    entry: { origin_hash: userSha },
+    entry: { origin_hash: userSha, ownership_proof: "template_match" },
     manifestMissing: false,
     force: false,
   });
   assert.equal(d.reason, "stale_template");
+});
+
+test("classify: an old manifest without ownership proof cannot authorize replacement", () => {
+  const { cwd } = makeEnv();
+  const destAbs = projFile(cwd, "x.js");
+  writeFile(destAbs, "custom script\n");
+  const decision = sm.classify({
+    destAbs,
+    templateSha: "newtemplatehash",
+    entry: { origin_hash: sm.hashFile(destAbs) },
+    manifestMissing: false,
+    force: false,
+  });
+  assert.deepEqual(decision, { action: "skip", reason: "unverified_legacy_manifest" });
 });
 
 test("classify: user modified → skip(user_modified)", () => {
@@ -195,7 +242,7 @@ test("classify: force overrides user_modified → update(forced)", () => {
 
 // ─── reconcileScripts ──────────────────────────────────────────────────────────
 
-test("reconcile cold start: existing differing files skipped, manifest bootstrapped", () => {
+test("reconcile cold start: existing differing files remain unowned", () => {
   const { templateDir, cwd, tplScripts } = makeEnv();
   // Install user copies that differ from template.
   for (const rel of Object.keys(tplScripts)) writeFile(projFile(cwd, rel), "user version\n");
@@ -204,25 +251,51 @@ test("reconcile cold start: existing differing files skipped, manifest bootstrap
   assert.equal(report.manifestMissing, true);
   assert.equal(report.applied.length, 0);
   assert.equal(report.skipped.length, 2);
-  // Manifest now exists and records the user files.
+  // A ledger may be created, but it must not claim the user files.
   const m = sm.readManifest(cwd);
-  assert.ok(m.scripts["artifacts/scripts/artifact-bus.js"]);
+  assert.equal(m.scripts["artifacts/scripts/artifact-bus.js"], undefined);
 });
 
-test("reconcile after cold start: unmodified file becomes updatable", () => {
+test("reconcile after cold start: repeated updates preserve unknown old scripts", () => {
   const { templateDir, cwd, tplScripts } = makeEnv();
   const rel = "artifacts/scripts/artifact-bus.js";
-  // User has an OLD version, registered by cold-start bookkeeping.
+  // The old version has no trusted ownership baseline.
   writeFile(projFile(cwd, rel), "old body\n");
   writeFile(projFile(cwd, "skills/architecture-guard/scripts/index.js"), "old2\n");
-  sm.reconcileScripts({ cwd, templateDir, lang: "en", apply: true }); // cold start registers
+  sm.reconcileScripts({ cwd, templateDir, lang: "en", apply: true });
 
   // Now template ships a NEW version of that file.
   writeFile(path.join(templateDir, ".agent", rel), "NEW body\n");
 
   const dry = sm.reconcileScripts({ cwd, templateDir, lang: "en", apply: false });
-  const upd = dry.updates.find((u) => u.path === rel);
-  assert.ok(upd && upd.reason === "stale_template", "should be updatable");
+  assert.ok(dry.skipped.some((s) => s.path === rel && s.reason === "unmanaged_cold_start"));
+  const second = sm.reconcileScripts({ cwd, templateDir, lang: "en", apply: true });
+  assert.ok(!second.applied.includes(rel));
+  assert.equal(fs.readFileSync(projFile(cwd, rel), "utf8"), "old body\n");
+});
+
+test("reconcile protects a custom script claimed by a pre-fix manifest", () => {
+  const { templateDir, cwd } = makeEnv();
+  const rel = "artifacts/scripts/artifact-bus.js";
+  const dest = projFile(cwd, rel);
+  writeFile(dest, "custom script\n");
+  const customSha = sm.hashFile(dest);
+  sm.writeManifest(cwd, {
+    schema_version: 1,
+    scripts: { [rel]: { origin_hash: customSha, source_template_sha256: customSha } },
+  });
+
+  const report = sm.reconcileScripts({ cwd, templateDir, lang: "en", apply: true });
+  assert.ok(report.skipped.some((s) => s.path === rel && s.reason === "unverified_legacy_manifest"));
+  assert.ok(!report.applied.includes(rel));
+  assert.equal(fs.readFileSync(dest, "utf8"), "custom script\n");
+});
+
+test("reconcile dry run does not create a missing manifest", () => {
+  const { templateDir, cwd } = makeEnv();
+  writeFile(projFile(cwd, "artifacts/scripts/artifact-bus.js"), "custom\n");
+  sm.reconcileScripts({ cwd, templateDir, lang: "en", apply: false });
+  assert.equal(fs.existsSync(sm.manifestPath(cwd)), false);
 });
 
 test("reconcile apply updates a stale unmodified file and writes .bak", () => {

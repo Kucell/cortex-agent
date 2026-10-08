@@ -204,6 +204,8 @@ Reconciliation 的结果是：
 | `cortex-agent remove <platform>` | 移除平台集成 |
 | `cortex-agent list` | 列出当前已安装的平台集成 |
 
+旧项目缺少 `.agent/.script-manifest.json`，或清单由旧版冷启动生成时，来源无法证明的脚本会保持原样并报告部分完成。先备份产品仓和治理仓，在副本核对脚本差异；只有确认可以替换后才使用 `--force-scripts`。这项保护不负责迁移历史 Decision / Waitpoint 记录。
+
 `query` 成功时 stdout 使用稳定的 JSON envelope，包含 `command`、`projection`、`project`、`filters`、`data`、`summary` 和 `warnings`。失败时 stdout 返回结构化 `error.code`，stderr 仅用于诊断；参数或 projection 错误退出 `2`，项目或 Management API 不可用退出 `3`。
 
 周报和审计可使用 `cortex-agent query activity --project <path> --since <date-or-rfc3339> --until <date-or-rfc3339>`。时间边界包含首尾；纯日期按本地自然日解释。只有记录内的结构化时间会进入筛选结果，未知或无效时间单独返回，文件 mtime 不参与推断。
