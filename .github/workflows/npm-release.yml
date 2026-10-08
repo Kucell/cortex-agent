@@ -47,23 +47,22 @@ jobs:
         with:
           node-version: "24.19.0"
           registry-url: "https://registry.npmjs.org"
-          cache: ""
 
       - name: Install npm Trusted Publishing compatible CLI
         run: |
           npm install --global npm@11
-          node - <<'NODE'
-          const [major, minor, patch] = process.env.npm_config_user_agent
-            .match(/npm\/(\d+)\.(\d+)\.(\d+)/)
-            .slice(1)
+          NPM_VERSION="$(npm --version)"
+          NPM_VERSION="$NPM_VERSION" node - <<'NODE'
+          const [major, minor, patch] = String(process.env.NPM_VERSION)
+            .split(".")
             .map(Number);
           const ok = major > 11 || (major === 11 && (minor > 5 || (minor === 5 && patch >= 1)));
           if (!ok) {
-            console.error(`npm >= 11.5.1 required, got ${major}.${minor}.${patch}`);
+            console.error(`npm >= 11.5.1 required, got ${process.env.NPM_VERSION}`);
             process.exit(1);
           }
           NODE
-          npm --version
+          echo "$NPM_VERSION"
 
       - name: Enable pnpm
         run: |
