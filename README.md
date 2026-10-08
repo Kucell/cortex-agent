@@ -493,6 +493,7 @@ node .agent/plugins/graphify/scripts/extract-subgraph.js \
 | 文档 | 内容 |
 | :--- | :--- |
 | [docs/getting-started.md](docs/getting-started.md) | CLI 命令参考、新项目/已有项目完整接入流程 |
+| [docs/releasing.md](docs/releasing.md) | npm Trusted Publishing / OIDC 发布工作流、版本/tag、失败重试与发布证据 |
 | [docs/workflows.md](docs/workflows.md) | 全部工作流命令、完整开发链路图、/ship 状态机 |
 | [docs/sub-agents.md](docs/sub-agents.md) | Sub-agent 架构图、技能映射、输出契约、路由配置 |
 | [docs/platform-integration.md](docs/platform-integration.md) | 11 平台集成方式、Claude Code 插件安装 |
