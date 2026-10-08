@@ -20,7 +20,7 @@
     ".claude-plugin"
   ],
   "engines": {
-    "node": ">=14.0.0"
+    "node": ">=16.0.0"
   },
   "packageManager": "pnpm@11.13.1",
   "volta": {
