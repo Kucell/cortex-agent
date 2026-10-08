@@ -57,6 +57,40 @@ check the current upgrade state."
 - Summarize recent accomplishments and the distance to the next milestone.
 - When available, inspect recent Git history and working-tree status without modifying them.
 
+## 1.5 Module / Subsystem Progress
+
+After the Roadmap / Mission summary, include a separate module or subsystem view that answers: "How far has each major part of the project progressed?"
+
+### Evidence priority
+
+Use these sources in order. Do not invent values just to fill a table:
+
+1. `.agent/references/context-index.json` and the corresponding module references, when available.
+2. Structured Mission / Milestone / Task state.
+3. `.agent/plans/task-progress.md` and relevant child plans.
+4. Git / PR / CI / validation evidence only as implementation evidence; they do not independently mean "complete".
+
+If no module index exists, state "module baseline not established" and recommend `/scan-project`. If the code has changed materially and references are stale, recommend `/update-refs`.
+
+### Required output
+
+Include at least:
+
+| Module / Subsystem | Current Scope | Status | Progress | Evidence / Source | Next Gap |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| {module} | {scope} | {PASS / IN PROGRESS / BLOCKED / PLANNED} | {explicit percentage or "unquantified"} | {Mission / Task / Reference / PR / CI} | {next gap} |
+
+Rules:
+
+- **Never calculate completion from file counts, commit counts, PR counts, or subjective impressions.**
+- Show a percentage only when structured state or an authoritative project plan explicitly provides one; otherwise use "unquantified".
+- Keep Milestone progress and module progress separate: one Milestone may span several modules, and one module may evolve across several Milestones.
+- If code is implemented but governance evidence, validation contracts, or merge are still pending, use a layered state such as "Implementation Complete / Governance Pending" instead of PASS.
+- Follow **EXP-003**: keep state dimensions structurally separate and use one source of truth for shared state; never interpret free-text words such as "passed" or "complete" as authoritative task state.
+- When the user requests "overall project progress", this module table is part of the default output, not an optional appendix.
+
+---
+
 ## 2. Active Scene
 
 - Identify the highest-priority active Task and Mission milestone.
@@ -90,6 +124,7 @@ Summarize blocked or pending work, stale sessions, held locks, validation failur
 Produce a concise report containing:
 
 - **Overall position**: current phase and distance to the next milestone.
+- **Module progress**: module/subsystem status, explicit progress when available, evidence, and next gaps.
 - **Recent progress**: material work completed in the last day.
 - **Active focus**: Task/Mission IDs and exact work point.
 - **Recommended entry point**: the first file, command, or workflow to open.
