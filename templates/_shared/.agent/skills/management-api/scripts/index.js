@@ -805,7 +805,14 @@ const GATE_ACTIONS = new Set([
 const INBOX_TYPES = new Set(["information", "request", "handoff", "decision_request", "alert"]);
 const INBOX_STATUSES = new Set(["unread", "read", "acknowledged", "archived"]);
 const WAITPOINT_STATUSES = new Set(["pending", "blocked", "released", "canceled", "expired"]);
-const ALLOWED_WORKFLOW_GATES = new Set(["user", "mission", "agent"]);
+
+// NOTE: there is deliberately NO global workflow-gate whitelist. `requireGate()`
+// takes a per-command allow-list because the gate vocabulary is resource-shaped:
+// decisions/waitpoints use mission|agent|user, session ownership uses owner,
+// task leases use recipient, parallel dispatch uses parallel|worktree|approve.
+// A single shared set was previously declared here and never referenced; it
+// read as a global policy that does not exist and invited "fixing" commands to
+// it. Add the list to the individual requireGate() call instead.
 
 function emptyRelations() {
   return { task_ids: [], mission_ids: [], run_ids: [], queue_ids: [], session_ids: [], artifact_refs: [], worktree_paths: [] };
@@ -923,7 +930,7 @@ function queryWaitpoints() {
 }
 
 function requestDecision() {
-  const gate = requireGate(["mission", "agent"]);
+  const gate = requireGate(["mission", "agent", "user"]);
   const payload = parsePayload();
   const decisionId = safeId(option("--decision-id", payload.decision_id), "D");
   const type = String(option("--type", payload.type || "")).trim();
@@ -1207,7 +1214,7 @@ function acknowledgeInbox() {
 }
 
 function createWaitpoint() {
-  const gate = requireGate(["mission", "agent"]);
+  const gate = requireGate(["mission", "agent", "user"]);
   const payload = parsePayload();
   const waitpointId = safeId(option("--waitpoint-id", payload.waitpoint_id), "WP");
   const ownerWorkflow = String(option("--owner-workflow", payload.owner_workflow || "")).trim();

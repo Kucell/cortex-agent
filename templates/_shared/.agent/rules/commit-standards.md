@@ -1,3 +1,14 @@
+---
+title: "Git Commit Standards"
+description: "Commit message format and hygiene: Conventional Commits subjects, banned AI co-author trailers, and body/footer rules."
+type: rule
+scope: L1
+applicable_to:
+  - all
+owner: Kucell
+last_verified: 2026-09-30
+status: stable
+---
 # Git Commit Standards
 
 Follow the [Conventional Commits 1.0.0](https://www.conventionalcommits.org/en/v1.0.0/) specification.
@@ -74,13 +85,6 @@ The following are **strictly forbidden** in any part of a commit message (type, 
 - Any AI tool name used as a co-author or attribution
 
 > Commit messages represent the developer's own work. AI is a tool, not a contributor, and must not appear in commit history in any form.
-
-## Related
-
-- See also `submission-workflow.md` — covers the double-repo commit
-  order (inner first, then outer), pre-commit gate stack, push
-  hygiene, and failure-recovery playbook that complements this
-  file's message-format rules.
 
 ## Examples
 

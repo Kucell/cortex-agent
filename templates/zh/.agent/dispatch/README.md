@@ -68,7 +68,7 @@ FAE-007 surface, even with `--non-interactive --quiet` or other bypass flags:
 - `mmx auth` (any subcommand), `mmx config` (any subcommand), `mmx quota`,
   `mmx update`, `mmx install`, `mmx file` (any subcommand), or any paid
   / network / generation subcommand.
-- Reading `/Users/xueyq/.mmx/config.json`, `/Users/xueyq/.mmx/auth.json`,
+- Reading `~/.mmx/config.json`, `~/.mmx/auth.json`,
   environment `MINIMAX_API<KEY>`, environment `MINIMAX<TOKEN>`, or any
   `mmx auth` / `mmx config` stdout.
 - `git add`, `git commit`, `git push`, `git reset`, `git stash`, `git merge`,

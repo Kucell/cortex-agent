@@ -1,7 +1,18 @@
+---
+title: "Memory Protocol Rules"
+description: "Write / read / expiry / archive protocol for the four memory types (user, feedback, project, reference) under .agent/memory/."
+type: rule
+scope: L1
+applicable_to:
+  - all
+owner: Kucell
+last_verified: 2026-09-30
+status: stable
+---
 # Memory Protocol Rules
 
 > This rule defines the write/read/expiry/archive protocol for the 4 memory types (user / feedback / project / reference) under `.agent/memory/`.
-> Companion mechanisms: `templates/{zh,en}/.agent/memory/` (mechanism) + `templates/{zh,en}/.agent/hooks/hooks.json` (auto-load) + this rule (behavior constraints).
+> Companion mechanisms: `.agent/memory/` (mechanism) + `.agent/hooks/hooks.json` (auto-load) + this rule (behavior constraints).
 
 ## 1. Scope
 
@@ -99,7 +110,7 @@ Things this mechanism **does NOT do** (explicit response to P-006's anti-MEMORY 
 2. **Does not replace** `.agent/state/` and checkpoint
 3. **Does not replace** `.agent/handoffs/`
 4. **Does not implement** "unbounded growth of facts/skills/rules/replayable history" — every type has a hard cap
-5. **Does not replace** `.agent/docs/` `.agent/rules/`
+5. **Does not replace** `.agent/references/` `.agent/rules/`
 6. **Does NOT** auto-load topic files (use cap + on-demand Read instead)
 7. **Does NOT** implement cross-project memory sync
 8. **Does NOT** store personal privacy or credentials (feedback/project strictly prohibit tokens, passwords, internal URLs)
@@ -131,7 +142,7 @@ Operational rules:
 
 ## 9. Implementation Compatibility (parity with Claude Code)
 
-This design is informed by Claude Code v2.1.216 binary internal prompt strings (extracted via `strings` from `/Users/xueyq/.local/bin/claude`), compatible with the official Auto Memory fields (`name` / `description` / `metadata`):
+This design is informed by Claude Code v2.1.216 binary internal prompt strings (extracted via `strings` from `~/.local/bin/claude`), compatible with the official Auto Memory fields (`name` / `description` / `metadata`):
 
 - `metadata` field is optional (cortex-agent's top-level `type` remains canonical)
 - slug regex includes underscores (aligned with Claude Code)

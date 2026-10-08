@@ -4,6 +4,10 @@
 # Reads contracts/state-classes.json from the inner .agent/ repository and
 # reminds when syncable (tracked / derived) state is unstaged or untracked.
 #
+# This hook is relevant only when .agent/ is its own Git repository. Do not
+# configure core.hooksPath from a plain .agent/ directory in a managed project:
+# that would change the outer repository's hooks.
+#
 # It does NOT block the commit.
 # To disable: git -C .agent commit --no-verify
 # To uninstall: git -C .agent config --unset core.hooksPath
