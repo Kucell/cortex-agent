@@ -1,6 +1,6 @@
 # RDG MS-012 Acceptance Evidence Matrix
 
-Date: 2026-10-07
+Date: 2026-10-08
 
 ## Evidence classes
 
@@ -13,8 +13,8 @@ Date: 2026-10-07
 | Scenario | Evidence class | Status | Evidence |
 |---|---|---:|---|
 | GitHub product + GitHub governance | LIVE | PASS | Kucell/cortex-agent + Kucell/cortex-agent-agent both resolved through connected GitHub API; both default to main; current connection has read/write permission |
-| GitHub product + GitLab governance | PENDING-LIVE | PENDING | No GitLab connector available in current environment; provider contract exists but live transport not exercised |
-| Gitee compatibility | PENDING-LIVE | PENDING | No Gitee connector available in current environment; provider contract/conformance exists |
+| GitHub product + GitLab governance | CONFORMANCE | PASS | Provider adapter/capability conformance; optional live pilot remains PENDING-LIVE, with no live transport claim |
+| Gitee compatibility | CONFORMANCE | PASS | Provider adapter/capability conformance; optional live pilot remains PENDING-LIVE, with no live transport claim |
 | Generic Git | CONFORMANCE | PASS | GitGovernanceStore bare-repo acceptance + optional capability degradation |
 | Two remote sessions shared Queue CAS | CONFORMANCE | PASS | two store instances read same revision; first writer wins, stale writer gets RevisionConflict |
 | Session restart | CONFORMANCE | PASS | new store/parallel instances recover same queue and revision from persistent Git governance repo |
@@ -24,7 +24,7 @@ Date: 2026-10-07
 
 ## Milestone completion rule
 
-MS-012 is **not complete** while mandatory live cross-provider rows remain PENDING-LIVE.
+The approved acceptance revision in `D-RDG-MS012-20261007` requires GitHub LIVE evidence plus provider/store conformance for GitHub, GitLab, Gitee, and Generic Git. GitLab/Gitee live pilots are optional follow-up evidence and do not block MS-012 completion. Their live status remains PENDING-LIVE until those pilots execute.
 
 No simulated or conformance-only result may be reported as a live GitLab/Gitee acceptance.
 
@@ -75,9 +75,9 @@ The credentials must have permission to create and delete branches in the design
 
 The workflow uploads `rdg-ms012-live-provider-evidence.json` even when the acceptance run fails.
 
-### Evidence requirements for closing MS-012
+### Evidence requirements for optional live pilots
 
-The GitLab row may move from `PENDING-LIVE` to `LIVE PASS` only when the workflow artifact shows:
+The GitLab optional live status may move from `PENDING-LIVE` to `LIVE PASS` only when the workflow artifact shows:
 
 - `provider = gitlab`
 - `status = passed`
