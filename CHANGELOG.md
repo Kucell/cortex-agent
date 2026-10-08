@@ -9,6 +9,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- 下一个版本的条目写在这里 -->
 
+## [1.15.0] - 2026-10-08
+
+> **Minor**：Runtime / Protocol / Extension 架构（M-040）、精确资源 State Sync（M-041）、State Class Registry 与治理索引重建（M-042）、Remote & Detached Governance，以及手动 npm Trusted Publishing 发布链。
+> **升级**：安装新版后，在已有项目运行 `cortex-agent update` 同步模板。
+> **范围**：仅包含已合并能力；M-043 Legacy Governance Migration 尚未合并，不包含在本次发布中。`packages/*` 保持 private 工作区包，不单独发布到 npm。
+
+### Added
+
+- **Runtime / Protocol / Extension 架构（M-040）**：新增 Protocol、SDK、RuntimePort、Project SDK 和 Extension SDK 工作区契约，包含 RuntimeEndpoint 能力路由、受治理 Control Service、CortexEvent 时间线与重协调、项目接入及扩展权限契约。保留既有原生 adapter 兼容路径。
+- **可选 Paseo RuntimePort**：通过公开客户端接口提供运行时适配及只读治理视图；Paseo 不作为根包必需依赖，未公开支持的 cancel 能力不作承诺。
+- **State Class Registry 与治理索引（M-042）**：State Sync 和 pre-commit 共用状态分类；新增只读 `governance-index verify` 与确定性 `governance-index rebuild`。重建仅更新派生索引，遇到无法安全投影的历史记录时停止。
+- **Remote & Detached Governance**：在 `cortex.project.json` 中维护稳定 ProjectIdentity，支持 embedded、detached local 和 Git-backed 治理绑定；新增 GovernanceStore、远程 WorkspaceIdentity、项目绑定生命周期，以及保留恢复路径的分类迁移事务。
+- **共享治理与受控恢复**：新增基于预期 revision / CAS 的 Queue、逻辑锁及 owned_files 协调；陈旧写入返回 RevisionConflict。重协调输出 READY、BLOCKED、RECONCILIATION_REQUIRED 或 DEGRADED，并通过 SDK、MCP 和 Dashboard 共享只读 project-health 投影。
+
+### Fixed
+
+- **精确资源 State Sync（M-041）**：Management mutation 返回实际变更路径与资源，仅暂存和提交该操作拥有的路径，避免混入无关 dirty/staged 文件。
+- 修复 `waitpoints --help` 触发自动 State Sync 的问题，补齐 Inbox 状态分类及 Decision 自动释放 Waitpoint 的多资源变更回执。
+- 修正 Waitpoint 写入的索引投影字段，防止新增索引漂移；历史权威记录不会被自动改写。
+
+### Changed
+
+- 同步主包与 Claude 插件、marketplace 的四个版本字段为 `1.15.0`。
+- **npm Trusted Publishing / OIDC**：新增仅手动触发的发布工作流，默认 dry-run；发布前执行架构检查、focused product validation 与 package pack 检查，支持版本/tag 冲突检查及部分失败后的安全续跑。
+- 明确 provider 验证边界：GitHub 有既有 LIVE 验收证据；GitLab/Gitee 提供 adapter 与 conformance 支持，真实 live pilot 为可选后续验证；Generic Git 提供协议/store conformance 验证。
+
+### Compatibility & Known Limitations
+
+- 缺少精确 `changed_paths` 回执的旧项目会跳过自动 State Sync 并提示更新，不回退到宽泛目录暂存。
+- 新建 Waitpoint 的 `owner_workflow` 必须采用 `/workflow-name` 格式；旧格式记录可能被 verify 报告并阻止 rebuild。M-043 历史记录语义迁移不属于本次发布。
+- 远程 locator 未绑定 transport 时返回 unavailable/degraded；provider 能力、workspace attach 和事件观察均不构成授权。
+- 保留现有 Node engines 声明；已知 Node 14 测试兼容债务尚未解决。Node 18/22/24 的 focused CI 成功不代表 Node 14 或全量测试全绿。
+
 ## [1.14.0] - 2026-09-14
 
 > **Minor**: 自 v1.13.1 以来 ~30 commits 的累积发布。核心增量 = **governed learning corpus（P-003）全套交付** + **friction 摩擦信号/评分/人工门控（M-003A/B）** + **team-pack manifest v2 项目作用域** + **M-031 多宿主发现/派发（cursor observer + 7-host whitelist/skill discovery）** + **governed CLI runtime contract（M-035 P-009）** + **transcript-reference 治理（P-002c）**。
