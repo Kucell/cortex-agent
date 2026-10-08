@@ -1,0 +1,210 @@
+name: npm Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_type:
+        description: "Version action"
+        required: true
+        default: current
+        type: choice
+        options:
+          - current
+          - patch
+          - minor
+          - major
+      dist_tag:
+        description: "npm dist-tag"
+        required: true
+        default: latest
+        type: string
+      publish:
+        description: "Publish to npm and create the GitHub Release"
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+  id-token: write
+
+concurrency:
+  group: npm-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.19.0"
+          registry-url: "https://registry.npmjs.org"
+          cache: ""
+
+      - name: Install npm Trusted Publishing compatible CLI
+        run: |
+          npm install --global npm@11
+          node - <<'NODE'
+          const [major, minor, patch] = process.env.npm_config_user_agent
+            .match(/npm\/(\d+)\.(\d+)\.(\d+)/)
+            .slice(1)
+            .map(Number);
+          const ok = major > 11 || (major === 11 && (minor > 5 || (minor === 5 && patch >= 1)));
+          if (!ok) {
+            console.error(`npm >= 11.5.1 required, got ${major}.${minor}.${patch}`);
+            process.exit(1);
+          }
+          NODE
+          npm --version
+
+      - name: Enable pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.13.1 --activate
+          pnpm --version
+
+      - name: Frozen workspace install
+        run: pnpm install --frozen-lockfile
+
+      - name: Run architecture guard
+        run: pnpm guard:m040
+
+      - name: Run focused product validation
+        run: pnpm test:m040
+
+      - name: Verify package can be packed
+        run: npm pack --dry-run --json > npm-release-pack-dry-run.json
+
+      - name: Prepare release version
+        id: version
+        env:
+          RELEASE_TYPE: ${{ inputs.release_type }}
+        run: |
+          set -euo pipefail
+
+          before="$(node -p "require('./package.json').version")"
+          if [[ "$RELEASE_TYPE" == "current" ]]; then
+            target="$before"
+          else
+            npm version "$RELEASE_TYPE" --no-git-tag-version
+            target="$(node -p "require('./package.json').version")"
+          fi
+
+          echo "before=$before" >> "$GITHUB_OUTPUT"
+          echo "target=$target" >> "$GITHUB_OUTPUT"
+          echo "tag=v$target" >> "$GITHUB_OUTPUT"
+
+      - name: Validate release state
+        env:
+          TARGET: ${{ steps.version.outputs.target }}
+          RELEASE_TYPE: ${{ inputs.release_type }}
+        run: |
+          set -euo pipefail
+
+          package_name="$(node -p "require('./package.json').name")"
+
+          if npm view "$package_name@$TARGET" version --json > /tmp/npm-version.json 2>/dev/null; then
+            published="$(node -e "const fs=require('fs'); const v=JSON.parse(fs.readFileSync('/tmp/npm-version.json','utf8')); process.stdout.write(Array.isArray(v)?String(v[0]||''):String(v||''));")"
+            if [[ "$published" == "$TARGET" && "$RELEASE_TYPE" != "current" ]]; then
+              echo "::error::$package_name@$TARGET is already published; choose current to resume an existing release."
+              exit 1
+            fi
+          fi
+
+          if git rev-parse -q --verify "refs/tags/v$TARGET" >/dev/null; then
+            tag_commit="$(git rev-list -n 1 "v$TARGET")"
+            head_commit="$(git rev-parse HEAD)"
+            if [[ "$RELEASE_TYPE" != "current" || "$tag_commit" != "$head_commit" ]]; then
+              echo "::error::Tag v$TARGET already exists at $tag_commit."
+              exit 1
+            fi
+          fi
+
+      - name: Dry-run summary
+        if: ${{ !inputs.publish }}
+        env:
+          TARGET: ${{ steps.version.outputs.target }}
+          RELEASE_TYPE: ${{ inputs.release_type }}
+          DIST_TAG: ${{ inputs.dist_tag }}
+        run: |
+          echo "Dry run only; no repository or registry writes will occur."
+          echo "release_type=$RELEASE_TYPE"
+          echo "target=$TARGET"
+          echo "dist_tag=$DIST_TAG"
+
+      - name: Commit version and create tag
+        if: ${{ inputs.publish }}
+        env:
+          TARGET: ${{ steps.version.outputs.target }}
+          RELEASE_TYPE: ${{ inputs.release_type }}
+        run: |
+          set -euo pipefail
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          if [[ "$RELEASE_TYPE" != "current" ]]; then
+            git add package.json
+            if [[ -f package-lock.json ]]; then
+              git add package-lock.json
+            fi
+            git commit -m "chore(release): v$TARGET"
+          fi
+
+          if ! git rev-parse -q --verify "refs/tags/v$TARGET" >/dev/null; then
+            git tag -a "v$TARGET" -m "v$TARGET"
+          fi
+
+          git push origin HEAD:main
+          git push origin "v$TARGET"
+
+      - name: Publish to npm with Trusted Publishing
+        if: ${{ inputs.publish }}
+        env:
+          TARGET: ${{ steps.version.outputs.target }}
+          DIST_TAG: ${{ inputs.dist_tag }}
+        run: |
+          set -euo pipefail
+
+          package_name="$(node -p "require('./package.json').name")"
+          published=""
+
+          if npm view "$package_name@$TARGET" version --json > /tmp/npm-version.json 2>/dev/null; then
+            published="$(node -e "const fs=require('fs'); const v=JSON.parse(fs.readFileSync('/tmp/npm-version.json','utf8')); process.stdout.write(Array.isArray(v)?String(v[0]||''):String(v||''));")"
+          fi
+
+          if [[ "$published" == "$TARGET" ]]; then
+            echo "$package_name@$TARGET is already published; treating npm publish as completed."
+          else
+            npm publish --access public --tag "$DIST_TAG"
+          fi
+
+      - name: Create GitHub Release
+        if: ${{ inputs.publish }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET: ${{ steps.version.outputs.target }}
+        run: |
+          set -euo pipefail
+          if gh release view "v$TARGET" >/dev/null 2>&1; then
+            echo "GitHub Release v$TARGET already exists."
+          else
+            gh release create "v$TARGET" --verify-tag --generate-notes --title "v$TARGET"
+          fi
+
+      - name: Upload release evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-release-evidence
+          path: npm-release-pack-dry-run.json
+          if-no-files-found: warn
+          retention-days: 30
