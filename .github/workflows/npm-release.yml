@@ -96,6 +96,18 @@ jobs:
       - name: Run focused product validation
         run: pnpm test:m040
 
+      - name: Verify shipped reconcile CLI entrypoint
+        run: |
+          set -euo pipefail
+          if [[ -f tests/cli/reconcile-entrypoint.test.js ]]; then
+            node --test tests/commands/reconcile.test.js tests/cli/reconcile-entrypoint.test.js tests/cli/cli-contract.test.js
+          elif [[ "$(node -p "require('./package.json').version")" == "1.15.4" ]]; then
+            echo "::error::v1.15.4 requires the real reconcile CLI regression tests"
+            exit 1
+          else
+            echo "CLI entrypoint test not introduced on this earlier base."
+          fi
+
       - name: Verify package can be packed
         run: npm pack --dry-run --json > npm-release-pack-dry-run.json
 
