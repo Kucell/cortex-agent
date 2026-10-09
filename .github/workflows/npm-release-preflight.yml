@@ -44,6 +44,18 @@ jobs:
         run: |
           pnpm guard:m040
           pnpm test:m040
+      - name: Verify shipped reconcile CLI entrypoint
+        run: |
+          set -euo pipefail
+          if [[ -f tests/cli/reconcile-entrypoint.test.js ]]; then
+            node --test tests/commands/reconcile.test.js tests/cli/reconcile-entrypoint.test.js tests/cli/cli-contract.test.js
+          elif [[ "$(node -p "require('./package.json').version")" == "1.15.4" ]]; then
+            echo "::error::v1.15.4 requires the real reconcile CLI regression tests"
+            exit 1
+          else
+            echo "CLI entrypoint test not introduced on this earlier base."
+          fi
+
       - name: Dry-run package build (never publish on preflight)
         run: npm pack --dry-run --json > npm-auto-preflight-pack.json
       - name: Upload preflight evidence
