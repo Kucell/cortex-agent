@@ -40,6 +40,7 @@ const receipt = prepareChatGitHubReview({
   changed_paths: ["lib/next-action/advisor.js"],
   patch_digest: null,
   pull_request_url: null,
+  ci_run_url: null, // add verified matching product-repo Actions run URL when observed
   test_status: "not-verified",
   observed_at: "2026-10-09T07:00:00.000Z"
 });
