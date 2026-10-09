@@ -1,3 +1,13 @@
+test("release publication rechecks current main and live approval at the effect boundary", () => {
+  const tag = workflow.indexOf("Commit version and create tag");
+  const immutability = workflow.indexOf("Verify main/tag immutability before any registry write");
+  const secondGate = workflow.indexOf("Revalidate Cortex authorization at npm effect boundary");
+  const publishing = workflow.indexOf("Publish to npm with Trusted Publishing");
+  assert.ok(tag >= 0 && immutability > tag && secondGate > immutability && publishing > secondGate);
+  assert.match(workflow, /git ls-remote origin refs\/heads\/main/);
+  assert.match(workflow, /refusing npm publish/);
+});
+
 "use strict";
 
 const assert = require("node:assert/strict");
