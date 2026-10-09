@@ -10,7 +10,7 @@ function parseCommand(body) {
   must(m, "strict command with Decision and Waitpoint IDs required");
   return { version:m[1], decision:m[2], waitpoint:m[3] };
 }
-function hasIndependentApproval(pr, reviews) {
+function hasIndependentApproval(pr, reviews, eligibleReviewers = null) {
   // The API returns chronological review submissions; COMMENTED is not an
   // approval transition. The latest formal review state per reviewer wins.
   if (!pr || !pr.user || !pr.head || !Array.isArray(reviews) || reviews.length >= 100) return false;
@@ -26,6 +26,7 @@ function hasIndependentApproval(pr, reviews) {
   if (states.some(r => r.state === "CHANGES_REQUESTED")) return false;
   return states.some(r => r.state === "APPROVED" &&
     r.user.login.toLowerCase() !== pr.user.login.toLowerCase() &&
+    (eligibleReviewers === null || eligibleReviewers.has(r.user.login.toLowerCase())) &&
     r.commit_id === pr.head.sha);
 }
 function validateGovernance(decision, waitpoint, sha, now=new Date()) {
@@ -74,7 +75,17 @@ async function verifyApproval({event,repo,mainSha,packageVersion,repoToken,gover
     files.some(f=>f.filename === "package.json") &&
     files.some(f=>f.filename === "CHANGELOG.md"), "release prep PR contains unreviewed paths or incomplete metadata");
   const reviews = await getJson(api+"/pulls/"+event.issue.number+"/reviews?per_page=100",repoToken,http);
-  must(hasIndependentApproval(pr,reviews),"independent APPROVED review bound to exact PR head required");
+  must(Array.isArray(reviews) && reviews.length < 100, "review evidence pagination incomplete");
+  const eligible = new Set();
+  // Public PRs may contain reviews from users without repository write rights.
+  // An arbitrary public APPROVED comment must never authorize npm publication.
+  for (const login of new Set(reviews.filter(r=>r && r.state==="APPROVED" && r.user &&
+    r.user.login && r.user.login.toLowerCase()!==pr.user.login.toLowerCase())
+    .map(r=>r.user.login.toLowerCase()))) {
+    const permission = await getJson(api+"/collaborators/"+encodeURIComponent(login)+"/permission",repoToken,http);
+    if (["write","maintain","admin"].includes(permission.permission)) eligible.add(login);
+  }
+  must(hasIndependentApproval(pr,reviews,eligible),"independent write-authorized APPROVED review bound to exact PR head required");
   must(governanceToken, "private governance read-only token absent");
   const base = "https://api.github.com/repos/Kucell/cortex-agent-agent/contents";
   function decode(data) {
