@@ -182,6 +182,27 @@ jobs:
           git push origin HEAD:main
           git push origin "v$TARGET"
 
+      - name: Verify main/tag immutability before any registry write
+        if: ${{ github.event_name == 'issue_comment' || inputs.publish }}
+        env:
+          TARGET: ${{ steps.version.outputs.target }}
+        run: |
+          set -euo pipefail
+          candidate="$(git rev-parse HEAD)"
+          upstream="$(git ls-remote origin refs/heads/main | cut -f1)"
+          tag_commit="$(git rev-list -n 1 "v$TARGET")"
+          if [[ "$candidate" != "$upstream" || "$candidate" != "$tag_commit" ]]; then
+            echo "::error::Release candidate drifted after validation; refusing npm publish."
+            exit 1
+          fi
+
+      - name: Revalidate Cortex authorization at npm effect boundary
+        if: ${{ github.event_name == 'issue_comment' }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          CORTEX_GOVERNANCE_READ_TOKEN: ${{ secrets.CORTEX_GOVERNANCE_READ_TOKEN }}
+        run: node scripts/release/verify-approved-release.cjs
+
       - name: Publish to npm with Trusted Publishing
         if: ${{ github.event_name == 'issue_comment' || inputs.publish }}
         env:
