@@ -265,3 +265,53 @@ test("Snapshot Vector retains separate source domains and scoped support provena
  assert.equal(p.scoped_support.sync_available.origin_ref,"verified-adapter:sync");
  assert.equal(p.execution_authorized,false);
 });
+
+
+// E review PR #53 / #6082663508: FilesystemGovernanceStore returns
+// {store_kind:"filesystem", value:"sha256:<64 lowercase hex>"}. The Store
+// revision is NOT the gsr1:filesystem:sha256:<64hex> correlation identifier.
+const FS_REVISION = Object.freeze({
+  domain:"governance_store",store_kind:"filesystem",value:`sha256:${"e".repeat(64)}`,
+});
+function withFilesystemRevision(mode, revision=FS_REVISION) {
+  const f=fixture();
+  f.mode=mode;
+  f.governance_revision=revision;
+  f.sources.tasks.records[0].runtime_mode=mode;
+  for (const name of ["project","tasks","missions","decisions","waitpoints","health","ownership","host"])
+    f.sources[name].revision=revision;
+  for (const name of ["tasks","missions","decisions","waitpoints"])
+    for (const record of f.sources[name].records) record.governance_revision=revision;
+  return f;
+}
+for (const mode of ["M0","M1"]) {
+  test(`E-FS-01 ${mode}: accepts exact sha256-prefixed FilesystemGovernanceStore revision`,()=>{
+    const p=build(withFilesystemRevision(mode));
+    assert.deepEqual(p.governance_revision,FS_REVISION);
+    assert.deepEqual(p.source_snapshot_vector.governance.revision,FS_REVISION);
+    assert.equal(p.source_status.project,"observed");
+    assert.equal(p.source_status.tasks,"observed");
+    assert.equal(p.source_status.decisions,"observed");
+    assert.equal(p.source_status.waitpoints,"observed");
+    assert.equal(p.recommendations.length,1);
+    assert.equal(p.recommendations[0].advice_status,"ADVICE_READY");
+    advisoryNotAuthority(p);
+  });
+  test(`E-FS-02 ${mode}: rejects invalid bare 64-hex filesystem revision`,()=>{
+    const bare={...FS_REVISION,value:"e".repeat(64)};
+    const p=build(withFilesystemRevision(mode,bare));
+    assert.equal(p.governance_revision,null);
+    assert.equal(p.source_status.tasks,"not_observed");
+    assert.deepEqual(p.recommendations,[]);
+    assert.ok(p.warnings.includes("governance_revision_not_verified"));
+    advisoryNotAuthority(p);
+  });
+}
+test("E-FS-03 rejects gsr1 correlation identifier and uppercase filesystem digest as Store revision",()=>{
+  for (const bad of [`gsr1:filesystem:sha256:${"e".repeat(64)}`,`sha256:${"E".repeat(64)}`]) {
+    const p=build(withFilesystemRevision("M0",{...FS_REVISION,value:bad}));
+    assert.equal(p.governance_revision,null);
+    assert.deepEqual(p.recommendations,[]);
+    advisoryNotAuthority(p);
+  }
+});
