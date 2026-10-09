@@ -21,19 +21,27 @@ jobs:
       matrix:
         node: ["22", "24"]
     steps:
-      - name: Checkout exact PR head
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.sha }}
-          persist-credentials: false
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
-      - name: Print evidence and run targeted D1 fixture test
+      - name: Fetch only exact PR-head D1 files (avoid unrelated gitlink checkout)
+        env:
+          REVIEW_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
+          set -euo pipefail
+          [[ "$REVIEW_SHA" =~ ^[a-f0-9]{40}$ ]]
+          mkdir -p lib/dispatch tests/dispatch
+          ROOT="https://raw.githubusercontent.com/Kucell/cortex-agent/${REVIEW_SHA}"
+          curl --fail --location --silent --show-error --retry 2 \
+            "$ROOT/lib/dispatch/l3-authorization.js" -o lib/dispatch/l3-authorization.js
+          curl --fail --location --silent --show-error --retry 2 \
+            "$ROOT/tests/dispatch/l3-authorization.test.js" -o tests/dispatch/l3-authorization.test.js
+          printf 'SOURCE_PR_HEAD=%s\n' "$REVIEW_SHA"
+      - name: Run targeted D1 fixture tests
+        run: |
+          set -euo pipefail
           node --version
-          git rev-parse HEAD
           node --check lib/dispatch/l3-authorization.js
           node --check tests/dispatch/l3-authorization.test.js
           node --test tests/dispatch/l3-authorization.test.js
