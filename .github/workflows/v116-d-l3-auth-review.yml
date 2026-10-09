@@ -1,0 +1,39 @@
+name: v1.16 D1 L3 Authorization Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - "lib/dispatch/l3-authorization.js"
+      - "tests/dispatch/l3-authorization.test.js"
+      - ".github/workflows/v116-d-l3-auth-review.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  d1-fixture-tests:
+    name: D1 fixture Node ${{ matrix.node }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ["22", "24"]
+    steps:
+      - name: Checkout exact PR head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - name: Print evidence and run targeted D1 fixture test
+        run: |
+          node --version
+          git rev-parse HEAD
+          node --check lib/dispatch/l3-authorization.js
+          node --check tests/dispatch/l3-authorization.test.js
+          node --test tests/dispatch/l3-authorization.test.js
