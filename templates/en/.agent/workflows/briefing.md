@@ -32,10 +32,6 @@ yet, then continue with the rest of the read-only briefing scan.
 
 ## 0.5 One-Click Update Status
 
-Read `.agent/updates/latest.json` when present and summarize the latest
-`cortex-agent update` / `update --verify` status:
-
-```text
 ## One-Click Update: {status}
 
 - Update ID: {update_id}
@@ -50,6 +46,33 @@ protected items and remind the user to review before considering
 `--force-scripts`. If the report is missing, say: "No One-Click Update report
 has been generated yet; run `cortex-agent update --verify --report json` to
 check the current upgrade state."
+
+
+## 0.6 cortex-agent update reminder
+
+Read-only probe of the latest published version. Never auto-upgrades.
+
+```bash
+# emits a single JSON envelope with the `available_update` field
+cortex-agent doctor --json
+```
+
+`available_update` field contract (`/Users/xueyq/myworks/cortex-agent/lib/commands/doctor.js`):
+
+- `status`: `"current"` / `"outdated"` / `"unknown"` (registry unreachable)
+- `current`: CLI version (mirrors `package.json`)
+- `latest`: registry latest version; `null` when unreachable
+- `outdated`: `true` / `false` / `null` (1-to-1 with `status`)
+- `upgrade_hint`: present only when `outdated === true`
+- `checked_at`: ISO timestamp
+
+**Output guidance**:
+
+- `status === "outdated"`: surface `upgrade_hint` (suggest `npm install -g cortex-agent@<latest>`, then `cortex-agent upgrade`) and list it under Risks / Today's actions.
+- `status === "unknown"`: note "could not reach npm registry"; do not block the briefing.
+- `status === "current"`: stay silent; do not nag.
+
+**Explicit boundary**: this probe does **not** fire on SessionStart, does **not** write `.agent/.cortex-version`, and does **not** invoke `cortex-agent upgrade` / `update`. Version bumps still require explicit owner action.
 
 ## 1. Progress Scan
 

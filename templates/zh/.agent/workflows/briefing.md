@@ -40,9 +40,6 @@ node .agent/skills/runtime-continuity/scripts/index.js resume-bundle --project "
 
 ## 0.5 One-Click Update 状态
 
-读取 `.agent/updates/latest.json`（若存在），展示最近一次 `cortex-agent update` / `update --verify` 的状态：
-
-```
 ## One-Click Update: {status}
 
 - Update ID: {update_id}
@@ -53,6 +50,33 @@ node .agent/skills/runtime-continuity/scripts/index.js resume-bundle --project "
 ```
 
 如果 `status` 是 `failed`，把它列入风险；如果是 `partial`，列出 protected 项并提醒先 review 后再考虑 `--force-scripts`。若报告不存在，显示：“尚未生成 One-Click Update 报告，可运行 `cortex-agent update --verify --report json` 检查当前升级状态。”
+
+
+## 0.6 cortex-agent 版本陈旧提示
+
+只读探测最新版本，从不自动升级：
+
+```bash
+# 读到机器可读的 JSON 信封（含 available_update 字段）
+cortex-agent doctor --json
+```
+
+`available_update` 字段契约（`/Users/xueyq/myworks/cortex-agent/lib/commands/doctor.js`）：
+
+- `status`: `"current"` / `"outdated"` / `"unknown"`（网络/registry 不可达）
+- `current`: 当前 CLI 版本（与 package.json 一致）
+- `latest`: registry 最新版本；不可达时为 `null`
+- `outdated`: `true` / `false` / `null`（与 `status` 一一对应）
+- `upgrade_hint`: 仅当 `outdated=true` 时给出推荐命令
+- `checked_at`: ISO 时间戳
+
+**输出建议**：
+
+- `status === "outdated"`：列出 `upgrade_hint`（建议 `npm install -g cortex-agent@<latest>`，再 `cortex-agent upgrade`），并列入风险/今日动作。
+- `status === "unknown"`：仅提示"无法连接 npm registry"，不要阻塞简报。
+- `status === "current"`：可静默；不要打扰用户。
+
+**明确边界**：本探测**不**触发 SessionStart hook，**不**写入 `.agent/.cortex-version`，**不**调用 `cortex-agent upgrade` / `update`。版本升级仍由 owner 显式触发。
 
 ## 1. 进度回顾 (Progress Scan)
 - **核心数据**：详细阅读 `.agent/plans/task-progress.md`，提取当前的 Roadmap 阶段和总体百分比。

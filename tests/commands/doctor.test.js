@@ -348,3 +348,98 @@ test("doctor: --fix safely repairs drift and orphan entries", async () => {
   assert.match(index, /\[reply-zh\]\(user\/reply-zh\.md\)/);
   fs.rmSync(root, { recursive: true, force: true });
 });
+
+// ─── P-AUTO-001: --json envelope + available_update ─────────────────────────
+// Pins the contract for the machine-readable doctor output. Two tests:
+//   1. doctor({ json: true }) writes a single JSON document with the
+//      envelope shape briefing/workflows consume.
+//   2. available_update object always carries current + status, and either
+//      a parseable latest version (status=current|outdated) or null
+//      (status=unknown). This distinguishes "checked, no update" from
+//      "couldn't check" so the briefing prompt can render correctly.
+test("doctor: --json emits a single JSON envelope with required fields", async () => {
+  const root = mkRoot();
+  fs.mkdirSync(path.join(root, ".agent"), { recursive: true });
+  const ctx = {
+    cwd: root,
+    lang: "en",
+    templateDir: path.join(root, "no-such-template"),
+    options: { json: true },
+  };
+  const { restore: restoreOut } = captureStdout();
+  const { restore: restoreErr } = captureStderr();
+  let out = "";
+  try {
+    await doctor(ctx);
+  } finally {
+    out = restoreOut();
+    restoreErr();
+  }
+  // Strip everything before the first '{' so any leading human text (none
+  // expected when --json is set, but be defensive) doesn't break JSON.parse.
+  const firstBrace = out.indexOf("{");
+  assert.notEqual(firstBrace, -1, "JSON envelope must contain '{'");
+  let parsed;
+  try {
+    parsed = JSON.parse(out.slice(firstBrace));
+  } catch (err) {
+    assert.fail(`doctor --json output is not valid JSON: ${err.message}\n--- output ---\n${out}`);
+  }
+  assert.equal(parsed.ok, true);
+  assert.equal(parsed.command, "doctor");
+  assert.equal(typeof parsed.cli_version, "string");
+  assert.equal(parsed.lang, "en");
+  // The probe is a soft read of the npm registry; in sandboxed CI without
+  // network it returns status="unknown", but the field MUST exist.
+  assert.ok(parsed.available_update, "available_update field is required");
+  assert.equal(typeof parsed.available_update.current, "string");
+  assert.ok(
+    ["current", "outdated", "unknown"].includes(parsed.available_update.status),
+    `available_update.status must be one of current|outdated|unknown, got: ${parsed.available_update.status}`
+  );
+  // available_update.latest is either a parseable semver string or null.
+  const latest = parsed.available_update.latest;
+  assert.ok(
+    latest === null || /^\d+\.\d+\.\d+/.test(latest),
+    `available_update.latest must be null or semver-shaped, got: ${latest}`
+  );
+  // installed_platforms is always present, possibly empty.
+  assert.ok(Array.isArray(parsed.installed_platforms));
+  fs.rmSync(root, { recursive: true, force: true });
+});
+
+test("doctor: available_update shape is stable across current/outdated/unknown", async () => {
+  const root = mkRoot();
+  fs.mkdirSync(path.join(root, ".agent"), { recursive: true });
+  const ctx = {
+    cwd: root,
+    lang: "en",
+    templateDir: path.join(root, "no-such-template"),
+    options: { json: true },
+  };
+  const { restore: restoreOut } = captureStdout();
+  const { restore: restoreErr } = captureStderr();
+  let out = "";
+  try {
+    await doctor(ctx);
+  } finally {
+    out = restoreOut();
+    restoreErr();
+  }
+  const firstBrace = out.indexOf("{");
+  const parsed = JSON.parse(out.slice(firstBrace));
+  const u = parsed.available_update;
+  // All three states must share the same field shape so consumers don't
+  // need to handle different shapes per status.
+  for (const k of ["current", "latest", "outdated", "status", "checked_at"]) {
+    assert.ok(Object.prototype.hasOwnProperty.call(u, k), `available_update.${k} must exist`);
+  }
+  // outdated is strictly boolean or null — never undefined / string / number.
+  assert.ok(u.outdated === null || typeof u.outdated === "boolean");
+  // status must correlate with outdated: current→false, outdated→true,
+  // unknown→null. (This invariant is the contract /briefing relies on.)
+  if (u.status === "current") assert.equal(u.outdated, false);
+  if (u.status === "outdated") assert.equal(u.outdated, true);
+  if (u.status === "unknown") assert.equal(u.outdated, null);
+  fs.rmSync(root, { recursive: true, force: true });
+});

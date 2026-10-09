@@ -242,6 +242,12 @@ for (let i = 0; i < args.length; i++) {
     // Adding it here is a no-op cost when absent; honest reporting when present.
     options.dryRun = true;
   }
+  // P-AUTO-001: machine-readable envelope for `cortex-agent doctor`.
+  // Suppresses the human-friendly tables and emits one JSON object that
+  // includes an `available_update` field read-only probed from npm.
+  if (arg === "--json") {
+    options.json = true;
+  }
   if (arg === "--report") {
     options.report = args[i + 1] || "";
   } else if (arg && arg.startsWith("--report=")) {

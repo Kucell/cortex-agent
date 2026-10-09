@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- 下一个版本的条目写在这里 -->
 
+## [1.15.3] - 2026-10-09
+
+> **Patch**：P-AUTO-001 — `cortex-agent doctor --json` 新增 read-only `available_update` 探测。
+> **升级**：无需特殊步骤；install 新版即生效。
+
+### Added — `cortex-agent doctor --json` (P-AUTO-001)
+
+- **`available_update` 字段**：read-only `npm view cortex-agent version` 探测，1.5s timeout，软降级到 `status: "unknown"`。**不**自动执行 upgrade / update，**不**写 `.cortex-version`。
+- **`--json` 信封**：包含 `cli_version` / `template_outdated` / `missing_entries` / `installed_platforms` / `script_drift` / `memory_integrity` / `lang` / `available_update`。human 输出格式不变。
+- **`/briefing` 0.6 节**：消费 `available_update`，outdated 时显示 `upgrade_hint`，unknown / current 不打扰。
+
+### Fixed — `lib/cli/contract.js` 同步
+
+- 注册遗漏的 `agents` / `governance` / `migrate-legacy-memory` 三个 dispatch 命令，恢复 `tests/cli/cli-contract.test.js` 3/3 PASS。
+
 ## [1.15.0] - 2026-10-08
 
 > **Minor**：Runtime / Protocol / Extension 架构（M-040）、精确资源 State Sync（M-041）、State Class Registry 与治理索引重建（M-042）、Remote & Detached Governance，以及手动 npm Trusted Publishing 发布链。
