@@ -162,6 +162,7 @@ const { stateSync, installStateGithooks, fireAndForgetSync } = require("../lib/s
 const { governanceIndexCommand } = require("../lib/governance-index/cli.js");
 const { governanceMigrateCommand } = require("../lib/governance-migration/cli.js");
 const { migrateLegacyMemoryCommand } = require("../lib/commands/migrate-legacy-memory.cli.js");
+const { minimaxCliReconcile } = require("../lib/commands/reconcile");
 const { shouldAutoSyncCoordination } = require("../lib/commands/management/coordination.js");
 
 // GitHub issue #15: decisions / inbox / waitpoints write wrappers now return
