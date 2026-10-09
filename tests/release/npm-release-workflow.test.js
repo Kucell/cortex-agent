@@ -85,3 +85,14 @@ test("release publication rechecks current main and live approval at the effect 
   assert.match(workflow, /refusing npm publish/);
 });
 
+
+test("v1.15.4 publication and preflight run real reconcile CLI subprocess regressions", () => {
+  const preflight = fs.readFileSync(path.join(root, ".github/workflows/npm-release-preflight.yml"), "utf8");
+  const command = "node --test tests/commands/reconcile.test.js tests/cli/reconcile-entrypoint.test.js tests/cli/cli-contract.test.js";
+  for (const source of [workflow, preflight]) {
+    assert.match(source, /Verify shipped reconcile CLI entrypoint/);
+    assert.ok(source.includes(command));
+    assert.match(source, /v1\.15\.4 requires the real reconcile CLI regression tests/);
+    assert.ok(source.indexOf("Verify shipped reconcile CLI entrypoint") < source.indexOf("npm pack --dry-run"));
+  }
+});
