@@ -24,6 +24,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - 注册遗漏的 `agents` / `governance` / `migrate-legacy-memory` 三个 dispatch 命令，恢复 `tests/cli/cli-contract.test.js` 3/3 PASS。
 
+### Fixed — `cortex-agent doctor --json` 静默 human 输出
+
+- 原 P-AUTO-001 commit 把 JSON envelope 加在 `doctor()` 末尾但未抑制前面的 human 表格，导致 `--json` 同时输出 human 文本和 JSON，无法被 jq / 脚本消费。修复：在 `doctor()` 入口按 `options.json` 临时静音 `console.log`，函数出口（`try/finally` 等价）恢复，保证 JSON envelope 单一输出。`probeAvailableUpdate()` / `process.stdout.write` 不受影响。
+- 测试加固：`tests/commands/doctor.test.js` 移除 `out.slice(firstBrace)` 兜底，改为断言首字符是 `{`，防止未来回归。
+
 ## [1.15.0] - 2026-10-08
 
 > **Minor**：Runtime / Protocol / Extension 架构（M-040）、精确资源 State Sync（M-041）、State Class Registry 与治理索引重建（M-042）、Remote & Detached Governance，以及手动 npm Trusted Publishing 发布链。
