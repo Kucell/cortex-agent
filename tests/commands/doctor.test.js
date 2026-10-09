@@ -375,13 +375,20 @@ test("doctor: --json emits a single JSON envelope with required fields", async (
     out = restoreOut();
     restoreErr();
   }
-  // Strip everything before the first '{' so any leading human text (none
-  // expected when --json is set, but be defensive) doesn't break JSON.parse.
-  const firstBrace = out.indexOf("{");
-  assert.notEqual(firstBrace, -1, "JSON envelope must contain '{'");
+  // --json must emit a single JSON document with no human tables before it.
+  // console.log is silenced inside doctor() when options.json === true, so
+  // the first character of stdout should be the opening brace. Any leading
+  // non-JSON text means the human path is leaking through, which would
+  // break consumers that pipe the output into jq / scripts.
+  const trimmed = out.trimStart();
+  assert.equal(
+    trimmed[0],
+    "{",
+    "doctor --json must start with {",
+  );
   let parsed;
   try {
-    parsed = JSON.parse(out.slice(firstBrace));
+    parsed = JSON.parse(trimmed);
   } catch (err) {
     assert.fail(`doctor --json output is not valid JSON: ${err.message}\n--- output ---\n${out}`);
   }
