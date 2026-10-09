@@ -9,8 +9,11 @@ const root = path.resolve(__dirname, "../..");
 const workflow = fs.readFileSync(path.join(root, ".github/workflows/npm-release.yml"), "utf8");
 const docs = fs.readFileSync(path.join(root, "docs/releasing.md"), "utf8");
 
-test("npm release workflow is manual-only and OIDC-enabled", () => {
+test("npm release stays manual-compatible and adds opt-in governed comment trigger", () => {
   assert.match(workflow, /workflow_dispatch:/);
+  assert.match(workflow, /issue_comment:/);
+  assert.match(workflow, /CORTEX_AUTO_RELEASE_ENABLED/);
+  assert.match(workflow, /verify-approved-release\.cjs/);
   assert.doesNotMatch(workflow, /\npush:\s*\n/);
   assert.match(workflow, /id-token:\s*write/);
   assert.match(workflow, /contents:\s*write/);
@@ -45,7 +48,8 @@ test("npm release workflow defaults to dry-run and supports current or version b
     assert.match(workflow, new RegExp("- " + releaseType));
   }
   assert.match(workflow, /default:\s*false/);
-  assert.match(workflow, /if: \$\{\{ !inputs\.publish \}\}/);
+  assert.match(workflow, /github\.event_name == 'workflow_dispatch' && !inputs\.publish/);
+  assert.match(workflow, /github\.event_name == 'issue_comment' \|\| inputs\.publish/);
 });
 
 test("npm release workflow is retry-safe for published versions and GitHub releases", () => {
@@ -61,4 +65,12 @@ test("release documentation names the exact npm Trusted Publisher workflow", () 
   assert.match(docs, /Repository: `cortex-agent`/);
   assert.match(docs, /release_type=current/);
   assert.match(docs, /Never force-push `main`/);
+});
+
+test("automatic read-only preflight cannot trigger npm publication", () => {
+  const preflight = fs.readFileSync(path.join(root, ".github/workflows/npm-release-preflight.yml"), "utf8");
+  assert.match(preflight, /push:/);
+  assert.match(preflight, /permissions:\s*\n\s*contents: read/);
+  assert.match(preflight, /verify-approved-release\.test\.js/);
+  assert.doesNotMatch(preflight, /npm publish|gh release create|git push|id-token:\s*write/);
 });

@@ -6,7 +6,21 @@ Workflow:
 
 `.github/workflows/npm-release.yml`
 
-The workflow is manual-only (`workflow_dispatch`). Merging to `main` never publishes npm automatically.
+The existing workflow supports manual `workflow_dispatch` **and** a strictly gated owner-command trigger (`issue_comment`). Merging to `main` only starts automatic read-only preflight; it never publishes by itself.
+
+## Approval-driven release automation (opt-in)
+
+- **Automatic preflight:** `.github/workflows/npm-release-preflight.yml` runs after version-file changes land on `main`. This workflow has read-only permissions, runs architecture/contract tests and `npm pack --dry-run`, and never publishes.
+- **Publish trigger:** After release-preparation PR merges, the project owner posts the exact command below as a new comment **on the merged release-preparation PR**. The existing trusted workflow `npm-release.yml` then runs without clicking Actions / Run workflow.
+- **Activation prerequisite:** configure repository variable `CORTEX_AUTO_RELEASE_ENABLED=true` **only after** configuring a read-only credential in secret `CORTEX_GOVERNANCE_READ_TOKEN` capable of reading the private `Kucell/cortex-agent-agent` Decision/Waitpoint files. Prefer a short-lived GitHub App installation token; do not use npm tokens or put credentials in versioned files.
+- The release gate must verify: repository owner as commenter, merged release-prep PR, PR merged commit equals current `main`, strictly allowed metadata/test files, distinct independently approving reviewer on the exact source PR SHA, matching **approved release Decision** and **released Waitpoint** in the canonical private governance main bound to `release:cortex-agent@<actual-main-commit>`, non-expired gate, and the package version matching the requested version.
+- **Command format:** `/cortex-release publish v1.15.4 decision=D-release-... waitpoint=WP-release-...`. Substitute the actual IDs created by the authoritative `/release` owner after the exact-commit dry-run / approval process.
+- Failure to verify anything (including unavailable private governance credential) blocks publication; no fallback to simulated approvals or `--force`.
+- Publisher remains `npm-release.yml` with npm Trusted Publishing/OIDC. Automatic approvals use `release_type=current`, `dist_tag=latest` and the existing validations/retry logic. Normal manual workflow dispatch remains a fallback.
+- PR #48 (CLI hotfix) and PR #51 (v1.15.4 release-preparation metadata) require independent Review and merge in that order before an automatic approval comment can succeed. Do not confuse a GitHub PR comment with the authoritative Cortex Decision/Waitpoint itself.
+
+**Important:** A pull request that adds this automation cannot activate the trigger until it is separately reviewed and merged. The automatic publish path is disabled by default. Do not enable it without verified private-governance read access and a live review/approval process.
+
 
 ## Security model
 
