@@ -22,6 +22,7 @@ function fixture() {
     changed_paths: ["lib/next-action/advisor.js", "tests/next-action/advisor.test.js"],
     patch_digest: "sha256:" + "d".repeat(64),
     pull_request_url: "https://github.com/Kucell/cortex-agent/pull/52",
+    ci_run_url: "https://github.com/Kucell/cortex-agent/actions/runs/37903768742",
     test_status: "not-verified",
     observed_at: "2026-10-09T07:00:00.000Z",
   };
@@ -41,6 +42,7 @@ test("deterministic digest, append-only scoped namespace, permanent no-authority
   assert.equal(a.record.effect_permitted, false);
   assert.equal(a.record.canonical_governance_mutation, false);
   assert.equal(a.record.task_ref, null);
+  assert.equal(a.record.ci_run_url, "https://github.com/Kucell/cortex-agent/actions/runs/37903768742");
 });
 
 test("reject unknown authority/approval injection and modified plan before any API effect", async () => {
@@ -68,6 +70,7 @@ test("review-only branch restriction, repo collision, and bad source identifiers
   error("ERR_CHAT_REVIEW_SHA_INVALID", () => prepareChatGitHubReview({ ...fixture(), governance_gitlink_sha: "a".repeat(64) }));
   error("ERR_CHAT_REVIEW_SHA_INVALID", () => prepareChatGitHubReview({ ...fixture(), product_head_sha: "ABC" }));
   error("ERR_CHAT_REVIEW_PR_MISMATCH", () => prepareChatGitHubReview({ ...fixture(), pull_request_url: "https://github.com/other/repo/pull/2" }));
+  error("ERR_CHAT_REVIEW_CI_MISMATCH", () => prepareChatGitHubReview({ ...fixture(), ci_run_url: "https://github.com/other/repo/actions/runs/3" }));
 });
 
 test("reject unknown action/status, invalid date, and file path escapes", () => {
