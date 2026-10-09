@@ -315,3 +315,61 @@ test("E-FS-03 rejects gsr1 correlation identifier and uppercase filesystem diges
     advisoryNotAuthority(p);
   }
 });
+
+
+// E review #6082862886: every advertised support fact is bound to the
+// currently observed governance revision, never to a merely well-formed token.
+for (const signal of ["sync_available","manual_resume_available","local_executor_proven","automatic_dispatch_supported_for_this_sink"]) {
+ test(`E-REV-01 ${signal}: stale same-kind source revision cannot claim supported`,()=>{
+  const f=fixture();
+  if (signal==="local_executor_proven") f.mode="M1";
+  if (signal==="automatic_dispatch_supported_for_this_sink") f.backend_consistency=backendProof();
+  const mode=signal==="local_executor_proven"?"M1":"M2";
+  f.support[signal]=supportSignal(signal,mode,true);
+  f.support[signal].source_revision={...G,value:"7".repeat(40)};
+  const s=build(f).scoped_support[signal];
+  assert.equal(s.value,null);
+  assert.ok(["not_observed","conflict","stale"].includes(s.evidence_status));
+  assert.equal(build(f).execution_authorized,false);
+ });
+ test(`E-REV-02 ${signal}: identical revision value but wrong domain cannot claim supported`,()=>{
+  const f=fixture();
+  if (signal==="local_executor_proven") f.mode="M1";
+  if (signal==="automatic_dispatch_supported_for_this_sink") f.backend_consistency=backendProof();
+  const mode=signal==="local_executor_proven"?"M1":"M2";
+  f.support[signal]=supportSignal(signal,mode,true);
+  f.support[signal].source_revision={domain:"product_commit",store_kind:"git",value:G.value};
+  const s=build(f).scoped_support[signal];
+  assert.equal(s.value,null);
+  advisoryNotAuthority(build(f));
+ });
+ test(`E-REV-05 ${signal}: same string value but invalid other store kind is not support proof`,()=>{
+  const f=fixture();
+  if (signal==="local_executor_proven") f.mode="M1";
+  if (signal==="automatic_dispatch_supported_for_this_sink") f.backend_consistency=backendProof();
+  f.support[signal]=supportSignal(signal,signal==="local_executor_proven"?"M1":"M2",true);
+  f.support[signal].source_revision={domain:"governance_store",store_kind:"filesystem",value:G.value};
+  const s=build(f).scoped_support[signal];
+  assert.equal(s.value,null);
+  advisoryNotAuthority(build(f));
+ });
+}
+test("E-REV-03 missing current revision does not promote sync or automatic dispatch support",()=>{
+ const f=fixture();f.backend_consistency=backendProof();
+ f.support.sync_available=supportSignal("sync");
+ f.support.automatic_dispatch_supported_for_this_sink=supportSignal("auto");
+ f.governance_revision=null;
+ const p=build(f);
+ assert.equal(p.scoped_support.sync_available.value,null);
+ assert.equal(p.scoped_support.automatic_dispatch_supported_for_this_sink.value,null);
+ advisoryNotAuthority(p);
+});
+test("E-REV-04 exact current typed governance revision preserves observed local support",()=>{
+ const f=withFilesystemRevision("M1");
+ f.support.local_executor_proven=supportSignal("local","M1",true);
+ f.support.local_executor_proven.source_revision=FS_REVISION;
+ const p=build(f);
+ assert.equal(p.scoped_support.local_executor_proven.value,true);
+ assert.deepEqual(p.scoped_support.local_executor_proven.source_revision,FS_REVISION);
+ advisoryNotAuthority(p);
+});
