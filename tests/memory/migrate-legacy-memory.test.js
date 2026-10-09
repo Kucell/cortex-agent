@@ -262,3 +262,172 @@ test("renderFrontmatter: deterministic shape with metadata block preserved", () 
   assert.match(out, /^    ok: 1$/m);
 });
 
+
+// ─── M-LEGACY-MEM-002: extended pattern detection ───────────────────────────
+
+test("detectLegacyFiles: no_frontmatter (Pattern B) is detected", (t) => {
+  const { root } = freshProject(t);
+  const f = path.join(root, ".agent", "memory", "project", "control-gallery.md");
+  fs.writeFileSync(f, "# ControlGallery 实测对照流程\n\n正文");
+  const r = detectLegacyFiles({ projectRoot: root });
+  assert.equal(r.found, 1);
+  assert.equal(r.files[0].reason, "no_frontmatter");
+  assert.equal(r.files[0].hasFrontmatter, false);
+});
+
+test("detectLegacyFiles: partial_frontmatter (Pattern C) is detected", (t) => {
+  const { root } = freshProject(t);
+  const f = path.join(root, ".agent", "memory", "feedback", "partial.md");
+  fs.writeFileSync(f, "---\ndescription: only description\n---\n# Body\n");
+  const r = detectLegacyFiles({ projectRoot: root });
+  assert.equal(r.found, 1);
+  assert.equal(r.files[0].reason, "partial_frontmatter");
+  assert.deepEqual(r.files[0].missingKeys.sort(), ["created", "name", "tags", "type"]);
+});
+
+test("detectLegacyFiles: unknown_keys (Pattern D) is detected", (t) => {
+  const { root } = freshProject(t);
+  const f = path.join(root, ".agent", "memory", "project", "unknown.md");
+  fs.writeFileSync(f, [
+    "---",
+    "name: unknown",
+    "description: d",
+    "type: project",
+    "created: 2026-09-01",
+    "updated: 2026-09-15",
+    "tags: [a]",
+    "---",
+    "# Body"
+  ].join("\n"));
+  const r = detectLegacyFiles({ projectRoot: root });
+  assert.equal(r.found, 1);
+  assert.equal(r.files[0].reason, "unknown_keys");
+  assert.deepEqual(r.files[0].unknownKeys, ["updated"]);
+});
+
+test("detectLegacyFiles: value_violation (Pattern E) is detected", (t) => {
+  const { root } = freshProject(t);
+  const f = path.join(root, ".agent", "memory", "project", "badtag.md");
+  fs.writeFileSync(f, [
+    "---",
+    "name: badtag",
+    "description: d",
+    "type: project",
+    "created: 2026-09-01",
+    "tags: [ValidTag, M-049]",
+    "---",
+    "# Body"
+  ].join("\n"));
+  const r = detectLegacyFiles({ projectRoot: root });
+  assert.equal(r.found, 1);
+  assert.equal(r.files[0].reason, "value_violation");
+  assert.ok(r.files[0].valueErrors.length >= 1);
+});
+
+test("planMigration: Pattern B (no frontmatter) fills name/type/created from defaults", (t) => {
+  const { root } = freshProject(t);
+  const f = path.join(root, ".agent", "memory", "project", "rm-r1.md");
+  fs.writeFileSync(f, "# RM-001 Contract Draft Ready\n\n");
+  const r = planMigration({ projectRoot: root });
+  assert.equal(r.planned.length, 1);
+  const p = r.planned[0];
+  assert.equal(p.targetType, "project");
+  assert.equal(p.targetSlug, "rm-r1");
+  assert.equal(p.description, "RM-001 Contract Draft Ready");
+  assert.ok(/^\d{4}-\d{2}-\d{2}$/.test(p.created));
+  assert.ok(Array.isArray(p.tags));
+});
+
+test("planMigration: Pattern E (value_violation) sanitizes tags", (t) => {
+  const { root } = freshProject(t);
+  const f = path.join(root, ".agent", "memory", "project", "sanitize-tags.md");
+  fs.writeFileSync(f, [
+    "---",
+    "name: sanitize-tags",
+    "description: d",
+    "type: project",
+    "created: 2026-09-01",
+    "tags: [ValidTag, M-049]",
+    "---",
+    "# Body"
+  ].join("\n"));
+  const r = planMigration({ projectRoot: root });
+  assert.equal(r.planned.length, 1);
+  const p = r.planned[0];
+  assert.deepEqual(p.tags, ["validtag", "m-049"]);
+});
+
+test("planMigration: Pattern D (unknown_keys) moves unknowns to metadata", (t) => {
+  const { root } = freshProject(t);
+  const f = path.join(root, ".agent", "memory", "project", "unknown.md");
+  fs.writeFileSync(f, [
+    "---",
+    "name: unknown",
+    "description: d",
+    "type: project",
+    "created: 2026-09-01",
+    "updated: 2026-09-15",
+    "tags: [a]",
+    "---",
+    "# Body"
+  ].join("\n"));
+  const r = planMigration({ projectRoot: root });
+  const p = r.planned[0];
+  assert.equal(p.metadata.updated, "2026-09-15");
+  assert.equal(p.tags.length, 1);
+  assert.equal(p.tags[0], "a");
+});
+
+test("planMigration: Pattern E (description length > 200) truncates to 200", (t) => {
+  const { root } = freshProject(t);
+  const f = path.join(root, ".agent", "memory", "project", "long-desc.md");
+  const longDesc = "a".repeat(450);
+  fs.writeFileSync(f, [
+    "---",
+    "name: long-desc",
+    "description: \"" + longDesc + "\"",
+    "type: project",
+    "created: 2026-09-01",
+    "tags: [a]",
+    "---",
+    "# Body"
+  ].join("\n"));
+  const r = planMigration({ projectRoot: root });
+  const p = r.planned[0];
+  assert.ok(p.description.length <= 200, "desc length=" + p.description.length);
+});
+
+test("integration: migrated Pattern B (no_frontmatter) passes memory-validate with 0 schema issue", (t) => {
+  const { root, memoryRoot } = freshProject(t);
+  const f = path.join(root, ".agent", "memory", "project", "no-fm.md");
+  fs.writeFileSync(f, "# No Frontmatter Topic\n\n正文");
+  const plan = planMigration({ projectRoot: root });
+  const result = applyMigration(plan, { confirm: true });
+  assert.equal(result.applied, 1);
+  const r = validateMemory({ projectRoot: root });
+  const schemaIssues = (r.issues || []).filter(i => i.kind === "schema");
+  assert.equal(schemaIssues.length, 0, JSON.stringify(schemaIssues, null, 2));
+});
+
+test("integration: migrated Pattern D (unknown_keys) passes memory-validate with 0 schema issue", (t) => {
+  const { root } = freshProject(t);
+  const f = path.join(root, ".agent", "memory", "project", "unknown.md");
+  fs.writeFileSync(f, [
+    "---",
+    "name: unknown",
+    "description: d",
+    "type: project",
+    "created: 2026-09-01",
+    "updated: 2026-09-15",
+    "tags: [a, b]",
+    "---",
+    "# Body"
+  ].join("\n"));
+  const plan = planMigration({ projectRoot: root });
+  const result = applyMigration(plan, { confirm: true });
+  assert.equal(result.applied, 1);
+  const r = validateMemory({ projectRoot: root });
+  const schemaIssues = (r.issues || []).filter(i => i.kind === "schema");
+  assert.equal(schemaIssues.length, 0, JSON.stringify(schemaIssues, null, 2));
+});
+
