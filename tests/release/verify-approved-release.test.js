@@ -13,6 +13,8 @@ const b64 = data => ({encoding:"base64",content:Buffer.from(JSON.stringify(data)
 function http(uri) {
   if (uri.includes("/pulls/51/files")) return Promise.resolve(ok([{filename:"package.json",status:"modified"},{filename:"CHANGELOG.md",status:"modified"}]));
   if (uri.includes("/pulls/51/reviews")) return Promise.resolve(ok(reviews));
+  if (uri.includes("/collaborators/separate-reviewer/permission")) return Promise.resolve(ok({permission:"write"}));
+  if (uri.includes("/collaborators/security-reviewer/permission")) return Promise.resolve(ok({permission:"write"}));
   if (uri.endsWith("/pulls/51")) return Promise.resolve(ok(pr));
   if (uri.endsWith("/git/ref/heads/main")) return Promise.resolve(ok({object:{sha}}));
   if (uri.includes("/decisions/")) return Promise.resolve(ok(b64(decision)));
@@ -68,6 +70,17 @@ test("missing release files or active review objection block release",async()=>{
  }}));
  await assert.rejects(()=>verifyApproval({...opts(),http:uri=>{
    if(uri.includes("/pulls/51/reviews"))return Promise.resolve(ok([...reviews,{state:"CHANGES_REQUESTED",user:{login:"security-reviewer"},commit_id:pr.head.sha}]));
+   return http(uri);
+ }}));
+});
+
+test("approval from a read-only or unknown GitHub user never authorizes release",async()=>{
+ await assert.rejects(()=>verifyApproval({...opts(),http:uri=>{
+   if(uri.includes("/collaborators/separate-reviewer/permission")) return Promise.resolve(ok({permission:"read"}));
+   return http(uri);
+ }}));
+ await assert.rejects(()=>verifyApproval({...opts(),http:uri=>{
+   if(uri.includes("/collaborators/separate-reviewer/permission")) return Promise.resolve({ok:false,status:404});
    return http(uri);
  }}));
 });
