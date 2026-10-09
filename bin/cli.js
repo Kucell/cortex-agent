@@ -161,6 +161,7 @@ const { eventBusCommand } = require("../lib/event-bus/cli");
 const { stateSync, installStateGithooks, fireAndForgetSync } = require("../lib/state-sync/index.js");
 const { governanceIndexCommand } = require("../lib/governance-index/cli.js");
 const { governanceMigrateCommand } = require("../lib/governance-migration/cli.js");
+const { migrateLegacyMemoryCommand } = require("../lib/commands/migrate-legacy-memory.cli.js");
 const { shouldAutoSyncCoordination } = require("../lib/commands/management/coordination.js");
 
 // GitHub issue #15: decisions / inbox / waitpoints write wrappers now return
@@ -744,7 +745,11 @@ async function initModeGeneral() {
       }
       break;
     }
-    case "governance-migrate": {
+    case "migrate-legacy-memory": {
+      migrateLegacyMemoryCommand(ctx);
+      break;
+    }
+        case "governance-migrate": {
       const result = governanceMigrateCommand(ctx);
       if (result && result.ok && result.effect && result.effect.kind === "mutation" && result.effect.committed) {
         fireAndForgetSync({ ...l1Ctx, cwd: result.project_root }, { paths: result.effect.paths }).catch(() => {});
