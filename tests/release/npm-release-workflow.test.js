@@ -103,7 +103,15 @@ test("manual publish cannot bypass the Cortex release gate", () => {
   }
   const gate = "if: ${{ github.event_name == 'issue_comment' || inputs.publish }}";
   const lines = workflow.split("\n").filter(line => line.trim() === gate);
-  assert.equal(lines.length, 3, "all three authorization checkpoints must cover manual publish");
+  assert.ok(lines.length >= 3, "all authorization checkpoints must cover manual publish");
+  for (const name of [
+    "Verify exact-head Cortex release authorization",
+    "Revalidate Cortex authorization before Git tag write",
+    "Revalidate Cortex authorization at npm effect boundary"
+  ]) {
+    const segment = "- name: " + name + "\n        " + gate;
+    assert.ok(workflow.includes(segment), "unprotected authorization checkpoint: " + name);
+  }
   assert.match(workflow, /Revalidate Cortex authorization before Git tag write/);
   assert.match(workflow, /Revalidate Cortex authorization at npm effect boundary/);
   assert.match(workflow, /github\.event_name == 'workflow_dispatch' && !inputs\.publish/);
