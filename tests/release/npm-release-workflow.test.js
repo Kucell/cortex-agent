@@ -42,15 +42,19 @@ test("npm release workflow validates before any release write", () => {
   assert.ok(publish > push);
 });
 
-test("npm release workflow defaults to dry-run and supports current or version bumps", () => {
-  assert.match(workflow, /default:\s*current/);
-  for (const releaseType of ["current", "patch", "minor", "major"]) {
-    assert.match(workflow, new RegExp("- " + releaseType));
-  }
+test("npm release workflow exposes just one publish checkbox and keeps read-only dry run default", () => {
+  assert.match(workflow, /workflow_dispatch:/);
+  assert.match(workflow, /publish:\s*\n\s*description:/);
   assert.match(workflow, /default:\s*false/);
+  for (const hidden of ["release_pr:", "expected_sha:", "decision_id:", "waitpoint_id:", "release_type:", "dist_tag:"]) {
+    assert.ok(!workflow.includes(hidden), "unnecessary human input " + hidden);
+  }
+  assert.match(workflow, /RELEASE_TYPE: current/);
+  assert.match(workflow, /DIST_TAG: latest/);
   assert.match(workflow, /github\.event_name == 'workflow_dispatch' && !inputs\.publish/);
-  assert.match(workflow, /github\.event_name == 'issue_comment' \|\| inputs\.publish/);
+  assert.match(workflow, /github\.event_name == 'issue_comment' \\|\\| inputs\.publish/);
 });
+
 
 test("npm release workflow is retry-safe for published versions and GitHub releases", () => {
   assert.match(workflow, /is already published; treating npm publish as completed/);
@@ -97,23 +101,83 @@ test("v1.15.4 publication and preflight run real reconcile CLI subprocess regres
   }
 });
 
-test("manual publish cannot bypass the Cortex release gate", () => {
-  for (const input of ["release_pr:", "expected_sha:", "decision_id:", "waitpoint_id:"]) {
-    assert.ok(workflow.includes(input), "Missing manual release input " + input);
-  }
-  const gate = "if: ${{ github.event_name == 'issue_comment' || inputs.publish }}";
-  const lines = workflow.split("\n").filter(line => line.trim() === gate);
-  assert.ok(lines.length >= 3, "all authorization checkpoints must cover manual publish");
-  for (const name of [
+test("one-click owner manual dispatch and automatic comment path both have three strict auth checks", () => {
+  const checkSteps = [
     "Verify exact-head Cortex release authorization",
     "Revalidate Cortex authorization before Git tag write",
     "Revalidate Cortex authorization at npm effect boundary"
-  ]) {
-    const segment = "- name: " + name + "\n        " + gate;
-    assert.ok(workflow.includes(segment), "unprotected authorization checkpoint: " + name);
+  ];
+  const checkedGate = "if: ${{ github.event_name == 'issue_comment' || inputs.publish }}";
+  for (const name of checkSteps) {
+    const stepStart=workflow.indexOf("- name: "+name);
+    assert.ok(stepStart>0, "missing gate "+name);
+    const nextStep=workflow.indexOf("\n      - ",stepStart+10);
+    const block=workflow.slice(stepStart,nextStep<0?undefined:nextStep);
+    assert.ok(block.includes(checkedGate), "unprotected gate "+name);
+    assert.ok(block.includes("node scripts/release/verify-owner-dispatch.cjs"), "owner gate missing "+name);
+    assert.ok(block.includes("node scripts/release/verify-approved-release.cjs"), "canonical gate missing "+name);
   }
-  assert.match(workflow, /Revalidate Cortex authorization before Git tag write/);
-  assert.match(workflow, /Revalidate Cortex authorization at npm effect boundary/);
-  assert.match(workflow, /github\.event_name == 'workflow_dispatch' && !inputs\.publish/);
-  assert.match(workflow, /github\.event_name == 'issue_comment' \|\| inputs\.publish/);
+  assert.match(workflow, /id-token: write/);
+  assert.match(workflow, /GITHUB_EVENT_NAME/);
+  assert.match(workflow, /npm-owner-dispatch-audit\.json/);
+});
+
+const { verifyOwnerDispatch } = require("../../scripts/release/verify-owner-dispatch.cjs");
+const sampleEvent = {
+  sender: {login:"Kucell"},
+  repository: {full_name:"Kucell/cortex-agent"},
+  inputs: {publish:"true"}
+};
+const sourceSha = "a".repeat(40);
+const dispatchOptions = () => ({
+  event:sampleEvent, eventName:"workflow_dispatch",actor:"Kucell",triggeringActor:"Kucell",
+  ref:"refs/heads/main",repo:"Kucell/cortex-agent",
+  sha:sourceSha, packageName:"cortex-agent",version:"1.15.4",
+  token:"DUMMY_TEST_GITHUB_TOKEN",runId:"38000000001",
+  http:async()=>({ok:true,async json(){return {object:{sha:sourceSha}};}})
+});
+test("explicit owner dispatch authorizes only the exact prepared main candidate",async()=>{
+  const receipt=await verifyOwnerDispatch(dispatchOptions());
+  assert.equal(receipt.authorization_mode,"github-owner-workflow-dispatch");
+  assert.equal(receipt.candidate_sha,sourceSha);
+  assert.equal(receipt.version,"1.15.4");
+  assert.equal(receipt.run_id,"38000000001");
+  assert.equal(receipt.authorized,true);
+  assert.doesNotMatch(JSON.stringify(receipt),/DUMMY_TEST_GITHUB_TOKEN/);
+});
+test("owner dispatch authorization blocks nonowner, other repo/ref and unchecked checkbox",async()=>{
+  const base=dispatchOptions();
+  for(const changes of [
+    {actor:"attacker"},
+    {triggeringActor:"other-collaborator"},
+    {triggeringActor:null},
+    {event:{...sampleEvent,sender:{login:"attacker"}}},
+    {ref:"refs/heads/release"},
+    {repo:"Kucell/attacker-repo"},
+    {eventName:"issue_comment"},
+    {event:{...sampleEvent,inputs:{publish:"false"}}},
+    {event:{...sampleEvent,inputs:{}}},
+    {version:"1.15.4; rm -rf /"},
+    {packageName:"wrong-package"},
+    {runId:""},
+  ]){
+    await assert.rejects(()=>verifyOwnerDispatch({...base,...changes}),/OWNER_DISPATCH_RELEASE_BLOCKED/);
+  }
+});
+test("owner dispatch refuses missing token, denied GitHub, network errors, and main drift",async()=>{
+  const base=dispatchOptions();
+  for(const changes of [
+    {token:null},
+    {http:async()=>({ok:false,status:403})},
+    {http:async()=>({ok:true,async json(){return {object:{sha:"b".repeat(40)}};}})},
+    {http:async()=>{throw Error("FAKE_TEST_SECRET");}},
+  ]){
+    await assert.rejects(()=>verifyOwnerDispatch({...base,...changes}),/OWNER_DISPATCH_RELEASE_BLOCKED/);
+  }
+});
+test("one-click has no silent schedule or push publishing trigger",()=>{
+  assert.doesNotMatch(workflow,/^\s*schedule:/m);
+  assert.doesNotMatch(workflow,/^\s*push:/m);
+  assert.match(workflow,/github.actor == github.repository_owner/);
+  assert.match(workflow,/npm-owner-dispatch-audit.json/);
 });

@@ -8,6 +8,44 @@ Workflow:
 
 The existing workflow supports manual `workflow_dispatch` **and** a strictly gated owner-command trigger (`issue_comment`). Merging to `main` only starts automatic read-only preflight; it never publishes by itself.
 
+## One-click GitHub Owner release (proposed streamlined mode)
+
+For the single-maintainer `Kucell/cortex-agent` release path, the product
+may use **GitHub-native owner dispatch as the explicit release authorization**.
+It is an alternative authorization surface, **not a fabricated Cortex
+Decision/Waitpoint**, and must be accepted by the separate project's governance
+policy before the code is merged and used.
+
+1. Finish and merge version metadata changes to `main` as usual.
+2. Go to **Actions → npm Release → Run workflow** and select `main`.
+3. Leave **Publish the prepared current version** unchecked to run the complete
+   read-only release preflight; check it to deliberately release the committed
+   version to npm `latest` and create the matching GitHub Tag and Release.
+   There are **no PR number, SHA, Decision ID or Waitpoint ID form inputs**.
+4. GitHub Actions verifies the trusted event actor is the repository owner
+   (`Kucell`), confirms checkout is exact remote `main`, reads package
+   name/version from the checked-out commit, runs frozen install, architecture
+   guard, product+CLI tests and npm package validation, and checks tag/registry
+   conflicts. It repeats exact-main+actor authorization before Git tagging
+   and before npm publishing.
+5. The only publish credential remains npm Trusted Publishing OIDC in
+   `npm-release.yml`. The workflow saves an owner-dispatch receipt with
+   repository, actor, version, exact commit and GitHub Actions run ID alongside
+   release evidence. It never embeds a PAT or npm token in that artifact.
+   Canonical governance may subsequently ingest this GitHub-native evidence;
+   it must not mislabel it as a resolved Decision or released Waitpoint.
+6. Direct GitHub-native publication is owner-only. Other projects and the
+   existing optional owner-comment automation retain the strict separate
+   governance Decision + Waitpoint approval verifier. The repo variable
+   `CORTEX_AUTO_RELEASE_ENABLED=false` still disables comment automation,
+   but does **not** prevent an explicit owner click on Run workflow.
+
+**Safety note:** Selecting "Publish" is the deliberate public release action.
+If the commit or version changes, the job stops and must be started again.
+A GitHub Actions success alone from an unchecked run is a dry-run, not
+evidence of npm publication. This change is a governance policy alteration,
+not merely a form redesign.
+
 ## Single-maintainer exception — v1.15.4 only
 
 A project with one authorized repository maintainer may release **v1.15.4 only**
