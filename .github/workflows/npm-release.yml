@@ -184,6 +184,21 @@ jobs:
           echo "target=$TARGET"
           echo "dist_tag=$DIST_TAG"
 
+      - name: Revalidate Cortex authorization before Git tag write
+        if: ${{ github.event_name == 'issue_comment' || inputs.publish }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          CORTEX_GOVERNANCE_READ_TOKEN: ${{ secrets.CORTEX_GOVERNANCE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          candidate="$(git rev-parse HEAD)"
+          upstream="$(git ls-remote origin refs/heads/main | cut -f1)"
+          if [[ "$candidate" != "$upstream" ]]; then
+            echo "::error::Release HEAD changed before tag; refusing release."
+            exit 1
+          fi
+          node scripts/release/verify-approved-release.cjs
+
       - name: Commit version and create tag
         if: ${{ github.event_name == 'issue_comment' || inputs.publish }}
         env:
