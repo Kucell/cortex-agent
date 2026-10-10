@@ -1241,9 +1241,9 @@ test("local-binding store round-trips a worktree whose absolute_path equals raw 
 // adapter. M-026 MS-001 must keep this chain passing; MS-002 is allowed
 // to extend it but must not regress.
 
-test("public-API chain: resolveLayout → parseLogicalUri → portablePath + workspaceInstanceDir + equalIdentity", () => {
+test("public-API chain: resolveLayout → parseLogicalUri → portablePath + workspaceInstanceDir + equalIdentity", withRoot("cortex-runtime-api-chain-", (_t, root) => {
   const layout = resolver.resolveLayout({
-    projectRoot: POSIX_ROOT,
+    projectRoot: root,
     projectId: "cortex-agent",
     repositoryId: "cortex-agent",
     workspaceId: "WS-alpha",
@@ -1255,7 +1255,7 @@ test("public-API chain: resolveLayout → parseLogicalUri → portablePath + wor
   assert.equal(parsed.kind, "logical_uri");
   const portableTarget = resolver.portablePath(layout, parsed);
   assert.equal(portableTarget,
-    path.join(POSIX_ROOT, ".agent", "runtime", "coordination", "tasks", "T-1"));
+    path.join(root, ".agent", "runtime", "coordination", "tasks", "T-1"));
   // Instance dir chain: factory output feeds workspaceInstanceDir.
   const ws = identity.workspaceId("WS-alpha");
   const host = identity.machineId("M-hostA0001");
@@ -1263,7 +1263,7 @@ test("public-API chain: resolveLayout → parseLogicalUri → portablePath + wor
   assert.equal(inst.kind, "workspace_instance_id");
   const instDir = resolver.workspaceInstanceDir(layout, inst);
   assert.equal(instDir,
-    path.join(POSIX_ROOT, ".agent", "runtime", "worktrees", "M-hostA0001::WS-alpha"));
+    path.join(root, ".agent", "runtime", "worktrees", "M-hostA0001::WS-alpha"));
   // Equality chain: typed records compare on value alone, no path leaks.
   assert.equal(identity.equalIdentity(layout.workspaceIdentity, ws), true);
   assert.equal(identity.equalIdentity(layout.machineIdentity, host), true);
@@ -1271,7 +1271,7 @@ test("public-API chain: resolveLayout → parseLogicalUri → portablePath + wor
   // Open the local-binding store against the same layout: the typed
   // factory outputs flow through without any re-shape step.
   const opened = localBinding.openStore({
-    projectRoot: POSIX_ROOT,
+    projectRoot: root,
     projectIdentity: layout.projectIdentity,
     repositoryIdentity: layout.repositoryIdentity,
     workspaceIdentity: layout.workspaceIdentity,
@@ -1281,7 +1281,7 @@ test("public-API chain: resolveLayout → parseLogicalUri → portablePath + wor
   // stays on the value string, no host-side canonicalisation.
   assert.equal(opened.layout.workspaceIdentity.value, "WS-alpha");
   assert.equal(opened.layout.machineIdentity.value, "M-hostA0001");
-});
+}));
 
 // ─── R10 Root-review: explicit null on non-nullable required fields ──────
 //

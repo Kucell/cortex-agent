@@ -47,7 +47,13 @@ task, use the host-provided `CODEX_THREAD_ID`; from an external terminal, set
 Server `thread/resume` and `turn/start` methods. Retain pending delivery when
 the thread or host is unavailable; never simulate delivery or ACK.
 
-Runtime data stays under `.agent-runtime/coordination/` and is Git ignored.
+Runtime data follows the Runtime Layout: the new layout writes to
+`<project>/.agent/runtime/coordination/`; before activation, an existing legacy
+namespace remains at `<project>/.agent-runtime/coordination/`. Runtime data
+must normally be Git ignored and must not be distributed in Team Packs.
+Never pass the independent governance checkout named `.agent/` as the project
+root: run from the outer project root or explicitly supply `--project <root>`.
+A bad root must fail closed, not create `.agent/.agent/runtime/`.
 Team Packs may distribute only `.agent/coordination/README.md`,
 `notification-policy.json`, and schemas; never journals, snapshots, leases,
 cursors, delivery records, sockets, PIDs, absolute paths, tokens, or prompts.

@@ -46,7 +46,12 @@ cortex-agent notification pump --project . --consumer coordinator \
 执行 `thread/resume` 与 `turn/start`。线程或宿主不可用时必须保留 pending，
 不得伪造投递或 ACK。
 
-运行态只保存在已 Git ignore 的 `.agent-runtime/coordination/`。Team Pack
+运行态路径遵循 Runtime Layout：新布局写入项目根目录下的
+`.agent/runtime/coordination/`；布局尚未激活且已有旧运行态时，继续使用
+`.agent-runtime/coordination/`。运行态默认应由 Git ignore 保护，不能随 Team Pack 分发。
+项目根目录不得指向独立治理仓自身的 `.agent/`：必须从外层项目根目录运行，
+或显式指定 `--project <项目根目录>`。错误根目录应拒绝写入，不得产生
+`.agent/.agent/runtime/` 自引用目录。Team Pack
 只能分发 `.agent/coordination/README.md`、`notification-policy.json` 与
 Schema；禁止分发 journal、snapshot、lease、cursor、delivery、socket、
 PID、绝对路径、令牌或完整 prompt。

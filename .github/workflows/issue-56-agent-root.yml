@@ -1,0 +1,36 @@
+name: Issue 56 Agent Root Safety
+
+on:
+  pull_request:
+    paths:
+      - "lib/runtime-layout/**"
+      - "lib/cross-project/runtime-root.js"
+      - "lib/coordination/notification-host.js"
+      - "templates/zh/.agent/skills/coordination/SKILL.md"
+      - "templates/en/.agent/skills/coordination/SKILL.md"
+      - "tests/runtime-layout/issue-56-agent-root.test.js"
+      - ".github/workflows/issue-56-agent-root.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  root-safety:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [18, 22, 24]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - name: Root guard and compatibility regressions
+        run: |
+          node --test tests/runtime-layout/issue-56-agent-root.test.js tests/runtime-layout/runtime-layout.test.js tests/cross-project/runtime-root.test.js tests/commands/management/coordination.test.js
+      - name: Source syntax
+        run: |
+          node --check lib/runtime-layout/resolver.js
+          node --check tests/runtime-layout/issue-56-agent-root.test.js
