@@ -9,6 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- 下一个版本的条目写在这里 -->
 
+## [1.15.4] - 2026-10-09
+
+> **Patch candidate**: fix the existing `cortex-agent reconcile` top-level MiniMax CLI handler binding. No new RDG CLI, ProjectDescriptor schema, GovernanceStore, or L3 autonomy behavior is released in this patch.
+
+### Fixed
+
+- Bind the existing `minimaxCliReconcile` export in `bin/cli.js` so the real `cortex-agent reconcile` command no longer raises a `ReferenceError`.
+- Add isolated actual-CLI subprocess regression tests (English/Chinese) and Node 18/22 CI to enforce successful read-only invocation without modifying project/HOME fixtures.
+- Align root npm package, lockfile, Claude plugin and Marketplace version metadata; add version-parity conformance to the focused validation gate.
+
+### Validation & Compatibility
+
+- Existing CLI signature and governance authority remain unchanged. No user data migration is needed; re-install/upgrade to receive the hotfix.
+- PR #48 exact-head GitHub CI: 14/14 checks successful, including Node 18/22 9/9 CLI-focused tests and M-040 265/265 tests at pre-release baseline. Final release-prep branch validation and release workflow must also pass before publication.
+- Baseline checkout post-job warning about missing `.gitmodules` for `.agent` is tracked independently by Issue #49 and must not be conflated with the CLI fix.
+- MS-007 governance proposal remains Draft PR #17. Additional public `remote` or `governance store` namespaces belong to a future minor after independent architecture and authorization gates.
+
 ## [1.15.3] - 2026-10-09
 
 > **Patch**：P-AUTO-001 — `cortex-agent doctor --json` 新增 read-only `available_update` 探测。
