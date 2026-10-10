@@ -25,6 +25,22 @@ on:
         required: true
         default: false
         type: boolean
+      release_pr:
+        description: "Merged release preparation PR number (required when publish=true)"
+        required: false
+        type: string
+      expected_sha:
+        description: "Exact approved main commit SHA (required when publish=true)"
+        required: false
+        type: string
+      decision_id:
+        description: "Approved Cortex release Decision ID (required when publish=true)"
+        required: false
+        type: string
+      waitpoint_id:
+        description: "Matching owner-released Waitpoint ID (required when publish=true)"
+        required: false
+        type: string
 
 permissions:
   contents: write
@@ -54,7 +70,7 @@ jobs:
           fetch-depth: 0
 
       - name: Verify exact-head Cortex release authorization
-        if: ${{ github.event_name == 'issue_comment' }}
+        if: ${{ github.event_name == 'issue_comment' || inputs.publish }}
         env:
           GITHUB_TOKEN: ${{ github.token }}
           CORTEX_GOVERNANCE_READ_TOKEN: ${{ secrets.CORTEX_GOVERNANCE_READ_TOKEN }}
@@ -209,7 +225,7 @@ jobs:
           fi
 
       - name: Revalidate Cortex authorization at npm effect boundary
-        if: ${{ github.event_name == 'issue_comment' }}
+        if: ${{ github.event_name == 'issue_comment' || inputs.publish }}
         env:
           GITHUB_TOKEN: ${{ github.token }}
           CORTEX_GOVERNANCE_READ_TOKEN: ${{ secrets.CORTEX_GOVERNANCE_READ_TOKEN }}
