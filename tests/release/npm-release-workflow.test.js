@@ -130,7 +130,7 @@ const sampleEvent = {
 };
 const sourceSha = "a".repeat(40);
 const dispatchOptions = () => ({
-  event:sampleEvent, eventName:"workflow_dispatch",actor:"Kucell",
+  event:sampleEvent, eventName:"workflow_dispatch",actor:"Kucell",triggeringActor:"Kucell",
   ref:"refs/heads/main",repo:"Kucell/cortex-agent",
   sha:sourceSha, packageName:"cortex-agent",version:"1.15.4",
   token:"DUMMY_TEST_GITHUB_TOKEN",runId:"38000000001",
@@ -149,6 +149,8 @@ test("owner dispatch authorization blocks nonowner, other repo/ref and unchecked
   const base=dispatchOptions();
   for(const changes of [
     {actor:"attacker"},
+    {triggeringActor:"other-collaborator"},
+    {triggeringActor:null},
     {event:{...sampleEvent,sender:{login:"attacker"}}},
     {ref:"refs/heads/release"},
     {repo:"Kucell/attacker-repo"},
