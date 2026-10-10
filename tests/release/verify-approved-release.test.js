@@ -84,3 +84,35 @@ test("approval from a read-only or unknown GitHub user never authorizes release"
    return http(uri);
  }}));
 });
+
+const manualEvent = {
+ sender:{login:"Kucell"},
+ repository:{full_name:"Kucell/cortex-agent"},
+ inputs:{
+  publish:"true",release_type:"current",dist_tag:"latest",release_pr:"51",
+  expected_sha:sha,decision_id:"D-release-1",waitpoint_id:"WP-release-1"
+ }
+};
+test("manual publishing uses exactly the same independent review and release gates",async()=>{
+ const result = await verifyApproval({...opts(),event:manualEvent,eventName:"workflow_dispatch"});
+ assert.deepEqual(result,{version:"1.15.4",sha,pr:51});
+});
+test("manual publish cannot bypass authorization via version, SHA, PR or actor drift",async()=>{
+ for (const inputs of [
+  {...manualEvent.inputs,release_type:"patch"},
+  {...manualEvent.inputs,dist_tag:"next"},
+  {...manualEvent.inputs,expected_sha:"b".repeat(40)},
+  {...manualEvent.inputs,decision_id:""},
+  {...manualEvent.inputs,waitpoint_id:""},
+  {...manualEvent.inputs,release_pr:"0"},
+  {...manualEvent.inputs,publish:"false"},
+ ]) {
+  await assert.rejects(()=>verifyApproval({...opts(),event:{...manualEvent,inputs},eventName:"workflow_dispatch"}));
+ }
+ await assert.rejects(()=>verifyApproval({...opts(),event:{...manualEvent,sender:{login:"attacker"}},eventName:"workflow_dispatch"}));
+ await assert.rejects(()=>verifyApproval({...opts(),event:manualEvent,eventName:"workflow_dispatch",actor:"attacker"}));
+ await assert.rejects(()=>verifyApproval({...opts(),event:manualEvent,eventName:"workflow_dispatch",governanceToken:null}));
+});
+test("unknown release event never becomes approval",async()=>{
+ await assert.rejects(()=>verifyApproval({...opts(),event:manualEvent,eventName:"push"}));
+});
