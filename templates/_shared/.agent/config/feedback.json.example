@@ -1,5 +1,4 @@
 {
-  "_comment": "P-001 Feedback Event Inbox (M-024). This file is an EXAMPLE only — it is NOT activated by `cortex-agent init` or `cortex-agent upgrade`. Copy it to .agent/config/feedback.json and edit to opt in. Default state is enabled=false; no events are written until you set enabled=true and (per adapter) the adapter flag.",
   "schema_version": 1,
   "enabled": false,
   "nudge": {

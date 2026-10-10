@@ -6,6 +6,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
+const { BUILTIN_DEFAULTS, mergeLayer } = require("../../lib/feedback/config");
 
 const ROOT = path.resolve(__dirname, "..", "..");
 const SHARED_EXAMPLE = path.join(ROOT, "templates", "_shared", ".agent", "config", "feedback.json.example");
@@ -24,6 +25,10 @@ test("VC-014 feedback.json.example exists in the shared template tree", () => {
   assert.equal(parsed.storage.retention_days, 30);
   assert.equal(parsed.storage.max_event_bytes, 16384);
   assert.equal(parsed.storage.max_events_per_day, 10000);
+  assert.doesNotThrow(
+    () => mergeLayer(BUILTIN_DEFAULTS, parsed),
+    "the shipped example must be valid when copied to .agent/config/feedback.json",
+  );
 });
 
 test("VC-014 zh and en README-feedback.md both exist and document exit codes", () => {
