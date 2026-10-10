@@ -16,7 +16,7 @@ The existing workflow supports manual `workflow_dispatch` **and** a strictly gat
 - The release gate must verify: repository owner as commenter, merged release-prep PR, PR merged commit equals current `main`, strictly allowed metadata/test files, distinct independently approving reviewer **with repository write/maintain/admin access** on the exact source PR SHA and no outstanding change request, matching **interactive-user-approved release Decision** and **Owner-released Waitpoint** in the canonical private governance main bound to `release:cortex-agent@<actual-main-commit>`, non-expired gate, and the package version matching the requested version. Recheck Git main, release tag and private governance approval immediately before the npm publish side effect.
 - **Command format:** `/cortex-release publish v1.15.4 decision=D-release-... waitpoint=WP-release-...`. Substitute the actual IDs created by the authoritative `/release` owner after the exact-commit dry-run / approval process.
 - Failure to verify anything (including unavailable private governance credential) blocks publication; no fallback to simulated approvals or `--force`.
-- Publisher remains `npm-release.yml` with npm Trusted Publishing/OIDC. Automatic approvals use `release_type=current`, `dist_tag=latest` and the existing validations/retry logic. Normal manual workflow dispatch remains a fallback.
+- Publisher remains `npm-release.yml` with npm Trusted Publishing/OIDC. Automatic approvals use `release_type=current`, `dist_tag=latest` and the existing validations/retry logic. **Manual dispatch remains available for validation and governed publication; `publish=true` is no longer an authorization bypass.** Both manual publish and owner-comment publish require the same live private Decision + released Waitpoint, independent write-authorized review, and exact-head verification.
 - PR #48 (CLI hotfix) and PR #51 (v1.15.4 release-preparation metadata) require independent Review and merge in that order before an automatic approval comment can succeed. Do not confuse a GitHub PR comment with the authoritative Cortex Decision/Waitpoint itself.
 
 **Important:** A pull request that adds this automation cannot activate the trigger until it is separately reviewed and merged. The automatic publish path is disabled by default. Do not enable it without verified private-governance read access and a live review/approval process.
@@ -87,7 +87,9 @@ Default: `false`.
 
 When `false`, the workflow performs validation and release planning only. It does not change Git, npm, tags, or GitHub Releases.
 
-When `true`, the workflow performs the real release.
+When `true`, the workflow publishes only **after the Cortex release gate passes** for the exact current main commit. On manual `workflow_dispatch`, provide `release_pr` (merged metadata PR), `expected_sha` (current main SHA), `decision_id` and `waitpoint_id` (live canonical private governance records). Only the owner may publish, with `release_type=current` and `dist_tag=latest`. `publish=false` remains a safe dry-run and does not require Decision/Waitpoint inputs; it does not release anything. Configure `CORTEX_GOVERNANCE_READ_TOKEN` for both publication methods.
+
+Do **not** use manual `publish=true` to avoid an unmet review or governance requirement. If the private-governance read token is absent, all publication attempts fail closed.
 
 ## Release sequence
 
