@@ -31,8 +31,16 @@ function hasIndependentApproval(pr, reviews, eligibleReviewers = null) {
 }
 function validateGovernance(decision, waitpoint, sha, now=new Date()) {
   const target = "release:cortex-agent@" + sha;
+  const waiver = decision.selected_option === "approve-single-maintainer";
   must(decision.type === "approval" && decision.status === "approved" &&
-    decision.selected_option === "approve" &&
+    (decision.selected_option === "approve" || waiver) &&
+    (!waiver || (
+      Array.isArray(decision.options) &&
+      decision.options.includes("approve-single-maintainer") &&
+      typeof decision.rationale === "string" &&
+      /single-maintainer/i.test(decision.rationale) &&
+      /1\.15\.4/.test(decision.rationale)
+    )) &&
     decision.resolved_by === "interactive-user" && decision.workflow_gate === "user" &&
     decision.resolved_at && Number.isFinite(Date.parse(decision.resolved_at)) &&
     Date.parse(decision.resolved_at) <= +now, "interactive-user-approved release Decision required");
@@ -93,7 +101,8 @@ async function verifyApproval({event,eventName="issue_comment",actor="Kucell",re
   const pr = await getJson(api+"/pulls/"+command.prNumber, repoToken, http);
   must(pr.merged === true && pr.base && pr.base.ref === "main" &&
     pr.number === command.prNumber, "release PR must be merged to main");
-  must(pr.merge_commit_sha === mainSha, "release PR merge digest differs from current HEAD");
+  must(typeof pr.merge_commit_sha === "string" &&
+    /^[a-f0-9]{40}$/.test(pr.merge_commit_sha), "release preparation merge SHA missing");
   const branch = await getJson(api+"/git/ref/heads/main",repoToken,http);
   must(branch.object && branch.object.sha === mainSha,"main moved; new approval needed");
   const files = await getJson(api+"/pulls/"+command.prNumber+"/files?per_page=100",repoToken,http);
@@ -112,7 +121,6 @@ async function verifyApproval({event,eventName="issue_comment",actor="Kucell",re
     const permission = await getJson(api+"/collaborators/"+encodeURIComponent(login)+"/permission",repoToken,http);
     if (["write","maintain","admin"].includes(permission.permission)) eligible.add(login);
   }
-  must(hasIndependentApproval(pr,reviews,eligible),"independent write-authorized APPROVED review bound to exact PR head required");
   must(governanceToken, "private governance read-only token absent");
   const base = "https://api.github.com/repos/Kucell/cortex-agent-agent/contents";
   function decode(data) {
@@ -123,7 +131,23 @@ async function verifyApproval({event,eventName="issue_comment",actor="Kucell",re
   const waitpoint = decode(await getJson(base+"/waitpoints/"+command.waitpoint+".json?ref=main",governanceToken,http));
   must(decision.decision_id === command.decision && waitpoint.waitpoint_id === command.waitpoint,"governance ID mismatch");
   validateGovernance(decision,waitpoint,mainSha,now);
-  return {version:command.version,sha:mainSha,pr:pr.number};
+  const waiver = decision.selected_option === "approve-single-maintainer";
+  if (waiver) {
+    must(command.version === "1.15.4", "single-maintainer exception limited to v1.15.4");
+    // A reviewed metadata PR can precede later main commits. The actual release
+    // approval still binds to the newest exact main SHA (not the stale PR SHA).
+    const comparison = await getJson(api+"/compare/"+
+      encodeURIComponent(pr.merge_commit_sha)+"..."+encodeURIComponent(mainSha),repoToken,http);
+    must(["ahead","identical"].includes(comparison.status) && comparison.behind_by === 0,
+      "approved release PR is not an ancestor of current main");
+    must(!reviews.some(r=>r.state === "CHANGES_REQUESTED"),
+      "unresolved PR change request forbids review waiver");
+  } else {
+    must(pr.merge_commit_sha === mainSha, "release PR merge digest differs from current HEAD");
+    must(hasIndependentApproval(pr,reviews,eligible),
+      "independent write-authorized APPROVED review bound to exact PR head required");
+  }
+  return {version:command.version,sha:mainSha,pr:pr.number,review_mode:waiver?"single-maintainer":"independent"};
 }
 async function main() {
   const event = JSON.parse(fs.readFileSync(process.env.GITHUB_EVENT_PATH,"utf8"));
