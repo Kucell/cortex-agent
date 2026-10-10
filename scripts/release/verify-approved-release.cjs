@@ -54,27 +54,54 @@ async function getJson(uri, token, http=fetch) {
   must(response.ok, "GitHub restricted resource read failed (HTTP "+response.status+")");
   return response.json();
 }
-async function verifyApproval({event,repo,mainSha,packageVersion,repoToken,governanceToken,http=fetch,now=new Date()}) {
+function resolveReleaseTrigger(event, eventName, actor, mainSha, packageVersion) {
+  must(actor === "Kucell", "only repository owner may request publication");
+  if (eventName === "issue_comment") {
+    must(event.action === "created" && event.issue && event.issue.pull_request &&
+      event.sender && event.sender.login === actor &&
+      event.comment && event.comment.user && event.comment.user.login === actor &&
+      event.comment.author_association === "OWNER", "GitHub repository owner on PR required");
+    const command = parseCommand(event.comment.body);
+    must(command.version === packageVersion, "version differs from committed package");
+    return {...command, prNumber:event.issue.number};
+  }
+  if (eventName === "workflow_dispatch") {
+    const values = event && event.inputs;
+    must(values && event.sender && event.sender.login === actor &&
+      event.repository && event.repository.full_name === "Kucell/cortex-agent",
+      "trusted manual workflow invocation required");
+    must(values.publish === true || values.publish === "true", "manual authorization gate only for publish");
+    must(values.release_type === "current" && values.dist_tag === "latest",
+      "manual publication must use prepared current version and latest tag");
+    must(typeof values.release_pr === "string" && /^[1-9][0-9]*$/.test(values.release_pr),
+      "real release-preparation PR number required");
+    must(typeof values.expected_sha === "string" && /^[a-f0-9]{40}$/.test(values.expected_sha) &&
+      values.expected_sha === mainSha, "exact intended main SHA required");
+    must(typeof values.decision_id === "string" && /^D-[A-Za-z0-9._-]+$/.test(values.decision_id),
+      "release Decision ID required");
+    must(typeof values.waitpoint_id === "string" && /^WP-[A-Za-z0-9._-]+$/.test(values.waitpoint_id),
+      "released Waitpoint ID required");
+    return {version:packageVersion,decision:values.decision_id,waitpoint:values.waitpoint_id,
+      prNumber:Number(values.release_pr)};
+  }
+  throw new Error("RELEASE_GATE_BLOCKED: unsupported release event");
+}
+async function verifyApproval({event,eventName="issue_comment",actor="Kucell",repo,mainSha,packageVersion,repoToken,governanceToken,http=fetch,now=new Date()}) {
   must(repo === "Kucell/cortex-agent", "wrong repository");
-  must(event.action === "created" && event.issue && event.issue.pull_request &&
-    event.sender && event.sender.login === "Kucell" &&
-    event.comment && event.comment.user && event.comment.user.login === "Kucell" &&
-    event.comment.author_association === "OWNER", "GitHub repository owner on PR required");
-  const command = parseCommand(event.comment.body);
-  must(command.version === packageVersion, "version differs from committed package");
+  const command = resolveReleaseTrigger(event,eventName,actor,mainSha,packageVersion);
   const api = "https://api.github.com/repos/Kucell/cortex-agent";
-  const pr = await getJson(api+"/pulls/"+event.issue.number, repoToken, http);
+  const pr = await getJson(api+"/pulls/"+command.prNumber, repoToken, http);
   must(pr.merged === true && pr.base && pr.base.ref === "main" &&
-    pr.number === event.issue.number, "release PR must be merged to main");
+    pr.number === command.prNumber, "release PR must be merged to main");
   must(pr.merge_commit_sha === mainSha, "release PR merge digest differs from current HEAD");
   const branch = await getJson(api+"/git/ref/heads/main",repoToken,http);
   must(branch.object && branch.object.sha === mainSha,"main moved; new approval needed");
-  const files = await getJson(api+"/pulls/"+event.issue.number+"/files?per_page=100",repoToken,http);
+  const files = await getJson(api+"/pulls/"+command.prNumber+"/files?per_page=100",repoToken,http);
   must(Array.isArray(files) && files.length > 0 && files.length < 100 &&
     files.every(f=>f && f.status !== "removed" && ALLOWED.has(f.filename)) &&
     files.some(f=>f.filename === "package.json") &&
     files.some(f=>f.filename === "CHANGELOG.md"), "release prep PR contains unreviewed paths or incomplete metadata");
-  const reviews = await getJson(api+"/pulls/"+event.issue.number+"/reviews?per_page=100",repoToken,http);
+  const reviews = await getJson(api+"/pulls/"+command.prNumber+"/reviews?per_page=100",repoToken,http);
   must(Array.isArray(reviews) && reviews.length < 100, "review evidence pagination incomplete");
   const eligible = new Set();
   // Public PRs may contain reviews from users without repository write rights.
@@ -101,11 +128,12 @@ async function verifyApproval({event,repo,mainSha,packageVersion,repoToken,gover
 async function main() {
   const event = JSON.parse(fs.readFileSync(process.env.GITHUB_EVENT_PATH,"utf8"));
   const pkg = JSON.parse(fs.readFileSync(path.join(__dirname,"..","..","package.json"),"utf8"));
-  const result = await verifyApproval({event,repo:process.env.GITHUB_REPOSITORY,mainSha:process.env.GITHUB_SHA,
+  const result = await verifyApproval({event,eventName:process.env.GITHUB_EVENT_NAME,
+    actor:process.env.GITHUB_ACTOR,repo:process.env.GITHUB_REPOSITORY,mainSha:process.env.GITHUB_SHA,
     packageVersion:pkg.version,repoToken:process.env.GITHUB_TOKEN,
     governanceToken:process.env.CORTEX_GOVERNANCE_READ_TOKEN});
   if (process.env.GITHUB_OUTPUT) fs.appendFileSync(process.env.GITHUB_OUTPUT,"target="+result.version+"\n");
   console.log("Governed release gate verified exact HEAD "+result.sha+" from merged PR #"+result.pr);
 }
 if (require.main === module) main().catch(e=>{console.error(e.message);process.exitCode=1;});
-module.exports = {parseCommand,hasIndependentApproval,validateGovernance,verifyApproval};
+module.exports = {parseCommand,hasIndependentApproval,validateGovernance,resolveReleaseTrigger,verifyApproval};
