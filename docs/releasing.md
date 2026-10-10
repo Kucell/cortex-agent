@@ -8,12 +8,42 @@ Workflow:
 
 The existing workflow supports manual `workflow_dispatch` **and** a strictly gated owner-command trigger (`issue_comment`). Merging to `main` only starts automatic read-only preflight; it never publishes by itself.
 
+## Single-maintainer exception — v1.15.4 only
+
+A project with one authorized repository maintainer may release **v1.15.4 only**
+without inventing a second GitHub reviewer, but this is **not** an implicit
+override of CI or governance approvals:
+
+1. The canonical private governance `/release` Decision must be genuinely
+   `approved`, `resolved_by=interactive-user`, `workflow_gate=user`,
+   `type=approval`, selected option **`approve-single-maintainer`**, and
+   `options` must explicitly include that option. Its `rationale` must mention
+   `single-maintainer` and `v1.15.4`.
+2. A matching `released` Waitpoint must be released by `/release` with
+   `workflow_gate=owner`. Both records must bind to the **actual current main**
+   using `release:cortex-agent@<mainSHA>`; prior 1.15.0 release records are invalid
+   for this candidate.
+3. The release-preparation PR must really have merged, modify only reviewed
+   metadata/verification paths, and its merge SHA must be an ancestor of current
+   main. It need not equal current main when later safe fixes landed. Any
+   `CHANGES_REQUESTED` review blocks the waiver.
+4. The release-workflow preflight, exact-head tests, packaging, npm/tag
+   collision checks and effect-time authority checks remain mandatory.
+   This exception does not change GitHub permissions, npm Trusted Publishing
+   or the Auto Release opt-in variable.
+5. Future versions require independent reviewer approval unless a separately
+   reviewed policy explicitly extends this exception. A chat message or PR
+   comment does not create authoritative Decision/Waitpoint records.
+
+The existing independent-review path remains the default when selected option
+is `approve`. **Do not falsify an APPROVED GitHub Review to activate this mode.**
+
 ## Approval-driven release automation (opt-in)
 
 - **Automatic preflight:** `.github/workflows/npm-release-preflight.yml` runs after version-file changes land on `main`. This workflow has read-only permissions, runs architecture/contract tests and `npm pack --dry-run`, and never publishes.
 - **Publish trigger:** After release-preparation PR merges, the project owner posts the exact command below as a new comment **on the merged release-preparation PR**. The existing trusted workflow `npm-release.yml` then runs without clicking Actions / Run workflow.
 - **Activation prerequisite:** configure repository variable `CORTEX_AUTO_RELEASE_ENABLED=true` **only after** configuring a read-only credential in secret `CORTEX_GOVERNANCE_READ_TOKEN` capable of reading the private `Kucell/cortex-agent-agent` Decision/Waitpoint files. Prefer a short-lived GitHub App installation token; do not use npm tokens or put credentials in versioned files.
-- The release gate must verify: repository owner as commenter, merged release-prep PR, PR merged commit equals current `main`, strictly allowed metadata/test files, distinct independently approving reviewer **with repository write/maintain/admin access** on the exact source PR SHA and no outstanding change request, matching **interactive-user-approved release Decision** and **Owner-released Waitpoint** in the canonical private governance main bound to `release:cortex-agent@<actual-main-commit>`, non-expired gate, and the package version matching the requested version. Recheck Git main, release tag and private governance approval immediately before the npm publish side effect.
+- The release gate must verify the exact main commit, actual merged release-preparation PR (matching main or an ancestor in the explicitly approved v1.15.4 single-maintainer mode), accepted file scope, private interactive-user-approved Decision and owner-released Waitpoint for the exact main, and current package version. An ordinary approval requires a distinct write-authorized reviewer; the explicit v1.15.4 `approve-single-maintainer` mode waives only this reviewer identity requirement. Active `CHANGES_REQUESTED` is never waived.
 - **Command format:** `/cortex-release publish v1.15.4 decision=D-release-... waitpoint=WP-release-...`. Substitute the actual IDs created by the authoritative `/release` owner after the exact-commit dry-run / approval process.
 - Failure to verify anything (including unavailable private governance credential) blocks publication; no fallback to simulated approvals or `--force`.
 - Publisher remains `npm-release.yml` with npm Trusted Publishing/OIDC. Automatic approvals use `release_type=current`, `dist_tag=latest` and the existing validations/retry logic. **Manual dispatch remains available for validation and governed publication; `publish=true` is no longer an authorization bypass.** Both manual publish and owner-comment publish require the same live private Decision + released Waitpoint, independent write-authorized review, and exact-head verification.
