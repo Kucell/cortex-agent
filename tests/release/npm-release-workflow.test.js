@@ -96,3 +96,15 @@ test("v1.15.4 publication and preflight run real reconcile CLI subprocess regres
     assert.ok(source.indexOf("Verify shipped reconcile CLI entrypoint") < source.indexOf("npm pack --dry-run"));
   }
 });
+
+test("manual publish cannot bypass the Cortex release gate", () => {
+  for (const input of ["release_pr:", "expected_sha:", "decision_id:", "waitpoint_id:"]) {
+    assert.ok(workflow.includes(input), "Missing manual release input " + input);
+  }
+  const gate = "if: ${{ github.event_name == 'issue_comment' || inputs.publish }}";
+  const lines = workflow.split("\n").filter(line => line.trim() === gate);
+  assert.equal(lines.length, 2, "both authorization checkpoints must cover manual publish");
+  assert.match(workflow, /Revalidate Cortex authorization at npm effect boundary/);
+  assert.match(workflow, /github\.event_name == 'workflow_dispatch' && !inputs\.publish/);
+  assert.match(workflow, /github\.event_name == 'issue_comment' \|\| inputs\.publish/);
+});
