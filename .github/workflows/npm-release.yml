@@ -5,42 +5,11 @@ on:
     types: [created]
   workflow_dispatch:
     inputs:
-      release_type:
-        description: "Version action"
-        required: true
-        default: current
-        type: choice
-        options:
-          - current
-          - patch
-          - minor
-          - major
-      dist_tag:
-        description: "npm dist-tag"
-        required: true
-        default: latest
-        type: string
       publish:
-        description: "Publish to npm and create the GitHub Release"
+        description: "Publish the prepared current version to npm and GitHub Releases"
         required: true
         default: false
         type: boolean
-      release_pr:
-        description: "Merged release preparation PR number (required when publish=true)"
-        required: false
-        type: string
-      expected_sha:
-        description: "Exact approved main commit SHA (required when publish=true)"
-        required: false
-        type: string
-      decision_id:
-        description: "Approved Cortex release Decision ID (required when publish=true)"
-        required: false
-        type: string
-      waitpoint_id:
-        description: "Matching owner-released Waitpoint ID (required when publish=true)"
-        required: false
-        type: string
 
 permissions:
   contents: write
@@ -54,7 +23,8 @@ concurrency:
 
 jobs:
   release:
-    # Opt-in. The private Cortex Decision + Waitpoint gate fails closed without an authorized read-only credential.
+    # One-click owner workflow_dispatch is an audited human release action.
+    # Comment-triggered automatic releases retain the canonical private Decision/Waitpoint gate.
     if: >-
       (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
       (github.event_name == 'issue_comment' && github.ref == 'refs/heads/main' &&
@@ -73,8 +43,14 @@ jobs:
         if: ${{ github.event_name == 'issue_comment' || inputs.publish }}
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          CORTEX_GOVERNANCE_READ_TOKEN: ${{ secrets.CORTEX_GOVERNANCE_READ_TOKEN }}
-        run: node scripts/release/verify-approved-release.cjs
+          CORTEX_GOVERNANCE_READ_TOKEN: ${{ github.event_name == 'issue_comment' && secrets.CORTEX_GOVERNANCE_READ_TOKEN || '' }}
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
+            node scripts/release/verify-owner-dispatch.cjs
+          else
+            node scripts/release/verify-approved-release.cjs
+          fi
 
       - uses: actions/setup-node@v4
         with:
@@ -130,7 +106,7 @@ jobs:
       - name: Prepare release version
         id: version
         env:
-          RELEASE_TYPE: ${{ github.event_name == 'issue_comment' && 'current' || inputs.release_type }}
+          RELEASE_TYPE: current
         run: |
           set -euo pipefail
 
@@ -149,7 +125,7 @@ jobs:
       - name: Validate release state
         env:
           TARGET: ${{ steps.version.outputs.target }}
-          RELEASE_TYPE: ${{ github.event_name == 'issue_comment' && 'current' || inputs.release_type }}
+          RELEASE_TYPE: current
         run: |
           set -euo pipefail
 
@@ -176,8 +152,8 @@ jobs:
         if: ${{ github.event_name == 'workflow_dispatch' && !inputs.publish }}
         env:
           TARGET: ${{ steps.version.outputs.target }}
-          RELEASE_TYPE: ${{ github.event_name == 'issue_comment' && 'current' || inputs.release_type }}
-          DIST_TAG: ${{ github.event_name == 'issue_comment' && 'latest' || inputs.dist_tag }}
+          RELEASE_TYPE: current
+          DIST_TAG: latest
         run: |
           echo "Dry run only; no repository or registry writes will occur."
           echo "release_type=$RELEASE_TYPE"
@@ -188,7 +164,7 @@ jobs:
         if: ${{ github.event_name == 'issue_comment' || inputs.publish }}
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          CORTEX_GOVERNANCE_READ_TOKEN: ${{ secrets.CORTEX_GOVERNANCE_READ_TOKEN }}
+          CORTEX_GOVERNANCE_READ_TOKEN: ${{ github.event_name == 'issue_comment' && secrets.CORTEX_GOVERNANCE_READ_TOKEN || '' }}
         run: |
           set -euo pipefail
           candidate="$(git rev-parse HEAD)"
@@ -197,13 +173,17 @@ jobs:
             echo "::error::Release HEAD changed before tag; refusing release."
             exit 1
           fi
-          node scripts/release/verify-approved-release.cjs
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
+            node scripts/release/verify-owner-dispatch.cjs
+          else
+            node scripts/release/verify-approved-release.cjs
+          fi
 
       - name: Commit version and create tag
         if: ${{ github.event_name == 'issue_comment' || inputs.publish }}
         env:
           TARGET: ${{ steps.version.outputs.target }}
-          RELEASE_TYPE: ${{ github.event_name == 'issue_comment' && 'current' || inputs.release_type }}
+          RELEASE_TYPE: current
         run: |
           set -euo pipefail
 
@@ -243,14 +223,20 @@ jobs:
         if: ${{ github.event_name == 'issue_comment' || inputs.publish }}
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          CORTEX_GOVERNANCE_READ_TOKEN: ${{ secrets.CORTEX_GOVERNANCE_READ_TOKEN }}
-        run: node scripts/release/verify-approved-release.cjs
+          CORTEX_GOVERNANCE_READ_TOKEN: ${{ github.event_name == 'issue_comment' && secrets.CORTEX_GOVERNANCE_READ_TOKEN || '' }}
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
+            node scripts/release/verify-owner-dispatch.cjs
+          else
+            node scripts/release/verify-approved-release.cjs
+          fi
 
       - name: Publish to npm with Trusted Publishing
         if: ${{ github.event_name == 'issue_comment' || inputs.publish }}
         env:
           TARGET: ${{ steps.version.outputs.target }}
-          DIST_TAG: ${{ github.event_name == 'issue_comment' && 'latest' || inputs.dist_tag }}
+          DIST_TAG: latest
         run: |
           set -euo pipefail
 
@@ -285,6 +271,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: npm-release-evidence
-          path: npm-release-pack-dry-run.json
+          path: |
+            npm-release-pack-dry-run.json
+            npm-owner-dispatch-audit.json
           if-no-files-found: warn
           retention-days: 30
