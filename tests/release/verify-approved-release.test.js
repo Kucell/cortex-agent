@@ -13,6 +13,7 @@ const b64 = data => ({encoding:"base64",content:Buffer.from(JSON.stringify(data)
 function http(uri) {
   if (uri.includes("/pulls/51/files")) return Promise.resolve(ok([{filename:"package.json",status:"modified"},{filename:"CHANGELOG.md",status:"modified"}]));
   if (uri.includes("/pulls/51/reviews")) return Promise.resolve(ok(reviews));
+  if (uri.includes("/compare/")) return Promise.resolve(ok({status:"ahead",ahead_by:1,behind_by:0}));
   if (uri.includes("/collaborators/separate-reviewer/permission")) return Promise.resolve(ok({permission:"write"}));
   if (uri.includes("/collaborators/security-reviewer/permission")) return Promise.resolve(ok({permission:"write"}));
   if (uri.endsWith("/pulls/51")) return Promise.resolve(ok(pr));
@@ -53,7 +54,7 @@ test("governance actor, workflow and expiry proofs fail closed",()=>{
  assert.throws(()=>validateGovernance(decision,{...waitpoint,expires_at:"not-a-time"},sha));
 });
 test("exact version, SHA, independent reviewer and governance gate pass",async()=>{
- assert.deepEqual(await verifyApproval(opts()),{version:"1.15.4",sha,pr:51});
+ assert.deepEqual(await verifyApproval(opts()),{version:"1.15.4",sha,pr:51,review_mode:"independent"});
 });
 test("nonowner, missing governance token, drift and unmerged PR fail closed",async()=>{
  await assert.rejects(()=>verifyApproval({...opts(),event:{...event,sender:{login:"attacker"}}}));
@@ -95,7 +96,7 @@ const manualEvent = {
 };
 test("manual publishing uses exactly the same independent review and release gates",async()=>{
  const result = await verifyApproval({...opts(),event:manualEvent,eventName:"workflow_dispatch"});
- assert.deepEqual(result,{version:"1.15.4",sha,pr:51});
+ assert.deepEqual(result,{version:"1.15.4",sha,pr:51,review_mode:"independent"});
 });
 test("manual publish cannot bypass authorization via version, SHA, PR or actor drift",async()=>{
  for (const inputs of [
@@ -115,4 +116,43 @@ test("manual publish cannot bypass authorization via version, SHA, PR or actor d
 });
 test("unknown release event never becomes approval",async()=>{
  await assert.rejects(()=>verifyApproval({...opts(),event:manualEvent,eventName:"push"}));
+});
+
+test("single maintainer release exception is explicit, version-bound and ancestry-checked", async () => {
+  const waiver = {...decision,selected_option:"approve-single-maintainer",
+    options:["approve","reject","approve-single-maintainer"],
+    rationale:"Single-maintainer review waiver for cortex-agent v1.15.4; user approved this exception after CI source audit"};
+  assert.equal(validateGovernance(waiver,waitpoint,sha),"release:cortex-agent@"+sha);
+  const run=await verifyApproval({...opts(),http:uri=>{
+    if (uri.includes("/decisions/")) return Promise.resolve(ok(b64(waiver)));
+    if (uri.includes("/pulls/51/reviews")) return Promise.resolve(ok([]));
+    return http(uri);
+  }});
+  assert.deepEqual(run,{version:"1.15.4",sha,pr:51,review_mode:"single-maintainer"});
+  await assert.rejects(()=>verifyApproval({...opts(),http:uri=>{
+    if (uri.includes("/decisions/")) return Promise.resolve(ok(b64(waiver)));
+    if (uri.includes("/pulls/51/reviews")) return Promise.resolve(ok([]));
+    if (uri.includes("/compare/")) return Promise.resolve(ok({status:"diverged",ahead_by:2,behind_by:1}));
+    return http(uri);
+  }}),/not an ancestor/);
+});
+test("waiver cannot be implicitly inferred from 'approve' or rationale alone",()=>{
+  assert.throws(()=>validateGovernance({...decision,selected_option:"approve-single-maintainer",options:["approve","reject"],
+    rationale:"single-maintainer v1.15.4"},waitpoint,sha));
+  assert.throws(()=>validateGovernance({...decision,selected_option:"approve-single-maintainer",options:["approve","reject","approve-single-maintainer"],
+    rationale:"v1.15.4"},waitpoint,sha));
+  assert.throws(()=>validateGovernance({...decision,selected_option:"approve-single-maintainer",options:["approve","reject","approve-single-maintainer"],
+    rationale:"single-maintainer but for v1.15.5"},waitpoint,sha));
+});
+test("waiver does not allow unanswered change-requested reviews",async()=>{
+  const waiver = {...decision,selected_option:"approve-single-maintainer",
+    options:["approve","reject","approve-single-maintainer"],
+    rationale:"single-maintainer v1.15.4 explicit review exception"};
+  await assert.rejects(()=>verifyApproval({...opts(),http:uri=>{
+    if (uri.includes("/decisions/")) return Promise.resolve(ok(b64(waiver)));
+    if (uri.includes("/pulls/51/reviews")) return Promise.resolve(ok([{
+      state:"CHANGES_REQUESTED",user:{login:"different-reviewer"},commit_id:pr.head.sha
+    }]));
+    return http(uri);
+  }}),/change request/);
 });
