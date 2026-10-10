@@ -760,7 +760,6 @@ async function initModeGeneral() {
     case "pr":          prCommand(ctx); break;
     case "event-bus":   eventBusCommand(ctx); break;
     case "state-sync":  await stateSync(l1Ctx); break;
-<<<<<<< HEAD
     case "governance":  governanceCommand(l1Ctx); break;
     case "governance-index": {
       const result = governanceIndexCommand(ctx);
@@ -773,11 +772,13 @@ async function initModeGeneral() {
       migrateLegacyMemoryCommand(ctx);
       break;
     }
-        case "governance-migrate": {
+    case "governance-migrate": {
       const result = governanceMigrateCommand(ctx);
       if (result && result.ok && result.effect && result.effect.kind === "mutation" && result.effect.committed) {
         fireAndForgetSync({ ...l1Ctx, cwd: result.project_root }, { paths: result.effect.paths }).catch(() => {});
-=======
+      }
+      break;
+    }
     case "feedback": {
       // P-001 / M-024: feedback subcommands never mutate global state,
       // never read prompts / transcripts / env vars beyond the explicit
@@ -795,7 +796,6 @@ async function initModeGeneral() {
         if (typeof result.exitCode === "number" && result.exitCode !== 0) {
           process.exitCode = result.exitCode;
         }
->>>>>>> 1476b06 (feat(feedback): P-001 Feedback Event Inbox (M-024 MS-001+MS-002))
       }
       break;
     }

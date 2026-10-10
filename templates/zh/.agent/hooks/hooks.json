@@ -100,20 +100,23 @@
         "hooks": [
           {
             "type": "command",
-<<<<<<< HEAD
             "command": "cortex-agent memory validate --quiet 2>&1",
             "timeout": 10
           }
         ],
         "description": "Session start: silently validate .agent/memory/MEMORY.md integrity (drift/missing/schema/orphan/duplicate/over-cap); one-line summary printed to session context if issues exist"
-=======
+      },
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
             "command": "node -e \"try{const {buildNudge}=require('cortex-agent/lib/feedback/nudge');const r=buildNudge({root:process.cwd()});for(const l of r.lines||[]){process.stdout.write(l+'\\n');}}catch(_){};exit 0\" >/dev/null 2>&1; exit 0",
             "async": true,
             "timeout": 5
           }
         ],
         "description": "P-001 / M-024：默认关闭、只读、非阻塞的本地反馈 nudge；未启用或异常一律零输出且 exit 0，不写事件、不读取 prompt/transcript/env"
->>>>>>> 1476b06 (feat(feedback): P-001 Feedback Event Inbox (M-024 MS-001+MS-002))
       }
     ],
     "PermissionRequest": [

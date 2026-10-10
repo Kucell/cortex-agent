@@ -9,6 +9,7 @@ const test = require("node:test");
 const { BUILTIN_DEFAULTS, mergeLayer } = require("../../lib/feedback/config");
 
 const ROOT = path.resolve(__dirname, "..", "..");
+const SHARED_TEMPLATE = path.join(ROOT, "templates", "_shared");
 const SHARED_EXAMPLE = path.join(ROOT, "templates", "_shared", ".agent", "config", "feedback.json.example");
 const ZH_README = path.join(ROOT, "templates", "zh", ".agent", "config", "README-feedback.md");
 const EN_README = path.join(ROOT, "templates", "en", ".agent", "config", "README-feedback.md");
@@ -67,13 +68,12 @@ test("VC-014 feedback nudge hook is wrapped in exit 0 and never reads prompts (d
   }
 });
 
-test("VC-014 .agent/feedback/ holds README and inbox/.gitkeep (zero event files committed)", () => {
-  const inbox = path.join(ROOT, ".agent", "feedback", "inbox");
-  const keep = path.join(inbox, ".gitkeep");
-  const readme = path.join(ROOT, ".agent", "feedback", "README.md");
-  assert.ok(fs.existsSync(readme));
-  assert.ok(fs.existsSync(keep));
-  // Walk the inbox and assert no event.json slipped in.
+test("VC-014 feedback inbox ships zero event files in the distributed template tree", () => {
+  // The shipped tree is templates/_shared/.agent/feedback/. The runtime
+  // .agent/feedback/ is provisioned by init/upgrade and is a submodule here,
+  // so asserting on it would test the local install, not the distribution.
+  const feedbackRoot = path.join(SHARED_TEMPLATE, ".agent", "feedback");
+  // Walk the whole feedback subtree and assert no event file slipped in.
   function walk(dir) {
     const out = [];
     let entries = [];
@@ -81,12 +81,16 @@ test("VC-014 .agent/feedback/ holds README and inbox/.gitkeep (zero event files 
     for (const e of entries) {
       const full = path.join(dir, e.name);
       if (e.isDirectory()) out.push(...walk(full));
-      else if (e.isFile() && e.name !== ".gitkeep") out.push(full);
+      else if (e.isFile() && e.name !== ".gitkeep" && !e.name.startsWith("README")) out.push(full);
     }
     return out;
   }
-  const stray = walk(inbox);
+  const stray = walk(feedbackRoot);
   assert.deepEqual(stray, [], `unexpected feedback files committed: ${stray.join(", ")}`);
+  // Both zh and en must document the surface; the shared example is opt-in.
+  assert.ok(fs.existsSync(ZH_README));
+  assert.ok(fs.existsSync(EN_README));
+  assert.ok(fs.existsSync(SHARED_EXAMPLE));
 });
 
 test("VC-014 bin/cli.js routes feedback without mutating other commands", () => {
