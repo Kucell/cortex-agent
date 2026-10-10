@@ -1,0 +1,68 @@
+name: npm Release Automatic Preflight
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - package.json
+      - package-lock.json
+      - .claude-plugin/plugin.json
+      - .claude-plugin/marketplace.json
+      - CHANGELOG.md
+  pull_request:
+    paths:
+      - .github/workflows/npm-release.yml
+      - .github/workflows/npm-release-preflight.yml
+      - scripts/release/**
+      - tests/release/**
+      - docs/releasing.md
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.19.0'
+      - name: Enable pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.13.1 --activate
+      - name: Frozen install
+        run: pnpm install --frozen-lockfile
+      - name: Validate automatic release gate and existing workflow
+        run: node --test tests/release/npm-release-workflow.test.js tests/release/verify-approved-release.test.js
+      - name: Run architecture and focused product checks
+        run: |
+          pnpm guard:m040
+          pnpm test:m040
+      - name: Verify shipped reconcile CLI entrypoint
+        run: |
+          set -euo pipefail
+          if [[ -f tests/cli/reconcile-entrypoint.test.js ]]; then
+            node --test tests/commands/reconcile.test.js tests/cli/reconcile-entrypoint.test.js tests/cli/cli-contract.test.js
+          elif [[ "$(node -p "require('./package.json').version")" == "1.15.4" ]]; then
+            echo "::error::v1.15.4 requires the real reconcile CLI regression tests"
+            exit 1
+          else
+            echo "CLI entrypoint test not introduced on this earlier base."
+          fi
+
+      - name: Dry-run package build (never publish on preflight)
+        run: npm pack --dry-run --json > npm-auto-preflight-pack.json
+      - name: Upload preflight evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-auto-release-preflight
+          path: npm-auto-preflight-pack.json
+          if-no-files-found: warn
+          retention-days: 14

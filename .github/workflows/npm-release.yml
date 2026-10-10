@@ -1,6 +1,8 @@
 name: npm Release
 
 on:
+  issue_comment:
+    types: [created]
   workflow_dispatch:
     inputs:
       release_type:
@@ -23,10 +25,28 @@ on:
         required: true
         default: false
         type: boolean
+      release_pr:
+        description: "Merged release preparation PR number (required when publish=true)"
+        required: false
+        type: string
+      expected_sha:
+        description: "Exact approved main commit SHA (required when publish=true)"
+        required: false
+        type: string
+      decision_id:
+        description: "Approved Cortex release Decision ID (required when publish=true)"
+        required: false
+        type: string
+      waitpoint_id:
+        description: "Matching owner-released Waitpoint ID (required when publish=true)"
+        required: false
+        type: string
 
 permissions:
   contents: write
   id-token: write
+  pull-requests: read
+  issues: read
 
 concurrency:
   group: npm-release
@@ -34,7 +54,13 @@ concurrency:
 
 jobs:
   release:
-    if: github.ref == 'refs/heads/main'
+    # Opt-in. The private Cortex Decision + Waitpoint gate fails closed without an authorized read-only credential.
+    if: >-
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'issue_comment' && github.ref == 'refs/heads/main' &&
+       github.actor == github.repository_owner && vars.CORTEX_AUTO_RELEASE_ENABLED == 'true' &&
+       github.event.issue.pull_request &&
+       startsWith(github.event.comment.body, '/cortex-release publish v'))
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -42,6 +68,13 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Verify exact-head Cortex release authorization
+        if: ${{ github.event_name == 'issue_comment' || inputs.publish }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          CORTEX_GOVERNANCE_READ_TOKEN: ${{ secrets.CORTEX_GOVERNANCE_READ_TOKEN }}
+        run: node scripts/release/verify-approved-release.cjs
 
       - uses: actions/setup-node@v4
         with:
@@ -79,13 +112,25 @@ jobs:
       - name: Run focused product validation
         run: pnpm test:m040
 
+      - name: Verify shipped reconcile CLI entrypoint
+        run: |
+          set -euo pipefail
+          if [[ -f tests/cli/reconcile-entrypoint.test.js ]]; then
+            node --test tests/commands/reconcile.test.js tests/cli/reconcile-entrypoint.test.js tests/cli/cli-contract.test.js
+          elif [[ "$(node -p "require('./package.json').version")" == "1.15.4" ]]; then
+            echo "::error::v1.15.4 requires the real reconcile CLI regression tests"
+            exit 1
+          else
+            echo "CLI entrypoint test not introduced on this earlier base."
+          fi
+
       - name: Verify package can be packed
         run: npm pack --dry-run --json > npm-release-pack-dry-run.json
 
       - name: Prepare release version
         id: version
         env:
-          RELEASE_TYPE: ${{ inputs.release_type }}
+          RELEASE_TYPE: ${{ github.event_name == 'issue_comment' && 'current' || inputs.release_type }}
         run: |
           set -euo pipefail
 
@@ -104,7 +149,7 @@ jobs:
       - name: Validate release state
         env:
           TARGET: ${{ steps.version.outputs.target }}
-          RELEASE_TYPE: ${{ inputs.release_type }}
+          RELEASE_TYPE: ${{ github.event_name == 'issue_comment' && 'current' || inputs.release_type }}
         run: |
           set -euo pipefail
 
@@ -128,22 +173,37 @@ jobs:
           fi
 
       - name: Dry-run summary
-        if: ${{ !inputs.publish }}
+        if: ${{ github.event_name == 'workflow_dispatch' && !inputs.publish }}
         env:
           TARGET: ${{ steps.version.outputs.target }}
-          RELEASE_TYPE: ${{ inputs.release_type }}
-          DIST_TAG: ${{ inputs.dist_tag }}
+          RELEASE_TYPE: ${{ github.event_name == 'issue_comment' && 'current' || inputs.release_type }}
+          DIST_TAG: ${{ github.event_name == 'issue_comment' && 'latest' || inputs.dist_tag }}
         run: |
           echo "Dry run only; no repository or registry writes will occur."
           echo "release_type=$RELEASE_TYPE"
           echo "target=$TARGET"
           echo "dist_tag=$DIST_TAG"
 
+      - name: Revalidate Cortex authorization before Git tag write
+        if: ${{ github.event_name == 'issue_comment' || inputs.publish }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          CORTEX_GOVERNANCE_READ_TOKEN: ${{ secrets.CORTEX_GOVERNANCE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          candidate="$(git rev-parse HEAD)"
+          upstream="$(git ls-remote origin refs/heads/main | cut -f1)"
+          if [[ "$candidate" != "$upstream" ]]; then
+            echo "::error::Release HEAD changed before tag; refusing release."
+            exit 1
+          fi
+          node scripts/release/verify-approved-release.cjs
+
       - name: Commit version and create tag
-        if: ${{ inputs.publish }}
+        if: ${{ github.event_name == 'issue_comment' || inputs.publish }}
         env:
           TARGET: ${{ steps.version.outputs.target }}
-          RELEASE_TYPE: ${{ inputs.release_type }}
+          RELEASE_TYPE: ${{ github.event_name == 'issue_comment' && 'current' || inputs.release_type }}
         run: |
           set -euo pipefail
 
@@ -165,11 +225,32 @@ jobs:
           git push origin HEAD:main
           git push origin "v$TARGET"
 
-      - name: Publish to npm with Trusted Publishing
-        if: ${{ inputs.publish }}
+      - name: Verify main/tag immutability before any registry write
+        if: ${{ github.event_name == 'issue_comment' || inputs.publish }}
         env:
           TARGET: ${{ steps.version.outputs.target }}
-          DIST_TAG: ${{ inputs.dist_tag }}
+        run: |
+          set -euo pipefail
+          candidate="$(git rev-parse HEAD)"
+          upstream="$(git ls-remote origin refs/heads/main | cut -f1)"
+          tag_commit="$(git rev-list -n 1 "v$TARGET")"
+          if [[ "$candidate" != "$upstream" || "$candidate" != "$tag_commit" ]]; then
+            echo "::error::Release candidate drifted after validation; refusing npm publish."
+            exit 1
+          fi
+
+      - name: Revalidate Cortex authorization at npm effect boundary
+        if: ${{ github.event_name == 'issue_comment' || inputs.publish }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          CORTEX_GOVERNANCE_READ_TOKEN: ${{ secrets.CORTEX_GOVERNANCE_READ_TOKEN }}
+        run: node scripts/release/verify-approved-release.cjs
+
+      - name: Publish to npm with Trusted Publishing
+        if: ${{ github.event_name == 'issue_comment' || inputs.publish }}
+        env:
+          TARGET: ${{ steps.version.outputs.target }}
+          DIST_TAG: ${{ github.event_name == 'issue_comment' && 'latest' || inputs.dist_tag }}
         run: |
           set -euo pipefail
 
@@ -187,7 +268,7 @@ jobs:
           fi
 
       - name: Create GitHub Release
-        if: ${{ inputs.publish }}
+        if: ${{ github.event_name == 'issue_comment' || inputs.publish }}
         env:
           GH_TOKEN: ${{ github.token }}
           TARGET: ${{ steps.version.outputs.target }}
