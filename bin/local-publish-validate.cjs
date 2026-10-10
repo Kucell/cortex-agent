@@ -169,6 +169,24 @@ function gitCommitAndTag(cwd, version, message, opts) {
     return;
   }
   runInherit('git', ['add', '-u'], cwd, opts);
+  // `--no-verify` below disables every pre-commit hook, including the L3
+  // distribution boundary gate. Publishing is precisely when that gate must not
+  // be skipped: it is the last point before templates/ reaches every managed
+  // project. Run it explicitly so the release path cannot ship L3 content that
+  // belongs in <repo>/.agent/ only.
+  const gateScript = path.join(cwd, 'scripts', 'check-l3-boundary.js');
+  if (fs.existsSync(gateScript)) {
+    const gateRun = spawnSync(process.execPath, [gateScript], {
+      cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    if (gateRun.status !== 0) {
+      process.stdout.write(gateRun.stdout || '');
+      process.stderr.write(gateRun.stderr || '');
+      console.error('❌ L3 distribution boundary check failed; refusing to commit and tag.');
+      console.error('   L3 内容只能留在 <repo>/.agent/（标记 scope: L3），不得进入 templates/。');
+      process.exit(1);
+    }
+  }
   runInherit('git', ['commit', '-m', message, '--no-verify'], cwd, opts);
   runInherit('git', ['tag', '-a', `v${version}`, '-m', `v${version}`], cwd, opts);
 }
