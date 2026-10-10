@@ -1,0 +1,46 @@
+name: Governance Read-only Credential Preflight
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/governance-read-preflight.yml
+      - scripts/release/governance-read-preflight.cjs
+      - tests/release/governance-read-preflight.test.js
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/governance-read-preflight.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  contract-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.19.0'
+      - run: node --test tests/release/governance-read-preflight.test.js
+
+  verify-private-read:
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    needs: contract-tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.19.0'
+      - name: Probe private governance read access without displaying credential
+        env:
+          CORTEX_GOVERNANCE_READ_TOKEN: ${{ secrets.CORTEX_GOVERNANCE_READ_TOKEN }}
+          CORTEX_AUTO_RELEASE_ENABLED: ${{ vars.CORTEX_AUTO_RELEASE_ENABLED }}
+        run: node scripts/release/governance-read-preflight.cjs
