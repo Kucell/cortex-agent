@@ -9,7 +9,7 @@ function block(reason) { throw new Error("OWNER_DISPATCH_RELEASE_BLOCKED: " + re
 function need(condition, reason) { if (!condition) block(reason); }
 
 async function verifyOwnerDispatch({
-  event, eventName, actor, ref, repo, sha, packageName, version,
+  event, eventName, actor, triggeringActor, ref, repo, sha, packageName, version,
   token, runId, http=fetch
 }) {
   need(eventName === "workflow_dispatch", "manual workflow_dispatch only");
@@ -17,6 +17,7 @@ async function verifyOwnerDispatch({
   need(ref === "refs/heads/main", "only main may publish");
   need(actor === "Kucell" && event?.sender?.login === actor,
     "interactive repository owner dispatch required");
+  need(triggeringActor === actor, "only repository owner may run or rerun publication");
   need(event?.repository?.full_name === repo,
     "dispatch repository mismatch");
   need(event?.inputs?.publish === true || event?.inputs?.publish === "true",
@@ -55,6 +56,7 @@ async function verifyOwnerDispatch({
     authorization_mode: "github-owner-workflow-dispatch",
     repository: repo,
     actor,
+    triggering_actor: triggeringActor,
     ref,
     candidate_sha: sha,
     package: packageName,
@@ -70,7 +72,8 @@ async function main() {
   const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "..", "package.json"), "utf8"));
   const result = await verifyOwnerDispatch({
     event, eventName:process.env.GITHUB_EVENT_NAME,
-    actor:process.env.GITHUB_ACTOR, ref:process.env.GITHUB_REF,
+    actor:process.env.GITHUB_ACTOR, triggeringActor:process.env.GITHUB_TRIGGERING_ACTOR,
+    ref:process.env.GITHUB_REF,
     repo:process.env.GITHUB_REPOSITORY, sha:process.env.GITHUB_SHA,
     packageName:pkg.name, version:pkg.version, token:process.env.GITHUB_TOKEN,
     runId:process.env.GITHUB_RUN_ID
