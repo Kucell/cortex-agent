@@ -1,6 +1,12 @@
 ---
 name: briefing
 description: Produce a read-only project briefing covering progress, active work, Decisions, Waitpoints, Inbox, and recommended next actions.
+type: procedure
+applicable_to:
+  - all
+owner: Kucell
+last_verified: 2026-10-10
+status: stable
 ---
 
 # Project Briefing Workflow (/briefing)
@@ -57,7 +63,7 @@ Read-only probe of the latest published version. Never auto-upgrades.
 cortex-agent doctor --json
 ```
 
-`available_update` field contract (`/Users/xueyq/myworks/cortex-agent/lib/commands/doctor.js`):
+`available_update` field contract (emitted by `cortex-agent doctor --json`):
 
 - `status`: `"current"` / `"outdated"` / `"unknown"` (registry unreachable)
 - `current`: CLI version (mirrors `package.json`)

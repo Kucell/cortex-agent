@@ -61,7 +61,7 @@ node .agent/skills/runtime-continuity/scripts/index.js resume-bundle --project "
 cortex-agent doctor --json
 ```
 
-`available_update` 字段契约（`/Users/xueyq/myworks/cortex-agent/lib/commands/doctor.js`）：
+`available_update` 字段契约（由 `cortex-agent doctor --json` 输出）：
 
 - `status`: `"current"` / `"outdated"` / `"unknown"`（网络/registry 不可达）
 - `current`: 当前 CLI 版本（与 package.json 一致）
