@@ -1,0 +1,37 @@
+name: CLI Reconcile Regression
+
+on:
+  pull_request:
+    paths:
+      - 'bin/cli.js'
+      - 'lib/commands/reconcile.js'
+      - 'tests/cli/reconcile-entrypoint.test.js'
+      - 'tests/commands/reconcile.test.js'
+      - '.github/workflows/reconcile-cli-regression.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'bin/cli.js'
+      - 'lib/commands/reconcile.js'
+      - 'tests/cli/reconcile-entrypoint.test.js'
+      - 'tests/commands/reconcile.test.js'
+      - '.github/workflows/reconcile-cli-regression.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  reconcile-cli:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['18', '22']
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - run: node --test tests/commands/reconcile.test.js tests/cli/reconcile-entrypoint.test.js tests/cli/cli-contract.test.js
