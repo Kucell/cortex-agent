@@ -56,6 +56,20 @@ PR 创建后,vcs-pr 自动:
 3. 写 `runs/<run-id>.json#events[]` 一条 `vcs_pr_opened` event(pr_number / url / head / base / labels)
 4. 输出 JSON `{ok: true, action: "create", number, url, ..., labels: [...]}`,**不含** token
 
+### run 关联是 fail-closed 的(2026-10-13 起)
+
+省略 `--run-id` 时,vcs-pr 只在能**证明**有活跃 run 的情况下自动关联:
+run 的 `status` 必须是 `running` 或 `queued`,且 `updated_at` / `started_at` 在
+24 小时内。找不到就返回 `run_id: null` 并**跳过**事件写入,绝不猜测。
+
+设计原因:旧实现兜底返回"mtime 最新的任意 run",在只含终态或陈旧 run 的目录里
+会把 `vcs_pr_opened` 写到无关 run 上,并覆盖其 `last_event` / `updated_at`。
+`active` / `in_progress` / `started` 这类语义暧昧的状态也不参与关联 —— 它们通常
+表示等待人类或已搁置的工作。
+
+**所以:正式交付的 PR 请显式传 `--run-id`。** 输出里 `run_id: null` 表示事件
+没有落档,需要追溯时手动补写,不要为了填这个字段去猜一个 run。
+
 `update` 操作写一条 `vcs_pr_updated` event（含 pr_number / reviewers / add_labels / remove_labels / ready 状态）。GitLab PUT MR API 的 labels 是 add/remove 语义，`--labels` 默认映射 add_labels；set 语义需要 GET-then-PUT，留 v1.3。
 
 ## Configuration
