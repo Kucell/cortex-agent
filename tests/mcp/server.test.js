@@ -105,17 +105,17 @@ function expectRpcError(promise) {
 
 // ─── protocol basics ─────────────────────────────────────────────────────────
 
-test("tools/list returns exactly the 11 P-002 tools", async () => {
+test("tools/list returns exactly the 12 P-002 + P-035 tools", async () => {
   const root = makeFixture();
   try {
     const h = makeHandler(root);
     const result = await call(h, { jsonrpc: "2.0", id: 1, method: "tools/list", params: {} });
     const names = result.tools.map((t) => t.name);
-    assert.equal(names.length, 11);
+    assert.equal(names.length, 12);
     for (const expected of [
       "design/list", "design/show", "design/install", "design/resolved",
       "prototype/list", "prototype/show", "prd/list", "prd/show",
-      "template/list", "plugin/list", "skill/browse",
+      "template/list", "plugin/list", "skill/browse", "project/health",
     ]) {
       assert.ok(names.includes(expected), `missing ${expected}`);
     }
@@ -123,10 +123,11 @@ test("tools/list returns exactly the 11 P-002 tools", async () => {
 });
 
 test("toolDefinitions and resourceTemplates match handler surface", () => {
-  assert.equal(toolDefinitions().length, 11);
-  assert.equal(resourceTemplates().length, 4);
+  assert.equal(toolDefinitions().length, 12);
+  assert.equal(resourceTemplates().length, 5);
   assert.deepEqual(resourceTemplates().map((r) => r.uri), [
     "design://resolved", "design://systems/{id}", "prototype://{taskId}/{path}", "prd://{prdId}/{file}",
+    "cortex://project/health",
   ]);
 });
 

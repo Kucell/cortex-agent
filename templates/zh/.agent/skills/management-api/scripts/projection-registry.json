@@ -55,70 +55,104 @@
       "kind": "collection",
       "exact_lookup": false,
       "data_field": null,
-      "filters": ["since", "until"]
+      "filters": [
+        "since",
+        "until"
+      ]
     },
     {
       "name": "context-trajectories",
       "kind": "collection",
       "exact_lookup": false,
       "data_field": "context_trajectories",
-      "filters": ["task", "run", "session", "host"]
+      "filters": [
+        "task",
+        "run",
+        "session",
+        "host"
+      ]
     },
     {
       "name": "operations",
       "kind": "collection",
       "exact_lookup": false,
       "data_field": "resources",
-      "filters": ["operation", "task", "run", "session", "status"]
+      "filters": [
+        "operation",
+        "task",
+        "run",
+        "session",
+        "status"
+      ]
     },
     {
       "name": "readiness",
       "kind": "collection",
       "exact_lookup": false,
       "data_field": "resources",
-      "filters": ["status", "revision"]
+      "filters": [
+        "status",
+        "revision"
+      ]
     },
     {
       "name": "authorizations",
       "kind": "collection",
       "exact_lookup": false,
       "data_field": "resources",
-      "filters": ["operation", "revision"]
+      "filters": [
+        "operation",
+        "revision"
+      ]
     },
     {
       "name": "checkpoints",
       "kind": "collection",
       "exact_lookup": false,
       "data_field": "resources",
-      "filters": ["operation", "task"]
+      "filters": [
+        "operation",
+        "task"
+      ]
     },
     {
       "name": "coordination-tasks",
       "kind": "collection",
       "exact_lookup": true,
       "data_field": "tasks",
-      "filters": ["task", "state"]
+      "filters": [
+        "task",
+        "state"
+      ]
     },
     {
       "name": "coordination-events",
       "kind": "collection",
       "exact_lookup": false,
       "data_field": "events",
-      "filters": ["task", "event-type", "producer"]
+      "filters": [
+        "task",
+        "event-type",
+        "producer"
+      ]
     },
     {
       "name": "coordination-ownership",
       "kind": "collection",
       "exact_lookup": false,
       "data_field": "ownership",
-      "filters": ["task"]
+      "filters": [
+        "task"
+      ]
     },
     {
       "name": "coordination-notifications",
       "kind": "collection",
       "exact_lookup": false,
       "data_field": "notifications",
-      "filters": ["task"]
+      "filters": [
+        "task"
+      ]
     },
     {
       "name": "dispatch-state",
@@ -133,7 +167,9 @@
       "kind": "singleton",
       "exact_lookup": true,
       "data_field": null,
-      "filters": ["task-id"],
+      "filters": [
+        "task-id"
+      ],
       "read_only": true
     },
     {
@@ -165,7 +201,42 @@
       "kind": "collection",
       "exact_lookup": false,
       "data_field": "receipts",
-      "filters": ["attempt-id", "run-id", "task-id", "session-id", "host", "model", "status", "from", "to", "limit", "offset", "order", "stats"],
+      "filters": [
+        "attempt-id",
+        "run-id",
+        "task-id",
+        "session-id",
+        "host",
+        "model",
+        "status",
+        "from",
+        "to",
+        "limit",
+        "offset",
+        "order",
+        "stats"
+      ],
+      "read_only": true
+    }
+    ,
+    {
+      "name": "task-state",
+      "kind": "exact",
+      "exact_lookup": true,
+      "data_field": "task",
+      "filters": [
+        "task"
+      ],
+      "read_only": true
+    },
+    {
+      "name": "run-state",
+      "kind": "exact",
+      "exact_lookup": true,
+      "data_field": "run",
+      "filters": [
+        "run"
+      ],
       "read_only": true
     }
   ]
