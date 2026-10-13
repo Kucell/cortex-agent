@@ -114,7 +114,6 @@ test("m003-cli: agent adapter list --json (real CLI) produces JSON shape", () =>
 
 test("m003-cli: agent adapter health claude-code (real CLI) outputs status/ready/latency_ms", () => {
   const r = spawnSync("node", [binCli, "agent", "adapter", "health", "claude-code", "--json"], { encoding: "utf8" });
-  assert.equal(r.status, 0);
   const json = JSON.parse(r.stdout);
   assert.equal(json.adapter_id, "claude-code");
   assert.equal(typeof json.status, "string");
@@ -122,8 +121,10 @@ test("m003-cli: agent adapter health claude-code (real CLI) outputs status/ready
   assert.equal(typeof json.latency_ms, "number");
   // We don't assert status==="ok" because the test env may or may not have
   // a real claude binary. We DO assert the field is one of the canonical
-  // values (down → exit 4, anything else → exit 0; we got exit 0).
+  // values, and that the exit code follows the CLI contract:
+  // down → exit 4, anything else → exit 0.
   assert.ok(["ok", "down", "degraded", "unknown"].includes(json.status));
+  assert.equal(r.status, json.status === "down" ? 4 : 0);
 });
 
 test("m003-cli: agent adapter health <unknown> returns 4 with structured error", () => {

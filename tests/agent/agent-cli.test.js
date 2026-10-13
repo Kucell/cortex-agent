@@ -312,7 +312,7 @@ test("agent-cli: unknown agent subcommand exits 2 with M-002 / M-008 hint", () =
   ], { encoding: "utf8" });
   assert.equal(result.status, 2);
   assert.ok(/unknown agent subcommand/.test(result.stderr));
-  assert.ok(/discover, invoke \(M-002/.test(result.stderr));
+  assert.ok(/discover, invoke(, projects)? \(M-002/.test(result.stderr));
   assert.ok(/report, launch \(M-008/.test(result.stderr));
 });
 
