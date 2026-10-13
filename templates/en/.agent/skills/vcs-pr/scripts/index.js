@@ -111,10 +111,18 @@ function resolveSecret(ref) {
 
 function discoverActiveRunId() {
   // Phase 1 session-triage writes `runs/<slug>-<NN>.json` for any open
-  // session.  We pick the most-recently-modified run to associate the PR
-  // event with, unless --run-id is provided.  This is opportunistic, not
-  // authoritative — agents that want explicit association should pass
-  // --run-id.
+  // session.  We associate the PR event with a run that is *demonstrably*
+  // still active, unless --run-id is provided.
+  //
+  // Fail-closed by design (2026-10-13): this function used to fall back to
+  // `return files[0]` — the most-recently-modified run of *any* status — when
+  // no active run matched.  In a project whose runs/ directory holds only
+  // terminal or stale runs, that made `vcs-pr create` silently stamp a
+  // `vcs_pr_opened` event onto an unrelated run and rewrite its `last_event`
+  // / `updated_at`.  Observed in SamHMI: MR !327 (p035/path-a-ui-restore) was
+  // recorded onto R-M034-CI-SCOPE-FIX-PR-20260917, a run whose own activity
+  // text referenced a different MR entirely.  Returning null loses only the
+  // opportunistic correlation; callers that need it must pass --run-id.
   const runsDir = path.join(AGENT_ROOT, "runs");
   if (!fs.existsSync(runsDir)) return null;
   const files = fs
@@ -123,9 +131,44 @@ function discoverActiveRunId() {
     .map((n) => ({ name: n, mtime: fs.statSync(path.join(runsDir, n)).mtimeMs, status: tryReadRunStatus(path.join(runsDir, n)) }));
   files.sort((a, b) => b.mtime - a.mtime);
   for (const f of files) {
-    if (f.status === "running" || f.status === "queued") return f.name.replace(/\.json$/, "");
+    if (!ACTIVE_RUN_STATUSES.has(f.status)) continue;
+    if (isStaleRun(f.name)) continue;
+    return f.name.replace(/\.json$/, "");
   }
-  return files[0] ? files[0].name.replace(/\.json$/, "") : null;
+  // No provably-active run: do NOT guess.  Attaching a PR event to an
+  // arbitrary run is worse than dropping the correlation.
+  return null;
+}
+
+// Statuses that mean "this run is still in flight and may legitimately own
+// new events".  Deliberately excludes semantically ambiguous states such as
+// active / in_progress / started / pending_dispatch: projects use them for
+// work that is parked, waiting on a human, or abandoned.
+const ACTIVE_RUN_STATUSES = new Set(["running", "queued"]);
+
+// A run left in `running` without progress is a zombie, not an active run.
+// SamHMI accumulated 17 of these; whichever one happened to be touched last
+// would capture the next PR event.  Runs older than this are ignored.
+const STALE_RUN_AFTER_HOURS = 24;
+
+function isStaleRun(name) {
+  const stamp = tryReadRunTimestamp(path.join(AGENT_ROOT, "runs", name));
+  if (!stamp) return false; // no usable timestamp: keep the pre-existing
+                            // permissive behaviour for that run only
+  const ageHours = (Date.now() - stamp) / (1000 * 60 * 60);
+  return ageHours > STALE_RUN_AFTER_HOURS;
+}
+
+function tryReadRunTimestamp(file) {
+  try {
+    const j = JSON.parse(fs.readFileSync(file, "utf8"));
+    const raw = j.updated_at || j.started_at;
+    if (!raw) return null;
+    const t = Date.parse(raw);
+    return Number.isFinite(t) ? t : null;
+  } catch (_) {
+    return null;
+  }
 }
 
 function tryReadRunStatus(file) {
