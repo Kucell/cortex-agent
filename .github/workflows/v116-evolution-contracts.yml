@@ -1,0 +1,41 @@
+name: v1.16 Evolution Contracts
+
+on:
+  pull_request:
+    paths:
+      - "packages/protocol/src/evolution.js"
+      - "packages/protocol/src/index.js"
+      - "tests/protocol/evolution.test.js"
+      - ".github/workflows/v116-evolution-contracts.yml"
+  push:
+    branches:
+      - "feat/v1.16.0-*"
+    paths:
+      - "packages/protocol/src/evolution.js"
+      - "packages/protocol/src/index.js"
+      - "tests/protocol/evolution.test.js"
+      - ".github/workflows/v116-evolution-contracts.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  protocol-contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [20, 22, 24]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - name: Static and public-export checks
+        run: |
+          node --check packages/protocol/src/evolution.js
+          node --check tests/protocol/evolution.test.js
+          node -e "const p = require('./packages/protocol/src'); if (typeof p.normalizeEvidenceBundle !== 'function' || typeof p.createReasoningHandoff !== 'function') process.exit(1)"
+      - name: Scoped evolution contract conformance
+        run: node --test tests/protocol/evolution.test.js
