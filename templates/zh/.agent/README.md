@@ -25,6 +25,7 @@ For the full architecture design, see [docs/architecture.md](../docs/architectur
 | `/update-refs` | After iterations, detect changed modules and incrementally update reference docs |
 | `/publish-docs` | Publish verified project knowledge into standalone developer docs under `docs/` |
 | `/parallel` | Dispatch independent tasks to sub-agents in parallel |
+| `/agent-team` | Route a goal to task, parallel, or governed orchestration workflows with independent validation |
 | `/worktree` | Coordinate multi-worktree development, handoff, merge, and mainline validation |
 | `/agent-dashboard` | Generate an HTML task and multi-agent collaboration dashboard |
 | `/release` | SemVer release: analyze commits → bump version → commit + tag → npm publish |
