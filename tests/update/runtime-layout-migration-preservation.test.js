@@ -61,21 +61,21 @@ function seedLegacy(root) {
 }
 
 function withMarkerFault(root, body) {
-  const originalWrite = fs.writeFileSync;
+  const originalLink = fs.linkSync;
   let markerFaultReached = false;
-  fs.writeFileSync = function (file, ...args) {
-    if (path.resolve(String(file)) === path.join(root, MARKER)) {
+  fs.linkSync = function (source, target, ...args) {
+    if (path.resolve(String(target)) === path.join(root, MARKER)) {
       markerFaultReached = true;
       const error = new Error("SYNTHETIC_ACTIVATION_FAILURE");
       error.code = "EIO";
       throw error;
     }
-    return originalWrite.call(this, file, ...args);
+    return originalLink.call(this, source, target, ...args);
   };
   try {
     return { result: body(), markerFaultReached };
   } finally {
-    fs.writeFileSync = originalWrite;
+    fs.linkSync = originalLink;
   }
 }
 
@@ -168,20 +168,23 @@ describe("runtime migration portable-copy preservation", { concurrency: 1 }, () 
       seedLegacy(root);
       const plan = migration.buildMigrationPlan({ cwd: root });
       const injected = '{"tasks":[{"id":"synthetic-concurrent-writer"}]}\n';
-      const originalCopy = fs.copyFileSync;
+      const originalOpen = fs.openSync;
       let conflictInjected = false;
       let result;
-      fs.copyFileSync = function (source, destination, ...args) {
-        if (!conflictInjected && path.resolve(String(destination)) === path.join(root, TARGET)) {
-          put(root, TARGET, injected);
+      fs.openSync = function (destination, ...args) {
+        const flags = args[0];
+        if (!conflictInjected && typeof flags === "number" &&
+            (flags & fs.constants.O_EXCL) !== 0 &&
+            path.resolve(String(destination)) === path.join(root, TARGET)) {
           conflictInjected = true;
+          put(root, TARGET, injected);
         }
-        return originalCopy.call(this, source, destination, ...args);
+        return originalOpen.call(this, destination, ...args);
       };
       try {
         result = migration.applyMigration({ cwd: root }, plan);
       } finally {
-        fs.copyFileSync = originalCopy;
+        fs.openSync = originalOpen;
       }
       assert.equal(conflictInjected, true);
       assert.equal(result.ok, false, "copy-time conflict must reject");

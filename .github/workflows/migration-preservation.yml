@@ -4,6 +4,10 @@ on:
   pull_request:
     paths:
       - "lib/commands/update/runtime-layout-migration.js"
+      - "lib/commands/upgrade.js"
+      - "lib/commands/update/verify.js"
+      - "lib/commands/update/report.js"
+      - "tests/update/upgrade-failure-preservation.test.js"
       - "lib/runtime-layout/**"
       - "tests/update/runtime-layout-migration*.test.js"
       - ".github/workflows/migration-preservation.yml"
@@ -42,6 +46,10 @@ jobs:
             assert.ok(root, "GITHUB_WORKSPACE is required");
             for (const relative of [
               "lib/commands/update/runtime-layout-migration.js",
+              "lib/commands/upgrade.js",
+              "lib/commands/update/verify.js",
+              "lib/commands/update/report.js",
+              "tests/update/upgrade-failure-preservation.test.js",
               "lib/runtime-layout/index.js",
               "lib/runtime-layout/resolver.js",
               "lib/runtime-layout/identity.js",
@@ -76,9 +84,14 @@ jobs:
       - name: Check migration syntax
         run: |
           node --check lib/commands/update/runtime-layout-migration.js
+          node --check lib/commands/upgrade.js
+          node --check lib/commands/update/verify.js
+          node --check tests/update/upgrade-failure-preservation.test.js
           node --check tests/update/runtime-layout-migration-preservation.test.js
           node --check tests/update/runtime-layout-migration.test.js
       - name: Run six preservation oracles
         run: node --test tests/update/runtime-layout-migration-preservation.test.js
       - name: Run existing migration regression
         run: node --test tests/update/runtime-layout-migration.test.js
+      - name: Run isolated upgrade failure and ownership regressions
+        run: node --test tests/update/upgrade-failure-preservation.test.js
