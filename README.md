@@ -6,6 +6,8 @@
 
 Cortex 管理的是**项目生命周期**，而不是某一次 Agent 会话的生命周期。Agent、设备、Cloud Sandbox 和聊天会话都可以是临时的；Task / Mission / Decision / Waitpoint / Queue / Lock / Handoff / Evidence 等治理事实必须保持持久、可恢复、可审计，并在并发写入时 fail closed。
 
+> **1.16 开发候选边界**：公开 `dispatch dry-run` 是只读预览；`dispatch execute`、`dispatch <task-id>`、`daemon` 和 `trigger` 仍为 Phase 0 stub。只读查询、局部存储原语与合成 fixture 的验证不等于已完成真实 Owner 授权边界或 AIHost 自主执行验收。以下既有手动集成与 provider 验证也不替代 1.16 的正式验收与发布门禁。
+
 ## Remote & Detached Governance
 
 Cortex Agent 支持从本地 embedded `.agent/` 起步，再无损演进为 detached 或 Git-backed governance，而不改变 Project Identity：
@@ -62,7 +64,7 @@ Provider 验证状态：
 - **结构化交接**：`/handoff` 为跨 Agent、跨会话和 sub-agent 接力生成轻量交接文档，避免依赖对话记忆。
 - **提案包共享**：`/proposal-share` 将提案组（proposals + missions + topology + 双仓 peer 卷）打包为自包含 tar.gz，跨开发者/跨仓库共享提案目录；绝对路径 token 化 + 符号链接重建，与 `/handoff`（运行时状态）互补。
 - **长周期任务编排**：`/mission` 通过 milestone、验证契约和命令日志支撑多阶段任务稳定推进。
-- **协作运行时 (Communication Runtime)**：`management-api` 提供 inbox / decisions / waitpoints 三个通信对象，所有写入受 workflow gate（`mission` / `user` / `owner` / `requester` / `recipient` / `workflow`）约束；Dashboard、CLI 与可选的 MCP 只读适配器共享同一查询投影。详见 [协作运行时设计](docs/architecture/agent-collaboration-runtime.md)。
+- **协作运行时 (Communication Runtime)**：`management-api` 提供 inbox / decisions / waitpoints 三个通信对象，经该入口进行的写入按 workflow gate（`mission` / `user` / `owner` / `requester` / `recipient` / `workflow`）校验；这些校验属于本地 same-user 工作流约定，不构成独立的身份认证或 Owner 隔离边界。Dashboard、CLI 与可选的 MCP 只读适配器共享同一查询投影。详见 [协作运行时设计](docs/architecture/agent-collaboration-runtime.md)。
 - **熵治理闭环**：`entropy-scanner` 周期扫描知识库漂移，PostCommit Hook 自动修复，保持 `.agent/` 长期健康。
 - **工具无关**：同一套 `.agent/` 配置通过符号链接和指令文件适配 11 个主流 AI 平台。
 
@@ -259,8 +261,9 @@ node .agent/skills/management-api/scripts/index.js query decisions
 node .agent/skills/management-api/scripts/index.js query waitpoints
 node .agent/skills/management-api/scripts/index.js query inbox
 
-# 受控写入：所有 mutation 都受 workflow gate 校验
-# gate=user（仅人类）/ mission / owner / requester / recipient / workflow / agent
+# 经 Management API 进行的写入会校验 workflow gate
+# gate=user / mission / owner / requester / recipient / workflow / agent
+# gate 与 actor 字符串是调用方声明；不能单独证明人类或 Owner 身份
 node .agent/skills/management-api/scripts/index.js decisions request \
   --decision-id D-merge --gate mission --action merge \
   --resource-ref branch:integration --requested-by coordinator \
@@ -281,7 +284,7 @@ node .agent/skills/management-api/scripts/index.js inbox transition \
   --message-id IM-001 --gate recipient --actor-id reviewer --status acknowledged
 ```
 
-任何直接覆盖 `.agent/inbox/` / `decisions/` / `waitpoints/` / `sessions/` 的尝试都会被 workflow gate 拦截；想要跨平台或编程访问 Dashboard 状态时，优先使用 `management-api` 而不是解析文件。
+workflow gate 校验经 Management API 进行的操作，不能拦截具有相同文件写权限的进程直接覆盖 `.agent/inbox/` / `decisions/` / `waitpoints/` / `sessions/`。本地 JSON 记录与 `gate` / actor 字符串不能单独授予自主执行权限；实际 Owner 授权与副作用边界仍需独立门禁。跨平台或编程查询 Dashboard 状态时，优先使用 `management-api`。
 
 可选的 **MCP 只读适配器**（`runtime-state-mcp`）通过 stdio 把同一份 `dashboard-state` 投影暴露给 Claude Code / Cursor 等 MCP 客户端，不直接读 `.agent/`。未安装时 Dashboard 与 CLI 路径不受影响。
 
@@ -325,7 +328,7 @@ Proposal / Mission / validation contract
   → 独立验证并推进 milestone / task-progress
 ```
 
-当前生产边界：
+既有手动集成的能力与限制（不作为 1.16 自主执行验收）：
 
 - Pi 已通过真实一次性进程验证，receipt 仅保存标识、摘要、退出状态和
   SHA-256，不保存 prompt、response、工具负载、凭证或私有 session。
@@ -335,8 +338,9 @@ Proposal / Mission / validation contract
   可回放且可独立查询的事实；同一 Operation ID 的并发冲突会 fail closed。
 - Codex 可以根据真实事件推进 Mission milestone、验证契约和计划记录，
   但不会从进程退出或普通进度推断“已完成”，也不会自动批准权限。
-- 自动 dispatch 与常驻 daemon 默认关闭。当前推荐显式启动
-  `notification pump --watch`，或在不支持主动唤醒的宿主上使用定时检查。
+- 公开 `dispatch` 执行、`daemon` 与 `trigger` 仍为 Phase 0 stub，不能通过
+  参数开启实际执行。通知消费可显式启动 `notification pump --watch`，
+  或在不支持主动唤醒的宿主上使用定时检查；通知投递不授予执行权限。
 
 因此，关闭当前 Codex 对话不会丢失已落盘状态；恢复后应先读取 pending
 critical events、Operation journal、receipt 和 checkpoint，再继续推进。

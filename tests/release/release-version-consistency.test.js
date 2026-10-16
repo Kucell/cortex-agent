@@ -20,6 +20,7 @@ test("root, npm lockfile and bundled Claude plugin versions remain identical", (
   assert.equal(lock.version, pkg.version);
   assert.equal(lock.packages[""].version, pkg.version);
   assert.deepEqual(lock.packages[""].engines, pkg.engines);
+  assert.deepEqual(lock.packages[""].bin, pkg.bin);
   assert.equal(plugin.version, pkg.version);
   assert.equal(marketplace.metadata.version, pkg.version);
   const entries = marketplace.plugins.filter((entry) => entry.name === pkg.name);

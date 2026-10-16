@@ -9,6 +9,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- 下一个版本的条目写在这里 -->
 
+## [1.16.0] - Unreleased development candidate
+
+Development candidate only; not published. Real L3 autonomy, real AI Host acceptance, and the formal 28-item authorization/L3/SelfEvolution acceptance matrix remain open.
+
+### Added
+
+- Add an opt-in session-archive proposal queue and shared English/Chinese evolution helpers. The default remains off; this path produces project-local metadata-only proposal records without copying raw archived text into proposal records, output, or long-term memory, or automatically applying proposals.
+- Add proposal-only evolution contracts and side-effect-free reasoning-handoff preparation.
+- Add a package-owned read-only next-action gap report for the CLI and local SDK, using bounded same-commit Task, advisory-plan, Mission-identity, Decision, and Waitpoint observations, plus a pure advisory-plan draft producer. Incomplete or changed bindings remain explicit gaps; the report does not authorize execution or establish ready-candidate acceptance.
+- Add experimental Chat/GitHub review receipts as evidence transport, without promoting them to authoritative Tasks, Decisions, Waitpoints, or execution approval.
+- Add development-only strict-approval/runtime fixtures and process-canary diagnostics using a fixed cooperative worker. These fixtures do not establish formal L3 autonomy or real AI Host acceptance.
+
+### Fixed
+
+- Preserve customized framework files and migration before-images during upgrade. Fail closed on detected planning, scanning, and migration errors, stop subsequent configuration/version writes after a failed migration, and retain the previous framework version when an update is incomplete.
+- Separate Decision resolution from Waitpoint release or cancellation; downstream lifecycle changes require their own validated operation.
+- Reference packaged Claude command, agent, and skill templates explicitly, retain the packaged `cortex-setup` entrypoint, and remove the default root skills alias that would otherwise be scanned in addition to the configured skills directory.
+- Keep the root npm lockfile executable map aligned with the package manifest and enforce bin-map parity in the existing version-consistency regression.
+- Remove the stale fixed skill count from Marketplace metadata.
+- Restore the submodule mapping for the existing governance gitlink without initializing private governance content.
+- Preserve executable modes for the English/Chinese evolution helpers and shared/local management entrypoints; the new shared evolution helper is executable as well.
+
+### Release Validation and Pending Acceptance
+
+- Add exact-source tar file-manifest and digest checks, structural plugin checks, offline local-tar installation with lifecycle scripts disabled, and isolated synthetic upgrade-preservation checks.
+- Verify the official published 1.15.4 baseline tar against its registry metadata and exact public Git tree, with pinned SHA512 integrity and per-member blob/mode checks. Registry signatures and provenance remain unverified.
+- Verify actual installation of the pinned published 1.15.4 tar followed by source-candidate replacement and apply operations on four fresh English/Chinese managed/customized projects. The prior candidate run preserved custom content, nonempty historical state, and executable modes across 20 commands and eight apply operations. Both packages in that run were labeled 1.15.4; the 1.15.4-to-1.16.0 version transition requires a new exact-head run.
+- Run the existing nine release CLI regressions in a fresh, verified public-source snapshot with allowlisted environment variables, an empty command search path, and temporary HOME/TMP directories. The runner is configured with bounded cooperating-process-group cleanup; the successful candidate run exited normally and did not exercise the timeout-cleanup branch.
+- Validation of this exact 1.16.0 candidate, including its published-baseline version transition, remains pending. Formal authorization, real L3 autonomy, real AI Host acceptance, and the formal 28-item authorization/L3/SelfEvolution acceptance matrix remain open. Baseline artifact identity and structural package checks do not establish candidate publication or actual Claude installation.
+
 ## [1.15.4] - 2026-10-09
 
 > **Patch candidate**: fix the existing `cortex-agent reconcile` top-level MiniMax CLI handler binding. No new RDG CLI, ProjectDescriptor schema, GovernanceStore, or L3 autonomy behavior is released in this patch.

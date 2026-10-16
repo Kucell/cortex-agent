@@ -32,6 +32,7 @@ jobs:
     env:
       SOURCE_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
       EXPECTED_GITLINK: 598e604d460d4dc57b27f52725c884816a10782d
+      EXPECTED_CANDIDATE_VERSION: "1.16.0"
       DISPATCH_HEAD: ${{ inputs.expected_head }}
       DISPATCH_VERSION: ${{ inputs.expected_version }}
     steps:
@@ -108,6 +109,7 @@ jobs:
           NODE="$(command -v node)"
           NPM_CLI="$(readlink -f "$(command -v npm)")"
           VERSION="$(/usr/bin/env -i PATH=/usr/bin:/bin LANG=C.UTF-8 LC_ALL=C.UTF-8 /usr/bin/python3 -I -B -c 'import json; print(json.load(open("package.json", encoding="utf-8"))["version"])')"
+          test "$VERSION" = "$EXPECTED_CANDIDATE_VERSION"
           if test -n "$DISPATCH_HEAD"; then
             test "$DISPATCH_HEAD" = "$SOURCE_HEAD"
             test "$DISPATCH_VERSION" = "$VERSION"
