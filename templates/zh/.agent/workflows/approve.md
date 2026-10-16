@@ -150,6 +150,6 @@ status: stable
 - 提案批准前（路径 A/B）由对应上游 workflow（`/arch-design` / `/mission`）先 `decisions request --gate mission --type approval --gate-action architecture --resource-ref proposal:<path>@<digest>` 创建 open Decision，并立即 `waitpoints create --owner-workflow /approve --reason "Approval required" --action architecture --resource-ref proposal:<path>@<digest>`。
 - 用户批准使用 `decisions resolve --gate user --status approved --resolved-by interactive-user --rationale "<用户原话或一句理由>"`；`/approve` **不得**调用 `waitpoints release`，Waitpoint 释放由 owning workflow（`/plan` 或 `/mission`）在解析后自行接管。
 - 多选一场景：用户在多个候选 open Decision 中做出选择时，主 Agent 必须先 `query decisions` 列出候选，确认用户明确引用了具体 Decision ID，再写入；含糊表达（"看起来不错"、"都可以"）必须再次询问。
-- 拒绝 / 修订：`decisions resolve --status rejected|revision_requested` 后 Waitpoint 自动 cancelled，对应 owning workflow 应停止当前路径并回到 draft 状态。
+- 拒绝 / 修订：`decisions resolve --status rejected|revision_requested` 只记录 Decision，Waitpoint 保持不变。对应 owning workflow 必须停止当前路径、显式取消其 Waitpoint，并将提案恢复为 draft 后再请求新的 Decision。
 - 沉默不构成批准：用户不回复或仅回复表情 / 标点必须再次询问，不得默认 approved。
 - 一次批准不得扩展到后续资源：新的 architecture、merge、release、destructive、credential 或 external-side-effect Decision 必须再次暂停询问。
