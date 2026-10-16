@@ -515,3 +515,46 @@ describe("migration scan failures are not successful plans", { concurrency: 1 },
     assert.deepEqual(snapshot(root), before);
   }));
 });
+
+describe("ordinary verification scan failure reporting", { concurrency: 1 }, () => {
+  for (const scenario of [
+    { name: "schema lstat", method: "lstatSync", code: "EACCES" },
+    { name: "schema byte read", method: "readFileSync", code: "EIO" },
+  ]) {
+    it("returns a failed report for " + scenario.code + " from " + scenario.name, () => fixture((root) => {
+      schemaFixture(root);
+      const before = snapshot(root);
+      const dependencies = {
+        "node:fs": fs, "node:path": path,
+        "node:child_process": { spawnSync() { throw new Error("subprocess forbidden"); } },
+        "../../management/client.js": {
+          resolveManagementProject: () => ({ ok: true, project: { root, agent_root: path.join(root, ".agent") } }),
+          queryManagementProject: () => ({ ok: true }),
+        },
+        "../../setup": {},
+        "../management/api-helpers": {},
+        "../../runtime-layout": { detectLegacyRuntime: () => false },
+        "./runtime-layout-migration": migration,
+        "./report": reports,
+      };
+      const harness = isolated("lib/commands/update/verify.js", dependencies, root);
+      let reached = false;
+      const report = patched(scenario.method, (original) => function (file) {
+        if (file === path.join(root, SCHEMA) || (scenario.method === "readFileSync" && typeof file === "number")) {
+          reached = true;
+          throw Object.assign(new Error("SYNTHETIC_VERIFY_" + scenario.code), { code: scenario.code });
+        }
+        return original.apply(this, arguments);
+      }, () => harness.exports.runUpdateVerification({ cwd: root, command: "update", args: [] }));
+      assert.equal(reached, true);
+      assert.equal(report.ok, false);
+      assert.equal(report.summary.failed, 1);
+      const check = report.verification.find((item) => item.name === "runtime layout scan");
+      assert.equal(check.status, "failed");
+      assert.equal(check.exit_code, 1);
+      assert.equal(check.code, scenario.code);
+      assert.equal(check.message, "SYNTHETIC_VERIFY_" + scenario.code);
+      assert.deepEqual(snapshot(root), before);
+    }));
+  }
+});
