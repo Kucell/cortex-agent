@@ -11,7 +11,7 @@ const EVIDENCE_KINDS = Object.freeze([
 const RISK_TIERS = Object.freeze(["low", "medium", "high", "critical"]);
 const REASONING_CAPABILITIES = Object.freeze([
   "runtime.discover", "runtime.health", "runtime.run.create",
-  "runtime.run.status", "runtime.run.wait", "runtime.timeline.read",
+  "runtime.run.status", "runtime.run.wait", "runtime.run.cancel", "runtime.timeline.read",
 ]);
 
 class EvolutionContractError extends Error {
