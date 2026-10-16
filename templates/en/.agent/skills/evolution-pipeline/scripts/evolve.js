@@ -256,6 +256,7 @@ function processTask(taskId, opts = {}) {
   if (!fs.existsSync(file)) throw new Error(`task not found: ${taskId}`);
   const task = readJson(file);
   task.status = "running";
+  if (opts.dryRun) task.dry_run = true;
   task.started_at = new Date().toISOString();
   task.updated_at = task.started_at;
   task.errors = task.errors || [];
@@ -286,26 +287,48 @@ function processTask(taskId, opts = {}) {
    task.status = "completed";
    task.completed_at = new Date().toISOString();
    task.updated_at = task.completed_at;
-   writeJson(file, task);
+   if (!opts.dryRun) writeJson(file, task);
  } catch (err) {
     task.errors.push({ at: new Date().toISOString(), stage: "process", message: err.message });
     task.retry_count = (task.retry_count || 0) + 1;
     task.updated_at = new Date().toISOString();
     if (task.retry_count >= (task.max_retries || 3)) {
       task.status = "dead";
-      // write to dead dir, then delete original (rename would not save updated status)
-      ensureDir(DEAD_DIR);
-      writeJson(path.join(DEAD_DIR, `${taskId}.json`), task);
-      fs.unlinkSync(file);
+      if (!opts.dryRun) {
+        // write to dead dir, then delete original (rename would not save updated status)
+        ensureDir(DEAD_DIR);
+        writeJson(path.join(DEAD_DIR, `${taskId}.json`), task);
+        fs.unlinkSync(file);
+      }
    } else {
      task.status = "failed";
-     writeJson(file, task);
+     if (!opts.dryRun) writeJson(file, task);
    }
  }
  return task;
 }
 
+/** Read-only preview: do not allocate a queue ID or write to disk. */
+function previewEnqueueFromArchive(archivePath) {
+  if (!fs.existsSync(archivePath)) throw new Error(`archive not found: ${archivePath}`);
+  const archive = readJson(archivePath);
+  if (!archive || typeof archive !== "object" || Array.isArray(archive)) {
+    throw new Error(`archive must be a JSON object: ${archivePath}`);
+  }
+  return {
+    dry_run: true,
+    would_enqueue: true,
+    task_id: null,
+    source_archive: {
+      archive_id: archive.archive_id || archIdFromFile(archivePath),
+      archive_path: path.relative(ROOT, archivePath),
+      created_at: archive.created_at || null,
+    },
+  };
+}
+
 function enqueueFromArchive(archivePath, opts = {}) {
+  if (opts.dryRun) return previewEnqueueFromArchive(archivePath);
   if (!fs.existsSync(archivePath)) throw new Error(`archive not found: ${archivePath}`);
   const archive = readJson(archivePath);
   const taskId = nextTaskId();
@@ -364,6 +387,10 @@ function main() {
   const args = parseArgs();
 
   try {
+    if (args["dry-run"] && (args.replay || (args.worker && args.loop))) {
+      throw new Error("--dry-run does not support replay or a polling worker loop");
+    }
+
     if (args.enqueue || args["enqueue-from-latest"]) {
       let entries = [];
       if (args.archive) {
@@ -382,8 +409,13 @@ function main() {
       } else {
         throw new Error("specify --archive or --enqueue-from-latest");
       }
-      const created = entries.map((e) => enqueueFromArchive(e));
-      console.log(JSON.stringify({ ok: true, enqueued: created.length, tasks: created.map((t) => t.task_id) }, null, 2));
+      const dryRun = !!args["dry-run"];
+      const created = entries.map((e) => enqueueFromArchive(e, { dryRun }));
+      if (dryRun) {
+        console.log(JSON.stringify({ ok: true, dry_run: true, enqueued: 0, previews: created }, null, 2));
+      } else {
+        console.log(JSON.stringify({ ok: true, enqueued: created.length, tasks: created.map((t) => t.task_id) }, null, 2));
+      }
       return;
     }
 
@@ -395,8 +427,13 @@ function main() {
           return;
         }
         const task = pending[0];
-        const result = processTask(task.task_id, { dryRun: args["dry-run"] });
-        console.log(JSON.stringify({ ok: true, processed: 1, task: result }, null, 2));
+        const dryRun = !!args["dry-run"];
+        const result = processTask(task.task_id, { dryRun });
+        if (dryRun) {
+          console.log(JSON.stringify({ ok: true, dry_run: true, processed: 0, would_process: 1, task: result }, null, 2));
+        } else {
+          console.log(JSON.stringify({ ok: true, processed: 1, task: result }, null, 2));
+        }
         return;
       }
       if (args.loop) {
@@ -487,4 +524,11 @@ if (require.main === module) {
   main();
 }
 
-module.exports = { classifyArchive, processTask, enqueueFromArchive, listTasks, deadLetterTasks };
+module.exports = {
+  classifyArchive,
+  processTask,
+  previewEnqueueFromArchive,
+  enqueueFromArchive,
+  listTasks,
+  deadLetterTasks,
+};
