@@ -33,7 +33,7 @@ const task = (id="T-001",extra={})=>({
 });
 const gateDecision=()=>({
   project_ref:PROJECT,governance_revision:G,task_ref:"T-001",mission_ref:"M-001",
-  decision_id:"D-001",source_ref:sid("decision"),status:"approved",action:"architecture",
+  decision_id:"D-001",source_ref:sid("decision"),status:"approved",selected_option:"approve",action:"architecture",
   resource_ref:"task:T-001@plan-1",plan_digest:"sha256:plan-1",owner_ref:"owner:A",expires_at:AFTER,
 });
 const waitpoint=()=>({
@@ -59,7 +59,7 @@ function fixture() {
    health:source("health",{health:{status:"healthy"},reconciliation:{can_resume:true}}),
    ownership:source("ownership",{owner_ref:"owner:A",lease_ref:"lease:fixture",fencing_token:"1",
      proof_ref:"test-fixture:owner-proof",verified_by_ref:"test-fixture:E",expires_at:AFTER}),
-   host:source("host",{status:"online",synthetic:false,capability_proof_ref:"host:proof",
+   host:source("host",{status:"online",capabilities:["status"],synthetic:false,capability_proof_ref:"host:proof",
      verified_by_ref:"test-fixture:E"}),
   },support:{},backend_consistency:{value:"not_verified"}
  };
@@ -373,3 +373,113 @@ test("E-REV-04 exact current typed governance revision preserves observed local 
  assert.deepEqual(p.scoped_support.local_executor_proven.source_revision,FS_REVISION);
  advisoryNotAuthority(p);
 });
+
+
+// Additional review-stage regressions. These remain fixture tests, not formal
+// AUTH/L3-E2E/Self-Evolution acceptance or real Host evidence.
+for (const field of ["plan_digest", "approval_resource_ref"]) {
+ test(`missing ${field} cannot silently bypass the advisory approval checks`,()=>{
+  const f=fixture();delete f.sources.tasks.records[0][field];
+  const p=build(f),c=p.recommendations[0];
+  assert.equal(c.advice_status,"INSUFFICIENT_EVIDENCE");
+  assert.ok(c.blocking_reasons.includes("approval_scope_not_observed"));
+  advisoryNotAuthority(p);
+ });
+}
+for (const option of [undefined, "reject", "defer", "unexpected"]) {
+ test(`approved status without approve selection (${option}) is not observed approval`,()=>{
+  const f=fixture();f.sources.decisions.records[0].selected_option=option;
+  assert.equal(first(f).advice_status,"APPROVAL_REQUIRED");
+ });
+}
+for (const status of [undefined, "unknown", "unhealthy", "starting"]) {
+ test(`Host ${status} cannot borrow readiness from capability proof references`,()=>{
+  const f=fixture();f.sources.host.value.status=status;
+  const c=first(f);
+  assert.equal(c.advice_status,"INSUFFICIENT_EVIDENCE");
+  assert.ok(c.blocking_reasons.includes("host_not_proven"));
+ });
+}
+test("each required Host capability needs an observed capability",()=>{
+ const f=fixture();f.sources.tasks.records[0].required_host_capabilities=["status","cancel"];
+ const c=first(f);
+ assert.equal(c.advice_status,"INSUFFICIENT_EVIDENCE");
+ assert.ok(c.blocking_reasons.includes("host_capability_not_observed:cancel"));
+ const missing=fixture();delete missing.sources.host.value.capabilities;
+ assert.ok(first(missing).blocking_reasons.includes("host_capability_not_observed:status"));
+});
+test("M3 automatic advice requires its own scoped sink admission",()=>{
+ const f=fixture();f.mode="M3";f.sources.tasks.records[0].runtime_mode="M3";
+ f.sources.tasks.records[0].requires_auto_dispatch=true;
+ assert.ok(first(f).blocking_reasons.includes("m3_auto_sink_unproven"));
+ f.backend_consistency=backendProof("M3");
+ f.support.automatic_dispatch_supported_for_this_sink=supportSignal("auto","M3",true);
+ const p=build(f);assert.equal(p.recommendations[0].advice_status,"ADVICE_READY");
+ advisoryNotAuthority(p);
+});
+for (const mode of ["M0","M1"]) {
+ test(`${mode} local execution observation does not substitute for sink admission`,()=>{
+  const f=withFilesystemRevision(mode);
+  f.sources.tasks.records[0].requires_auto_dispatch=true;
+  f.support.local_executor_proven=supportSignal("local",mode,true);
+  f.support.local_executor_proven.source_revision=FS_REVISION;
+  assert.ok(first(f).blocking_reasons.includes(mode.toLowerCase()+"_auto_sink_unproven"));
+  f.backend_consistency=backendProof(mode,"local_single_writer_only");
+  f.support.automatic_dispatch_supported_for_this_sink=supportSignal("auto",mode,true);
+  f.support.automatic_dispatch_supported_for_this_sink.source_revision=FS_REVISION;
+  const p=build(f);assert.equal(p.recommendations[0].advice_status,"ADVICE_READY");
+  advisoryNotAuthority(p);
+ });
+}
+test("another task's unsupported sink does not claim this task is unsupported",()=>{
+ const f=fixture();f.sources.tasks.records[0].requires_auto_dispatch=true;
+ f.support.automatic_dispatch_supported_for_this_sink=supportSignal("auto","M2",false);
+ f.support.automatic_dispatch_supported_for_this_sink.task_ref="T-OTHER";
+ const c=first(f);
+ assert.equal(c.advice_status,"INSUFFICIENT_EVIDENCE");
+ assert.ok(c.blocking_reasons.includes("m2_auto_sink_unproven"));
+ assert.equal(c.blocking_reasons.includes("m2_automatic_sink_unsupported"),false);
+});
+test("approval presentation carries exact observed constraints without mutation authority",()=>{
+ const f=fixture(),original=structuredClone(f),p=build(f);
+ const draft=p.recommendations[0].approval_request_draft,t=f.sources.tasks.records[0];
+ assert.equal(draft.project_ref,PROJECT);
+ assert.deepEqual(draft.governance_revision,G);
+ assert.equal(draft.owner_ref,t.owner_ref);
+ assert.equal(draft.action,t.gate_action);
+ assert.equal(draft.plan_digest,t.plan_digest);
+ assert.equal(draft.resource_ref,t.approval_resource_ref);
+ assert.deepEqual(draft.scope,t.scope);
+ assert.deepEqual(draft.validation_plan,t.validation_plan);
+ assert.deepEqual(draft.estimated_budget,t.estimated_budget);
+ assert.deepEqual(draft.stop_conditions,t.stop_conditions);
+ assert.equal(draft.expires_at,t.expires_at);
+ assert.equal(draft.write_permitted,false);
+ assert.ok(Object.isFrozen(draft.scope));
+ assert.deepEqual(f,original);
+ advisoryNotAuthority(p);
+});
+for (const required of [undefined, [], [""]]) {
+ test(`missing or malformed Host requirements (${JSON.stringify(required)}) are not ready`,()=>{
+  const f=fixture();f.sources.tasks.records[0].required_host_capabilities=required;
+  const c=first(f);
+  assert.equal(c.advice_status,"INSUFFICIENT_EVIDENCE");
+  assert.ok(c.blocking_reasons.includes("host_requirements_not_observed"));
+ });
+}
+for (const mode of ["M0","M1"]) {
+ test(`${mode} local executor proof is bound to the operation as well as task`,()=>{
+  const f=withFilesystemRevision(mode);
+  f.sources.tasks.records[0].requires_auto_dispatch=true;
+  f.backend_consistency=backendProof(mode,"local_single_writer_only");
+  f.support.automatic_dispatch_supported_for_this_sink=supportSignal("auto",mode,true);
+  f.support.automatic_dispatch_supported_for_this_sink.source_revision=FS_REVISION;
+  f.support.local_executor_proven=supportSignal("local",mode,true);
+  f.support.local_executor_proven.source_revision=FS_REVISION;
+  f.support.local_executor_proven.operation_ref="operation:another";
+  assert.ok(first(f).blocking_reasons.includes("local_executor_unproven"));
+  f.support.local_executor_proven.operation_ref="operation:advice";
+  f.support.local_executor_proven.task_ref="T-OTHER";
+  assert.ok(first(f).blocking_reasons.includes("local_executor_unproven"));
+ });
+}
