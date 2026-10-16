@@ -76,6 +76,14 @@ approved_scope or other fixture permission fields are added to Decision.
 
 Before deferred spawn, an instance-owned synchronous onBeforeSpawn callback re-reads the canonical pair, Authorization, current Operation binding and lease/fence. A failed or overdue callback prevents spawn. This remains a cooperative same-process check, not cross-process atomicity.
 
+Before each private start/proposal_result IPC send, the process adapter calls
+the instance-owned synchronous onBeforeSend gate, validates bound runtime
+evidence and rechecks its active deadline/cancellation guard. The fixed wrapper
+uses the sink's same canonical authority/Operation/fence transaction for this
+gate. A rejected acknowledgement after a real sink effect preserves the receipt
+and reports UNKNOWN; it does not erase the effect. Stop signals never require
+this send gate and remain available after revocation or expiry.
+
 Each effect has a durable intent before the fixed sink and a receipt after
 fsync. An error after effect submission may mean an effect occurred; UNKNOWN
 never means zero side effects. An intent without a receipt is never retried.

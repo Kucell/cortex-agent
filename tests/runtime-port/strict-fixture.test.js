@@ -57,6 +57,7 @@ test("enabled wiring captures only instance-owned sink callbacks and limits", (t
   const config = f.calls.find(([name]) => name === "process.open")[1];
   assert.equal(config.onStart, f.sink.onStart);
   assert.equal(config.onBeforeSpawn, f.sink.beforeSpawn);
+  assert.equal(config.onBeforeSend, f.sink.beforeSpawn);
   assert.equal(config.onProposal, f.sink.onProposal);
   assert.equal(config.onStop, f.sink.onStop);
   assert.equal(config.maxTaskMs, 1000); assert.equal(config.maxTotalMs, 5000);

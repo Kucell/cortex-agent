@@ -41,6 +41,7 @@ function harness(t,overrides = {},mode = {}) {
   const options = {enabled:true,fixtureOnly:true,cwd,maxTaskMs:5000,maxTotalMs:10000,cancelGraceMs:5,
     onStart:v => { starts.push(v); v.assertActive(); return proof(v,'start'); },
     onBeforeSpawn:v => { v.assertActive(); return proof(v,'spawn'); },
+    onBeforeSend:v => { v.assertActive(); return proof(v,'send'); },
     onProposal:v => { effects.push(v); v.assertActive(); return proof(v,'effect'); },
     onStop:v => { stops.push(v); return proof(v,'stop'); },...overrides};
   t.after(async () => {
@@ -64,7 +65,7 @@ test('strict fixture process: mock-only contracts',{skip:process.platform === 'w
   await t.test('OFF has no fs inspection, spawn, callback, or inherited capability',async st => {
     st.mock.method(fs,'realpathSync',() => { throw new Error('unexpected filesystem access'); });
     st.mock.method(cp,'spawn',() => { throw new Error('unexpected spawn'); });
-    const c = create(); assert.equal(c.port.health().ready,false); code(() => c.port.createRun({task_id:'T-FIXTURE-1'}),'ERR_FIXTURE_DISABLED');
+    const c = create({onBeforeSend:() => assert.fail('OFF must not call send gate')}); assert.equal(c.port.health().ready,false); code(() => c.port.createRun({task_id:'T-FIXTURE-1'}),'ERR_FIXTURE_DISABLED');
     code(() => c.port.send('anything'),'ERR_RUNTIME_CAPABILITY_UNSUPPORTED'); const p = c.close(); assert.equal(c.close(),p); assert.equal((await p).process_tree_verified,false);
   });
   await t.test('factory rejects configuration widening and invalid locations',async st => {
@@ -72,7 +73,8 @@ test('strict fixture process: mock-only contracts',{skip:process.platform === 'w
       [{env:{PATH:'/bad'}},'ERR_FIXTURE_OPTIONS_INVALID'],[{fixtureOnly:false},'ERR_FIXTURE_ONLY_REQUIRED'],
       [{cwd:'relative'},'ERR_FIXTURE_CWD_REQUIRED'],[{cwd:os.tmpdir()},'ERR_FIXTURE_CWD_OUTSIDE_TEMP_ROOT'],
       [{maxTaskMs:10001},'ERR_FIXTURE_TASK_BUDGET'],[{maxTotalMs:60001},'ERR_FIXTURE_TOTAL_BUDGET'],
-      [{cancelGraceMs:2001},'ERR_FIXTURE_CANCEL_GRACE'],[{onStop:null},'ERR_FIXTURE_CALLBACK_REQUIRED']
+      [{cancelGraceMs:2001},'ERR_FIXTURE_CANCEL_GRACE'],[{onStop:null},'ERR_FIXTURE_CALLBACK_REQUIRED'],
+      [{onBeforeSend:null},'ERR_FIXTURE_CALLBACK_REQUIRED']
     ]) code(() => create({...h.options,...change}),expected); assert.equal(h.spawns.length,0);
     const original = fs.lstatSync;
     const lstatMock = st.mock.method(fs,'lstatSync',p => p === path.resolve(h.cwd) ? {isSymbolicLink:() => true} : original(p));
@@ -98,7 +100,7 @@ test('strict fixture process: mock-only contracts',{skip:process.platform === 'w
     code(() => h.port.createRun({task_id:'T-FIXTURE-1'}),'ERR_FIXTURE_ATTEMPT_LIMIT');
   });
   await t.test('factory captures callbacks; later options mutation cannot replace them',async st => {
-    const h = harness(st); h.options.onStart = () => false; h.options.onBeforeSpawn = () => false; h.options.onProposal = () => false; h.options.onStop = () => false;
+    const h = harness(st); h.options.onStart = () => false; h.options.onBeforeSpawn = () => false; h.options.onBeforeSend = () => false; h.options.onProposal = () => false; h.options.onStop = () => false;
     assert.equal((await completed(h)).status.status,'exited'); assert.equal(h.effects.length,1); assert.equal(h.stops.length,1);
   });
   await t.test('three mocked identities maximum; no actual worker or canary',async st => {
@@ -220,6 +222,70 @@ test('strict fixture process: mock-only contracts',{skip:process.platform === 'w
     const accepted = h.port.createRun({task_id:'T-FIXTURE-1'}); await flush();
     assert.equal(entered,1); assert.equal(h.spawns.length,0);
     assert.equal(h.port.getStatus(accepted.run_ref).status,'UNKNOWN');
+  });
+
+  await t.test('send gate receives only internal message types and bound run identity',async st => {
+    const seen = [];
+    const h = harness(st,{onBeforeSend:v => {
+      assert.ok(Object.isFrozen(v)); v.assertActive();
+      assert.deepEqual(Object.keys(v).sort(),['assertActive','message_type','run_ref','signal','task_id']);
+      seen.push({type:v.message_type,run_ref:v.run_ref,task_id:v.task_id}); return proof(v,'send');
+    }});
+    const r = await completed(h);
+    assert.deepEqual(seen,[{type:'start',run_ref:r.ref,task_id:'T-FIXTURE-1'},{type:'proposal_result',run_ref:r.ref,task_id:'T-FIXTURE-1'}]);
+    assert.equal(r.status.status,'exited');
+  });
+  for (const [label,gate] of [
+    ['throw',() => { throw new Error('PRIVATE_SEND_GATE'); }],
+    ['thenable',() => ({then() { throw new Error('thenable must never run'); }})],
+    ['boolean',() => true],
+    ['bad receipt',v => ({...proof(v,'send'),run_ref:'run:wrong'})],
+  ]) await t.test('send gate ' + label + ' rejects start before IPC and still permits stop',async st => {
+    const h = harness(st,{onBeforeSend:gate}); const r = await running(h);
+    assert.deepEqual(r.child.sent,[]); assert.equal(h.effects.length,0);
+    const result = await h.port.wait(r.ref);
+    assert.equal(result.status,'UNKNOWN'); assert.equal(result.process_exited,true);
+    assert.ok(result.reason_codes.includes('send_admission_failed'));
+    assert.ok(h.kills.some(k => k.signal === 'SIGTERM')); assert.equal(h.stops.length,1);
+    assert.equal(JSON.stringify(result).includes('PRIVATE_'),false);
+  });
+  await t.test('send gate exceeding the deadline cannot send start',async st => {
+    let entered = 0;
+    const h = harness(st,{maxTaskMs:1000,maxTotalMs:5000,onBeforeSend:v => {
+      entered++;
+      const until = require('node:perf_hooks').performance.now() + 1100;
+      while (require('node:perf_hooks').performance.now() < until) { /* bounded synchronous mock */ }
+      return proof(v,'send');
+    }});
+    const r = await running(h);
+    assert.equal(entered,1); assert.deepEqual(r.child.sent,[]);
+    assert.equal((await h.port.wait(r.ref)).status,'UNKNOWN'); assert.equal(h.effects.length,0);
+  });
+  await t.test('denied receipt acknowledgement keeps recorded mock effect evidence and UNKNOWN',async st => {
+    const h = harness(st,{onBeforeSend:v => {
+      if (v.message_type === 'proposal_result') throw new Error('fixture revoked before acknowledgement');
+      return proof(v,'send');
+    }});
+    const r = await completed(h);
+    assert.deepEqual(r.child.sent.map(v => v.type),['start']);
+    assert.equal(h.effects.length,1); assert.ok(r.status.runtime_evidence);
+    assert.equal(r.status.runtime_outcome,'UNKNOWN'); assert.equal(r.status.status,'UNKNOWN');
+    assert.ok(r.status.reason_codes.includes('send_admission_failed'));
+  });
+  await t.test('synchronous cancel inside send gate yields zero IPC but can signal the worker',async st => {
+    let h;
+    h = harness(st,{onBeforeSend:v => { h.port.cancel(v.run_ref); return proof(v,'send'); }});
+    const r = await running(h); assert.deepEqual(r.child.sent,[]);
+    assert.ok(h.kills.some(k => k.signal === 'SIGTERM')); assert.equal(h.effects.length,0);
+    assert.equal((await h.port.wait(r.ref)).status,'UNKNOWN'); assert.equal(h.stops.length,1);
+  });
+  await t.test('synchronous close inside send gate yields zero IPC and bounded stop',async st => {
+    let h, closing;
+    h = harness(st,{onBeforeSend:v => { closing = h.controller.close(); return proof(v,'send'); }});
+    const r = await running(h); assert.deepEqual(r.child.sent,[]);
+    assert.equal(closing,h.controller.close()); assert.equal((await closing).all_workers_exited,true);
+    assert.ok(h.kills.some(k => k.signal === 'SIGTERM')); assert.equal(h.effects.length,0);
+    assert.equal(h.port.getStatus(r.ref).status,'UNKNOWN'); assert.equal(h.stops.length,1);
   });
 
 });
