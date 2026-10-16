@@ -1,87 +1,84 @@
 ---
 name: evolution-pipeline
-description: OpenViking-style async self-evolution pipeline. After a session archive, worker classifies observations and writes them to `.agent/memory/{feedback,project,experiences}/`. v1 = deterministic, zero tokens.
+description: Explicit project-local archive intake and immutable, metadata-only learning proposals. No automatic memory updates or Host invocation.
 area: agent-tuning
-summary: OpenViking-style async self-evolution pipeline. After a session archive, worker classifies observations and writes them to `.agent/memory/{feedback,project,experiences}/`. v1 = deterministic, zero tok
+summary: Opt-in archive proposal queue with scoped deduplication and replay-safe immutable files.
 ---
 
-# Self-Evolution Pipeline (Phase 2.2)
+# Archive Learning Proposals
 
-## Goal
+## Scope
 
-Port OpenViking's `session.commit()` async memory extraction to cortex-agent:
+A manual session archive may opt in to a project-local proposal queue. Without
+the flag, archive behavior is unchanged. The automatic continuity guard never
+enables this option.
 
-- Auto-create evolution task after each `runtime-continuity` archive
-- `evolve.js --worker` processes tasks in the background
-- Supports retry, dead-letter queue, and idempotency
-- v1 = deterministic rule-based classification (zero token cost)
-
-## Architecture
-
-```
-runtime-continuity/archive
-         ↓ (manual or --auto)
-evolve.js --enqueue-from-latest
-         ↓
-.agent/tasks/evolution/EVO-YYYY-MM-DD-NNN.json
-         ↓ (poll loop)
-evolve.js --worker --loop --interval 30
-         ↓
-.classifyArchive() → {user, feedback, project, experiences} routes
-         ↓
-writeMemoryItem() → .agent/memory/{scope}/{name}.md
-         ↓
-updateMemoryIndex() → .agent/memory/MEMORY.md
-```
+This path records source references, SHA-256 digests, observation counts and
+generic verification reminders. It does not copy archive text into a proposal.
+The archive remains private to the selected project. No model is invoked, no
+memory/index is updated, and no Task or execution permission is created.
 
 ## Commands
 
-```bash
-# Enqueue (manual)
-node .agent/skills/evolution-pipeline/scripts/evolve.js --enqueue-from-latest
-node .agent/skills/evolution-pipeline/scripts/evolve.js --enqueue-from-latest --max 5
-node .agent/skills/evolution-pipeline/scripts/evolve.js --enqueue --archive RC-20260724_053807_983
+Run only within the explicitly selected project and scope:
 
-# Worker
-node .agent/skills/evolution-pipeline/scripts/evolve.js --worker --once
-node .agent/skills/evolution-pipeline/scripts/evolve.js --worker --loop --interval 30
-
-# Management
-node .agent/skills/evolution-pipeline/scripts/evolve.js --status
-node .agent/skills/evolution-pipeline/scripts/evolve.js --list --status failed
-node .agent/skills/evolution-pipeline/scripts/evolve.js --replay EVO-2026-07-24-001
-node .agent/skills/evolution-pipeline/scripts/evolve.js --dead-letter
+```sh
+cortex-agent session archive --project <name> --gate user --queue-learning-proposal
+node .agent/skills/evolution-pipeline/scripts/evolve.js --enqueue --archive <archive-id> --project <name> --proposal-only
+node .agent/skills/evolution-pipeline/scripts/evolve.js --worker --once --proposal-only
+node .agent/skills/evolution-pipeline/scripts/evolve.js --replay <EVO-P-id> --proposal-only
 ```
 
-## Classification Rules (v1 = deterministic)
+Proposal-only list/status inspect only reserved EVO-P- records; they do not read
+legacy queue/dead-letter objects. --enqueue-from-latest, --dead-letter and --loop
+are deliberately unsupported in this mode; specify one archive explicitly.
 
-| Category | Trigger | Target |
-|---|---|---|
-| feedback | state.blockers[] + state.in_progress | memory/feedback/ |
-| project fact | state.done[] (non-lesson) + state.next[] | memory/project/ |
-| experience | state.done[] + keywords: lesson/trap/regression/root cause | experiences/ |
-| user | (v2) preference keyword extraction | memory/user/ |
-| dropped | no match or duplicate | - |
+Add --dry-run to proposal enqueue or the one-shot worker for a read-only preview.
+A preview allocates no queue record. Proposal replay and polling do not support
+--dry-run; the proposal-only worker requires --once.
 
-## Boundaries
+CLI flags are request inputs, not proof of owner, consent, approval or effect
+admission. Real project execution and framework promotion require their own
+workflow gates.
 
-- **vs runtime-continuity**: no changes to guard/archive logic; only downstream consumption
-- **vs memory-protocol.md**: 100% compatible frontmatter format + MEMORY.md index convention
-- **vs experience-recall**: writes lessons directly to `experiences/` for recall
-- **vs LLM extraction**: swap classifyArchive() only, enqueue/worker unchanged
-- **vs skill-selector**: v1 does NOT extract skills explicitly (OpenViking's skill/ dir vs cortex-agent's already exists)
+## Persistence and replay
 
-## Idempotency
+- Queue: .agent/tasks/evolution/EVO-P-<digest>.json
+- Proposal: .agent/tasks/evolution/_proposals/EVO-P-<digest>.json
+- The key includes project name, a digest of the current canonical workspace
+  path, archive ID and the SHA-256 of exact archive bytes.
+- Queue inputs and proposal outputs are immutable. Identical replay verifies
+  existing bytes without rewriting them. Conflicting records fail closed.
+- A changed archive creates a new key. Copying an old task to another workspace
+  cannot reuse its identity. A workspace move requires fresh intake.
+- Complete files are published with create-if-absent hard links. A process exit
+  before publication can leave an ignored .tmp. An exit between publishing the
+  hard link and unlinking the temporary name leaves a multi-link record that is
+  preserved and blocked for explicit repair; replay never guesses ownership or
+  deletes old temporary links. Ordinary replay resumes only single-link records.
+  This is not distributed fencing or a claim of power-loss durability.
+- Stored queue status remains pending. The list/worker reads the verified
+  proposal receipt to derive proposal_only; changed sources or conflicts derive
+  blocked. These statuses never mean verification passed or authority granted.
 
-- Same archive → same content hash → same filename
-- Overwrite file only; append semantics live in MANIFEST.json
-- Task status: pending → running → completed/failed → dead
-- After max_retries, task moves to `_dead/`
+Archive success is preserved if optional proposal intake fails. The archive
+response reports learning_proposal.status as unavailable; it does not erase the
+archive or silently retry against another project.
 
-## Acceptance
+## Existing legacy worker
 
-- Enqueue: `--enqueue-from-latest` creates a task file
-- Execute: `--worker --once` progresses status to `completed` and writes memory/ files
-- Index update: MEMORY.md gets new entries
-- Retry: bug fix + `--replay` reruns successfully
-- Dead letter: too many retries moves to `_dead/`
+The legacy deterministic memory writer remains a separate explicit workflow.
+Its older queue entries are excluded by --worker --once --proposal-only.
+New archive proposal entries cannot fall through to legacy memory/index writes
+or legacy replay mutation. Do not treat keyword classification as AI reasoning,
+a verified learning outcome, or a governed automatic effect.
+
+## Evidence boundary
+
+Temporary-directory tests cover the actual archive API and library session
+facade, one-shot worker, default-off behavior, scoped deduplication, independent
+process races, process-exit recovery/blocked states, source conflicts and zero-write previews.
+The fixture preload intercepts common Node network APIs before module loading
+and bounds child processes. It is an in-process test guard, not OS-level network
+isolation. These tests establish local file integration only. They do not establish two
+heterogeneous L2 projects, a real AI Host, or SelfEvolutionE2E acceptance.

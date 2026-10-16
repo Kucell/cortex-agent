@@ -32,6 +32,7 @@
 
 const fs = require("fs");
 const path = require("path");
+const crypto = require("crypto");
 
 const ROOT = process.cwd();
 const TASKS_DIR = path.join(ROOT, ".agent", "tasks", "evolution");
@@ -39,6 +40,264 @@ const DEAD_DIR = path.join(TASKS_DIR, "_dead");
 const MEMORY_DIR = path.join(ROOT, ".agent", "memory");
 const ARCHIVES_DIR = path.join(ROOT, ".agent", "runtime-continuity", "archives");
 const LATEST_ARCHIVE = path.join(ARCHIVES_DIR, "latest.json");
+
+
+const PROPOSAL_KIND = "archive_learning_proposal";
+const PROPOSALS_DIR = path.join(TASKS_DIR, "_proposals");
+const PROPOSAL_ID = /^EVO-P-[0-9a-f]{64}$/;
+const MAX_ARCHIVE_BYTES = 1024 * 1024;
+
+function proposalError(code) {
+  const error = new Error(code);
+  error.code = code;
+  return error;
+}
+function digest(bytes) {
+  return crypto.createHash("sha256").update(bytes).digest("hex");
+}
+function proposalBytes(value) {
+  return JSON.stringify(value, null, 2) + "\n";
+}
+function proposalScope(project) {
+  if (typeof project !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(project)
+      || project.includes("..")) throw proposalError("ERR_PROPOSAL_PROJECT");
+  return {
+    project,
+    workspace_id: "workspace-sha256:" + digest(fs.realpathSync(ROOT)),
+  };
+}
+// Fixed project-local paths only; reject observed symlinked components.
+// These checks are not fencing against an adversarial filesystem writer.
+function checkedParents(file, create = false) {
+  const relative = path.relative(ROOT, path.dirname(file));
+  if (relative.startsWith("..") || path.isAbsolute(relative)) throw proposalError("ERR_PROPOSAL_PATH");
+  let cursor = ROOT;
+  for (const segment of relative.split(path.sep).filter(Boolean)) {
+    cursor = path.join(cursor, segment);
+    if (!fs.existsSync(cursor)) {
+      if (!create) return false;
+      try { fs.mkdirSync(cursor); } catch (error) { if (error.code !== "EEXIST") throw error; }
+    }
+    const stat = fs.lstatSync(cursor);
+    if (stat.isSymbolicLink() || !stat.isDirectory()) throw proposalError("ERR_PROPOSAL_PATH");
+  }
+  return true;
+}
+function readProposalBytes(file) {
+  if (!checkedParents(file)) throw proposalError("ERR_PROPOSAL_NOT_FOUND");
+  if (!Number.isInteger(fs.constants.O_NOFOLLOW) || !Number.isInteger(fs.constants.O_NONBLOCK)
+      || fs.constants.O_NOFOLLOW === 0 || fs.constants.O_NONBLOCK === 0) {
+    throw proposalError("ERR_PROPOSAL_SAFE_OPEN_UNSUPPORTED");
+  }
+  function regular(stat) {
+    if (!stat.isFile() || stat.isSymbolicLink() || stat.size > BigInt(MAX_ARCHIVE_BYTES)) {
+      throw proposalError("ERR_PROPOSAL_FILE");
+    }
+    if (stat.nlink !== 1n) throw proposalError("ERR_PROPOSAL_FILE_LINKS");
+  }
+  const before = fs.lstatSync(file, { bigint: true });
+  regular(before);
+  let fd;
+  try {
+    fd = fs.openSync(file, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | fs.constants.O_NONBLOCK);
+    const opened = fs.fstatSync(fd, { bigint: true });
+    regular(opened);
+    if (opened.dev !== before.dev || opened.ino !== before.ino
+        || opened.size !== before.size || opened.mtimeNs !== before.mtimeNs
+        || opened.ctimeNs !== before.ctimeNs) throw proposalError("ERR_PROPOSAL_FILE_CHANGED");
+    const buffer = Buffer.alloc(Number(opened.size) + 1);
+    let size = 0;
+    while (size < buffer.length) {
+      const count = fs.readSync(fd, buffer, size, buffer.length - size, null);
+      if (count === 0) break;
+      size += count;
+    }
+    const after = fs.fstatSync(fd, { bigint: true });
+    const named = fs.lstatSync(file, { bigint: true });
+    regular(after); regular(named);
+    if (size > MAX_ARCHIVE_BYTES || BigInt(size) !== opened.size
+        || after.dev !== opened.dev || after.ino !== opened.ino
+        || named.dev !== opened.dev || named.ino !== opened.ino
+        || after.size !== opened.size || named.size !== opened.size
+        || after.mtimeNs !== opened.mtimeNs || after.ctimeNs !== opened.ctimeNs
+        || named.mtimeNs !== opened.mtimeNs || named.ctimeNs !== opened.ctimeNs) {
+      throw proposalError("ERR_PROPOSAL_FILE_CHANGED");
+    }
+    return buffer.subarray(0, size);
+  } finally {
+    if (fd !== undefined) fs.closeSync(fd);
+  }
+}
+function readProposalFile(file) {
+  return readProposalBytes(file).toString("utf8");
+}
+function sameProposalFile(file, value) {
+  if (readProposalFile(file) !== proposalBytes(value)) throw proposalError("ERR_PROPOSAL_RECORD_CONFLICT");
+}
+// Publish a complete immutable file, or verify the existing identical record.
+// An exit before link leaves an ignored .tmp. An exit between link/unlink can
+// leave a multi-link record: readers block and preserve it for explicit repair.
+// No overwrite, sequence allocation, queue rewrite or index.
+function verifyPublishedProposal(file, value) {
+  // A concurrent publisher immediately removes its temporary hard link.
+  // Never read multi-link bytes; wait only a bounded 100 ms for that transition.
+  for (let attempt = 0; ; attempt++) {
+    try { sameProposalFile(file, value); return; }
+    catch (error) {
+      if (error.code !== "ERR_PROPOSAL_FILE_LINKS" || attempt >= 20) throw error;
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 5);
+    }
+  }
+}
+function publishProposalFile(file, value) {
+  if (fs.existsSync(file)) {
+    verifyPublishedProposal(file, value);
+    return false;
+  }
+  checkedParents(file, true);
+  const temporary = path.join(path.dirname(file), ".proposal-" + crypto.randomBytes(12).toString("hex") + ".tmp");
+  let fd;
+  let ownedTemporary = false;
+  try {
+    fd = fs.openSync(temporary, "wx", 0o600);
+    ownedTemporary = true;
+    fs.writeFileSync(fd, proposalBytes(value), "utf8");
+    fs.fsyncSync(fd);
+    fs.closeSync(fd);
+    fd = undefined;
+    try { fs.linkSync(temporary, file); }
+    catch (error) {
+      if (error.code !== "EEXIST") throw error;
+      verifyPublishedProposal(file, value);
+      return false;
+    }
+    fs.unlinkSync(temporary);
+    ownedTemporary = false;
+    verifyPublishedProposal(file, value);
+    return true;
+  } finally {
+    if (fd !== undefined) fs.closeSync(fd);
+    if (ownedTemporary) {
+      try { fs.unlinkSync(temporary); } catch (error) { if (error.code !== "ENOENT") throw error; }
+    }
+  }
+}
+function proposalArchive(archivePath, expectedProject) {
+  const file = path.resolve(archivePath);
+  if (path.dirname(file) !== ARCHIVES_DIR || path.basename(file) === "latest.json") {
+    throw proposalError("ERR_PROPOSAL_ARCHIVE_PATH");
+  }
+  const bytes = readProposalBytes(file);
+  const raw = bytes.toString("utf8");
+  if (!Buffer.from(raw, "utf8").equals(bytes)) throw proposalError("ERR_PROPOSAL_ARCHIVE_ENCODING");
+  const archive = JSON.parse(raw);
+  if (!archive || typeof archive !== "object" || Array.isArray(archive)
+      || typeof archive.archive_id !== "string" || !/^RC-[A-Za-z0-9_-]+$/.test(archive.archive_id)
+      || path.basename(file) !== archive.archive_id + ".json") {
+    throw proposalError("ERR_PROPOSAL_ARCHIVE_ID");
+  }
+  const scope = proposalScope(expectedProject);
+  if (archive.project !== scope.project) throw proposalError("ERR_PROPOSAL_PROJECT_MISMATCH");
+  if (typeof archive.created_at !== "string" || !Number.isFinite(Date.parse(archive.created_at))
+      || new Date(archive.created_at).toISOString() !== archive.created_at) {
+    throw proposalError("ERR_PROPOSAL_ARCHIVE_TIME");
+  }
+  const state = archive.state;
+  if (!state || typeof state !== "object" || Array.isArray(state)) throw proposalError("ERR_PROPOSAL_ARCHIVE_STATE");
+  const counts = {};
+  for (const [field, label] of [["done", "reported_done"], ["next", "planned_next"], ["blockers", "reported_blockers"]]) {
+    const values = state[field] === undefined ? [] : state[field];
+    if (!Array.isArray(values) || values.some((v) => typeof v !== "string" || !v.trim())) {
+      throw proposalError("ERR_PROPOSAL_ARCHIVE_STATE");
+    }
+    counts[label] = values.length;
+  }
+  if (state.in_progress != null && typeof state.in_progress !== "string") throw proposalError("ERR_PROPOSAL_ARCHIVE_STATE");
+  counts.reported_in_progress = typeof state.in_progress === "string" && state.in_progress.trim() ? 1 : 0;
+  const sha256 = digest(bytes);
+  const taskId = "EVO-P-" + digest(JSON.stringify([scope, archive.archive_id, sha256]));
+  return {
+    schema_version: "1", kind: PROPOSAL_KIND, task_id: taskId,
+    project_scope: scope,
+    source_archive: {
+      archive_id: archive.archive_id,
+      archive_path: path.relative(ROOT, file).split(path.sep).join("/"),
+      sha256, created_at: archive.created_at,
+    },
+    created_at: archive.created_at, updated_at: archive.created_at, status: "pending",
+    observation_counts: counts, execution_authorized: false, allowed_effects: [],
+  };
+}
+function proposalFor(task) {
+  return {
+    schema_version: "1", kind: "archive_learning_proposal_result", proposal_id: task.task_id,
+    project_scope: task.project_scope, source_archive: task.source_archive,
+    status: "proposal_only", verification_status: "not_run",
+    observation_counts: task.observation_counts,
+    proposed_checks: [
+      "Review the referenced archive inside this project before selecting evidence.",
+      "Verify reported outcomes independently before proposing any change.",
+    ],
+    limitations: [
+      "Archive contents are unverified observations; this document contains no extracted private text.",
+      "No memory, index, Task, Host run, promotion, or execution permission is created.",
+    ],
+    execution_authorized: false, allowed_effects: [],
+  };
+}
+function loadProposalTask(taskId) {
+  if (typeof taskId !== "string" || !PROPOSAL_ID.test(taskId)) throw proposalError("ERR_PROPOSAL_TASK_ID");
+  const file = path.join(TASKS_DIR, taskId + ".json");
+  const stored = JSON.parse(readProposalFile(file));
+  if (stored.kind !== PROPOSAL_KIND || stored.task_id !== taskId || !stored.source_archive
+      || !stored.project_scope) throw proposalError("ERR_PROPOSAL_TASK_SHAPE");
+  if (typeof stored.source_archive.archive_path !== "string") throw proposalError("ERR_PROPOSAL_ARCHIVE_PATH");
+  const task = proposalArchive(path.resolve(ROOT, stored.source_archive.archive_path), stored.project_scope.project);
+  if (task.task_id !== taskId) throw proposalError("ERR_PROPOSAL_SOURCE_CHANGED");
+  sameProposalFile(file, task);
+  return task;
+}
+function enqueueProposalFromArchive(archivePath, opts) {
+  const task = proposalArchive(archivePath, opts.expectedProject);
+  const file = path.join(TASKS_DIR, task.task_id + ".json");
+  if (opts.dryRun) {
+    if (fs.existsSync(file)) sameProposalFile(file, task);
+    return {
+      dry_run: true, task_id: null, would_enqueue: !fs.existsSync(file),
+      project_scope: task.project_scope, source_archive: task.source_archive,
+      execution_authorized: false, allowed_effects: [],
+    };
+  }
+  const created = publishProposalFile(file, task);
+  return { ...task, deduplicated: !created };
+}
+function processProposalTask(taskId, opts = {}) {
+  const task = loadProposalTask(taskId);
+  const proposal = proposalFor(task);
+  const file = path.join(PROPOSALS_DIR, taskId + ".json");
+  if (opts.dryRun) {
+    if (fs.existsSync(file)) sameProposalFile(file, proposal);
+    return { ...task, status: "proposal_only", dry_run: true, proposal_ref: null, would_write_proposal: !fs.existsSync(file) };
+  }
+  const created = publishProposalFile(file, proposal);
+  return {
+    ...task, status: "proposal_only", deduplicated: !created,
+    proposal_ref: path.relative(ROOT, file).split(path.sep).join("/"),
+  };
+}
+function observedProposalTask(taskId) {
+  try {
+    const current = loadProposalTask(taskId);
+    const file = path.join(PROPOSALS_DIR, taskId + ".json");
+    if (!fs.existsSync(file)) return current;
+    sameProposalFile(file, proposalFor(current));
+    return { ...current, status: "proposal_only", proposal_ref: path.relative(ROOT, file).split(path.sep).join("/") };
+  } catch (error) {
+    return { schema_version: "1", kind: PROPOSAL_KIND, task_id: taskId,
+      created_at: "", status: "blocked", execution_authorized: false, allowed_effects: [],
+      proposal_error: error.code || "ERR_PROPOSAL_READ" };
+  }
+}
 
 function parseArgs() {
   const args = {};
@@ -252,9 +511,11 @@ function writeMemoryItem(scope, item, archiveId) {
  * Returns the updated task.
  */
 function processTask(taskId, opts = {}) {
+  if (typeof taskId === "string" && taskId.startsWith("EVO-P-")) return processProposalTask(taskId, opts);
   const file = path.join(TASKS_DIR, `${taskId}.json`);
   if (!fs.existsSync(file)) throw new Error(`task not found: ${taskId}`);
   const task = readJson(file);
+  if (task.kind === PROPOSAL_KIND) return processProposalTask(taskId, opts);
   task.status = "running";
   if (opts.dryRun) task.dry_run = true;
   task.started_at = new Date().toISOString();
@@ -328,6 +589,7 @@ function previewEnqueueFromArchive(archivePath) {
 }
 
 function enqueueFromArchive(archivePath, opts = {}) {
+  if (opts.proposalOnly === true) return enqueueProposalFromArchive(archivePath, opts);
   if (opts.dryRun) return previewEnqueueFromArchive(archivePath);
   if (!fs.existsSync(archivePath)) throw new Error(`archive not found: ${archivePath}`);
   const archive = readJson(archivePath);
@@ -353,11 +615,14 @@ function enqueueFromArchive(archivePath, opts = {}) {
 }
 
 function listTasks(filter = {}) {
+  if (filter.proposalOnly === true && !checkedParents(path.join(TASKS_DIR, "reserved.json"))) return [];
   if (!fs.existsSync(TASKS_DIR)) return [];
   const files = fs.readdirSync(TASKS_DIR).filter((f) => f.endsWith(".json"));
   const out = [];
   for (const f of files) {
-    const t = readJson(path.join(TASKS_DIR, f));
+    if (filter.proposalOnly === true && !f.startsWith("EVO-P-")) continue;
+    const t = f.startsWith("EVO-P-")
+      ? observedProposalTask(f.slice(0, -5)) : readJson(path.join(TASKS_DIR, f));
     if (filter.status && t.status !== filter.status) continue;
     out.push(t);
   }
@@ -391,6 +656,24 @@ function main() {
       throw new Error("--dry-run does not support replay or a polling worker loop");
     }
 
+    if (args["proposal-only"] !== undefined && args["proposal-only"] !== true) {
+      throw proposalError("ERR_PROPOSAL_MODE_FLAG");
+    }
+    if (args["proposal-only"] && (args["enqueue-from-latest"] || args["dead-letter"] || args.loop)) {
+      throw proposalError("ERR_PROPOSAL_UNSUPPORTED_MODE");
+    }
+    if (args["proposal-only"] && [args.enqueue, args.worker, args.replay, args.list, args.status && !args.list].filter(Boolean).length !== 1) {
+      throw proposalError("ERR_PROPOSAL_ACTION_REQUIRED");
+    }
+    if (args["proposal-only"] && args.worker && !args.once) {
+      throw proposalError("ERR_PROPOSAL_WORKER_REQUIRES_ONCE");
+    }
+    if (args["proposal-only"] && args.replay) {
+      const task = processProposalTask(args.replay);
+      console.log(JSON.stringify({ ok: true, replayed: task }, null, 2));
+      return;
+    }
+
     if (args.enqueue || args["enqueue-from-latest"]) {
       let entries = [];
       if (args.archive) {
@@ -410,17 +693,22 @@ function main() {
         throw new Error("specify --archive or --enqueue-from-latest");
       }
       const dryRun = !!args["dry-run"];
-      const created = entries.map((e) => enqueueFromArchive(e, { dryRun }));
+      const created = entries.map((e) => enqueueFromArchive(e, {
+        dryRun, proposalOnly: args["proposal-only"] === true, expectedProject: args.project,
+      }));
       if (dryRun) {
         console.log(JSON.stringify({ ok: true, dry_run: true, enqueued: 0, previews: created }, null, 2));
       } else {
-        console.log(JSON.stringify({ ok: true, enqueued: created.length, tasks: created.map((t) => t.task_id) }, null, 2));
+        console.log(JSON.stringify({ ok: true, enqueued: created.filter((t) => !t.deduplicated).length,
+          deduplicated: created.filter((t) => t.deduplicated).length, tasks: created.map((t) => t.task_id) }, null, 2));
       }
       return;
     }
 
     if (args.worker) {
-      const pending = listTasks({ status: "pending" }).concat(listTasks({ status: "failed" }));
+      const proposalOnly = args["proposal-only"] === true;
+      const pending = listTasks({ status: "pending", proposalOnly })
+        .concat(listTasks({ status: "failed", proposalOnly }));
       if (args.once) {
         if (!pending.length) {
           console.log(JSON.stringify({ ok: true, processed: 0, message: "no pending tasks" }, null, 2));
@@ -456,9 +744,11 @@ function main() {
 
     if (args.replay) {
       const taskId = args.replay;
+      if (typeof taskId === "string" && taskId.startsWith("EVO-P-")) throw proposalError("ERR_PROPOSAL_REPLAY_REQUIRES_MODE");
       let task;
      if (fs.existsSync(path.join(TASKS_DIR, `${taskId}.json`))) {
        task = readJson(path.join(TASKS_DIR, `${taskId}.json`));
+       if (task.kind === PROPOSAL_KIND) throw proposalError("ERR_PROPOSAL_REPLAY_REQUIRES_MODE");
        task.status = "pending";
        task.retry_count = 0;
        task.errors = [];
@@ -480,15 +770,15 @@ function main() {
 
     if (args.list) {
       const filt = args.status || null;
-      const tasks = listTasks(filt ? { status: filt } : {});
-      console.log(JSON.stringify({ ok: true, count: tasks.length, tasks: tasks.map((t) => ({ task_id: t.task_id, status: t.status, archive: t.source_archive.archive_id, retry_count: t.retry_count, classification: t.classification })) }, null, 2));
+      const tasks = listTasks({ ...(filt ? { status: filt } : {}), proposalOnly: args["proposal-only"] === true });
+      console.log(JSON.stringify({ ok: true, count: tasks.length, tasks: tasks.map((t) => ({ task_id: t.task_id, status: t.status, archive: t.source_archive ? t.source_archive.archive_id : null, retry_count: t.retry_count, classification: t.classification, proposal_error: t.proposal_error || null })) }, null, 2));
       return;
     }
 
     if (args.status) {
-      const tasks = listTasks();
+      const tasks = listTasks({ proposalOnly: args["proposal-only"] === true });
       const by = tasks.reduce((acc, t) => { acc[t.status] = (acc[t.status] || 0) + 1; return acc; }, {});
-      const dead = deadLetterTasks().length;
+      const dead = args["proposal-only"] ? 0 : deadLetterTasks().length;
       console.log(JSON.stringify({
         ok: true,
         total: tasks.length,
@@ -527,6 +817,7 @@ if (require.main === module) {
 module.exports = {
   classifyArchive,
   processTask,
+  processProposalTask,
   previewEnqueueFromArchive,
   enqueueFromArchive,
   listTasks,
