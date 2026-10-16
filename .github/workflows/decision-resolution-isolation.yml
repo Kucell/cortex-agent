@@ -6,6 +6,9 @@ on:
       - "templates/**/.agent/skills/management-api/scripts/**"
       - "templates/_shared/.agent/tasks/scripts/task-state.js"
       - "tests/communication/decision-resolution-isolation.test.js"
+      - "tests/communication/serializer-schema.test.js"
+      - "templates/_shared/.agent/decisions/decision.schema.json"
+      - "templates/_shared/.agent/waitpoints/waitpoint.schema.json"
       - ".github/workflows/decision-resolution-isolation.yml"
   workflow_dispatch:
 
@@ -43,6 +46,9 @@ jobs:
             assert.ok(root, "GITHUB_WORKSPACE is required");
             for (const relative of [
               "tests/communication/decision-resolution-isolation.test.js",
+              "tests/communication/serializer-schema.test.js",
+              "templates/_shared/.agent/decisions/decision.schema.json",
+              "templates/_shared/.agent/waitpoints/waitpoint.schema.json",
               "templates/_shared/.agent/skills/management-api/scripts/index.js",
               "templates/en/.agent/skills/management-api/scripts/index.js",
               "templates/zh/.agent/skills/management-api/scripts/index.js",
@@ -80,5 +86,8 @@ jobs:
           node --check templates/en/.agent/skills/management-api/scripts/index.js
           node --check templates/zh/.agent/skills/management-api/scripts/index.js
           node --check tests/communication/decision-resolution-isolation.test.js
+          node --check tests/communication/serializer-schema.test.js
       - name: Run fifteen Decision isolation cases
         run: node --test tests/communication/decision-resolution-isolation.test.js
+      - name: Check real serializers against closed schemas in fresh offline fixtures
+        run: node --test tests/communication/serializer-schema.test.js
