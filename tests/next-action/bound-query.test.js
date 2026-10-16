@@ -14,6 +14,12 @@ const SOURCE_CLOSURE = [
   "lib/next-action/cli.js",
   "lib/next-action/bound-query.js",
   "lib/next-action/canonical-task-source.js",
+  "lib/next-action/advisory-plan.js",
+  "lib/next-action/advisory-plan.schema.json",
+  "lib/next-action/canonical-plan-source.js",
+  "lib/next-action/canonical-pair.js",
+  "templates/_shared/.agent/decisions/decision.schema.json",
+  "templates/_shared/.agent/waitpoints/waitpoint.schema.json",
   "lib/next-action/index.js",
   "lib/commands/management/query.js",
   "lib/commands/management/api-helpers.js",
@@ -162,7 +168,12 @@ function preload(config) {
       || JSON.stringify(tail) === JSON.stringify(["rev-parse", "--absolute-git-dir"])
       || JSON.stringify(tail) === JSON.stringify(["rev-parse", "--show-toplevel"])
       || tail.length === 4 && tail[0] === "rev-parse" && tail[1] === "--verify" && tail[2] === "--quiet" && /^refs\/[A-Za-z0-9._/-]+\^\{commit\}$/.test(tail[3])
-      || tail.length === 5 && tail[0] === "ls-tree" && tail[1] === "-z" && /^[0-9a-f]{40}$/.test(tail[2]) && tail[3] === "--" && /^tasks\/(?:index|T-[A-Za-z0-9][A-Za-z0-9._-]*)\.json$/.test(tail[4])
+      || tail.length === 5 && tail[0] === "ls-tree" && tail[1] === "-z" && /^[0-9a-f]{40}$/.test(tail[2]) && tail[3] === "--"
+        && (/^tasks\/(?:index|T-[A-Za-z0-9][A-Za-z0-9._-]*)\.json$/.test(tail[4])
+          || /^missions\/M-[A-Za-z0-9][A-Za-z0-9._-]*\/(?:validation-contract\.json|advisory-plans\/AP-[A-Za-z0-9][A-Za-z0-9._-]*\.json)$/.test(tail[4])
+          || /^decisions\/D-[A-Za-z0-9][A-Za-z0-9._-]*\.json$/.test(tail[4]) || /^waitpoints\/WP-[A-Za-z0-9][A-Za-z0-9._-]*\.json$/.test(tail[4]))
+      || tail.length === 6 && tail[0] === "ls-tree" && tail[1] === "-r" && tail[2] === "-z"
+        && /^[0-9a-f]{40}$/.test(tail[3]) && tail[4] === "--" && ["missions", "decisions", "waitpoints"].includes(tail[5])
       || tail.length === 3 && tail[0] === "cat-file" && ["-s", "-p"].includes(tail[1]) && /^[0-9a-f]{40}$/.test(tail[2]);
     if (!allowed) fail("child-operation");
     const expectedEnv = {
@@ -177,7 +188,8 @@ function preload(config) {
     metrics.git_calls.push({ repo, argv: tail });
     if (config.unsupportedGit) return { status: 129, stdout: Buffer.alloc(0), stderr: Buffer.from("unknown option: --no-lazy-fetch\n") };
     const result = originalSpawn.call(this, command, args, options);
-    if (config.fault && metrics.fixture_faults === 0 && tail[0] === "cat-file" && tail[1] === "-p") {
+    if (config.fault && metrics.fixture_faults === 0 && tail[0] === "cat-file" && tail[1] === "-p"
+        && (!config.fault.planOnly || String(result.stdout).includes('"plan_id"'))) {
       metrics.fixture_faults++;
       if (config.fault.kind === "ref") {
         const changed = originalSpawn("git", ["-C", config.fault.repo, "update-ref", "refs/heads/main", config.fault.next], {
@@ -522,4 +534,180 @@ test("explicit bare governance repository is bound by its actual git-dir identit
   write(path.join(f.a.project, "cortex.project.json"), JSON.stringify(descriptor("alpha", bare)));
   const data = assertGap(cli(f));
   assert.equal(data.governance_revision.value, f.a.head);
+});
+
+function committedPlan(f) {
+  const { prepareAdvisoryPlan, sha256 } = require("../../lib/next-action/advisory-plan.js");
+  const now = Date.now(), at = (offset) => new Date(now + offset).toISOString();
+  const created = at(-3600000), expires = at(3600000);
+  const contract = { schema_version: 2, mission_id: "M-A", proposal_hash: "0123456789abcdef",
+    generated_at: created, states: { current: "done", transitions: [] }, milestones: [], gates: [] };
+  const contractText = JSON.stringify(contract, null, 2) + "\n";
+  const plan = { schema_version: 1, plan_id: "AP-A", project_id: "alpha", task_id: "T-A", mission_id: "M-A",
+    task_source: { path: "tasks/T-A.json", git_blob: git(f, f.a.repo, "rev-parse", "HEAD:tasks/T-A.json") },
+    mission_contract: { path: "missions/M-A/validation-contract.json", sha256: sha256(contractText) },
+    scope: { repository: "fixture/alpha", branch: "main", product_commit: "b".repeat(40),
+      allowed_paths: ["lib/**"], allowed_operations: ["prepare_patch"] },
+    risk_tier: "medium", validation_commands: ["node --test fixture-only.test.js"],
+    estimated_budget: { tokens: 1000, cost_amount: 0.25, currency: "USD" },
+    required_host_capabilities: ["runtime.reason"], stop_conditions: ["Stop on scope drift"],
+    created_at: created, expires_at: expires,
+    approval: { action: "external_side_effect", owner_workflow: "/mission", decision_id: "D-A", waitpoint_id: "WP-A" } };
+  const draft = prepareAdvisoryPlan(JSON.stringify(plan));
+  const relations = { task_ids: ["T-A"], mission_ids: ["M-A"], run_ids: [], queue_ids: [], session_ids: [],
+    artifact_refs: [draft.resource_ref], worktree_paths: [] };
+  const d = { schema_version: 1, decision_id: "D-A", type: "approval", status: "approved",
+    requested_by: "fixture-requester", prompt: "Review fixture plan", options: ["approve", "reject"], selected_option: "approve",
+    resolved_by: "fixture-reviewer", resolved_at: at(-3000000), rationale: "Fixture only",
+    gate: { action: "external_side_effect", resource_ref: draft.resource_ref }, relations,
+    created_at: created, updated_at: at(-3000000) };
+  const w = { schema_version: 1, waitpoint_id: "WP-A", status: "released", owner_workflow: "/mission",
+    reason: "Fixture pair", gate: { ...d.gate }, decision_id: "D-A", evidence_refs: [draft.resource_ref],
+    relations: JSON.parse(JSON.stringify(relations)), created_at: created, updated_at: at(-2400000),
+    released_at: at(-2400000), released_by: "fixture-owner", expires_at: expires };
+  write(path.join(f.a.repo, plan.mission_contract.path), contractText);
+  write(path.join(f.a.repo, draft.path), draft.content);
+  write(path.join(f.a.repo, "decisions/D-A.json"), JSON.stringify(d));
+  write(path.join(f.a.repo, "waitpoints/WP-A.json"), JSON.stringify(w));
+  commitPlanFixture(f);
+  return { plan, draft, contract, d, w, now, at };
+}
+function commitPlanFixture(f) {
+  git(f, f.a.repo, "add", "missions", "decisions", "waitpoints");
+  git(f, f.a.repo, "commit", "-m", "fixture canonical plan and pair");
+  f.a.head = git(f, f.a.repo, "rev-parse", "HEAD");
+}
+function planData(result) {
+  assert.equal(result.status, 0, result.stderr);
+  const data = result.output.data, row = data.recommendations[0];
+  assert.equal(data.execution_authorized, false); assert.equal(row.execution_authorized, false);
+  assert.equal(data.source_status.project, "not_observed");
+  assert.equal(data.source_status.host, "not_observed"); assert.equal(data.source_status.ownership, "not_observed");
+  return { data, row };
+}
+test("actual CLI maps committed Mission identity/scope and real pair through the same read-only path", (t) => {
+  const f = fixture(t), p = committedPlan(f), result = cli(f), { data, row } = planData(result);
+  assert.equal(data.plan_source.status, "observed"); assert.equal(data.plan_source.read_receipts.length, 4);
+  for (const name of ["tasks", "missions", "decisions", "waitpoints"]) assert.equal(data.source_status[name], "observed");
+  assert.equal(row.mission_ref, "M-A"); assert.equal(row.approval_request_draft.plan_digest, p.draft.sha256);
+  assert.equal(row.approval_request_draft.resource_ref, p.draft.resource_ref);
+  assert.ok(row.source_refs.some((ref) => ref.endsWith("#git-blob:" + p.plan.task_source.git_blob)));
+  assert.equal(row.advice_status, "INSUFFICIENT_EVIDENCE");
+  for (const code of ["scope_unknown", "mission_not_observed", "canonical_pair_missing", "matching_approved_decision_not_observed"]) {
+    assert.ok(!row.blocking_reasons.includes(code), code);
+  }
+  for (const code of ["ci_not_observed", "live_owner_lease_fence_not_verified", "host_not_proven"]) assert.ok(row.blocking_reasons.includes(code), code);
+  assert.ok(result.audit.git_calls.some((call) => JSON.stringify(call.argv.slice(0, 3)) === JSON.stringify(["ls-tree", "-r", "-z"])));
+  assert.equal(Object.prototype.hasOwnProperty.call(p.d, "expires_at"), false);
+});
+test("actual SDK consumes canonical plan and pair without caller proof injection", (t) => {
+  const f = fixture(t), p = committedPlan(f), result = run(f, [f.a.project, JSON.stringify({ task: "T-A" })], { sdk: true });
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.output.report.plan_source.status, "observed");
+  assert.equal(result.output.report.recommendations[0].approval_request_draft.plan_digest, p.draft.sha256);
+  assert.equal(result.output.report.execution_authorized, false);
+});
+test("actual CLI rejects a plan explicitly bound to another project", (t) => {
+  const f = fixture(t), p = committedPlan(f);
+  p.plan.project_id = "beta"; write(path.join(f.a.repo, p.draft.path), JSON.stringify(p.plan)); commitPlanFixture(f);
+  const { data, row } = planData(cli(f));
+  assert.equal(data.plan_source.status, "unavailable"); assert.equal(row.mission_ref, null);
+  assert.ok(row.blocking_reasons.includes("scope_unknown"));
+  assert.ok(data.plan_source.reason_codes.includes("ERR_ADVISOR_PLAN_BINDING"));
+});
+test("actual CLI does not infer Mission identity from folder names when contract is missing", (t) => {
+  const f = fixture(t), p = committedPlan(f);
+  fs.unlinkSync(path.join(f.a.repo, p.plan.mission_contract.path)); commitPlanFixture(f);
+  const { data, row } = planData(cli(f));
+  assert.equal(data.plan_source.status, "unavailable"); assert.equal(row.mission_ref, null);
+  assert.ok(data.plan_source.reason_codes.includes("ERR_ADVISOR_MISSION_CONTRACT_MISSING"));
+});
+test("actual CLI rejects a changed Mission contract even when its mission_id still matches", (t) => {
+  const f = fixture(t), p = committedPlan(f);
+  write(path.join(f.a.repo, p.plan.mission_contract.path), JSON.stringify(p.contract) + "\n"); commitPlanFixture(f);
+  const { data, row } = planData(cli(f));
+  assert.equal(data.plan_source.status, "unavailable"); assert.equal(row.mission_ref, null);
+  assert.ok(data.plan_source.reason_codes.includes("ERR_ADVISOR_MISSION_IDENTITY"));
+});
+test("actual CLI reports two active plans for one Task as conflict", (t) => {
+  const f = fixture(t), p = committedPlan(f); p.plan.plan_id = "AP-B";
+  const { prepareAdvisoryPlan } = require("../../lib/next-action/advisory-plan.js");
+  const second = prepareAdvisoryPlan(JSON.stringify(p.plan)); write(path.join(f.a.repo, second.path), second.content); commitPlanFixture(f);
+  const { data, row } = planData(cli(f));
+  assert.equal(data.plan_source.status, "conflict"); assert.equal(row.mission_ref, null);
+  assert.equal(row.advice_status, "RECONCILIATION_REQUIRED");
+});
+test("actual CLI never reuses old approval after raw plan byte change", (t) => {
+  const f = fixture(t), p = committedPlan(f); write(path.join(f.a.repo, p.draft.path), p.draft.content + " "); commitPlanFixture(f);
+  const { data, row } = planData(cli(f));
+  assert.equal(data.plan_source.status, "observed");
+  assert.notEqual(row.approval_request_draft.plan_digest, p.draft.sha256);
+  assert.ok(row.blocking_reasons.includes("canonical_pair_missing"));
+});
+test("actual CLI uses unique-pair semantics instead of first approved Decision", (t) => {
+  const f = fixture(t), p = committedPlan(f); p.d.decision_id = "D-B";
+  write(path.join(f.a.repo, "decisions/D-B.json"), JSON.stringify(p.d)); commitPlanFixture(f);
+  const { row } = planData(cli(f)); assert.equal(row.advice_status, "BLOCKED");
+  assert.ok(row.blocking_reasons.includes("canonical_pair_ambiguous"));
+});
+test("actual CLI treats rejected selection as blocked while retaining zero-write report", (t) => {
+  const f = fixture(t), p = committedPlan(f); p.d.selected_option = "reject";
+  write(path.join(f.a.repo, "decisions/D-A.json"), JSON.stringify(p.d)); commitPlanFixture(f);
+  const { row } = planData(cli(f)); assert.equal(row.advice_status, "BLOCKED");
+  assert.ok(row.blocking_reasons.includes("canonical_decision_selection_invalid"));
+});
+test("actual CLI enforces Waitpoint owner and deadline without fabricating Decision fields", (t) => {
+  const f = fixture(t), p = committedPlan(f); p.w.owner_workflow = "/user";
+  write(path.join(f.a.repo, "waitpoints/WP-A.json"), JSON.stringify(p.w)); commitPlanFixture(f);
+  assert.ok(planData(cli(f)).row.blocking_reasons.includes("canonical_pair_scope_mismatch"));
+  p.w.owner_workflow = "/mission"; p.w.expires_at = p.at(-600000);
+  write(path.join(f.a.repo, "waitpoints/WP-A.json"), JSON.stringify(p.w)); commitPlanFixture(f);
+  const { row } = planData(cli(f)); assert.equal(row.advice_status, "BLOCKED");
+  assert.ok(row.blocking_reasons.includes("canonical_waitpoint_expired"));
+});
+test("actual CLI rejects unknown authority fields in committed Decision schema", (t) => {
+  const f = fixture(t), p = committedPlan(f); p.d.execution_authorized = true;
+  write(path.join(f.a.repo, "decisions/D-A.json"), JSON.stringify(p.d)); commitPlanFixture(f);
+  const { data, row } = planData(cli(f)); assert.equal(data.plan_source.status, "unavailable");
+  assert.equal(row.mission_ref, null); assert.ok(data.plan_source.reason_codes.includes("ERR_ADVISOR_PAIR_SCHEMA"));
+});
+test("actual CLI refuses Git symlink blobs anywhere in canonical plan namespace", (t) => {
+  const f = fixture(t), p = committedPlan(f);
+  fs.unlinkSync(path.join(f.a.repo, p.draft.path));
+  fs.symlinkSync("../validation-contract.json", path.join(f.a.repo, p.draft.path)); commitPlanFixture(f);
+  const { data, row } = planData(cli(f)); assert.equal(data.plan_source.status, "unavailable");
+  assert.equal(row.mission_ref, null);
+});
+test("actual CLI enforces bounded namespace count without reading plan bytes", (t) => {
+  const f = fixture(t); committedPlan(f);
+  for (let i = 0; i < 513; i++) write(path.join(f.a.repo, "missions/fixture-notes/" + i + ".md"), "");
+  commitPlanFixture(f); const { data, row } = planData(cli(f));
+  assert.equal(data.plan_source.status, "unavailable"); assert.equal(row.mission_ref, null);
+  assert.equal(data.plan_source.read_receipts.length, 0);
+});
+test("actual ref change during plan blob read discards every Task and plan mapping", (t) => {
+  const f = fixture(t), p = committedPlan(f), initial = f.a.head;
+  p.w.reason = "Later fixture revision"; write(path.join(f.a.repo, "waitpoints/WP-A.json"), JSON.stringify(p.w)); commitPlanFixture(f);
+  const next = f.a.head; git(f, f.a.repo, "update-ref", "refs/heads/main", initial);
+  const result = cli(f, [], { fault: { kind: "ref", repo: f.a.repo, next, planOnly: true } });
+  assert.equal(result.status, 0, result.stderr); assert.equal(result.output.data.source_status.tasks, "conflict");
+  assert.deepEqual(result.output.data.recommendations, []); assert.equal(result.output.data.execution_authorized, false);
+  assert.equal(result.output.data.plan_source.status, "not_observed");
+});
+
+test("actual CLI invalidates old plan on Task byte change and forbids weaker validation after rebinding", (t) => {
+  const f = fixture(t), p = committedPlan(f), file = path.join(f.a.repo, "tasks/T-A.json");
+  const task = JSON.parse(fs.readFileSync(file, "utf8")); task.owner = "changed-fixture-owner";
+  write(file, JSON.stringify(task)); git(f, f.a.repo, "add", "tasks"); git(f, f.a.repo, "commit", "-m", "fixture Task changed");
+  let report = planData(cli(f));
+  assert.equal(report.data.plan_source.status, "conflict"); assert.equal(report.row.mission_ref, null);
+  assert.ok(report.data.plan_source.reason_codes.includes("ERR_ADVISOR_TASK_VERSION_CONFLICT"));
+  task.validation_commands.push("node --test new-required.test.js");
+  write(file, JSON.stringify(task)); git(f, f.a.repo, "add", "tasks"); git(f, f.a.repo, "commit", "-m", "fixture Task validation changed");
+  p.plan.task_source.git_blob = git(f, f.a.repo, "rev-parse", "HEAD:tasks/T-A.json");
+  write(path.join(f.a.repo, p.draft.path), JSON.stringify(p.plan)); commitPlanFixture(f);
+  report = planData(cli(f)); assert.equal(report.data.plan_source.status, "conflict");
+  assert.ok(report.data.plan_source.reason_codes.includes("ERR_ADVISOR_TASK_VALIDATION_CONFLICT"));
+  assert.equal(report.row.mission_ref, null);
+  assert.deepEqual(report.row.validation_plan.tests, ["node --test fixture-only.test.js", "node --test new-required.test.js"]);
 });

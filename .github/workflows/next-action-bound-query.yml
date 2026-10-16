@@ -29,6 +29,13 @@ on:
       - "tests/next-action/bound-query.test.js"
       - "tests/sdk/local-transport.test.js"
       - "tests/commands/management/query.test.js"
+      - "lib/next-action/advisory-plan.js"
+      - "lib/next-action/advisory-plan.schema.json"
+      - "lib/next-action/canonical-plan-source.js"
+      - "lib/next-action/canonical-pair.js"
+      - "templates/_shared/.agent/decisions/decision.schema.json"
+      - "templates/_shared/.agent/waitpoints/waitpoint.schema.json"
+      - "tests/next-action/canonical-plan.test.js"
       - ".github/workflows/next-action-bound-query.yml"
 
 permissions:
@@ -62,7 +69,7 @@ jobs:
             const root = process.env.GITHUB_WORKSPACE;
             assert.ok(root);
             assert.equal(fs.existsSync(path.join(root, "node_modules")), false);
-            for (const relative of ["bin/cli.js","lib/next-action/cli.js","lib/next-action/bound-query.js","lib/next-action/canonical-task-source.js","lib/next-action/index.js","lib/commands/management/query.js","lib/commands/management/api-helpers.js","lib/management/client.js","lib/sdk/local-client.js","lib/sdk/local-transport.js","lib/governance/root.js","packages/sdk/src/index.js","packages/project-sdk/src/descriptor.js","packages/project-sdk/src/governance.js","packages/protocol/src/index.js","packages/protocol/src/refs.js","packages/protocol/src/version.js","packages/protocol/src/result.js","packages/protocol/src/capabilities.js","packages/protocol/src/events.js","packages/protocol/src/timeline.js","packages/protocol/src/negotiation.js","packages/protocol/src/evolution.js","tests/next-action/bound-query.test.js","tests/sdk/local-transport.test.js","tests/commands/management/query.test.js"]) {
+            for (const relative of ["bin/cli.js","lib/next-action/cli.js","lib/next-action/bound-query.js","lib/next-action/canonical-task-source.js","lib/next-action/index.js","lib/commands/management/query.js","lib/commands/management/api-helpers.js","lib/management/client.js","lib/sdk/local-client.js","lib/sdk/local-transport.js","lib/governance/root.js","packages/sdk/src/index.js","packages/project-sdk/src/descriptor.js","packages/project-sdk/src/governance.js","packages/protocol/src/index.js","packages/protocol/src/refs.js","packages/protocol/src/version.js","packages/protocol/src/result.js","packages/protocol/src/capabilities.js","packages/protocol/src/events.js","packages/protocol/src/timeline.js","packages/protocol/src/negotiation.js","packages/protocol/src/evolution.js","tests/next-action/bound-query.test.js","tests/sdk/local-transport.test.js","tests/commands/management/query.test.js","lib/next-action/advisory-plan.js","lib/next-action/advisory-plan.schema.json","lib/next-action/canonical-plan-source.js","lib/next-action/canonical-pair.js","templates/_shared/.agent/decisions/decision.schema.json","templates/_shared/.agent/waitpoints/waitpoint.schema.json","tests/next-action/canonical-plan.test.js"]) {
               const entry = tree.tree.find((item) => item.path === relative);
               assert.ok(entry, "missing " + relative);
               assert.equal(entry.type, "blob");
@@ -86,7 +93,7 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: ${{ matrix.node }}
-      - name: Run only 41 real-bin and SDK synthetic query cases
+      - name: Run only 84 canonical-plan, real-bin, and SDK query cases
         shell: bash
         run: |
           set -euo pipefail
@@ -100,7 +107,7 @@ jobs:
           env -i PATH=/usr/bin:/bin HOME="$scratch/home" "$node_bin" - "$GITHUB_WORKSPACE" <<'NODE'
           const path = require("node:path"), assert = require("node:assert/strict");
           const root = process.argv[2];
-          const sources = ["bin/cli.js","lib/next-action/cli.js","lib/next-action/bound-query.js","lib/next-action/canonical-task-source.js","lib/next-action/index.js","lib/commands/management/query.js","lib/commands/management/api-helpers.js","lib/management/client.js","lib/sdk/local-client.js","lib/sdk/local-transport.js","lib/governance/root.js","packages/sdk/src/index.js","packages/project-sdk/src/descriptor.js","packages/project-sdk/src/governance.js","packages/protocol/src/index.js","packages/protocol/src/refs.js","packages/protocol/src/version.js","packages/protocol/src/result.js","packages/protocol/src/capabilities.js","packages/protocol/src/events.js","packages/protocol/src/timeline.js","packages/protocol/src/negotiation.js","packages/protocol/src/evolution.js"];
+          const sources = ["bin/cli.js","lib/next-action/cli.js","lib/next-action/bound-query.js","lib/next-action/canonical-task-source.js","lib/next-action/index.js","lib/commands/management/query.js","lib/commands/management/api-helpers.js","lib/management/client.js","lib/sdk/local-client.js","lib/sdk/local-transport.js","lib/governance/root.js","packages/sdk/src/index.js","packages/project-sdk/src/descriptor.js","packages/project-sdk/src/governance.js","packages/protocol/src/index.js","packages/protocol/src/refs.js","packages/protocol/src/version.js","packages/protocol/src/result.js","packages/protocol/src/capabilities.js","packages/protocol/src/events.js","packages/protocol/src/timeline.js","packages/protocol/src/negotiation.js","packages/protocol/src/evolution.js","lib/next-action/advisory-plan.js","lib/next-action/advisory-plan.schema.json","lib/next-action/canonical-plan-source.js","lib/next-action/canonical-pair.js","templates/_shared/.agent/decisions/decision.schema.json","templates/_shared/.agent/waitpoints/waitpoint.schema.json"];
           for (const directory of new Set([root, ...sources.map((file) => path.dirname(path.join(root, file)))])) {
             for (const name of ["@cortex-agent/protocol", "@cortex-agent/sdk"]) {
               let found = false;
@@ -113,11 +120,11 @@ jobs:
           env -i PATH=/usr/bin:/bin HOME="$scratch/home" USERPROFILE="$scratch/home" \
             TMPDIR="$scratch/tmp" TMP="$scratch/tmp" TEMP="$scratch/tmp" \
             XDG_CONFIG_HOME="$scratch/home" LANG=C LC_ALL=C TZ=UTC \
-            "$node_bin" --test --test-concurrency=1 --test-reporter=tap tests/next-action/bound-query.test.js tests/sdk/local-transport.test.js tests/commands/management/query.test.js | tee "$scratch/tap.log"
+            "$node_bin" --test --test-concurrency=1 --test-reporter=tap tests/next-action/bound-query.test.js tests/next-action/canonical-plan.test.js tests/sdk/local-transport.test.js tests/commands/management/query.test.js | tee "$scratch/tap.log"
           env -i PATH=/usr/bin:/bin "$node_bin" - "$scratch/tap.log" <<'NODE'
           const fs = require("node:fs"), assert = require("node:assert/strict");
           const text = fs.readFileSync(process.argv[2], "utf8");
-          for (const [key, count] of Object.entries({tests: 41, pass: 41, fail: 0, skipped: 0, cancelled: 0, todo: 0})) {
+          for (const [key, count] of Object.entries({tests: 84, pass: 84, fail: 0, skipped: 0, cancelled: 0, todo: 0})) {
             const matches = [...text.matchAll(new RegExp("^# " + key + " (\\d+)\\s*$", "gm"))].map((item) => Number(item[1]));
             assert.deepEqual(matches, [count], "Unexpected " + key + " summary");
           }
