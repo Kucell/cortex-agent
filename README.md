@@ -35,6 +35,7 @@ Cortex Project
 - **State Reconciliation**：Governance revision、workspace revision、branch、Change Request、CI/checks 与 Decision/Waitpoint/Lock 可统一判断。
 - **Controlled Resume**：新设备、新 Session attach 后先 reconcile，再决定 READY / BLOCKED / RECONCILIATION_REQUIRED / DEGRADED。
 - **Remote `/parallel`**：多 Session 可共享 Queue、logical ProgressLock、owned_files、Decision 和 Waitpoint，仍保持原有安全语义。
+- **`/agent-team`**：从当前目标选择现有任务、并行或受管多宿主工作流，先核对依赖与隔离，再独立验收；它不创建新的运行态调度器。
 - **统一只读投影**：SDK、MCP、Dashboard 可消费同一个 `project-health` projection。
 
 Provider 验证状态：
