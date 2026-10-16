@@ -90,15 +90,35 @@ test("release publication rechecks current main and live approval at the effect 
 });
 
 
-test("v1.15.4 publication and preflight run real reconcile CLI subprocess regressions", () => {
+test("publication and preflight isolate the nine real CLI regressions before release", () => {
   const preflight = fs.readFileSync(path.join(root, ".github/workflows/npm-release-preflight.yml"), "utf8");
-  const command = "node --test tests/commands/reconcile.test.js tests/cli/reconcile-entrypoint.test.js tests/cli/cli-contract.test.js";
+  const runner = fs.readFileSync(path.join(root, "scripts/release/targeted-cli-validation.py"), "utf8");
+  const oldCommand = "node --test tests/commands/reconcile.test.js tests/cli/reconcile-entrypoint.test.js tests/cli/cli-contract.test.js";
   for (const source of [workflow, preflight]) {
-    assert.match(source, /Verify shipped reconcile CLI entrypoint/);
-    assert.ok(source.includes(command));
-    assert.match(source, /v1\.15\.4 requires the real reconcile CLI regression tests/);
+    const validation = source.split("  targeted-cli-validation:\n")[1]?.split(/\n  [a-z][a-z-]*:\n/)[0];
+    assert.ok(validation, "isolated CLI validation job missing");
+    assert.match(validation, /permissions:\s*\n\s*contents: read/);
+    assert.match(validation, /submodules: false/);
+    assert.match(validation, /persist-credentials: false/);
+    assert.match(validation, /Verify shipped reconcile CLI entrypoint in isolated environment/);
+    assert.match(validation, /\/usr\/bin\/env -i PATH=\/usr\/bin:\/bin \/usr\/bin\/python3 -I/);
+    assert.match(validation, /scripts\/release\/targeted-cli-validation\.py/);
+    assert.match(validation, /--expected-head "\$SOURCE_HEAD" --node "\$node_bin"/);
+    assert.doesNotMatch(validation, /secrets\.|id-token: write|npm install|pnpm install/);
+    assert.ok(!source.includes(oldCommand), "unsafe inherited-environment CLI entrypoint remains");
     assert.ok(source.indexOf("Verify shipped reconcile CLI entrypoint") < source.indexOf("npm pack --dry-run"));
   }
+  assert.match(workflow, /\n  release:\n    needs: \[targeted-cli-validation\]/);
+  assert.match(preflight, /\n  verify:\n    needs: \[targeted-cli-validation\]/);
+  assert.match(workflow, /ref: \$\{\{ github\.sha \}\}/);
+  assert.match(preflight, /ref: \$\{\{ github\.event\.pull_request\.head\.sha \|\| github\.sha \}\}/);
+  for (const testPath of ["tests/commands/reconcile.test.js", "tests/cli/reconcile-entrypoint.test.js", "tests/cli/cli-contract.test.js"]) {
+    assert.ok(runner.includes('"' + testPath + '":'), "reviewed CLI test missing: " + testPath);
+  }
+  assert.match(runner, /EXPECTED_TESTS = 9/);
+  assert.match(runner, /start_new_session=True/);
+  assert.match(runner, /"PATH": ""/);
+  assert.match(runner, /"governance checkout must be absent or an empty non-link directory"/);
 });
 
 test("one-click owner manual dispatch and automatic comment path both have three strict auth checks", () => {
