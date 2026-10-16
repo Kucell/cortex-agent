@@ -109,7 +109,15 @@ function fixture(t) {
 function preload(config) {
   const fs = require("node:fs"), cp = require("node:child_process"), Module = require("node:module");
   const path = require("node:path");
-  const originalSpawn = cp.spawnSync, originalWrite = fs.writeFileSync;
+  const originalSpawn = cp.spawnSync;
+  const originalOpen = fs.openSync, originalWriteSync = fs.writeSync, originalClose = fs.closeSync;
+  // This closure is the fixed fixture actor; product calls keep the write guard.
+  const bindingFault = config.fault && config.fault.kind === "binding" ? {
+    file: config.fault.file, bytes: Buffer.from(config.fault.content, "utf8"),
+  } : null;
+  if (bindingFault && bindingFault.file !== path.join(config.projects[0], "cortex.project.json")) {
+    throw new Error("Unexpected fixture binding target");
+  }
   const originalLoad = Module._load, originalResolve = Module._resolveFilename;
   const metrics = { modules: [], git_calls: [], writes: 0, networks: 0, denied: [], fixture_faults: 0 };
   const fail = (kind) => { metrics.denied.push(kind); process.stderr.write("BOUND_DENIED:" + kind + "\n"); process.exit(87); };
@@ -135,7 +143,6 @@ function preload(config) {
     }
     if (typeof fs.promises[key] === "function") fs.promises[key] = () => { metrics.writes++; fail("fs-promise-write:" + key); };
   }
-  const originalOpen = fs.openSync;
   fs.openSync = function(file, flags, ...rest) {
     if (file === config.forbiddenRead) fail("private-canary-read");
     const numeric = typeof flags === "number";
@@ -177,7 +184,15 @@ function preload(config) {
           env: config.fixtureEnv, encoding: "utf8", timeout: 5000 });
         if (changed.error || changed.status !== 0) fail("fixture-ref-change");
       } else if (config.fault.kind === "binding") {
-        originalWrite(config.fault.file, config.fault.content);
+        const fd = originalOpen(bindingFault.file, fs.constants.O_WRONLY | fs.constants.O_TRUNC | fs.constants.O_NOFOLLOW);
+        try {
+          let offset = 0;
+          while (offset < bindingFault.bytes.length) {
+            const written = originalWriteSync(fd, bindingFault.bytes, offset, bindingFault.bytes.length - offset, null);
+            if (!Number.isInteger(written) || written <= 0) throw new Error("Incomplete fixture binding write");
+            offset += written;
+          }
+        } finally { originalClose(fd); }
       }
     }
     return result;
@@ -208,15 +223,28 @@ function run(f, args, options = {}) {
   const auditLine = String(child.stderr).split("\n").find((line) => line.startsWith("BOUND_AUDIT:"));
   assert.ok(auditLine, child.stderr);
   const audit = JSON.parse(auditLine.slice("BOUND_AUDIT:".length));
-  assert.equal(audit.writes, 0); assert.equal(audit.networks, 0);
+  assert.equal(audit.writes, 0, child.stderr); assert.equal(audit.networks, 0, child.stderr);
   if (!options.expectModuleDenial) assert.deepEqual(audit.denied, [], child.stderr);
   const after = snapshot(f.root);
   if (options.fault) {
     assert.equal(audit.fixture_faults, 1);
     const allowed = options.fault.kind === "binding"
       ? [path.relative(f.root, options.fault.file)]
-      : ["alpha-governance/.git/refs/heads", "alpha-governance/.git/refs/heads/main",
+      : ["alpha-governance/.git", "alpha-governance/.git/refs/heads", "alpha-governance/.git/refs/heads/main",
         "alpha-governance/.git/logs/refs/heads/main", "alpha-governance/.git/logs/HEAD"];
+    assert.deepEqual(Object.keys(after).sort(), Object.keys(before).sort(), "fault must preserve the full entry set");
+    for (const key of allowed) {
+      assert.equal(after[key].type, before[key].type, key + " type");
+      assert.equal(after[key].mode, before[key].mode, key + " mode");
+      if (before[key].type === "directory") {
+        const { mtime: beforeMtime, ...beforeRest } = before[key];
+        const { mtime: afterMtime, ...afterRest } = after[key];
+        assert.deepEqual(afterRest, beforeRest, key + " permits only directory mtime change");
+      }
+    }
+    if (options.fault.kind === "binding") {
+      assert.deepEqual(fs.readFileSync(options.fault.file), Buffer.from(options.fault.content, "utf8"), "exact fixture fault bytes");
+    }
     const changed = [...new Set([...Object.keys(before), ...Object.keys(after)])]
       .filter((key) => JSON.stringify(before[key]) !== JSON.stringify(after[key]));
     assert.ok(changed.length > 0);
