@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "reviewed_product_head": "8432771bca8edbe7c9f9516ae0affb733c489862",
-  "closure_kind": "conservative literal-require superset; observed modules reported separately",
+  "closure_kind": "conservative literal-require superset plus reviewed eager fs resource; observed modules reported separately",
   "sources": [
     "bin/cli.js",
     "lib/agents/adapters/base.js",
@@ -254,6 +254,7 @@
     "packages/protocol/src/version.js",
     "packages/sdk/src/index.js",
     "scripts/codex-p002-shadow-pilot.js",
+    "templates/_shared/.agent/contracts/state-classes.json",
     "templates/_shared/.agent/decisions/decision.schema.json",
     "templates/_shared/.agent/skills/management-api/scripts/query-dispatch-state.js",
     "templates/_shared/.agent/waitpoints/waitpoint.schema.json"
@@ -394,6 +395,7 @@
   },
   "notes": [
     "One dynamic lazy require in scripts/codex-p002-shadow-pilot.js targets .agent/skills/context-budget/scripts/minimal-context.js; do not materialize or permit it.",
+    "The eager lib/state-sync/index.js -> lib/state-registry/index.js readRegistry() path reads templates/_shared/.agent/contracts/state-classes.json with fs.readFileSync; validation and syncablePathspecs only inspect that JSON and load no further resources.",
     "Comment-only require('./'), require('./catalog'), and require('@graphify') do not create dependencies.",
     "No production file changes. Existing manual dispatch execution is not exercised.",
     "Tier-U public-bin regression only. No live GovernanceStore, Host, Owner/Lease, authority acceptance, package install, full suite, or live E2E claim.",

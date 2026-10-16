@@ -7,6 +7,7 @@ on:
       - "lib/**"
       - "packages/**"
       - "package.json"
+      - "templates/_shared/.agent/contracts/state-classes.json"
       - "templates/_shared/.agent/skills/management-api/scripts/query-dispatch-state.js"
       - "scripts/codex-p002-shadow-pilot.js"
       - "tests/dispatch/phase-zero-bin-boundary.test.js"
@@ -80,7 +81,7 @@ jobs:
             return { bytes, entry };
           }
           const manifest = JSON.parse(bytesFor(manifestPath).bytes.toString("utf8"));
-          assert.equal(manifest.sources.length, 254);
+          assert.equal(manifest.sources.length, 255);
           assert.equal(new Set(manifest.sources).size, manifest.sources.length);
           const proof = { source_head: head, source_manifest_blob: tree.get(manifestPath).blob,
             test_blob: tree.get(testPath).blob, blobs: {} };
@@ -96,7 +97,7 @@ jobs:
             if (manifest.sources.includes(relative)) proof.blobs[relative] = entry;
           }
           fs.writeFileSync(path.join(root, "phase-zero-source-proof.json"), JSON.stringify(proof) + "\n", { flag: "wx" });
-          console.log(JSON.stringify({ source_head: head, node: process.version, static_source_files: 254,
+          console.log(JSON.stringify({ source_head: head, node: process.version, static_source_files: 255,
             source_manifest_blob: proof.source_manifest_blob, test_blob: proof.test_blob,
             protected_source_blobs: manifest.protected_source_blobs }));
           NODE
