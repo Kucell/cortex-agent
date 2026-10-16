@@ -96,7 +96,71 @@ def snapshot(root):
     visit(root)
     return rows
 
+def plugin_components(plugin, names):
+    """Validate this package's path-only component contract, not a Host install."""
+    names = set(names)
+    result = {}
+    for kind in ["commands", "agents", "skills"]:
+        declared = plugin.get(kind)
+        paths = [declared] if isinstance(declared, str) else declared
+        require(isinstance(paths, list) and paths, "plugin component paths missing: " + kind)
+        files = []
+        for value in paths:
+            require(isinstance(value, str) and value.startswith("./") and
+                    "\\" not in value and "//" not in value,
+                    "unsafe plugin component path")
+            relative = value[2:].rstrip("/")
+            require(relative and ".." not in PurePosixPath(relative).parts and
+                    relative == PurePosixPath(relative).as_posix() and
+                    not PurePosixPath(relative).is_absolute(), "unsafe plugin component path")
+            if kind == "agents":
+                matched = [relative] if (relative in names and relative.endswith(".md") and
+                                          not value.endswith("/")) else []
+            elif kind == "commands":
+                if relative in names and relative.endswith(".md"):
+                    matched = [relative]
+                else:
+                    matched = sorted(name for name in names if name.endswith(".md") and
+                                     PurePosixPath(name).parent.as_posix() == relative)
+            else:
+                direct = relative + "/SKILL.md"
+                matched = [direct] if direct in names else sorted(
+                    name for name in names if PurePosixPath(name).name == "SKILL.md" and
+                    PurePosixPath(name).parent.parent.as_posix() == relative)
+            require(matched, "plugin component is missing or wrong type: " + kind + ":" + relative)
+            files.extend(matched)
+        identities = [PurePosixPath(name).parent.name if kind == "skills"
+                      else PurePosixPath(name).stem for name in files]
+        require(len(set(identities)) == len(identities), "duplicate plugin component: " + kind)
+        result[kind] = sorted(files)
+    return result
+
+def check_plugin_component_oracle():
+    names = {"workflows/start.md", "agents/reviewer.md", "skills/review/SKILL.md"}
+    valid = {"commands": "./workflows/", "agents": ["./agents/reviewer.md"],
+             "skills": "./skills/"}
+    require(plugin_components(valid, names) == {
+        "commands": ["workflows/start.md"], "agents": ["agents/reviewer.md"],
+        "skills": ["skills/review/SKILL.md"]}, "plugin path oracle positive case")
+    invalid = [
+        {**valid, "commands": "./missing/"},
+        {**valid, "commands": "./../workflows/"},
+        {**valid, "commands": "./workflows//"},
+        {**valid, "agents": "./agents/"},
+        {**valid, "agents": "./agents/reviewer.md/"},
+        {**valid, "agents": []},
+        {**valid, "skills": "./agents/"},
+        {**valid, "commands": ["./workflows/", "./workflows/start.md"]},
+    ]
+    for case in invalid:
+        try:
+            plugin_components(case, names)
+        except AssertionError:
+            continue
+        raise AssertionError("plugin path oracle accepted a negative case")
+
 def main():
+    check_plugin_component_oracle()
     parser = argparse.ArgumentParser()
     parser.add_argument("--expected-head", required=True)
     parser.add_argument("--expected-version", required=True)
@@ -148,6 +212,8 @@ def main():
             tree[name] = {"mode": mode, "type": kind, "blob": oid}
         require(tree[".agent"]["mode"] == "160000", "governance must remain a gitlink")
         require(tree[".agent"]["blob"] == args.expected_gitlink, "governance gitlink drift")
+        require(not any(name == "skills" or name.startswith("skills/") for name in tree),
+                "default root skills would duplicate the explicit plugin skills path")
         pkg = read_json(source / "package.json")
         require(pkg["name"] == "cortex-agent" and pkg["version"] == args.expected_version,
                 "candidate package/version mismatch")
@@ -219,6 +285,12 @@ def main():
                 }
         require(set(manifest) == {entry["path"] for entry in pack[0]["files"]},
                 "npm file list differs from tar")
+        source_components = plugin_components(plugin, [name for name, entry in tree.items()
+                                    if entry["mode"] in ["100644", "100755"]])
+        packed_components = plugin_components(plugin, manifest)
+        require(packed_components == source_components, "plugin components omitted from tar")
+        require("templates/_shared/.agent/workflows/cortex-setup.md" in packed_components["commands"],
+                "advertised cortex-setup command is absent")
         required = [
             "package.json", "bin/cli.js", "bin/cortex-claude-hook",
             "lib/commands/session.js", "lib/commands/init.js", "lib/commands/upgrade.js",
@@ -418,10 +490,7 @@ def main():
                         "fixture unexpectedly created Git state")
         require(git("rev-parse", "HEAD").strip() == args.expected_head and
                 not git("status", "--porcelain", "--untracked-files=all").strip(), "source changed during acceptance")
-        plugin_paths = {}
-        for key in ["commands", "agents"]:
-            relative = plugin.get(key, "").removeprefix("./").rstrip("/")
-            plugin_paths[key] = bool(relative) and any(p == relative or p.startswith(relative + "/") for p in manifest)
+        plugin_paths = {kind: bool(files) for kind, files in packed_components.items()}
         evidence = {
             "schema_version": 1, "status": "passed", "scope": "source-pack-and-offline-local-tar-fixtures",
             "source_head": args.expected_head, "source_tree": git("rev-parse", "HEAD^{tree}").strip(),
@@ -434,6 +503,16 @@ def main():
             "boundary": {"denied": 0, "audit_entries": len(audit.read_text().splitlines()),
                          "scope": "audited network/subprocess instrumentation; not an OS filesystem sandbox"},
             "plugin_entrypoint_paths_present": plugin_paths,
+            "plugin_component_files": packed_components,
+            "plugin_component_counts": {kind: len(files) for kind, files in packed_components.items()},
+            "plugin_validation_scope": "tar path/type/member closure only; not the official Host validator",
+            "plugin_path_rules": {
+                "reference": "https://code.claude.com/docs/en/plugins-reference#how-each-key-combines-with-its-default-location",
+                "commands": "explicit paths replace default",
+                "agents": "explicit paths replace default",
+                "skills": "explicit paths add to default; root skills absent",
+                "legacy_guide_compatibility": "not-validated",
+            },
             "claims_not_made": ["npm-registry-published-install", "actual-AI-Host", "formal-AUTH-L3",
                                "SelfEvolution28", "full-suite", "arbitrary-existing-project-upgrade",
                                "Claude-plugin-install"],
