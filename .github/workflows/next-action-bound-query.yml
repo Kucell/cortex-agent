@@ -1,0 +1,131 @@
+name: Bound Next Action Readonly Query
+
+on:
+  pull_request:
+    paths:
+      - "bin/cli.js"
+      - "lib/next-action/cli.js"
+      - "lib/next-action/bound-query.js"
+      - "lib/next-action/canonical-task-source.js"
+      - "lib/next-action/index.js"
+      - "lib/commands/management/query.js"
+      - "lib/commands/management/api-helpers.js"
+      - "lib/management/client.js"
+      - "lib/sdk/local-client.js"
+      - "lib/sdk/local-transport.js"
+      - "lib/governance/root.js"
+      - "packages/sdk/src/index.js"
+      - "packages/project-sdk/src/descriptor.js"
+      - "packages/project-sdk/src/governance.js"
+      - "packages/protocol/src/index.js"
+      - "packages/protocol/src/refs.js"
+      - "packages/protocol/src/version.js"
+      - "packages/protocol/src/result.js"
+      - "packages/protocol/src/capabilities.js"
+      - "packages/protocol/src/events.js"
+      - "packages/protocol/src/timeline.js"
+      - "packages/protocol/src/negotiation.js"
+      - "packages/protocol/src/evolution.js"
+      - "tests/next-action/bound-query.test.js"
+      - "tests/sdk/local-transport.test.js"
+      - "tests/commands/management/query.test.js"
+      - "lib/next-action/advisory-plan.js"
+      - "lib/next-action/advisory-plan.schema.json"
+      - "lib/next-action/canonical-plan-source.js"
+      - "lib/next-action/canonical-pair.js"
+      - "templates/_shared/.agent/decisions/decision.schema.json"
+      - "templates/_shared/.agent/waitpoints/waitpoint.schema.json"
+      - "tests/next-action/canonical-plan.test.js"
+      - ".github/workflows/next-action-bound-query.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  bound-query:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ["18", "22", "24"]
+    env:
+      SOURCE_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - name: Materialize only the exact-head readonly query closure
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b
+        with:
+          script: |
+            const fs = require("node:fs"), path = require("node:path"), crypto = require("node:crypto");
+            const assert = require("node:assert/strict");
+            const head = process.env.SOURCE_HEAD;
+            assert.match(head || "", /^[a-f0-9]{40}$/);
+            const {owner, repo} = context.repo;
+            const {data: commit} = await github.rest.git.getCommit({owner, repo, commit_sha: head});
+            assert.equal(commit.sha, head);
+            const {data: tree} = await github.rest.git.getTree({owner, repo, tree_sha: commit.tree.sha, recursive: "true"});
+            assert.equal(tree.truncated, false);
+            assert.equal(tree.sha, commit.tree.sha);
+            const root = process.env.GITHUB_WORKSPACE;
+            assert.ok(root);
+            assert.equal(fs.existsSync(path.join(root, "node_modules")), false);
+            for (const relative of ["bin/cli.js","lib/next-action/cli.js","lib/next-action/bound-query.js","lib/next-action/canonical-task-source.js","lib/next-action/index.js","lib/commands/management/query.js","lib/commands/management/api-helpers.js","lib/management/client.js","lib/sdk/local-client.js","lib/sdk/local-transport.js","lib/governance/root.js","packages/sdk/src/index.js","packages/project-sdk/src/descriptor.js","packages/project-sdk/src/governance.js","packages/protocol/src/index.js","packages/protocol/src/refs.js","packages/protocol/src/version.js","packages/protocol/src/result.js","packages/protocol/src/capabilities.js","packages/protocol/src/events.js","packages/protocol/src/timeline.js","packages/protocol/src/negotiation.js","packages/protocol/src/evolution.js","tests/next-action/bound-query.test.js","tests/sdk/local-transport.test.js","tests/commands/management/query.test.js","lib/next-action/advisory-plan.js","lib/next-action/advisory-plan.schema.json","lib/next-action/canonical-plan-source.js","lib/next-action/canonical-pair.js","templates/_shared/.agent/decisions/decision.schema.json","templates/_shared/.agent/waitpoints/waitpoint.schema.json","tests/next-action/canonical-plan.test.js"]) {
+              const entry = tree.tree.find((item) => item.path === relative);
+              assert.ok(entry, "missing " + relative);
+              assert.equal(entry.type, "blob");
+              assert.equal(entry.mode, relative === "bin/cli.js" ? "100755" : "100644");
+              const {data: file} = await github.rest.repos.getContent({owner, repo, path: relative, ref: head});
+              assert.equal(file.path, relative);
+              assert.equal(file.type, "file");
+              assert.equal(file.encoding, "base64");
+              assert.equal(file.sha, entry.sha);
+              const bytes = Buffer.from(file.content, "base64");
+              assert.equal(bytes.length, file.size);
+              const blob = crypto.createHash("sha1").update("blob " + bytes.length + "\0").update(bytes).digest("hex");
+              assert.equal(blob, entry.sha);
+              const destination = path.join(root, relative);
+              assert.ok(destination.startsWith(root + path.sep));
+              fs.mkdirSync(path.dirname(destination), {recursive: true});
+              fs.writeFileSync(destination, bytes, {flag: "wx", mode: relative === "bin/cli.js" ? 0o755 : 0o644});
+              core.info(JSON.stringify({source_head: head, path: relative, blob}));
+            }
+            core.info(JSON.stringify({verified_source_head: head, tree: tree.sha}));
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: ${{ matrix.node }}
+      - name: Run only 84 canonical-plan, real-bin, and SDK query cases
+        shell: bash
+        run: |
+          set -euo pipefail
+          scratch=$(mktemp -d "$RUNNER_TEMP/cortex-bound-query.XXXXXX")
+          trap 'rm -rf -- "$scratch"' EXIT
+          mkdir -p "$scratch/home" "$scratch/tmp"
+          node_bin="$(command -v node)"
+          "$node_bin" --version
+          /usr/bin/git --version
+          /usr/bin/git --no-lazy-fetch --no-replace-objects --version
+          env -i PATH=/usr/bin:/bin HOME="$scratch/home" "$node_bin" - "$GITHUB_WORKSPACE" <<'NODE'
+          const path = require("node:path"), assert = require("node:assert/strict");
+          const root = process.argv[2];
+          const sources = ["bin/cli.js","lib/next-action/cli.js","lib/next-action/bound-query.js","lib/next-action/canonical-task-source.js","lib/next-action/index.js","lib/commands/management/query.js","lib/commands/management/api-helpers.js","lib/management/client.js","lib/sdk/local-client.js","lib/sdk/local-transport.js","lib/governance/root.js","packages/sdk/src/index.js","packages/project-sdk/src/descriptor.js","packages/project-sdk/src/governance.js","packages/protocol/src/index.js","packages/protocol/src/refs.js","packages/protocol/src/version.js","packages/protocol/src/result.js","packages/protocol/src/capabilities.js","packages/protocol/src/events.js","packages/protocol/src/timeline.js","packages/protocol/src/negotiation.js","packages/protocol/src/evolution.js","lib/next-action/advisory-plan.js","lib/next-action/advisory-plan.schema.json","lib/next-action/canonical-plan-source.js","lib/next-action/canonical-pair.js","templates/_shared/.agent/decisions/decision.schema.json","templates/_shared/.agent/waitpoints/waitpoint.schema.json"];
+          for (const directory of new Set([root, ...sources.map((file) => path.dirname(path.join(root, file)))])) {
+            for (const name of ["@cortex-agent/protocol", "@cortex-agent/sdk"]) {
+              let found = false;
+              try { require.resolve(name, {paths: [directory]}); found = true; }
+              catch (error) { if (error.code !== "MODULE_NOT_FOUND") throw error; }
+              assert.equal(found, false, "Unexpected external workspace alias: " + name);
+            }
+          }
+          NODE
+          env -i PATH=/usr/bin:/bin HOME="$scratch/home" USERPROFILE="$scratch/home" \
+            TMPDIR="$scratch/tmp" TMP="$scratch/tmp" TEMP="$scratch/tmp" \
+            XDG_CONFIG_HOME="$scratch/home" LANG=C LC_ALL=C TZ=UTC \
+            "$node_bin" --test --test-concurrency=1 --test-reporter=tap tests/next-action/bound-query.test.js tests/next-action/canonical-plan.test.js tests/sdk/local-transport.test.js tests/commands/management/query.test.js | tee "$scratch/tap.log"
+          env -i PATH=/usr/bin:/bin "$node_bin" - "$scratch/tap.log" <<'NODE'
+          const fs = require("node:fs"), assert = require("node:assert/strict");
+          const text = fs.readFileSync(process.argv[2], "utf8");
+          for (const [key, count] of Object.entries({tests: 84, pass: 84, fail: 0, skipped: 0, cancelled: 0, todo: 0})) {
+            const matches = [...text.matchAll(new RegExp("^# " + key + " (\\d+)\\s*$", "gm"))].map((item) => Number(item[1]));
+            assert.deepEqual(matches, [count], "Unexpected " + key + " summary");
+          }
+          NODE

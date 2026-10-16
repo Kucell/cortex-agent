@@ -8,4 +8,5 @@ module.exports = {
   ...require("./events"),
   ...require("./timeline"),
   ...require("./negotiation"),
+  ...require("./evolution"),
 };

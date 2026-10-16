@@ -1016,9 +1016,16 @@ function resolveDecision() {
     resource_ref: next.gate.resource_ref,
     updated_at: timestamp,
   }, (entry, current) => entry.decision_id === current.decision_id);
-  // Release any matching waitpoints
-  releaseMatchingWaitpoints(decisionId, resolvedBy, rationale, timestamp);
-  printJson({ ok: true, action: "decisions resolve", path: rel(file), decision: next });
+  // Resolving a Decision records the user's choice only. The owning workflow
+  // must separately validate and release or cancel its Waitpoint.
+  printJson({
+    ok: true,
+    action: "decisions resolve",
+    path: rel(file),
+    decision: next,
+    changed_paths: [rel(file), rel(path.join(agentRoot, "decisions", "index.json"))],
+    changed_resources: [`decision:${decisionId}`],
+  });
 }
 
 function supersedeDecision() {
@@ -1289,32 +1296,6 @@ function releaseWaitpoint() {
     updated_at: timestamp,
   }, (entry, current) => entry.waitpoint_id === current.waitpoint_id);
   printJson({ ok: true, action: "waitpoints release", path: rel(file), waitpoint: next });
-}
-
-function releaseMatchingWaitpoints(decisionId, resolvedBy, rationale, timestamp) {
-  const dir = path.join(agentRoot, "waitpoints");
-  for (const { file, data } of listJsonObjects(dir)) {
-    if (data.decision_id !== decisionId) continue;
-    if (!["pending", "blocked"].includes(data.status)) continue;
-    const next = {
-      ...data,
-      status: "released",
-      released_by: resolvedBy,
-      released_at: timestamp,
-      release_note: rationale || `Auto-released by decision ${decisionId}.`,
-      evidence_refs: Array.isArray(data.evidence_refs) && data.evidence_refs.length > 0 ? data.evidence_refs : [`decision:${decisionId}`],
-      updated_at: timestamp,
-    };
-    writeJson(file, next);
-    upsertIndexEntry("waitpoints", "waitpoints", {
-      waitpoint_id: data.waitpoint_id,
-      path: rel(file),
-      status: "released",
-      owner_workflow: data.owner_workflow,
-      decision_id: decisionId,
-      updated_at: timestamp,
-    }, (entry, current) => entry.waitpoint_id === current.waitpoint_id);
-  }
 }
 
 function upsertIndexEntry(dir, key, entry, match) {

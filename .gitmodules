@@ -1,0 +1,3 @@
+[submodule ".agent"]
+	path = .agent
+	url = https://github.com/Kucell/cortex-agent-agent.git
