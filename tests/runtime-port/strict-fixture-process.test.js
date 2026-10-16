@@ -74,8 +74,10 @@ test('strict fixture process: mock-only contracts',{skip:process.platform === 'w
       [{maxTaskMs:10001},'ERR_FIXTURE_TASK_BUDGET'],[{maxTotalMs:60001},'ERR_FIXTURE_TOTAL_BUDGET'],
       [{cancelGraceMs:2001},'ERR_FIXTURE_CANCEL_GRACE'],[{onStop:null},'ERR_FIXTURE_CALLBACK_REQUIRED']
     ]) code(() => create({...h.options,...change}),expected); assert.equal(h.spawns.length,0);
-    const original = fs.lstatSync; st.mock.method(fs,'lstatSync',p => p === path.resolve(h.cwd) ? {isSymbolicLink:() => true} : original(p));
-    code(() => create(h.options),'ERR_FIXTURE_CWD_OUTSIDE_TEMP_ROOT');
+    const original = fs.lstatSync;
+    const lstatMock = st.mock.method(fs,'lstatSync',p => p === path.resolve(h.cwd) ? {isSymbolicLink:() => true} : original(p));
+    try { code(() => create(h.options),'ERR_FIXTURE_CWD_OUTSIDE_TEMP_ROOT'); }
+    finally { lstatMock.mock.restore(); }
   });
   await t.test('payload cannot contain paths, bodies, code, commands, or callbacks',async st => {
     const h = harness(st); for (const extra of [{path:'/tmp/a'},{body:'x'},{code:'x'},{shell:true},{onProposal:() => true}]) code(() => h.port.createRun({task_id:'T-FIXTURE-1',...extra}),'ERR_FIXTURE_TASK_INVALID');
