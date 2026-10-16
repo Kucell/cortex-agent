@@ -156,7 +156,9 @@ test("invalid duplicate envelope cannot bypass validation or repair", (t) => {
 test("expired current ownership blocks duplicate acceptance before repair", (t) => {
   const clock = createManualClock(Date.parse("2026-10-16T09:00:00.000Z"));
   const f = coordinationFixture(t, { clock });
-  const lease = f.service.acquireOwnership("src/**", "worker", { actorId: "session-worker", ttl: 100 });
+  // Seed the real in-memory LeaseManager only; durable lease-store writes are
+  // outside this authorization-ordering fixture and its filesystem grant.
+  const lease = f.service.leases.acquire("src/**", "worker", { actorId: "session-worker", ttl: 100 });
   f.service.submit({ ...f.first, eventId: "CE-synthetic-assign", sequence: 2,
     eventType: "task.assigned", previousState: STATES.CREATED, currentState: STATES.ASSIGNED,
     targets: [{ actorId: "worker", kind: "agent" }],
