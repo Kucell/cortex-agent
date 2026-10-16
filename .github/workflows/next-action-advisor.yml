@@ -1,0 +1,47 @@
+name: Next Action Advisor Contract
+
+on:
+  pull_request:
+    paths:
+      - "lib/next-action/**"
+      - "tests/next-action/**"
+      - ".github/workflows/next-action-advisor.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  advisor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ["22", "24"]
+    env:
+      SOURCE_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+          submodules: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            lib/next-action/index.js
+            tests/next-action/advisor.test.js
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - name: Verify exact source head
+        shell: bash
+        run: |
+          test "$(git rev-parse HEAD)" = "$SOURCE_HEAD"
+          printf 'Tested source head: %s\n' "$SOURCE_HEAD"
+      - name: Check advisor syntax
+        run: |
+          node --check lib/next-action/index.js
+          node --check tests/next-action/advisor.test.js
+      - name: Run focused advisor contract
+        run: node --test tests/next-action/advisor.test.js
