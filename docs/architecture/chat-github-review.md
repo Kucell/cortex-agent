@@ -66,7 +66,7 @@ The helper builds review data, checks exact identifiers/digest and prohibits can
 | GitHub multi-writer automatic L3 / sink-fenced remote effects | UNSUPPORTED |
 | E2E release or formal G0 PASS | NOT VERIFIED until independent on-checkout evidence |
 
-Run node --test tests/governance/chat-github-review.test.js to inspect the review-only boundaries. The accompanying GitHub workflow runs this test and existing provider/Git-store contracts on exact Draft PR heads; a workflow name or green unrelated check does not count as targeted test evidence.
+Run node --test tests/governance/chat-github-review.test.js to inspect the review-only boundaries. The accompanying GitHub workflow runs this test and existing provider/Git-store contracts, but its checkout does not explicitly select the Draft PR head: on pull_request, the default checkout is the PR merge ref. Record the actual checked-out commit SHA and test command/result. Claim exact-head evidence only when the checkout explicitly selects that head or its actual SHA is verified against it; a workflow name, trigger declaration, or green unrelated check is not targeted test evidence.
 
 ## Forward compatibility
 
