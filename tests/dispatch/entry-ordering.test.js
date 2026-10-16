@@ -94,7 +94,9 @@ test("current Decision replacement invalidates cached acceptance", (t) => {
 
 function coordinationFixture(t, extra = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-submit-order-"));
-  const service = CoordinationApplicationService.open(dir, { journal: { lock: false }, ...extra });
+  // Ordering-only fixtures: durability/fsync and interprocess locking are not
+  // under test. Keep the Node filesystem permission boundary enabled in CI.
+  const service = CoordinationApplicationService.open(dir, { journal: { lock: false, fsync: false }, ...extra });
   t.after(() => { service.close(); fs.rmSync(dir, { recursive: true, force: true }); });
   const first = createEvent({
     eventId: "CE-synthetic-create", projectId: "P-SYNTHETIC", taskId: "T-SYNTHETIC",
