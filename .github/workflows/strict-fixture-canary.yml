@@ -1,0 +1,188 @@
+name: Strict Fixture Tier I Canary
+
+on:
+  pull_request:
+    paths:
+      - "scripts/l3/strict-fixture-canary.cjs"
+      - ".github/workflows/strict-fixture-canary.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  tier-i:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Run only when this commit changes the canary
+        id: change
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b
+        with:
+          script: |
+            core.setOutput("changed", "false");
+            try {
+              const assert = require("node:assert/strict");
+              const {owner, repo} = context.repo;
+              const head = context.payload.pull_request.head.sha;
+              assert.match(head, /^[a-f0-9]{40}$/);
+              const {data: commit} = await github.rest.git.getCommit({owner, repo, commit_sha: head});
+              assert.equal(commit.sha, head);
+              if (commit.parents.length !== 1) {
+                core.info("CANARY_NOT_RUN: head must have exactly one parent"); return;
+              }
+              const {data: parent} = await github.rest.git.getCommit({owner, repo, commit_sha: commit.parents[0].sha});
+              assert.equal(parent.sha, commit.parents[0].sha);
+              const snapshots = [];
+              for (const item of [commit, parent]) {
+                const {data: tree} = await github.rest.git.getTree({owner, repo, tree_sha: item.tree.sha, recursive: "true"});
+                assert.equal(tree.truncated, false);
+                assert.equal(tree.sha, item.tree.sha);
+                snapshots.push(tree.tree);
+              }
+              const paths = ["scripts/l3/strict-fixture-canary.cjs", ".github/workflows/strict-fixture-canary.yml"];
+              const signature = (tree, relative) => {
+                const entry = tree.find((item) => item.path === relative);
+                return entry ? [entry.mode, entry.type, entry.sha].join(":") : null;
+              };
+              const changed = paths.some((relative) => signature(snapshots[0], relative) !== signature(snapshots[1], relative));
+              core.info(JSON.stringify({canary_head: head, parent: parent.sha, canary_paths_changed: changed}));
+              if (!changed) { core.info("CANARY_NOT_RUN: no canary change in this commit"); return; }
+              const reviewed = {"lib/coordination/errors.js":"0c385ae1ea97328574bda0dd3383d07e9ee79270","lib/coordination/lease-store.js":"2375b427fd03f63a637e104d949f137ac4fdeaca","lib/coordination/lease.js":"9c0c8721b443993ee07ea2638751ee4777321695","lib/dispatch/strict-approval.js":"1bb97b4feeae230ef849a39a91b961b220650acf","lib/governance/root.js":"687d70564769988c5e44c8d07acd00c9e9bdd875","lib/governance/store.js":"afc0071a1e17f7d7ff19f200b0d997477e0e9745","lib/runtime-layout/identity.js":"dd65f60aa5ad51511aa26be38f483a06bd19d4d6","lib/runtime-layout/index.js":"55b860fe78a1beada1eada79e6b5b8b888abedc3","lib/runtime-layout/local-binding.js":"1f245b39273f83bc9033e9d66eee0b4d4dbd8298","lib/runtime-layout/logical-uri.js":"35705aa5c014f5e035d14f5769041ae4289549a3","lib/runtime-layout/resolver.js":"1804171602d34fb66af0dc9261c4accaec550036","lib/runtime-layout/schemas.js":"5761d7e0a053381b1efcf18fe200b87273a85923","lib/runtime-port/strict-fixture-process.js":"d1d29264f2cd62027b298a2b6c20abdc637ae378","lib/runtime-port/strict-fixture.js":"ad61bf65a5368e6675a8837c9d98e29da4ea94a8","lib/runtime-state/operation-lifecycle.js":"1f961bc1d5522bd70ba71edc3b6ee5748bf3f64f","lib/runtime-state/strict-fixture-sink.js":"20cdc86adc281940fb1f9780836047f9619ee69a","lib/security/scan.js":"b6eaa47c1cdc321ad240e6c3ee25297fc247a44c","packages/project-sdk/src/governance.js":"7cf3aefad9d527adc5e0528ce2c95789eba8c5fa","packages/protocol/src/capabilities.js":"42575204856e9c0e4cc489dda23b807b99a0f9af","packages/protocol/src/events.js":"b8ebd9271e3aac45c26e82767b49302da9c5b65d","packages/protocol/src/evolution.js":"3f020d72aa386291dde734be7243dbc31cc55fcd","packages/protocol/src/index.js":"f20af9c41c848a7fc3faba02c75876cd00446024","packages/protocol/src/negotiation.js":"6db54b0576fe0886cd6e7a85edb01cf06247f649","packages/protocol/src/refs.js":"e463d089e7721d1c2209316f478b0441cd833ca5","packages/protocol/src/result.js":"9a770de1c16c86afc5b237344132b95639545a20","packages/protocol/src/timeline.js":"855a5a8b4103c1e2fd1a6afd90aa06846ad2ef30","packages/protocol/src/version.js":"f430ade4d7afd12dee292a3146a3680e3d17199d","packages/runtime-port/src/index.js":"6dad6e75e20e9e9cd3b254dbbf9512b25bd7e6b7","packages/runtime-port/src/topology.js":"af931a753ec4d2758b2f810b5534d3adb2bdff61","templates/_shared/.agent/decisions/decision.schema.json":"cb20b348879961d21bf1aea9eddd8f08286527b2","templates/_shared/.agent/waitpoints/waitpoint.schema.json":"8ce5a76ca86ebf14498a91f1ca2c15223c4ec2bc","tests/dispatch/strict-approval.test.js":"0a10ee909cd3cd5f10eb665f7f25bad7bf317340","tests/fixtures/l3/strict-process-worker.cjs":"82cf9bf14487eaf71a44399fcdb55530dd7028f3","tests/runtime-port/strict-fixture-process.test.js":"158271be6368268d2b4379bf2201d81c9bec7eb3","tests/runtime-port/strict-fixture.test.js":"f54c1f234508bf9ecd20c63920560cc127496f76","tests/runtime-state/strict-fixture-sink.test.js":"78390ed78d72d391875979758049bfb6f9e1dd2b"};
+              reviewed["scripts/l3/strict-fixture-canary.cjs"] = "11166ade6ad308b4e5624b73a6b14b2a96934653";
+              for (const [relative, blob] of Object.entries(reviewed)) {
+                assert.equal(signature(snapshots[0], relative), "100644:blob:" + blob,
+                  "Current head differs from reviewed canary input: " + relative);
+              }
+              core.setOutput("changed", "true");
+            } catch (error) {
+              core.warning("CANARY_NOT_RUN: unable to establish single-commit canary delta");
+              core.setFailed("Canary change guard could not verify its inputs");
+            }
+      - name: Materialize fixed reviewed inputs
+        if: steps.change.outputs.changed == 'true'
+        id: materialize
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b
+        with:
+          script: |
+            const fs = require("node:fs");
+            const path = require("node:path");
+            const crypto = require("node:crypto");
+            const assert = require("node:assert/strict");
+            assert.equal(context.repo.owner, "Kucell");
+            assert.equal(context.repo.repo, "cortex-agent");
+            const manifest = {"source_head":"754527f9d30633c4a8c27c9eafc96714cef75364","code_blobs":{"lib/coordination/errors.js":"0c385ae1ea97328574bda0dd3383d07e9ee79270","lib/coordination/lease-store.js":"2375b427fd03f63a637e104d949f137ac4fdeaca","lib/coordination/lease.js":"9c0c8721b443993ee07ea2638751ee4777321695","lib/dispatch/strict-approval.js":"1bb97b4feeae230ef849a39a91b961b220650acf","lib/governance/root.js":"687d70564769988c5e44c8d07acd00c9e9bdd875","lib/governance/store.js":"afc0071a1e17f7d7ff19f200b0d997477e0e9745","lib/runtime-layout/identity.js":"dd65f60aa5ad51511aa26be38f483a06bd19d4d6","lib/runtime-layout/index.js":"55b860fe78a1beada1eada79e6b5b8b888abedc3","lib/runtime-layout/local-binding.js":"1f245b39273f83bc9033e9d66eee0b4d4dbd8298","lib/runtime-layout/logical-uri.js":"35705aa5c014f5e035d14f5769041ae4289549a3","lib/runtime-layout/resolver.js":"1804171602d34fb66af0dc9261c4accaec550036","lib/runtime-layout/schemas.js":"5761d7e0a053381b1efcf18fe200b87273a85923","lib/runtime-port/strict-fixture-process.js":"d1d29264f2cd62027b298a2b6c20abdc637ae378","lib/runtime-port/strict-fixture.js":"ad61bf65a5368e6675a8837c9d98e29da4ea94a8","lib/runtime-state/operation-lifecycle.js":"1f961bc1d5522bd70ba71edc3b6ee5748bf3f64f","lib/runtime-state/strict-fixture-sink.js":"20cdc86adc281940fb1f9780836047f9619ee69a","lib/security/scan.js":"b6eaa47c1cdc321ad240e6c3ee25297fc247a44c","packages/project-sdk/src/governance.js":"7cf3aefad9d527adc5e0528ce2c95789eba8c5fa","packages/protocol/src/capabilities.js":"42575204856e9c0e4cc489dda23b807b99a0f9af","packages/protocol/src/events.js":"b8ebd9271e3aac45c26e82767b49302da9c5b65d","packages/protocol/src/evolution.js":"3f020d72aa386291dde734be7243dbc31cc55fcd","packages/protocol/src/index.js":"f20af9c41c848a7fc3faba02c75876cd00446024","packages/protocol/src/negotiation.js":"6db54b0576fe0886cd6e7a85edb01cf06247f649","packages/protocol/src/refs.js":"e463d089e7721d1c2209316f478b0441cd833ca5","packages/protocol/src/result.js":"9a770de1c16c86afc5b237344132b95639545a20","packages/protocol/src/timeline.js":"855a5a8b4103c1e2fd1a6afd90aa06846ad2ef30","packages/protocol/src/version.js":"f430ade4d7afd12dee292a3146a3680e3d17199d","packages/runtime-port/src/index.js":"6dad6e75e20e9e9cd3b254dbbf9512b25bd7e6b7","packages/runtime-port/src/topology.js":"af931a753ec4d2758b2f810b5534d3adb2bdff61","templates/_shared/.agent/decisions/decision.schema.json":"cb20b348879961d21bf1aea9eddd8f08286527b2","templates/_shared/.agent/waitpoints/waitpoint.schema.json":"8ce5a76ca86ebf14498a91f1ca2c15223c4ec2bc","tests/dispatch/strict-approval.test.js":"0a10ee909cd3cd5f10eb665f7f25bad7bf317340","tests/fixtures/l3/strict-process-worker.cjs":"82cf9bf14487eaf71a44399fcdb55530dd7028f3","tests/runtime-port/strict-fixture-process.test.js":"158271be6368268d2b4379bf2201d81c9bec7eb3","tests/runtime-port/strict-fixture.test.js":"f54c1f234508bf9ecd20c63920560cc127496f76","tests/runtime-state/strict-fixture-sink.test.js":"78390ed78d72d391875979758049bfb6f9e1dd2b"}};
+            const script = {
+              head: "60189474638011fb29405f51b3c134f81219dd0f",
+              path: "scripts/l3/strict-fixture-canary.cjs",
+              blob: "11166ade6ad308b4e5624b73a6b14b2a96934653",
+              sha256: "408c290f34b83a953a5bf2dc91d26bdc6bdd7ef042b533ae2f77b4e9f23adb43",
+            };
+            const digest = (bytes) => crypto.createHash("sha256").update(bytes).digest("hex");
+            const manifestBytes = Buffer.from(JSON.stringify(manifest) + "\n");
+            assert.equal(digest(manifestBytes), "3be4ad00c0186642d31b2269f8ea1f744497b72ac291fe5cd7a722234aadd063");
+            const base = fs.realpathSync(process.env.RUNNER_TEMP);
+            const root = fs.mkdtempSync(path.join(base, "cortex-tier-i-source-"));
+            fs.chmodSync(root, 0o700);
+            for (const dir of ["home", "tmp"]) fs.mkdirSync(path.join(root, dir), {mode: 0o700});
+            const {owner, repo} = context.repo;
+            for (const head of [manifest.source_head, script.head]) {
+              const {data: commit} = await github.rest.git.getCommit({owner, repo, commit_sha: head});
+              assert.equal(commit.sha, head);
+              const {data: tree} = await github.rest.git.getTree({owner, repo, tree_sha: commit.tree.sha, recursive: "true"});
+              assert.equal(tree.truncated, false);
+              assert.equal(tree.sha, commit.tree.sha);
+              const expected = head === manifest.source_head ? manifest.code_blobs : {[script.path]: script.blob};
+              for (const [relative, blob] of Object.entries(expected)) {
+                const entry = tree.tree.find((item) => item.path === relative);
+                assert.ok(entry);
+                assert.equal(entry.type, "blob");
+                assert.equal(entry.mode, "100644");
+                assert.equal(entry.sha, blob);
+                const {data: file} = await github.rest.repos.getContent({owner, repo, path: relative, ref: head});
+                assert.equal(file.path, relative);
+                assert.equal(file.type, "file");
+                assert.equal(file.encoding, "base64");
+                assert.equal(file.sha, blob);
+                const bytes = Buffer.from(file.content, "base64");
+                assert.equal(bytes.length, file.size);
+                assert.equal(crypto.createHash("sha1").update("blob " + bytes.length + "\0").update(bytes).digest("hex"), blob);
+                if (relative === script.path) assert.equal(digest(bytes), script.sha256);
+                const destination = path.join(root, relative);
+                assert.ok(destination.startsWith(root + path.sep));
+                fs.mkdirSync(path.dirname(destination), {recursive: true, mode: 0o700});
+                fs.writeFileSync(destination, bytes, {flag: "wx", mode: 0o600});
+                core.info(JSON.stringify({source_head: head, path: relative, blob, sha256: digest(bytes)}));
+              }
+              core.info(JSON.stringify({verified_source_head: head, tree: tree.sha}));
+            }
+            fs.writeFileSync(path.join(root, "manifest.json"), manifestBytes, {flag: "wx", mode: 0o600});
+            core.info("MANIFEST_SHA256=" + digest(manifestBytes));
+            core.setOutput("root", root);
+      - if: steps.change.outputs.changed == 'true'
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "24"
+      - name: Run five bounded synthetic child cases
+        if: steps.change.outputs.changed == 'true'
+        shell: bash
+        env:
+          CANARY_ROOT: ${{ steps.materialize.outputs.root }}
+          CANARY_JOB: ${{ github.run_id }}:${{ github.run_attempt }}:tier-i
+        run: |
+          set -euo pipefail
+          node_bin="$(command -v node)"
+          test -n "$CANARY_ROOT"
+          test -d "$CANARY_ROOT/home"
+          test -d "$CANARY_ROOT/tmp"
+          cd "$CANARY_ROOT"
+          env -i PATH="$(dirname "$node_bin")" HOME="$CANARY_ROOT/home" USERPROFILE="$CANARY_ROOT/home" \
+            TMPDIR="$CANARY_ROOT/tmp" TMP="$CANARY_ROOT/tmp" TEMP="$CANARY_ROOT/tmp" \
+            XDG_CONFIG_HOME="$CANARY_ROOT/home" LANG=C LC_ALL=C TZ=UTC \
+            "$node_bin" - "$CANARY_ROOT" "$CANARY_JOB" <<'NODE'
+          "use strict";
+          const fs = require("node:fs"), path = require("node:path"), crypto = require("node:crypto");
+          const assert = require("node:assert/strict");
+          const root = fs.realpathSync(process.argv[2]);
+          const scriptPath = path.join(root, "scripts/l3/strict-fixture-canary.cjs");
+          const scriptHash = "408c290f34b83a953a5bf2dc91d26bdc6bdd7ef042b533ae2f77b4e9f23adb43";
+          const hash = (bytes) => crypto.createHash("sha256").update(bytes).digest("hex");
+          assert.equal(hash(fs.readFileSync(scriptPath)), scriptHash);
+          const manifestBytes = fs.readFileSync(path.join(root, "manifest.json"));
+          assert.equal(hash(manifestBytes), "3be4ad00c0186642d31b2269f8ea1f744497b72ac291fe5cd7a722234aadd063");
+          const manifest = JSON.parse(manifestBytes);
+          const launch = {
+            enabled: true, source_root: root, source_head: manifest.source_head, code_blobs: manifest.code_blobs,
+            script_sha256: scriptHash, worker_sha256: "3de5748009c01fc17573acec2aa46d21f0d68088be1169af656a9f596baf2fc5",
+            job_id: process.argv[3], invocation_id: crypto.randomUUID(), expires_at: new Date(Date.now() + 60000).toISOString(),
+          };
+          // This watchdog is cooperative, not OS preemption. Synchronous stalls
+          // still rely on the disposable job timeout. An UNKNOWN exit never
+          // proves child-tree termination or authorizes deleting its evidence.
+          const watchdog = setTimeout(() => {
+            fs.writeFileSync(2, "TIER_I_OUTER_DEADLINE_UNKNOWN: no complete report; evidence retained\n");
+            process.exit(1);
+          }, 65000);
+          fs.writeFileSync(1, "TIER_I_LAUNCH=" + JSON.stringify(launch) + "\n");
+          require(scriptPath).runTierICanary(launch).then((report) => {
+            clearTimeout(watchdog);
+            fs.writeFileSync(1, "TIER_I_REPORT_BEGIN\n" + JSON.stringify(report, null, 2) + "\nTIER_I_REPORT_END\n");
+            process.exit(report.requested_exit_code === 0 && report.status === "FIXTURE_EVIDENCE_RECORDED" ? 0 : 1);
+          }, (error) => {
+            clearTimeout(watchdog);
+            fs.writeFileSync(2, "TIER_I_LAUNCH_FAILURE=" + String(error.code || error.name || "UNKNOWN") + ": no complete report; evidence retained\n");
+            process.exit(1);
+          });
+          NODE
+      - name: Retire source stage after a successful canary
+        if: success() && steps.change.outputs.changed == 'true'
+        shell: bash
+        env:
+          CANARY_ROOT: ${{ steps.materialize.outputs.root }}
+        run: |
+          set -euo pipefail
+          case "$CANARY_ROOT" in "$RUNNER_TEMP"/cortex-tier-i-source-*) ;; *) exit 1 ;; esac
+          test -d "$CANARY_ROOT"
+          test ! -L "$CANARY_ROOT"
+          test "$(realpath -- "$CANARY_ROOT")" = "$CANARY_ROOT"
+          rm -rf -- "$CANARY_ROOT"
