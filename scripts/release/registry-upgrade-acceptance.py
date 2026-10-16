@@ -91,6 +91,11 @@ HELPER_PINS = {
         "templates/_shared/.agent/tasks/scripts/task-state.js": "88f6236a415d12f95ebad70441deb592d4d040b3"
     }
 }
+EXECUTABLE_TEMPLATE_PATHS = [
+    "templates/" + language + "/.agent/skills/" + skill + "/scripts/" + filename
+    for language in ("_shared", "en", "zh")
+    for skill, filename in (("evolution-pipeline", "evolve.js"), ("management-api", "index.js"))
+]
 DEPENDENCY_KEYS = ("dependencies", "devDependencies", "optionalDependencies",
                    "peerDependencies", "bundledDependencies", "bundleDependencies", "workspaces")
 LEGACY = [
@@ -288,6 +293,8 @@ def main():
                         "source link mismatch")
             else:
                 require(relative == ".agent" and row["mode"] == "160000", "unexpected source special member")
+        for relative in EXECUTABLE_TEMPLATE_PATHS:
+            require(tree[relative]["mode"] == "100755", "template executable Git mode regression: " + relative)
         for relative, expected in CORE_PINS.items():
             require(tree[relative]["blob"] == expected, "reviewed upgrade core changed: " + relative)
         require(not any(PurePosixPath(p).name == ".npmrc" for p in tree), "source npm config needs review")
@@ -419,6 +426,9 @@ def main():
                     row["mode"] == (0o755 if tree[relative]["mode"] == "100755" else 0o644),
                     "candidate tar provenance mismatch")
         check_helper_pins(candidate_manifest, "candidate")
+        for relative in EXECUTABLE_TEMPLATE_PATHS:
+            require(candidate_manifest[relative]["mode"] == 0o755,
+                    "template executable tar mode regression: " + relative)
         for language in ("_shared", "en", "zh"):
             require("templates/" + language + "/.agent/skills/self-check/scripts/index.js" not in candidate_manifest,
                     "candidate self-check requires separate execution review")
@@ -524,6 +534,8 @@ def main():
             additive = read_json(agent / "updates/latest.json")
             assert_report(additive, "upgrade", modified)
             require(target.read_bytes() == fixture["target_before"], "additive upgrade overwrote existing script")
+            additive_mode = stat.S_IMODE(target.stat().st_mode)
+            require(additive_mode == fixture["target_mode"], "additive upgrade changed existing script mode")
             require(helper.snapshot(agent / "customer-owned.fixture") == fixture["sentinel_before"] and
                     helper.snapshot(project / ".agent-runtime") == fixture["legacy_before"] and
                     helper.snapshot(home) == home_before, "additive upgrade changed protected state")
@@ -550,6 +562,9 @@ def main():
                 require((agent / ".cortex-version").read_text() == args.expected_version + "\n",
                         "managed version not advanced")
                 require(not updated["changes"]["protected"], "unexplained protected managed scripts")
+            candidate_mode = candidate_manifest["templates/" + language + "/.agent/" + target_rel]["mode"]
+            observed_mode = stat.S_IMODE(target.stat().st_mode)
+            require(fixture["target_mode"] == candidate_mode == 0o755, "old/candidate executable modes differ")
             require(stat.S_IMODE(target.stat().st_mode) == fixture["target_mode"], "script mode changed")
             require(helper.snapshot(agent / "customer-owned.fixture") == fixture["sentinel_before"],
                     "user rule bytes/mode/mtime changed")
@@ -572,6 +587,8 @@ def main():
                 "published_init_excluded_global_members": excluded_global,
                 "additive_status": additive["status"], "update_status": updated["status"],
                 "old_helper_sources": old_helper_sources, "candidate_helper_sources": candidate_helper_sources,
+                "script_modes": {"old": oct(fixture["target_mode"]), "candidate": oct(candidate_mode),
+                                 "after_additive": oct(additive_mode), "after_update": oct(observed_mode)},
                 "additive_verification": additive["verification"],
                 "verification": updated["verification"], "legacy_files_preserved_after_each_apply": len(LEGACY),
                 "dry_run_unchanged": True, "custom_rule_unchanged": True, "home_unchanged": True})
@@ -594,6 +611,8 @@ def main():
                 "tar_bytes": len(old_raw), "sha256": sha(old_raw), "integrity": BASELINE_SRI,
                 "source_mapping": "same pinned tar independently mapped 1224/1224 members in prior identity evidence",
                 "signature_and_provenance_verified": False, "files": old_manifest},
+            "candidate_executable_template_modes": {p: oct(candidate_manifest[p]["mode"])
+                                                     for p in EXECUTABLE_TEMPLATE_PATHS},
             "candidate": {"tar_bytes": len(candidate_raw), "sha256": sha(candidate_raw),
                 "sha512": sha(candidate_raw, "sha512"), "integrity": candidate_sri, "files": candidate_manifest},
             "commands": commands, "fixtures": fixture_results,

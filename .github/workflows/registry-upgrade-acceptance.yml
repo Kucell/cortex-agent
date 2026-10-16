@@ -78,7 +78,7 @@ jobs:
               if (!changed && !manual) {
                 core.info("REGISTRY_UPGRADE_NOT_RUN: no published upgrade check change in this commit"); return;
               }
-              assert.equal(signature(snapshots[0], paths[0]), "100644:blob:5db2322b873d427ef550beb916d33a13eeaaf822");
+              assert.equal(signature(snapshots[0], paths[0]), "100644:blob:d4bb1e628b0ddb19b1e989a7662a053c0d7bc569");
               const workflow = snapshots[0].find((item) => item.path === paths[1]);
               assert.ok(workflow && workflow.mode === "100644" && workflow.type === "blob");
               core.setOutput("changed", "true");
@@ -104,7 +104,7 @@ jobs:
           test -f "$SCRIPT"
           test ! -L "$SCRIPT"
           ACTUAL_SCRIPT_BLOB="$(/usr/bin/env -i PATH=/usr/bin:/bin GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null /usr/bin/git --no-lazy-fetch --no-replace-objects -c core.fsmonitor=false hash-object --no-filters "$SCRIPT")"
-          test "$ACTUAL_SCRIPT_BLOB" = "5db2322b873d427ef550beb916d33a13eeaaf822"
+          test "$ACTUAL_SCRIPT_BLOB" = "d4bb1e628b0ddb19b1e989a7662a053c0d7bc569"
           NODE="$(command -v node)"
           NPM_CLI="$(readlink -f "$(command -v npm)")"
           VERSION="$(/usr/bin/env -i PATH=/usr/bin:/bin LANG=C.UTF-8 LC_ALL=C.UTF-8 /usr/bin/python3 -I -B -c 'import json; print(json.load(open("package.json", encoding="utf-8"))["version"])')"
