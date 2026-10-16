@@ -1,0 +1,121 @@
+name: Published Baseline Upgrade Acceptance
+
+on:
+  pull_request:
+    paths:
+      - "scripts/release/registry-upgrade-acceptance.py"
+      - ".github/workflows/registry-upgrade-acceptance.yml"
+  workflow_dispatch:
+    inputs:
+      expected_head:
+        description: "Exact reviewed commit; must equal the selected workflow ref head"
+        required: true
+        type: string
+      expected_version:
+        description: "Expected candidate package version (not a publication claim)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  registry-upgrade-acceptance:
+    if: >-
+      github.repository == 'Kucell/cortex-agent' &&
+      (github.event_name == 'workflow_dispatch' ||
+       (github.event_name == 'pull_request' &&
+        github.event.pull_request.number == 70 &&
+        github.event.pull_request.head.repo.full_name == github.repository))
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      SOURCE_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+      EXPECTED_GITLINK: 598e604d460d4dc57b27f52725c884816a10782d
+      DISPATCH_HEAD: ${{ inputs.expected_head }}
+      DISPATCH_VERSION: ${{ inputs.expected_version }}
+    steps:
+      - name: Select a changed PR candidate or explicitly pinned manual candidate
+        id: change
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b
+        with:
+          script: |
+            core.setOutput("changed", "false");
+            try {
+              const assert = require("node:assert/strict");
+              const {owner, repo} = context.repo;
+              assert.equal(owner, "Kucell");
+              assert.equal(repo, "cortex-agent");
+              const head = context.payload.pull_request?.head.sha || context.sha;
+              assert.match(head, /^[a-f0-9]{40}$/);
+              const manual = context.eventName === "workflow_dispatch";
+              if (manual) {
+                assert.equal(context.payload.inputs.expected_head, head);
+                assert.match(context.payload.inputs.expected_version, /^\d+\.\d+\.\d+$/);
+              }
+              const {data: commit} = await github.rest.git.getCommit({owner, repo, commit_sha: head});
+              assert.equal(commit.sha, head);
+              assert.ok(commit.parents.length >= 1, "candidate must have a parent");
+              if (!manual && commit.parents.length !== 1) {
+                core.info("REGISTRY_UPGRADE_NOT_RUN: head must have exactly one parent"); return;
+              }
+              const {data: parent} = await github.rest.git.getCommit({owner, repo, commit_sha: commit.parents[0].sha});
+              assert.equal(parent.sha, commit.parents[0].sha);
+              const snapshots = [];
+              for (const item of [commit, parent]) {
+                const {data: tree} = await github.rest.git.getTree({owner, repo, tree_sha: item.tree.sha, recursive: "true"});
+                assert.equal(tree.truncated, false);
+                assert.equal(tree.sha, item.tree.sha);
+                snapshots.push(tree.tree);
+              }
+              const paths = ["scripts/release/registry-upgrade-acceptance.py", ".github/workflows/registry-upgrade-acceptance.yml"];
+              const signature = (tree, relative) => {
+                const entry = tree.find((item) => item.path === relative);
+                return entry ? [entry.mode, entry.type, entry.sha].join(":") : null;
+              };
+              const changed = paths.some((relative) => signature(snapshots[0], relative) !== signature(snapshots[1], relative));
+              core.info(JSON.stringify({upgrade_head: head, parent: parent.sha, upgrade_paths_changed: changed}));
+              if (!changed && !manual) {
+                core.info("REGISTRY_UPGRADE_NOT_RUN: no published upgrade check change in this commit"); return;
+              }
+              assert.equal(signature(snapshots[0], paths[0]), "100644:blob:5db2322b873d427ef550beb916d33a13eeaaf822");
+              const workflow = snapshots[0].find((item) => item.path === paths[1]);
+              assert.ok(workflow && workflow.mode === "100644" && workflow.type === "blob");
+              core.setOutput("changed", "true");
+            } catch (error) {
+              core.warning("REGISTRY_UPGRADE_NOT_RUN: unable to establish reviewed exact-head input");
+              core.setFailed("Registry upgrade candidate guard could not verify its inputs");
+            }
+      - if: steps.change.outputs.changed == 'true'
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ env.SOURCE_HEAD }}
+          fetch-depth: 1
+          submodules: false
+          persist-credentials: false
+      - name: Install pinned published tar and apply candidate upgrades in fresh fixtures
+        if: steps.change.outputs.changed == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          ACTUAL_HEAD="$(/usr/bin/env -i PATH=/usr/bin:/bin GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null /usr/bin/git --no-lazy-fetch --no-replace-objects -c core.fsmonitor=false rev-parse HEAD)"
+          test "$ACTUAL_HEAD" = "$SOURCE_HEAD"
+          SCRIPT=scripts/release/registry-upgrade-acceptance.py
+          test -f "$SCRIPT"
+          test ! -L "$SCRIPT"
+          ACTUAL_SCRIPT_BLOB="$(/usr/bin/env -i PATH=/usr/bin:/bin GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null /usr/bin/git --no-lazy-fetch --no-replace-objects -c core.fsmonitor=false hash-object --no-filters "$SCRIPT")"
+          test "$ACTUAL_SCRIPT_BLOB" = "5db2322b873d427ef550beb916d33a13eeaaf822"
+          NODE="$(command -v node)"
+          NPM_CLI="$(readlink -f "$(command -v npm)")"
+          VERSION="$(/usr/bin/env -i PATH=/usr/bin:/bin LANG=C.UTF-8 LC_ALL=C.UTF-8 /usr/bin/python3 -I -B -c 'import json; print(json.load(open("package.json", encoding="utf-8"))["version"])')"
+          if test -n "$DISPATCH_HEAD"; then
+            test "$DISPATCH_HEAD" = "$SOURCE_HEAD"
+            test "$DISPATCH_VERSION" = "$VERSION"
+          fi
+          printf 'REGISTRY_UPGRADE_SOURCE_HEAD=%s\n' "$SOURCE_HEAD"
+          printf 'REGISTRY_UPGRADE_SCRIPT_BLOB=%s\n' "$ACTUAL_SCRIPT_BLOB"
+          /usr/bin/env -i PATH=/usr/bin:/bin LANG=C.UTF-8 LC_ALL=C.UTF-8 /usr/bin/python3 -I -B --version
+          /usr/bin/env -i PATH=/usr/bin:/bin LANG=C.UTF-8 LC_ALL=C.UTF-8 \
+            /usr/bin/python3 -I -B "$SCRIPT" \
+            --expected-head "$SOURCE_HEAD" --expected-version "$VERSION" \
+            --expected-gitlink "$EXPECTED_GITLINK" --node "$NODE" --npm-cli "$NPM_CLI"
