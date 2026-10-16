@@ -1,7 +1,7 @@
 "use strict";
 
 // Repository adaptation of six previously exercised synthetic-file oracles.
-// This adaptation is NOT_RUN: historical standalone results do not validate it.
+// Historical standalone results do not validate this repository revision.
 // Scope: newly generated migration plans and portable copies only.
 // No network, subprocess, Host, real project data, or persisted legacy plans.
 
