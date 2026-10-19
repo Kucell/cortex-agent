@@ -49,6 +49,49 @@ test("agent-discover: returns empty when no agents exist", () => {
   } finally { rmProject(root); }
 });
 
+// ─── issue #79: --model is a hard filter, not a query substring ─────────────
+
+test("agent-discover: model filter matches the exact model ID", () => {
+  const root = mkProject();
+  try {
+    seed(root, "opus-agent", { model: "claude-opus-4-6" });
+    seed(root, "haiku-agent", { model: "claude-haiku-4-5-20251001" });
+    const result = discover({ projectRoot: root, model: "claude-opus-4-6" });
+    assert.equal(result.returned, 1);
+    assert.equal(result.agents[0].agent_id, "opus-agent");
+    assert.equal(result.model, "claude-opus-4-6");
+  } finally { rmProject(root); }
+});
+
+test("agent-discover: model filter is exact, not substring (issue #79)", () => {
+  // Before the fix, `--model opus` "worked" only because unknown flags were
+  // folded into the query and matched on substring. It must now miss.
+  const root = mkProject();
+  try {
+    seed(root, "opus-agent", { model: "claude-opus-4-6" });
+    const result = discover({ projectRoot: root, model: "opus" });
+    assert.equal(result.returned, 0);
+    assert.equal(result.query, "");
+  } finally { rmProject(root); }
+});
+
+test("agent-discover: model filter combines with other hard filters", () => {
+  const root = mkProject();
+  try {
+    seed(root, "hit", { model: "claude-opus-4-6", role: "implementer", status: "running" });
+    seed(root, "wrong-role", { model: "claude-opus-4-6", role: "reviewer", status: "running" });
+    seed(root, "wrong-model", { model: "claude-haiku-4-5", role: "implementer", status: "running" });
+    const result = discover({
+      projectRoot: root,
+      model: "claude-opus-4-6",
+      role: "implementer",
+      status: "running",
+    });
+    assert.equal(result.returned, 1);
+    assert.equal(result.agents[0].agent_id, "hit");
+  } finally { rmProject(root); }
+});
+
 test("agent-discover: filter by capability", () => {
   const root = mkProject();
   try {
