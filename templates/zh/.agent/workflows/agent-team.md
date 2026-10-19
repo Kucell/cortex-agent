@@ -46,6 +46,29 @@ Cortex 受管运行。对受管多宿主任务，调用 `/agent-orchestration` �
 `OrchestrationPlan` 预检；每个 blocker 指明 owner 和安全下一步。缺少该工作流
 或 `result=blocked` 时停止受管启动，不改用裸进程或手写运行态绕过。
 
+## 模型选择
+
+模型不凭偏好指定，只能从当前宿主实际可用的能力中选取。派发前先探测，再选择。
+
+1. 读取 `.agent/config/reasoning-config.yml`，取得 provider、模型别名
+   （如 `fast` / `standard` / `premium`）与角色映射。
+2. 读取当前宿主可用的模型清单：Codex 与 Claude Code 以本会话实际提供的模型
+   为准，不从配置臆测，也不照抄其他项目的模型 ID。
+3. 按 `.agent/sub-agents/*.md` 的既有角色绑定选择模型；该绑定与
+   `reasoning-config.yml` 冲突时以本节规则裁决，不静默取其一。
+
+选择规则：
+
+- 别名与宿主实际模型对不上时（例如配置写 `claude-sonnet-4-6` 而宿主只提供
+  `gpt-5`），不得直接使用该 ID。标记为 `unverified`，并在首批输出中说明
+  可用模型与建议映射，请用户确认后再继续。
+- 项目配置中出现宿主不再提供的过时模型 ID 时，指出具体条目，不静默替换。
+- 无可用模型证据时，停在选择前报告缺口，不用默认模型顶替。
+
+每项任务的模型选择写入任务包：`model`（实际模型 ID，非别名）、
+`model_evidence`（探测来源）、`unverified` 标记。模型不可用时该任务标为
+`blocked`，不得降级为默认模型执行。
+
 ## 启动与监督
 
 受管多宿主启动只有在既有 owner 确认精确 Decision/Waitpoint、可跨进程读回的
@@ -64,9 +87,10 @@ Task、Lease 与 fencing token、worktree identity、`ownedFiles`、
 ## 首次输出
 
 首先给出目标、所选入口、依赖批次、每项任务的 owner/宿主能力状态、隔离方式、
-门禁和 blocker；没有实测证据的字段写“待验证”。只有前置条件满足，才继续调用
-各 owner 工作流。结算时区分 `assigned`、`running`、`ready_for_review`、
-`settled` 与 `blocked`，并引用可复查证据。
+所选模型及探测来源、门禁和 blocker；没有实测证据的字段写“待验证”。模型别名
+无法映射到宿主实际模型时，先报告可用模型与建议映射，等用户确认再继续。只有
+前置条件满足，才继续调用各 owner 工作流。结算时区分 `assigned`、`running`、
+`ready_for_review`、`settled` 与 `blocked`，并引用可复查证据。
 
 ## 相关工作流
 
