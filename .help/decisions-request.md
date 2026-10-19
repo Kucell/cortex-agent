@@ -29,12 +29,23 @@ gated action may proceed.
                           "warning: --action is deprecated, use --gate-action instead"
                           When both flags are present, --gate-action wins.
 
+## Optional relations
+
+  --task-id <id>         Related task (repeatable).
+  --mission-id <id>      Related mission (repeatable).
+  --run-id <id>          Related run (repeatable).
+  --queue-id <id>        Related queue (repeatable).
+  --session-id <id>      Related session (repeatable).
+  --artifact-ref <ref>   Related evidence or source (repeatable).
+  --worktree-path <path> Related worktree (repeatable).
+
 ## Notes
 
   --gate and --gate-action are distinct concepts. --gate selects the workflow
   allowed to perform the write; --gate-action selects the decision gate being
   requested. Both are required; omitting --gate fails closed with the
   WORKFLOW_GATE_REQUIRED error code.
+  --resource-ref binds the gate; relation flags populate the Decision's relations.
 
 ## Example
 
