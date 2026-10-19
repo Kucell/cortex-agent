@@ -818,6 +818,34 @@ function emptyRelations() {
   return { task_ids: [], mission_ids: [], run_ids: [], queue_ids: [], session_ids: [], artifact_refs: [], worktree_paths: [] };
 }
 
+const DECISION_RELATION_FLAGS = [
+  ["--task-id", "task_ids"],
+  ["--mission-id", "mission_ids"],
+  ["--run-id", "run_ids"],
+  ["--queue-id", "queue_ids"],
+  ["--session-id", "session_ids"],
+  ["--artifact-ref", "artifact_refs"],
+  ["--worktree-path", "worktree_paths"],
+];
+
+function requestedDecisionRelations(existing) {
+  const relations = existing && typeof existing === "object" ? { ...emptyRelations(), ...existing } : emptyRelations();
+  for (const [flag, field] of DECISION_RELATION_FLAGS) {
+    const values = [];
+    for (let index = 0; index < args.length; index += 1) {
+      if (args[index] !== flag) continue;
+      const value = args[index + 1];
+      if (typeof value !== "string" || !value.trim() || value.startsWith("--")) {
+        fail("invalid_decision_relations", `${flag} requires a non-empty value.`);
+      }
+      values.push(value.trim());
+      index += 1;
+    }
+    if (values.length) relations[field] = [...new Set([...(Array.isArray(relations[field]) ? relations[field] : []), ...values])];
+  }
+  return relations;
+}
+
 function decisionFile(decisionId) {
   return path.join(agentRoot, "decisions", `${safeId(decisionId, "D")}.json`);
 }
@@ -937,7 +965,7 @@ function requestDecision() {
     fail("decision_already_open", `Decision ${decisionId} is still open; resolve or supersede it first.`);
   }
   const timestamp = nowIso();
-  const relations = existing.relations && typeof existing.relations === "object" ? existing.relations : emptyRelations();
+  const relations = requestedDecisionRelations(existing.relations);
   const next = {
     schema_version: 1,
     decision_id: decisionId,

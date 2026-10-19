@@ -39,6 +39,33 @@ Development candidate only; not published. Real L3 autonomy, real AI Host accept
 - Run the existing nine release CLI regressions in a fresh, verified public-source snapshot with allowlisted environment variables, an empty command search path, and temporary HOME/TMP directories. The runner is configured with bounded cooperating-process-group cleanup; the successful candidate run exited normally and did not exercise the timeout-cleanup branch.
 - Validation of this exact 1.16.0 candidate, including its published-baseline version transition, remains pending. Formal authorization, real L3 autonomy, real AI Host acceptance, and the formal 28-item authorization/L3/SelfEvolution acceptance matrix remain open. Baseline artifact identity and structural package checks do not establish candidate publication or actual Claude installation.
 
+## [1.15.5] - 2026-10-19
+
+> **Patch**：汇总 `v1.15.4` 之后已合入 `main` 的缺陷修复与受管只读契约，不引入新的 CLI 调度器或运行态 owner。
+> **升级**：安装新版即生效；已有项目运行 `cortex-agent update` 同步模板。
+
+### Fixed
+
+- **`decisions request` 帮助与校验对齐（#73）**：帮助契约的 `--gate` 枚举由泛化的 `<workflow>` 校正为真实的 `mission|agent|user`；新增 7 个可重复的关联参数（`--task-id`、`--mission-id`、`--run-id`、`--queue-id`、`--session-id`、`--artifact-ref`、`--worktree-path`），使 CLI 创建的 Decision 可从 mission 视图被发现。
+- **`vcs-pr` run 关联改为 fail-closed（#63）**：不再把 PR 事件写入无关的 run。
+- **`doctor --fix` 加固**：`memory-integrity --fix` 现在必须显式 `--yes` 或通过 TTY 确认，避免静默改写本地记忆。
+- **帮助请求保持无副作用（#15）**：`waitpoints` / `inbox` 的 help 在校验前返回，不再触发 `fireAndForgetSync` 把无关的脏状态文件提交推送。
+- **发布不再绕过 L3 边界门禁**：修复发布流程中跳过边界校验的问题。
+- **基线测试与 template parity 漂移清零（#64）**：清零 9 项基线测试失败，并校正 feedback 接线后的 template-parity 断言口径。
+
+### Added
+
+- **`/agent-team` 多 Agent 任务入口（#71）**：中英双语模板新增组合入口工作流，把当前目标路由到 `/start-task`、`/plan`、`/parallel`、`/mission` 等既有工作流，完成任务拆解、并行预检与独立验收。它不建立新的运行态 owner，Task/Lease/Run 的归属保持不变；`--dry-run` 只输出预检与批次。
+- **受管编排只读契约（M-036）**：新增只读的 `OrchestrationPlan` 预检与 blocker 报告，用于受管多宿主启动前的门禁核对。
+- **Feedback Event Inbox（P-001，M-024 MS-001+MS-002）**：新增受管的 Feedback 事件收件箱与 shipped example 防漂移回归。
+- **graphify worktree 新鲜度门禁（T-GWG-001）**：按 worktree 维度判定图谱新鲜度。
+- **DSH Visualize 片段借用（T-DVFB-001）**：借用 DSH Visualize 片段契约并配套校验器。
+
+### Validation & Compatibility
+
+- 现有 CLI 签名与治理权限不变，不需要用户数据迁移；`/agent-team` 只做路由，受管启动仍须通过 Decision/Waitpoint、Task/Lease、worktree、宿主能力与 receipt 门禁。
+- 合并后全量测试在隔离工作树中通过；`communication-template-parity` 与 `event-bus-perf-bench` 的偶发失败经单独重跑确认与本版本改动无关（前者为分支落后 main 所致，后者为并发负载超时）。
+
 ## [1.15.4] - 2026-10-09
 
 > **Patch candidate**: fix the existing `cortex-agent reconcile` top-level MiniMax CLI handler binding. No new RDG CLI, ProjectDescriptor schema, GovernanceStore, or L3 autonomy behavior is released in this patch.

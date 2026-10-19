@@ -76,6 +76,8 @@ test("decisions request help and writer accept the documented gate-action and op
   assert.match(usage, /--gate-action <action>/);
   assert.match(usage, /--options <json-array>/);
   assert.match(usage, /--action <action> legacy alias/);
+  assert.match(usage, /--mission-id <id>/);
+  assert.match(usage, /--artifact-ref <ref>/);
 
   let result = run(project, project, [
     "decisions", "request", "--decision-id", "D-GATE-ACTION", "--gate", "mission",
@@ -100,6 +102,56 @@ test("decisions request help and writer accept the documented gate-action and op
   ]);
   assert.equal(result.status, 0, result.stderr);
   assert.equal(JSON.parse(result.stdout).decision.gate.action, "architecture");
+});
+
+test("decisions request accepts user gate and persists repeatable relations", (t) => {
+  const project = createProject();
+  t.after(() => fs.rmSync(project, { recursive: true, force: true }));
+
+  const help = run(project, project, ["decisions", "request", "--help"]);
+  assert.equal(help.status, 0, help.stderr);
+  assert.match(help.stdout, /mission \| agent \| user/);
+
+  const result = run(project, project, [
+    "decisions", "request", "--decision-id", "D-RELATIONS", "--gate", "user",
+    "--gate-action", "architecture", "--type", "approval", "--requested-by", "tester",
+    "--prompt", "Approve?", "--resource-ref", "mission:M-053@sha256:example",
+    "--options", '["approve","reject"]',
+    "--mission-id", "M-053", "--mission-id", "M-053",
+    "--artifact-ref", "mission:M-053@sha256:example", "--artifact-ref", "source:branch@sha:path@sha256:example",
+    "--worktree-path", "/tmp/m053-worktree", "--task-id", "T-1",
+    "--run-id", "R-1", "--queue-id", "Q-1", "--session-id", "S-1",
+  ]);
+  assert.equal(result.status, 0, result.stderr);
+  const decision = JSON.parse(result.stdout).decision;
+  assert.equal(decision.workflow_gate, "user");
+  assert.deepEqual(decision.relations.mission_ids, ["M-053"]);
+  assert.deepEqual(decision.relations.artifact_refs, ["mission:M-053@sha256:example", "source:branch@sha:path@sha256:example"]);
+  assert.deepEqual(decision.relations.worktree_paths, ["/tmp/m053-worktree"]);
+  assert.deepEqual(decision.relations.task_ids, ["T-1"]);
+  assert.deepEqual(decision.relations.run_ids, ["R-1"]);
+  assert.deepEqual(decision.relations.queue_ids, ["Q-1"]);
+  assert.deepEqual(decision.relations.session_ids, ["S-1"]);
+  const saved = JSON.parse(fs.readFileSync(path.join(project, ".agent", "decisions", "D-RELATIONS.json"), "utf8"));
+  assert.deepEqual(saved.relations, decision.relations);
+  const activity = run(project, project, ["query", "activity"]);
+  assert.equal(activity.status, 0, activity.stderr);
+  const projected = JSON.parse(activity.stdout).data.activity.find((item) => item.resource_id === "D-RELATIONS");
+  assert.equal(projected.relations.mission_id, "M-053");
+});
+
+test("decisions request rejects a relation flag without a value before writing", (t) => {
+  const project = createProject();
+  t.after(() => fs.rmSync(project, { recursive: true, force: true }));
+  const result = run(project, project, [
+    "decisions", "request", "--decision-id", "D-MISSING-RELATION", "--gate", "mission",
+    "--gate-action", "architecture", "--type", "approval", "--requested-by", "tester",
+    "--prompt", "Approve?", "--resource-ref", "mission:M-053@sha256:example",
+    "--options", '["approve","reject"]', "--mission-id", "--artifact-ref", "artifact:example",
+  ]);
+  assert.notEqual(result.status, 0);
+  assert.equal(JSON.parse(result.stdout).error.code, "INVALID_DECISION_RELATIONS");
+  assert.equal(fs.existsSync(path.join(project, ".agent", "decisions", "D-MISSING-RELATION.json")), false);
 });
 
 
