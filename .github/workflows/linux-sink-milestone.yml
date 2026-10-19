@@ -1,0 +1,49 @@
+name: Linux File Sink Milestone (Inactive Draft)
+
+# Source-preparation artifact only. There is deliberately no pull_request,
+# push, schedule, workflow_run, or pull_request_target trigger. Even a manual
+# invocation cannot allocate this job: its condition is an unconditional false.
+# No approval variable, environment flag or dispatch input can enable it.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inactive-source-draft:
+    if: ${{ false }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 1
+    steps:
+      - name: Refuse execution of the source-only draft
+        shell: bash
+        run: |
+          echo "LINUX_SINK_NOT_RUN: separately reviewed activation is required"
+          exit 1
+
+# This draft contains no checkout, source download, sandbox launch or model call.
+# The four reviewed source paths are:
+#   lib/runtime-state/serialized-artifact-gateway.js
+#   tests/runtime-state/serialized-artifact-gateway.test.js
+#   scripts/l3/linux-sink-canary.py
+#   tests/fixtures/l3/linux-sink-client.cjs
+# Ordinary discovery of the test file performs pure validation only.
+#
+# A later activation requires a separate, explicitly approved workflow change.
+# Freeze the source commit S (including this inert draft), its tree and all four
+# source blobs/SHA-256 values. Activation A must have S as its only parent and
+# change only this workflow. Do not execute a PR merge ref or follow main.
+# Before activating, independently review the full materializer and manifest:
+# - exact public repository ID, PR 70, same-repository head and synchronize event;
+# - verified workflow identity/history, one frozen run_number and run_attempt 1;
+# - complete parent/head trees, exact workflow-only delta and fixed source blobs;
+# - fixed UTC execution window, one local invocation marker and bounded outputs;
+# - capability-only mode first, with no sudo, install, OIDC or write permission;
+# - a separate sink-run approval after reviewing measured runtime manifest R.
+# Missing capability or a consumed run number stops the attempt, without retry
+# or a replacement isolation route. Publishing this draft grants none of these.
+#
+# The capability probe and the real sink remain NOT_RUN. Synthetic authority
+# cannot establish a live RuntimeWriter, Owner, Lease, AI Host or formal release
+# acceptance. The original control experiment and its expiry remain unchanged.
