@@ -94,8 +94,13 @@ test("help documents both gate concepts without touching the filesystem", () => 
   const result = spawnSync(process.execPath, [CLI, "decisions", "request", "--help"], { cwd: ROOT, encoding: "utf8" });
   assert.equal(result.status, 0, result.stderr);
   assert.ok(result.stdout.includes("--gate-action"));
+  assert.match(result.stdout, /mission \| agent \| user/);
+  assert.match(result.stdout, /--mission-id <id>/);
   assert.ok(/deprecat/i.test(result.stdout), result.stdout);
   assert.ok(result.stdout.includes("WORKFLOW_GATE_REQUIRED"));
+  const { decisionsRequestContract } = require("../../lib/commands/management/write.js");
+  assert.match(decisionsRequestContract(), /mission \| agent \| user/);
+  assert.match(decisionsRequestContract(), /--mission-id <id>/);
 });
 
 // The Management API ignores unknown flags, so before P-009 a `--dry-run` on

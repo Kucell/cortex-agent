@@ -132,6 +132,22 @@ describe("management-api --gate whitelist", () => {
         });
       }
 
+      test("decisions request stores mission and provenance relations", () => {
+        const args = requestArgs("mission");
+        args[args.indexOf("--decision-id") + 1] = `D-relations-${tpl}`;
+        const r = runApi(tpl, [
+          ...args,
+          "--mission-id", "M-053",
+          "--artifact-ref", "mission:M-053@sha256:example",
+          "--worktree-path", "/tmp/m053-worktree",
+        ]);
+        assert.equal(r.status, 0, r.stderr + r.stdout);
+        const relations = JSON.parse(r.stdout).decision.relations;
+        assert.deepEqual(relations.mission_ids, ["M-053"]);
+        assert.deepEqual(relations.artifact_refs, ["mission:M-053@sha256:example"]);
+        assert.deepEqual(relations.worktree_paths, ["/tmp/m053-worktree"]);
+      });
+
       test("decisions request still fails closed on an undocumented gate", () => {
         const r = runApi(tpl, requestArgs("hacker"));
         const out = r.stdout + r.stderr;
