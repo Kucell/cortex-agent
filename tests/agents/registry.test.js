@@ -182,6 +182,20 @@ describe("agents/registry — findAgents filters", () => {
     assert.deepEqual(res.map((e) => e.agent_id), ["ext-c"]);
   });
 
+  test("filters by exact model (issue #79)", () => {
+    const root = makeProject();
+    registry.writeAgent(root, validEntry({ agent_id: "opus-a", model: "claude-opus-4-6" }));
+    registry.writeAgent(root, validEntry({ agent_id: "haiku-b", model: "claude-haiku-4-5" }));
+    const res = registry.findAgents(root, { model: "claude-opus-4-6" });
+    assert.deepEqual(res.map((e) => e.agent_id), ["opus-a"]);
+  });
+
+  test("model filter does not match substrings (issue #79)", () => {
+    const root = makeProject();
+    registry.writeAgent(root, validEntry({ agent_id: "opus-a", model: "claude-opus-4-6" }));
+    assert.deepEqual(registry.findAgents(root, { model: "opus" }), []);
+  });
+
   test("query substring matches across id/role/model/capabilities", () => {
     const root = makeProject();
     seed(root);

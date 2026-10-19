@@ -57,6 +57,36 @@ governed cross-host work, run the read-only `/agent-orchestration`
 If that workflow is missing or `result=blocked`, stop the governed launch;
 do not bypass it with a bare process or hand-written runtime state.
 
+## Model selection
+
+Choose models only from what the current host actually offers; never from
+preference. Probe before selecting, then select.
+
+1. Read `.agent/config/reasoning-config.yml` for the provider, model aliases
+   (`fast` / `standard` / `premium`), and role assignments.
+2. Read the models the current host actually exposes. For Codex and Claude Code
+   that is the set provided by the running session. Do not infer it from the
+   configuration, and do not copy model IDs from another project.
+3. Follow the existing role bindings in `.agent/sub-agents/*.md`. When those
+   bindings conflict with `reasoning-config.yml`, resolve the conflict by this
+   section rather than silently preferring one.
+
+Selection rules:
+
+- When an alias does not resolve to a host-available model (for example the
+  configuration names `claude-sonnet-4-6` while the host offers `gpt-5`), do
+  not use that ID. Mark it `unverified` and report the available models plus a
+  suggested mapping in the first output, then wait for the user's confirmation.
+- When a project configuration names a retired model ID the host no longer
+  provides, point at the exact entry. Do not silently substitute another model.
+- With no available-model evidence, stop before selection and report the gap.
+  Do not fall back to a default model.
+
+Record the choice in each work package: `model` (the real model ID, not an
+alias), `model_evidence` (where the probe came from), and an `unverified` flag
+when applicable. A task whose model is unavailable is `blocked`; it must not
+degrade into execution on a default model.
+
 ## Launch and supervision
 
 For a governed cross-host launch, the existing owners must confirm matching
@@ -78,9 +108,12 @@ and their respective workflows.
 
 ## First output
 
-Report the goal, selected entry, dependency batches, each task's owner and
-host capability status, isolation, gates, and blockers. Mark unverified fields
-as "unverified". Continue with owner workflows only when prerequisites hold.
+Report the goal, selected entry, dependency batches, each task's owner, host
+capability status, isolation, chosen model with its probe source, gates, and
+blockers. Mark unverified fields as "unverified". When a model alias does not
+resolve to a host-available model, report the available models and a suggested
+mapping and wait for the user's confirmation before continuing. Continue with
+owner workflows only when prerequisites hold.
 At settlement, distinguish `assigned`, `running`, `ready_for_review`,
 `settled`, and `blocked`, citing reviewable evidence.
 
