@@ -91,6 +91,14 @@ test("VC-009 enabled — feedback log writes exactly one event and returns event
   );
   const env = { ...process.env, CORTEX_AGENT_FEEDBACK_PROJECT_ROOT: root };
   const r = runLog(baseFlags(), env);
+  if (process.platform === "win32") {
+    // Windows ACL safety is unprovable from Node: writes must fail closed
+    // (VC-019). Zero events on disk.
+    assert.equal(r.exitCode, EXIT_INSECURE, JSON.stringify(r));
+    assert.match(r.stderr, /windows-acl-unprovable/);
+    assert.equal(fs.existsSync(path.join(root, ".agent", "feedback")), false);
+    return;
+  }
   assert.equal(r.exitCode, EXIT_OK, JSON.stringify(r));
   const payload = JSON.parse(r.stdout);
   assert.equal(payload.ok, true);
@@ -202,6 +210,12 @@ test("VC-009 end-to-end via bin/cli.js (enabled → writes one event)", withProj
     "utf8",
   );
   const r = runCli(root, ["feedback", "log", ...baseFlags()]);
+  if (process.platform === "win32") {
+    // Fail-closed on Windows: ACL safety unprovable, no event written (VC-019).
+    assert.equal(r.status, EXIT_INSECURE, `stderr=${r.stderr}\nstdout=${r.stdout}`);
+    assert.equal(walk(inboxRootFor(root)).length, 0);
+    return;
+  }
   assert.equal(r.status, EXIT_OK, `stderr=${r.stderr}\nstdout=${r.stdout}`);
   const files = walk(inboxRootFor(root));
   assert.equal(files.length, 1);
