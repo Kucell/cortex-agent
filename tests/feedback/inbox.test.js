@@ -72,7 +72,7 @@ test("VC-004 appendEvent writes one event file and returns path/fingerprint", ()
     assert.equal(path.basename(result.path), "event.json");
     assert.ok(result.fingerprint.startsWith("sha256:"));
     // Layout: <inboxRoot>/YYYY-MM-DD/<event_id>/event.json
-    const rel = path.relative(inboxRoot, result.path);
+    const rel = path.relative(inboxRoot, result.path).split(path.sep).join("/");
     assert.match(rel, /^\d{4}-\d{2}-\d{2}\/fev_[0-9a-f-]+\/event\.json$/);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
