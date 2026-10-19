@@ -188,6 +188,63 @@ test("agent-cli: agent discover --adapter-type validates", () => {
   assert.ok(/--adapter-type must be one of/.test(result.stderr));
 });
 
+// ─── issue #79: --model is a real filter; unknown flags must fail loudly ────
+
+test("agent-cli: agent discover --model filters by exact model", () => {
+  const root = mkProject();
+  try {
+    seedAgent(root, "opus-agent", { model: "claude-opus-4-6" });
+    seedAgent(root, "haiku-agent", { model: "claude-haiku-4-5" });
+    const result = spawnSync("node", [
+      path.join(repoRoot, "bin/cli.js"), "agent", "discover",
+      "--project", root, "--model", "claude-opus-4-6", "--output", "json",
+    ], { encoding: "utf8" });
+    assert.equal(result.status, 0);
+    const json = JSON.parse(result.stdout);
+    assert.equal(json.returned, 1);
+    assert.equal(json.agents[0].agent_id, "opus-agent");
+    assert.equal(json.model, "claude-opus-4-6");
+  } finally { rmProject(root); }
+});
+
+test("agent-cli: agent discover --model does not substring-match (issue #79)", () => {
+  const root = mkProject();
+  try {
+    seedAgent(root, "opus-agent", { model: "claude-opus-4-6" });
+    const result = spawnSync("node", [
+      path.join(repoRoot, "bin/cli.js"), "agent", "discover",
+      "--project", root, "--model", "opus", "--output", "json",
+    ], { encoding: "utf8" });
+    assert.equal(result.status, 0);
+    const json = JSON.parse(result.stdout);
+    assert.equal(json.returned, 0);
+    // The value must NOT have been folded into the query.
+    assert.equal(json.query, "");
+  } finally { rmProject(root); }
+});
+
+test("agent-cli: agent discover rejects an unknown flag with exit 2 (issue #79)", () => {
+  const result = spawnSync("node", [
+    path.join(repoRoot, "bin/cli.js"), "agent", "discover",
+    "--bogus-flag", "xyz",
+  ], { encoding: "utf8" });
+  assert.equal(result.status, 2);
+  assert.ok(/unknown flag/.test(result.stderr));
+  assert.ok(/--bogus-flag/.test(result.stderr));
+  assert.equal(result.stdout, "");
+});
+
+test("agent-cli: agent discover reports every unknown flag (issue #79)", () => {
+  const result = spawnSync("node", [
+    path.join(repoRoot, "bin/cli.js"), "agent", "discover",
+    "--foo", "--bar",
+  ], { encoding: "utf8" });
+  assert.equal(result.status, 2);
+  assert.ok(/unknown flags/.test(result.stderr));
+  assert.ok(/--foo/.test(result.stderr));
+  assert.ok(/--bar/.test(result.stderr));
+});
+
 test("agent-cli: agent invoke missing agent_id exits 2", () => {
   const result = spawnSync("node", [
     path.join(repoRoot, "bin/cli.js"), "agent", "invoke",
