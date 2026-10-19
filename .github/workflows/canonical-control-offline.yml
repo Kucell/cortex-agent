@@ -17,6 +17,23 @@ on:
       - "templates/_shared/.agent/tasks/task.schema.json"
       - "tests/governance/canonical-control.test.js"
       - "tests/governance/github-control-store.test.js"
+      - "lib/runtime-state/runtime-admission.js"
+      - "lib/runtime-port/strict-entry.js"
+      - "tests/runtime-state/runtime-admission.test.js"
+      - "tests/runtime-port/strict-entry.test.js"
+      - "lib/runtime-state/operation-lifecycle.js"
+      - "lib/security/scan.js"
+      - "packages/runtime-port/src/index.js"
+      - "packages/runtime-port/src/topology.js"
+      - "packages/protocol/src/index.js"
+      - "packages/protocol/src/refs.js"
+      - "packages/protocol/src/version.js"
+      - "packages/protocol/src/result.js"
+      - "packages/protocol/src/capabilities.js"
+      - "packages/protocol/src/events.js"
+      - "packages/protocol/src/timeline.js"
+      - "packages/protocol/src/negotiation.js"
+      - "packages/protocol/src/evolution.js"
       - ".github/workflows/canonical-control-offline.yml"
 permissions:
   contents: read
@@ -52,12 +69,12 @@ jobs:
               const item={repository:owner+'/'+repo,source_head:head,tree:tree.sha,path:relative,destination,blob};proof.sources.push(item);core.info(JSON.stringify(item));
              }
             }
-            await materialize(context.repo.owner,context.repo.repo,process.env.SOURCE_HEAD,["lib/governance/canonical-control.js","lib/governance/canonical-records.js","lib/governance/canonical-control.schema.json","lib/governance/github-control-store.js","lib/governance/git-transaction-store.js","lib/governance/github-selection.js","lib/governance/github-selection-evidence.schema.json","templates/_shared/.agent/decisions/decision.schema.json","templates/_shared/.agent/decisions/index.schema.json","templates/_shared/.agent/waitpoints/waitpoint.schema.json","templates/_shared/.agent/waitpoints/index.schema.json","templates/_shared/.agent/tasks/task.schema.json","tests/governance/canonical-control.test.js","tests/governance/github-control-store.test.js"]);
+            await materialize(context.repo.owner,context.repo.repo,process.env.SOURCE_HEAD,["lib/governance/canonical-control.js","lib/governance/canonical-records.js","lib/governance/canonical-control.schema.json","lib/governance/github-control-store.js","lib/governance/git-transaction-store.js","lib/governance/github-selection.js","lib/governance/github-selection-evidence.schema.json","templates/_shared/.agent/decisions/decision.schema.json","templates/_shared/.agent/decisions/index.schema.json","templates/_shared/.agent/waitpoints/waitpoint.schema.json","templates/_shared/.agent/waitpoints/index.schema.json","templates/_shared/.agent/tasks/task.schema.json","tests/governance/canonical-control.test.js","tests/governance/github-control-store.test.js","lib/runtime-state/runtime-admission.js","lib/runtime-port/strict-entry.js","tests/runtime-state/runtime-admission.test.js","tests/runtime-port/strict-entry.test.js","lib/runtime-state/operation-lifecycle.js","lib/security/scan.js","packages/runtime-port/src/index.js","packages/runtime-port/src/topology.js","packages/protocol/src/index.js","packages/protocol/src/refs.js","packages/protocol/src/version.js","packages/protocol/src/result.js","packages/protocol/src/capabilities.js","packages/protocol/src/events.js","packages/protocol/src/timeline.js","packages/protocol/src/negotiation.js","packages/protocol/src/evolution.js"]);
             fs.writeFileSync(path.join(root,'source-proof.json'),JSON.stringify(proof)+'\n',{flag:'wx',mode:0o444});core.exportVariable('CORTEX_OFFLINE_ROOT',root);core.info(JSON.stringify({source_count:proof.sources.length,read_only_materialization:true}));
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: ${{ matrix.node }}
-      - name: Run 35 bounded synthetic tests
+      - name: Run 50 bounded synthetic tests in three isolated suites
         shell: bash
         run: |
           set -euo pipefail
@@ -97,21 +114,36 @@ jobs:
             24) isolation="--test-isolation=none" ;;
             *) exit 1 ;;
           esac
-          env -i PATH=/usr/bin:/bin HOME="$scratch/home" USERPROFILE="$scratch/home" \
-           TMPDIR="$scratch/tmp" TMP="$scratch/tmp" TEMP="$scratch/tmp" XDG_CONFIG_HOME="$scratch/home" \
-           LANG=C LC_ALL=C TZ=UTC CORTEX_TEST_TMP="$scratch/tmp"  \
-           /usr/bin/timeout --signal=TERM --kill-after=5 180 "$node_bin" \
-           --require="$scratch/offline-guard.cjs" --test "$isolation" --test-concurrency=1 --test-reporter=tap tests/governance/canonical-control.test.js tests/governance/github-control-store.test.js | tee "$scratch/tap.log"
-          env -i PATH="" "$node_bin" - "$scratch" 35 14 <<'VERIFY'
+          # Fixed independent suites prevent fixture mocks from crossing process boundaries.
+          # Each retains the 4000 Git-child ceiling; this job is bounded to 12000 total.
+          for suite in control admission entry; do
+            case "$suite" in
+              control) expected=35; test_files=(tests/governance/canonical-control.test.js tests/governance/github-control-store.test.js) ;;
+              admission) expected=7; test_files=(tests/runtime-state/runtime-admission.test.js) ;;
+              entry) expected=8; test_files=(tests/runtime-port/strict-entry.test.js) ;;
+              *) exit 1 ;;
+            esac
+            echo "CORTEX_OFFLINE_SUITE=$suite EXPECTED=$expected"
+            env -i PATH=/usr/bin:/bin HOME="$scratch/home" USERPROFILE="$scratch/home" \
+             TMPDIR="$scratch/tmp" TMP="$scratch/tmp" TEMP="$scratch/tmp" XDG_CONFIG_HOME="$scratch/home" \
+             LANG=C LC_ALL=C TZ=UTC CORTEX_TEST_TMP="$scratch/tmp" \
+             /usr/bin/timeout --signal=TERM --kill-after=5 180 "$node_bin" \
+             --require="$scratch/offline-guard.cjs" --test "$isolation" --test-concurrency=1 --test-reporter=tap "${test_files[@]}" | tee "$scratch/tap-$suite.log"
+          done
+          env -i PATH="" "$node_bin" - "$scratch" 31 <<'VERIFY'
           const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto'),assert=require('node:assert/strict');
-          const [root,n,count]=process.argv.slice(2),expected=Number(n),tap=fs.readFileSync(path.join(root,'tap.log'),'utf8');
-          for(const [key,value]of Object.entries({tests:expected,pass:expected,fail:0,cancelled:0,skipped:0,todo:0}))assert.deepEqual([...tap.matchAll(new RegExp('^# '+key+' (\\d+)\\s*$','gm'))].map(m=>Number(m[1])),[value],'Unexpected '+key);
-          assert.match(tap,/^# CORTEX_OFFLINE network_attempts=0 git_children=[0-9]+$/m);
+          const [root,count]=process.argv.slice(2),suites=[['control',35],['admission',7],['entry',8]];let gitChildren=0;
+          for(const [suite,expected]of suites){
+            const tap=fs.readFileSync(path.join(root,'tap-'+suite+'.log'),'utf8');
+            for(const [key,value]of Object.entries({tests:expected,pass:expected,fail:0,cancelled:0,skipped:0,todo:0}))assert.deepEqual([...tap.matchAll(new RegExp('^# '+key+' (\\d+)\\s*$','gm'))].map(m=>Number(m[1])),[value],'Unexpected '+suite+' '+key);
+            const guards=[...tap.matchAll(/^# CORTEX_OFFLINE network_attempts=(\d+) git_children=(\d+)$/gm)];assert.equal(guards.length,1);assert.equal(Number(guards[0][1]),0);assert.ok(Number(guards[0][2])<=4000);gitChildren+=Number(guards[0][2]);
+          }
+          assert.ok(gitChildren<=12000);
           const proof=JSON.parse(fs.readFileSync(path.join(root,'source-proof.json'),'utf8'));assert.equal(proof.sources.length,Number(count));
           for(const item of proof.sources){const file=path.join(root,'source',item.destination),st=fs.lstatSync(file);assert.ok(st.isFile()&&!st.isSymbolicLink());assert.equal(st.mode&0o777,0o444);const bytes=fs.readFileSync(file),blob=crypto.createHash('sha1').update('blob '+bytes.length+'\0').update(bytes).digest('hex');assert.equal(blob,item.blob,'Source changed: '+item.destination);}
           const actual=[];function walk(dir,prefix=''){for(const entry of fs.readdirSync(dir,{withFileTypes:true})){const relative=prefix+entry.name;assert.equal(entry.isSymbolicLink(),false);if(entry.isDirectory())walk(path.join(dir,entry.name),relative+'/');else{assert.ok(entry.isFile());actual.push(relative);}}}
           walk(path.join(root,'source'));assert.deepEqual(actual.sort(),proof.sources.map(x=>x.destination).sort());assert.deepEqual(fs.readdirSync(path.join(root,'tmp')),[],'Owned fixtures not cleaned');
-          console.log(JSON.stringify({tests:expected,source_count:proof.sources.length,source_unchanged:true,fixture_cleanup:true,evidence_level:'SYNTHETIC_OFFLINE_ONLY'}));
+          console.log(JSON.stringify({tests:50,suites:Object.fromEntries(suites),git_children:gitChildren,max_git_children:12000,source_count:proof.sources.length,source_unchanged:true,fixture_cleanup:true,evidence_level:'SYNTHETIC_OFFLINE_ONLY'}));
           VERIFY
           # Remove only after observed success, exact TAP, posthash and cleanup checks.
           # Failures retain disposable evidence until hosted-runner destruction.
