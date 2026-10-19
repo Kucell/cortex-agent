@@ -31,7 +31,7 @@ jobs:
     timeout-minutes: 15
     env:
       SOURCE_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
-      EXPECTED_GITLINK: 598e604d460d4dc57b27f52725c884816a10782d
+      EXPECTED_GITLINK: 7b17677b1646cdbf54e29bf44cb9a11100c90d34
       EXPECTED_CANDIDATE_VERSION: "1.16.0"
       DISPATCH_HEAD: ${{ inputs.expected_head }}
       DISPATCH_VERSION: ${{ inputs.expected_version }}
