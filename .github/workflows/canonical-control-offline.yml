@@ -1,0 +1,121 @@
+name: Canonical Control Offline Contracts
+
+on:
+  pull_request:
+    paths:
+      - "lib/governance/canonical-control.js"
+      - "lib/governance/canonical-records.js"
+      - "lib/governance/canonical-control.schema.json"
+      - "lib/governance/github-control-store.js"
+      - "lib/governance/git-transaction-store.js"
+      - "lib/governance/github-selection.js"
+      - "lib/governance/github-selection-evidence.schema.json"
+      - "templates/_shared/.agent/decisions/decision.schema.json"
+      - "templates/_shared/.agent/decisions/index.schema.json"
+      - "templates/_shared/.agent/waitpoints/waitpoint.schema.json"
+      - "templates/_shared/.agent/waitpoints/index.schema.json"
+      - "templates/_shared/.agent/tasks/task.schema.json"
+      - "tests/governance/canonical-control.test.js"
+      - "tests/governance/github-control-store.test.js"
+      - ".github/workflows/canonical-control-offline.yml"
+permissions:
+  contents: read
+jobs:
+  offline:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ["22", "24"]
+    env:
+      SOURCE_HEAD: ${{ github.event.pull_request.head.sha }}
+    steps:
+      - name: Read exact bounded source closure
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b
+        with:
+          script: |
+            const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto'),assert=require('node:assert/strict');
+            assert.match(process.env.SOURCE_HEAD||'',/^[a-f0-9]{40}$/);
+            const root=fs.mkdtempSync(path.join(fs.realpathSync(process.env.RUNNER_TEMP),'cortex-control-offline-'));
+            fs.mkdirSync(path.join(root,'source'));fs.mkdirSync(path.join(root,'home'));fs.mkdirSync(path.join(root,'tmp'));const proof={sources:[]};
+            async function materialize(owner,repo,head,files,prefix=''){
+             assert.match(head,/^[a-f0-9]{40}$/);const {data:commit}=await github.rest.git.getCommit({owner,repo,commit_sha:head});assert.equal(commit.sha,head);
+             const {data:tree}=await github.rest.git.getTree({owner,repo,tree_sha:commit.tree.sha,recursive:'true'});assert.equal(tree.truncated,false);assert.equal(tree.sha,commit.tree.sha);
+             for(const relative of files){
+              const entry=tree.tree.find(x=>x.path===relative);assert.ok(entry,'Missing '+relative);assert.equal(entry.type,'blob');assert.equal(entry.mode,'100644');
+              const {data:file}=await github.rest.repos.getContent({owner,repo,path:relative,ref:head});assert.equal(file.path,relative);assert.equal(file.type,'file');assert.equal(file.encoding,'base64');assert.equal(file.sha,entry.sha);
+              const bytes=Buffer.from(file.content,'base64');assert.equal(bytes.length,file.size);assert.ok(bytes.length<=2097152);
+              const blob=crypto.createHash('sha1').update('blob '+bytes.length+'\0').update(bytes).digest('hex');assert.equal(blob,entry.sha);
+              const destination=prefix+relative;assert.ok(!path.isAbsolute(destination)&&!destination.split('/').includes('..'));
+              const filePath=path.join(root,'source',destination);assert.ok(filePath.startsWith(path.join(root,'source')+path.sep));fs.mkdirSync(path.dirname(filePath),{recursive:true});fs.writeFileSync(filePath,bytes,{flag:'wx',mode:0o444});
+              const item={repository:owner+'/'+repo,source_head:head,tree:tree.sha,path:relative,destination,blob};proof.sources.push(item);core.info(JSON.stringify(item));
+             }
+            }
+            await materialize(context.repo.owner,context.repo.repo,process.env.SOURCE_HEAD,["lib/governance/canonical-control.js","lib/governance/canonical-records.js","lib/governance/canonical-control.schema.json","lib/governance/github-control-store.js","lib/governance/git-transaction-store.js","lib/governance/github-selection.js","lib/governance/github-selection-evidence.schema.json","templates/_shared/.agent/decisions/decision.schema.json","templates/_shared/.agent/decisions/index.schema.json","templates/_shared/.agent/waitpoints/waitpoint.schema.json","templates/_shared/.agent/waitpoints/index.schema.json","templates/_shared/.agent/tasks/task.schema.json","tests/governance/canonical-control.test.js","tests/governance/github-control-store.test.js"]);
+            fs.writeFileSync(path.join(root,'source-proof.json'),JSON.stringify(proof)+'\n',{flag:'wx',mode:0o444});core.exportVariable('CORTEX_OFFLINE_ROOT',root);core.info(JSON.stringify({source_count:proof.sources.length,read_only_materialization:true}));
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: ${{ matrix.node }}
+      - name: Run 35 bounded synthetic tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          scratch="$CORTEX_OFFLINE_ROOT"
+          node_bin="$(command -v node)"
+          "$node_bin" --version
+          /usr/bin/git --version
+          cat > "$scratch/offline-guard.cjs" <<'GUARD'
+          'use strict';
+          // Synthetic fixture tripwire; not an adversarial Host sandbox.
+          const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict');
+          const root=fs.realpathSync(process.env.CORTEX_TEST_TMP);let network=0,children=0;
+          const deny=kind=>function(){network++;throw Object.assign(new Error('OFFLINE_NETWORK_DISABLED:'+kind),{code:'OFFLINE_NETWORK_DISABLED'});};
+          for(const [name,methods]of [['node:http',['request','get','createServer']],['node:https',['request','get','createServer']],['node:http2',['connect','createServer','createSecureServer']],['node:net',['connect','createConnection','createServer']],['node:tls',['connect','createServer']],['node:dgram',['createSocket']]]){const api=require(name);for(const method of methods)api[method]=deny(name+'.'+method);}
+          require('node:net').Socket.prototype.connect=deny('Socket.connect');require('node:net').Server.prototype.listen=deny('Server.listen');
+          for(const api of [require('node:dns'),require('node:dns/promises')])for(const name of Object.keys(api))if(typeof api[name]==='function'&&/^(lookup|resolve|reverse|setServers)/.test(name))api[name]=deny('dns.'+name);
+          globalThis.fetch=deny('fetch');globalThis.WebSocket=deny('WebSocket');
+          const cp=require('node:child_process'),realSpawn=cp.spawnSync.bind(cp),git=fs.realpathSync('/usr/bin/git');
+          for(const name of ['exec','execSync','execFile','execFileSync','spawn','fork'])cp[name]=()=>{throw new Error('OFFLINE_CHILD_METHOD_DISABLED:'+name);};
+          const verbs=new Set(['init','rev-parse','for-each-ref','ls-remote','fetch','push','unpack-objects','cat-file','ls-tree','hash-object','mktree','commit-tree','update-ref','merge-base']);
+          cp.spawnSync=(executable,args,options)=>{
+           assert.equal(executable,git);assert.ok(Array.isArray(args)&&args.every(x=>typeof x==='string'));assert.ok(options&&options.shell===false);
+           const cwd=fs.realpathSync(options.cwd);assert.ok(cwd.startsWith(root+path.sep));assert.equal(options.env.GIT_ALLOW_PROTOCOL,'file');
+           assert.equal(options.env.GIT_CONFIG_NOSYSTEM,'1');assert.equal(options.env.GIT_CONFIG_GLOBAL,'/dev/null');
+           for(const key of ['GITHUB_TOKEN','GH_TOKEN','CORTEX_GIT_AUTH','NODE_OPTIONS','NODE_PATH'])assert.equal(options.env[key],undefined);
+           assert.ok(args.includes('core.hooksPath=/dev/null'));assert.ok(args.some(x=>verbs.has(x)));assert.ok(args.every(x=>! /^(?:https?|ssh|git):/.test(x)));
+           for(const arg of args.filter(x=>x.startsWith('file://')))assert.ok(arg.slice(7).startsWith(root+path.sep));
+           assert.ok(Number.isInteger(options.timeout)&&options.timeout>0&&options.timeout<=15000);assert.ok(options.maxBuffer>0&&options.maxBuffer<=1048576);assert.ok(++children<=4000,'offline Git child budget exceeded');
+           return realSpawn(executable,args,options);
+          };
+          process.once('exit',()=>{console.log('# CORTEX_OFFLINE network_attempts='+network+' git_children='+children);if(network!==0)process.exitCode=1;});
+          GUARD
+          cd "$scratch/source"
+          major="$("$node_bin" -p 'process.versions.node.split(".")[0]')"
+          case "$major" in
+            22) isolation="--experimental-test-isolation=none" ;;
+            24) isolation="--test-isolation=none" ;;
+            *) exit 1 ;;
+          esac
+          env -i PATH=/usr/bin:/bin HOME="$scratch/home" USERPROFILE="$scratch/home" \
+           TMPDIR="$scratch/tmp" TMP="$scratch/tmp" TEMP="$scratch/tmp" XDG_CONFIG_HOME="$scratch/home" \
+           LANG=C LC_ALL=C TZ=UTC CORTEX_TEST_TMP="$scratch/tmp"  \
+           /usr/bin/timeout --signal=TERM --kill-after=5 180 "$node_bin" \
+           --require="$scratch/offline-guard.cjs" --test "$isolation" --test-concurrency=1 --test-reporter=tap tests/governance/canonical-control.test.js tests/governance/github-control-store.test.js | tee "$scratch/tap.log"
+          env -i PATH="" "$node_bin" - "$scratch" 35 14 <<'VERIFY'
+          const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto'),assert=require('node:assert/strict');
+          const [root,n,count]=process.argv.slice(2),expected=Number(n),tap=fs.readFileSync(path.join(root,'tap.log'),'utf8');
+          for(const [key,value]of Object.entries({tests:expected,pass:expected,fail:0,cancelled:0,skipped:0,todo:0}))assert.deepEqual([...tap.matchAll(new RegExp('^# '+key+' (\\d+)\\s*$','gm'))].map(m=>Number(m[1])),[value],'Unexpected '+key);
+          assert.match(tap,/^# CORTEX_OFFLINE network_attempts=0 git_children=[0-9]+$/m);
+          const proof=JSON.parse(fs.readFileSync(path.join(root,'source-proof.json'),'utf8'));assert.equal(proof.sources.length,Number(count));
+          for(const item of proof.sources){const file=path.join(root,'source',item.destination),st=fs.lstatSync(file);assert.ok(st.isFile()&&!st.isSymbolicLink());assert.equal(st.mode&0o777,0o444);const bytes=fs.readFileSync(file),blob=crypto.createHash('sha1').update('blob '+bytes.length+'\0').update(bytes).digest('hex');assert.equal(blob,item.blob,'Source changed: '+item.destination);}
+          const actual=[];function walk(dir,prefix=''){for(const entry of fs.readdirSync(dir,{withFileTypes:true})){const relative=prefix+entry.name;assert.equal(entry.isSymbolicLink(),false);if(entry.isDirectory())walk(path.join(dir,entry.name),relative+'/');else{assert.ok(entry.isFile());actual.push(relative);}}}
+          walk(path.join(root,'source'));assert.deepEqual(actual.sort(),proof.sources.map(x=>x.destination).sort());assert.deepEqual(fs.readdirSync(path.join(root,'tmp')),[],'Owned fixtures not cleaned');
+          console.log(JSON.stringify({tests:expected,source_count:proof.sources.length,source_unchanged:true,fixture_cleanup:true,evidence_level:'SYNTHETIC_OFFLINE_ONLY'}));
+          VERIFY
+          # Remove only after observed success, exact TAP, posthash and cleanup checks.
+          # Failures retain disposable evidence until hosted-runner destruction.
+          cd "$RUNNER_TEMP"
+          rm -rf -- "$scratch"
+          test ! -e "$scratch"
+          echo "CORTEX_OFFLINE_ROOT_REMOVED=true"
