@@ -101,6 +101,9 @@ function fixture(t) {
         }
       }
       if (verb === 'fetch') {
+        assert.deepEqual(args.filter(arg => arg.startsWith('pack.writeReverseIndex=')),
+          ['pack.writeReverseIndex=false']);
+        assert.equal(args[args.indexOf('pack.writeReverseIndex=false') - 1], '-c');
         assert.ok(/^[0-9a-f]{40}:refs\/cortex\/state$/.test(args[args.length - 1]));
         assert.ok(args.includes('--no-tags') && args.includes('--no-write-fetch-head'));
         assert.ok(args.includes('--depth=1') || args.includes('--depth=32'));
