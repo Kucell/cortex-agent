@@ -1,49 +1,443 @@
-name: Linux File Sink Milestone (Inactive Draft)
+name: Linux File Sink Milestone (Single-use Capability Probe)
 
-# Source-preparation artifact only. There is deliberately no pull_request,
-# push, schedule, workflow_run, or pull_request_target trigger. Even a manual
-# invocation cannot allocate this job: its condition is an unconditional false.
-# No approval variable, environment flag or dispatch input can enable it.
+# DRAFT ONLY. Publishing this exact workflow to PR 70 triggers execution.
+# Separate explicit approval must name its exact blob/hash and activation commit A.
+# A must be the single workflow-only child of S. A cannot be embedded in its own
+# contents: its exact identity is approved externally before one CAS ref update.
+# This source file does not grant authority or attest that approval occurred.
+# No rerun, replacement workflow, fallback isolation, sink-canary or model call.
+# PR workflows are evaluated by GitHub on a merge ref; the controller verifies
+# that its workflow blob equals A, and materializes project sources only from S.
+# This is a trusted GitHub/repository-writer experiment, not hostile-admin proof.
+
 on:
-  workflow_dispatch:
+  pull_request:
+    types: [synchronize]
+    paths:
+      - '.github/workflows/linux-sink-milestone.yml'
 
 permissions:
   contents: read
 
 jobs:
-  inactive-source-draft:
-    if: ${{ false }}
+  capability-only:
+    name: Linux capability probe - one approved attempt
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.action == 'synchronize' &&
+      github.repository_id == '1139198846' &&
+      github.event.pull_request.number == 70 &&
+      github.event.pull_request.head.repo.id == 1139198846 &&
+      github.event.pull_request.head.ref == 'review/v116-release-integration-20261016' &&
+      github.event.before == '0098505763d723baeaee614d52cda77d435a5d0e' &&
+      github.run_number == 1 && github.run_attempt == 1
     runs-on: ubuntu-24.04
-    timeout-minutes: 1
+    timeout-minutes: 3
     steps:
-      - name: Refuse execution of the source-only draft
-        shell: bash
+      - name: Verify immutable inputs and perform one capability-only probe
+        shell: bash --noprofile --norc -euo pipefail {0}
         run: |
-          echo "LINUX_SINK_NOT_RUN: separately reviewed activation is required"
-          exit 1
-
-# This draft contains no checkout, source download, sandbox launch or model call.
-# The four reviewed source paths are:
-#   lib/runtime-state/serialized-artifact-gateway.js
-#   tests/runtime-state/serialized-artifact-gateway.test.js
-#   scripts/l3/linux-sink-canary.py
-#   tests/fixtures/l3/linux-sink-client.cjs
-# Ordinary discovery of the test file performs pure validation only.
-#
-# A later activation requires a separate, explicitly approved workflow change.
-# Freeze the source commit S (including this inert draft), its tree and all four
-# source blobs/SHA-256 values. Activation A must have S as its only parent and
-# change only this workflow. Do not execute a PR merge ref or follow main.
-# Before activating, independently review the full materializer and manifest:
-# - exact public repository ID, PR 70, same-repository head and synchronize event;
-# - verified workflow identity/history, one frozen run_number and run_attempt 1;
-# - complete parent/head trees, exact workflow-only delta and fixed source blobs;
-# - fixed UTC execution window, one local invocation marker and bounded outputs;
-# - capability-only mode first, with no sudo, install, OIDC or write permission;
-# - a separate sink-run approval after reviewing measured runtime manifest R.
-# Missing capability or a consumed run number stops the attempt, without retry
-# or a replacement isolation route. Publishing this draft grants none of these.
-#
-# The capability probe and the real sink remain NOT_RUN. Synthetic authority
-# cannot establish a live RuntimeWriter, Owner, Lease, AI Host or formal release
-# acceptance. The original control experiment and its expiry remain unchanged.
+          /usr/bin/python3 -B - <<'PY_CONTROLLER'
+          import base64
+          import datetime
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          import re
+          import selectors
+          import signal
+          import stat
+          import subprocess
+          import sys
+          import threading
+          import time
+          import urllib.request
+          
+          # Draft controller, embedded in the single workflow. No project code is imported.
+          REPO = 'Kucell/cortex-agent'
+          REPO_ID = 1139198846
+          ACTOR_ID = 50976390
+          SOURCE = '0098505763d723baeaee614d52cda77d435a5d0e'
+          SOURCE_TREE = '21c1f4352231542ec0360775ed91be1d4658e8c5'
+          BRANCH = 'review/v116-release-integration-20261016'
+          WORKFLOW = '.github/workflows/linux-sink-milestone.yml'
+          JOB_NAME = 'Linux capability probe - one approved attempt'
+          TEMP = '/home/runner/work/_temp'
+          FILES = {
+           'lib/runtime-state/serialized-artifact-gateway.js': (21866, '3462265a9146c7f2ce60a5a75b36edbf0ed7566a', '483e4ac79313d403513c0965daf8d93ef6cba9ce73b89ea3526bcc4a9e460acc'),
+           'tests/runtime-state/serialized-artifact-gateway.test.js': (20774, 'c4dcfcde336c596b83fca0d385db55b46a55301d', 'b38414ec66c785d4360a214d156269a1db87724d73644e8b71cdcfce8098d572'),
+           'scripts/l3/linux-sink-canary.py': (56312, '3546d12027fd6ab08229b6529fd643d71dcbd0f9', 'ba0260920e0806b4d74790bf2ed6e7b26228bb5d49baea8e63b00200d5d4ebd4'),
+           'tests/fixtures/l3/linux-sink-client.cjs': (9763, '43cbe0455fdf0961a6dea53661bc7889fbd09236', '64caaad8d6bff3bac1c93ef90e113494567dd11844ef9c189f68cf577e6db2aa'),
+          }
+          START = time.monotonic()
+          BOOT_END = START + 100
+          HTTP_BYTES = 0
+          HTTP_CALLS = 0
+          JOB_EXPIRES = None
+          STAGE = None
+          CHILD = None
+          OWNED = {}
+          EXTERNAL_STOP = False
+          
+          class Refuse(Exception):
+              pass
+          
+          def need(ok, code):
+              if not ok:
+                  raise Refuse(code)
+          
+          def sha(data):
+              return hashlib.sha256(data).hexdigest()
+          
+          def decode(data):
+              def pairs(items):
+                  out = {}
+                  for key, value in items:
+                      need(key not in out, 'DUPLICATE_JSON_KEY')
+                      out[key] = value
+                  return out
+              return json.loads(data, object_pairs_hook=pairs,
+                  parse_constant=lambda _: (_ for _ in ()).throw(Refuse('JSON_CONSTANT')))
+          
+          def canonical(value):
+              return json.dumps(value, sort_keys=True, separators=(',', ':'), ensure_ascii=True).encode()
+          
+          def budget():
+              need(time.monotonic() < BOOT_END, 'PREFLIGHT_TIME_BOUND')
+              if JOB_EXPIRES is not None:
+                  need(time.time() + 35 < JOB_EXPIRES, 'INSUFFICIENT_JOB_TIME')
+          
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self, request, fp, code, msg, headers, newurl):
+                  raise Refuse('HTTP_REDIRECT_FORBIDDEN')
+          
+          HTTP = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirect())
+          
+          def get(path):
+              global HTTP_BYTES, HTTP_CALLS
+              budget()
+              need(path.startswith('/repos/' + REPO + '/') and '..' not in path, 'FIXED_REPOSITORY_URL')
+              HTTP_CALLS += 1
+              need(HTTP_CALLS <= 24, 'HTTP_CALL_BOUND')
+              request = urllib.request.Request('https://api.github.com' + path, headers={
+                  'Accept': 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28',
+                  'User-Agent': 'cortex-single-use-capability-review'})
+              # Public GET only. No job token, secret, cookie, proxy or credential is sent.
+              with HTTP.open(request, timeout=5) as response:
+                  need(response.status == 200, 'HTTP_STATUS')
+                  data = response.read(2 * 1024 * 1024 + 1)
+              need(len(data) <= 2 * 1024 * 1024, 'HTTP_RESPONSE_BOUND')
+              HTTP_BYTES += len(data)
+              need(HTTP_BYTES <= 12 * 1024 * 1024, 'HTTP_AGGREGATE_BOUND')
+              budget()
+              return decode(data)
+          
+          def api(suffix):
+              return get('/repos/' + REPO + '/' + suffix)
+          
+          def timestamp(value):
+              need(isinstance(value, str) and re.fullmatch(r'\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ', value), 'PLATFORM_TIME_FORMAT')
+              return int(datetime.datetime.strptime(value, '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=datetime.timezone.utc).timestamp())
+          
+          def integer_env(name):
+              value = os.environ.get(name, '')
+              need(re.fullmatch(r'[1-9][0-9]{0,19}', value), 'RUN_CONTEXT_INTEGER')
+              return int(value)
+          
+          def tree(commit_tree):
+              value = api('git/trees/' + commit_tree + '?recursive=1')
+              need(value['sha'] == commit_tree and value.get('truncated') is False, 'TREE_INCOMPLETE')
+              need(isinstance(value['tree'], list) and len(value['tree']) <= 10000, 'TREE_COUNT')
+              entries = {}
+              for item in value['tree']:
+                  path = item['path']
+                  need(path not in entries and not path.startswith('/') and '..' not in path.split('/'), 'TREE_PATH')
+                  # Compare leaves, not directory SHAs, since ancestor trees necessarily change.
+                  if item['type'] != 'tree':
+                      entries[path] = (item['mode'], item['type'], item['sha'], item.get('size'))
+              return entries
+          
+          def fetch_blob(blob, length=None):
+              value = api('git/blobs/' + blob)
+              need(value['sha'] == blob and value['encoding'] == 'base64', 'BLOB_IDENTITY')
+              data = base64.b64decode(''.join(value['content'].split()), validate=True)
+              need(len(data) == value['size'] and len(data) <= 262144, 'BLOB_LENGTH')
+              if length is not None:
+                  need(len(data) == length, 'PINNED_BLOB_LENGTH')
+              need(hashlib.sha1(b'blob ' + str(len(data)).encode() + b'\0' + data).hexdigest() == blob, 'GIT_BLOB_MISMATCH')
+              return data
+          
+          def exclusive(path, data):
+              fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+              with os.fdopen(fd, 'wb') as output:
+                  output.write(data)
+          
+          def proc_identity(pid):
+              with open('/proc/%d/stat' % pid, 'rb') as stream:
+                  raw = stream.read(4097)
+              need(len(raw) <= 4096, 'PROC_STAT_BOUND')
+              fields = raw[raw.rfind(b')') + 2:].split()
+              return int(fields[1]), fields[19].decode('ascii')
+          
+          def exited(record):
+              with selectors.DefaultSelector() as poll:
+                  poll.register(record['fd'], selectors.EVENT_READ)
+                  return bool(poll.select(0))
+          
+          def record(pid, parent):
+              try:
+                  ppid, birth = proc_identity(pid)
+                  if ppid != parent:
+                      return None
+                  key = (pid, birth)
+                  if key not in OWNED:
+                      need(len(OWNED) < 96, 'OUTER_PROCESS_BOUND')
+                      fd = os.pidfd_open(pid, 0)
+                      if proc_identity(pid) != (ppid, birth):
+                          os.close(fd)
+                          raise Refuse('OUTER_PID_IDENTITY_CHANGED')
+                      OWNED[key] = {'pid': pid, 'birth': birth, 'fd': fd}
+                  return OWNED[key]
+              except FileNotFoundError:
+                  return None
+          
+          def observe_descendants():
+              # Follow only live, previously observed identities and their direct children.
+              pending = [x for x in OWNED.values() if not exited(x)]
+              seen = set()
+              while pending:
+                  item = pending.pop()
+                  key = (item['pid'], item['birth'])
+                  if key in seen or exited(item):
+                      continue
+                  seen.add(key)
+                  try:
+                      need(proc_identity(item['pid'])[1] == item['birth'], 'OUTER_PID_REUSED')
+                      task_root = '/proc/%d/task' % item['pid']
+                      tids = os.listdir(task_root)
+                      need(len(tids) <= 128, 'OUTER_THREAD_BOUND')
+                      for tid in tids:
+                          with open(task_root + '/' + tid + '/children', 'rb') as stream:
+                              children = stream.read(4097)
+                          need(len(children) <= 4096, 'OUTER_CHILD_LIST_BOUND')
+                          for child in children.split():
+                              if exited(item):
+                                  break
+                              found = record(int(child), item['pid'])
+                              if found:
+                                  pending.append(found)
+                  except FileNotFoundError:
+                      continue
+          
+          def terminate_owned():
+              global EXTERNAL_STOP
+              EXTERNAL_STOP = True
+              # The outer deadline never declares whole-tree cleanup after forced termination.
+              # Only exact captured pidfd identities are signalled; no kill-by-name/PGID.
+              for item in reversed(list(OWNED.values())):
+                  try:
+                      if not exited(item):
+                          signal.pidfd_send_signal(item['fd'], signal.SIGKILL)
+                  except OSError:
+                      pass
+          
+          def run_probe(manifest):
+              global CHILD
+              env = {'LANG': 'C', 'LC_ALL': 'C', 'TZ': 'UTC', 'TMPDIR': '/scratch', 'RUNNER_TEMP': TEMP}
+              begin = time.monotonic()
+              # Request termination of captured owned identities at 29 seconds.
+              # The 30-second independent deadline is not reset by child output or progress.
+              stop_at, outer_end = begin + 29, begin + 30
+              # An independent timer thread enforces the execution deadline even if the
+              # observer is busy. Signals are best effort, not a claim of synchronous
+              # kernel teardown; uncertainty is UNKNOWN and the disposable job is the
+              # final bound. It does not extend or renew the deadline.
+              watchdog = threading.Timer(max(0, stop_at - time.monotonic()), terminate_owned)
+              watchdog.daemon = True
+              watchdog.start()
+              CHILD = subprocess.Popen(['/usr/bin/python3', '-B', str(STAGE / 'scripts/l3/linux-sink-canary.py'),
+                  'capability-only', '--manifest', str(manifest)], env=env, cwd=str(STAGE),
+                  stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                  close_fds=True, start_new_session=True)
+              need(record(CHILD.pid, os.getpid()) is not None, 'SUPERVISOR_IDENTITY_NOT_CAPTURED')
+              streams = selectors.DefaultSelector()
+              data = {'stdout': bytearray(), 'stderr': bytearray()}
+              for name, pipe in [('stdout', CHILD.stdout), ('stderr', CHILD.stderr)]:
+                  os.set_blocking(pipe.fileno(), False)
+                  streams.register(pipe, selectors.EVENT_READ, name)
+              try:
+                  while time.monotonic() < outer_end:
+                      now = time.monotonic()
+                      if now >= stop_at and CHILD.poll() is None:
+                          terminate_owned()
+                      if not EXTERNAL_STOP:
+                          observe_descendants()
+                      for key, _ in streams.select(min(.01, max(0, outer_end - time.monotonic()))):
+                          block = os.read(key.fileobj.fileno(), 8192)
+                          if not block:
+                              streams.unregister(key.fileobj)
+                              continue
+                          data[key.data] += block
+                          need(len(data['stdout']) <= 524288 and len(data['stderr']) <= 65536, 'OUTER_OUTPUT_BOUND')
+                      if CHILD.poll() is not None and not streams.get_map():
+                          break
+                  # Any late completion, forced stop, pipe uncertainty, or unexited captured
+                  # identity is UNKNOWN. It is never silently converted to capability absence.
+                  if (time.monotonic() >= outer_end or CHILD.poll() is None or streams.get_map()
+                          or EXTERNAL_STOP or any(not exited(x) for x in OWNED.values())):
+                      terminate_owned()
+                      raise Refuse('EXTERNAL_DEADLINE_OR_EXIT_UNCERTAINTY')
+                  need(not data['stderr'], 'UNEXPECTED_SUPERVISOR_STDERR')
+                  result = decode(bytes(data['stdout']))
+                  need(isinstance(result, dict), 'RECEIPT_SCHEMA')
+                  if CHILD.returncode != 0:
+                      # Preserve the bounded original receipt, not a claim of success.
+                      print(canonical({'outer_status': 'PROBE_FAILED', 'probe_receipt': result}).decode())
+                      raise Refuse('PROBE_NONZERO_EXIT')
+                  need(result.get('status') == 'CAPABILITY_AVAILABLE'
+                       and result.get('mode') == 'capability-only' and result.get('synthetic') is True
+                       and result.get('source_commit') == SOURCE and result.get('activation') == manifest_data['activation']
+                       and result.get('gateway_loaded') is False and result.get('artifact_publications') == 0
+                       and result.get('sandbox_count') == 1 and result.get('namespace_exit_confirmed') is True
+                       and result.get('scratch_removed') is True and result.get('invocation_marker_preserved') is True,
+                       'CAPABILITY_RECEIPT_MISMATCH')
+                  need(result.get('elapsed_ms', 30001) <= 30000, 'PROBE_REPORTED_OVER_BUDGET')
+                  for path, (length, blob, digest) in FILES.items():
+                      content = (STAGE / path).read_bytes()
+                      need(len(content) == length and sha(content) == digest, 'POST_SOURCE_CHANGED')
+                  print(canonical({'outer_status': 'CAPABILITY_OBSERVED_ONLY',
+                      'formal_acceptance': False, 'real_host_accepted': False,
+                      'receipt_sha256': sha(bytes(data['stdout'])), 'probe_receipt': result,
+                      'outer_elapsed_ms': round((time.monotonic() - begin) * 1000)}).decode())
+              finally:
+                  watchdog.cancel()
+                  streams.close()
+          
+          try:
+              need(sys.platform == 'linux' and os.getuid() != 0, 'NONROOT_LINUX_ONLY')
+              need(hasattr(os, 'pidfd_open') and hasattr(signal, 'pidfd_send_signal'), 'OUTER_PIDFD_REQUIRED')
+              need(os.environ.get('GITHUB_EVENT_NAME') == 'pull_request'
+                   and os.environ.get('GITHUB_REPOSITORY') == REPO
+                   and os.environ.get('GITHUB_REPOSITORY_ID') == str(REPO_ID)
+                   and os.environ.get('GITHUB_JOB') == 'capability-only'
+                   and os.environ.get('GITHUB_REF') == 'refs/pull/70/merge', 'RUNNER_CONTEXT')
+              run_id, run_number, attempt = [integer_env(n) for n in ('GITHUB_RUN_ID', 'GITHUB_RUN_NUMBER', 'GITHUB_RUN_ATTEMPT')]
+              need(run_number == 1 and attempt == 1, 'FIRST_RUN_FIRST_ATTEMPT_ONLY')
+              need(os.environ.get('GITHUB_ACTOR_ID') == str(ACTOR_ID), 'APPROVED_TRIGGER_ACCOUNT')
+              event_path = Path(os.environ['GITHUB_EVENT_PATH'])
+              need(event_path.is_absolute() and event_path.stat().st_size <= 1048576, 'EVENT_BOUND')
+              event = decode(event_path.read_bytes())
+              need(event['action'] == 'synchronize' and event['number'] == 70
+                   and event['repository']['id'] == REPO_ID and event['sender']['id'] == ACTOR_ID
+                   and event['before'] == SOURCE, 'EXACT_SYNCHRONIZE_EVENT')
+              A = event['after']
+              need(isinstance(A, str) and re.fullmatch(r'[a-f0-9]{40}', A), 'ACTIVATION_SHA')
+              pr = event['pull_request']
+              need(pr['head']['sha'] == A and pr['head']['ref'] == BRANCH
+                   and pr['head']['repo']['id'] == REPO_ID and pr['base']['repo']['id'] == REPO_ID,
+                   'SAME_REPOSITORY_EXACT_HEAD')
+              run = api('actions/runs/' + str(run_id))
+              workflow_id = run['workflow_id']
+              need(type(workflow_id) is int and workflow_id > 0, 'WORKFLOW_ID')
+              need(run['id'] == run_id and run['run_number'] == 1 and run['run_attempt'] == 1
+                   and run['event'] == 'pull_request' and run['head_sha'] == A
+                   and run['head_branch'] == BRANCH and run['path'] == WORKFLOW
+                   and run['repository']['id'] == REPO_ID and run['head_repository']['id'] == REPO_ID
+                   and run['actor']['id'] == ACTOR_ID and run['triggering_actor']['id'] == ACTOR_ID,
+                   'PLATFORM_RUN_MISMATCH')
+              history = api('actions/workflows/' + str(workflow_id) + '/runs?per_page=100')
+              need(history['total_count'] == 1 and len(history['workflow_runs']) == 1
+                   and history['workflow_runs'][0]['id'] == run_id, 'WORKFLOW_ALREADY_USED_OR_UNVERIFIABLE')
+              jobs = api('actions/runs/' + str(run_id) + '/jobs?filter=all&per_page=100')
+              need(jobs['total_count'] == 1 and len(jobs['jobs']) == 1, 'SINGLE_JOB_ONLY')
+              job = jobs['jobs'][0]
+              need(job['run_id'] == run_id and job['run_attempt'] == 1
+                   and job['name'] == JOB_NAME and job['status'] == 'in_progress'
+                   and job['head_sha'] == A, 'PLATFORM_JOB_MISMATCH')
+              job_started = timestamp(job['started_at'])
+              need(job_started <= time.time() < job_started + 180, 'PLATFORM_JOB_TIME')
+              JOB_EXPIRES = job_started + 180
+              budget()
+              live = api('pulls/70')
+              need(live['state'] == 'open' and live['head']['sha'] == A
+                   and live['head']['ref'] == BRANCH and live['head']['repo']['id'] == REPO_ID,
+                   'PR_HEAD_MOVED_OR_CLOSED')
+              source_commit = api('git/commits/' + SOURCE)
+              need(source_commit['sha'] == SOURCE and source_commit['tree']['sha'] == SOURCE_TREE, 'SOURCE_COMMIT_TREE')
+              activation_commit = api('git/commits/' + A)
+              need(activation_commit['sha'] == A and [x['sha'] for x in activation_commit['parents']] == [SOURCE], 'ACTIVATION_SINGLE_PARENT')
+              old, new = tree(SOURCE_TREE), tree(activation_commit['tree']['sha'])
+              need(set(old) == set(new) and [p for p in old if old[p] != new[p]] == [WORKFLOW], 'WORKFLOW_ONLY_DELTA')
+              need(old[WORKFLOW] == ('100644', 'blob', '357678a32554b3c66baab9d29fd288c8c02e6cdc', 2375), 'INERT_WORKFLOW_PIN')
+              need(new[WORKFLOW][0:2] == ('100644', 'blob'), 'ACTIVATION_WORKFLOW_TYPE')
+              for path, (length, blob, digest) in FILES.items():
+                  need(old[path] == new[path] == ('100644', 'blob', blob, length), 'SOURCE_TREE_PIN')
+              # GitHub evaluates PR workflows from a merge ref. Admit that platform fact
+              # explicitly, but never check out or execute project code from that merge.
+              execution_sha = os.environ.get('GITHUB_WORKFLOW_SHA', '')
+              need(re.fullmatch(r'[a-f0-9]{40}', execution_sha), 'WORKFLOW_EXECUTION_SHA')
+              need(os.environ.get('GITHUB_WORKFLOW_REF') == REPO + '/' + WORKFLOW + '@refs/pull/70/merge'
+                   and os.environ.get('GITHUB_SHA') == execution_sha, 'WORKFLOW_EXECUTION_CONTEXT')
+              merge = api('git/commits/' + execution_sha)
+              need(merge['sha'] == execution_sha and [x['sha'] for x in merge['parents']] == [pr['base']['sha'], A],
+                   'PLATFORM_MERGE_PARENT_BINDING')
+              merged = tree(merge['tree']['sha'])
+              need(merged[WORKFLOW] == new[WORKFLOW], 'MERGE_WORKFLOW_BYTES_CHANGED')
+              workflow_bytes = fetch_blob(new[WORKFLOW][2], new[WORKFLOW][3])
+              need(os.environ.get('RUNNER_TEMP') == TEMP and os.path.realpath(TEMP) == TEMP, 'FIXED_RUNNER_TEMP')
+              root_info = os.stat(TEMP)
+              need(stat.S_ISDIR(root_info.st_mode) and root_info.st_uid == os.getuid()
+                   and not root_info.st_mode & 0o022, 'PRIVATE_RUNNER_TEMP')
+              STAGE = Path(TEMP) / ('cortex-capability-source-%d-1' % run_id)
+              os.mkdir(STAGE, 0o700)
+              for path, (length, blob, digest) in FILES.items():
+                  content = fetch_blob(blob, length)
+                  need(sha(content) == digest, 'SHA256_SOURCE_PIN')
+                  target = STAGE / path
+                  target.parent.mkdir(parents=True, mode=0o700, exist_ok=True)
+                  exclusive(target, content)
+                  os.chmod(target, 0o644)
+              manifest_data = {'schema': 1, 'mode': 'capability-only', 'source_commit': SOURCE,
+                  'source_manifest': {path: value[2] for path, value in FILES.items()},
+                  'activation': {'run_id': str(run_id), 'workflow_id': str(workflow_id),
+                      'run_number': 1, 'run_attempt': 1, 'not_before': job_started, 'expires_at': JOB_EXPIRES},
+                  'runtime_manifest': None, 'capability_receipt_sha256': None}
+              manifest = STAGE / 'capability-manifest.json'
+              exclusive(manifest, canonical(manifest_data))
+              # Last network operation: re-read the exact PR head immediately before launch.
+              live = api('pulls/70')
+              need(live['state'] == 'open' and live['head']['sha'] == A, 'PRELAUNCH_HEAD_MOVED')
+              budget()
+              print(canonical({'status': 'PINNED_CAPABILITY_START', 'source_commit': SOURCE,
+                  'source_tree': SOURCE_TREE, 'activation_commit': A,
+                  'activation_tree': activation_commit['tree']['sha'], 'workflow_blob': new[WORKFLOW][2],
+                  'workflow_sha256': sha(workflow_bytes), 'platform_workflow_merge_sha': execution_sha,
+                  'run_id': run_id, 'workflow_id': workflow_id, 'job_id': job['id'],
+                  'job_started_at': job['started_at'], 'expires_at_epoch': JOB_EXPIRES,
+                  'permissions': 'contents:read', 'http_calls': HTTP_CALLS,
+                  'authority': 'none', 'formal_acceptance': False}).decode(), flush=True)
+              run_probe(manifest)
+              # Source stage only: fixed known files, no recursive deletion or guessed root.
+              # The supervisor's separate per-run invocation marker intentionally remains.
+              need(CHILD.poll() == 0 and not EXTERNAL_STOP, 'CLEANUP_REQUIRES_KNOWN_SUCCESS')
+              for path in FILES:
+                  os.unlink(STAGE / path)
+              os.unlink(manifest)
+              for path in ('lib/runtime-state', 'lib', 'tests/runtime-state', 'tests/fixtures/l3',
+                           'tests/fixtures', 'tests', 'scripts/l3', 'scripts'):
+                  os.rmdir(STAGE / path)
+              os.rmdir(STAGE)
+              print('{"status":"CAPABILITY_JOB_COMPLETE","source_stage_removed":true,"formal_acceptance":false}')
+          except BaseException as error:
+              if CHILD is not None:
+                  terminate_owned()
+              # Do not print arbitrary exceptions, event JSON, environment, or tokens.
+              code = str(error) if isinstance(error, Refuse) else type(error).__name__
+              print(canonical({'status': 'UNKNOWN' if CHILD is not None else 'NOT_RUN',
+                  'code': code[:160], 'automatic_retry': False, 'formal_acceptance': False,
+                  'real_host_accepted': False, 'evidence_preserved': STAGE is not None,
+                  'whole_tree_exit_confirmed': False if CHILD is not None else None,
+                  'captured_pidfds_exit_confirmed': all(exited(x) for x in OWNED.values()) if OWNED else None}).decode())
+              sys.exit(1)
+          PY_CONTROLLER
