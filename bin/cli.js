@@ -171,6 +171,7 @@ const { stateSync, installStateGithooks, fireAndForgetSync } = require("../lib/s
 const { governanceIndexCommand } = require("../lib/governance-index/cli.js");
 const { governanceMigrateCommand } = require("../lib/governance-migration/cli.js");
 const { migrateLegacyMemoryCommand } = require("../lib/commands/migrate-legacy-memory.cli.js");
+const { migrateTaskStateCommand } = require("../lib/commands/migrate-task-state.cli.js");
 const { minimaxCliReconcile } = require("../lib/commands/reconcile");
 const { shouldAutoSyncCoordination } = require("../lib/commands/management/coordination.js");
 
@@ -770,6 +771,13 @@ async function initModeGeneral() {
     }
     case "migrate-legacy-memory": {
       migrateLegacyMemoryCommand(ctx);
+      break;
+    }
+    case "migrate-task-state": {
+      const result = migrateTaskStateCommand(ctx);
+      if (result && result.ok && result.effect && result.effect.kind === "mutation" && result.effect.committed) {
+        fireAndForgetSync({ ...l1Ctx, cwd: result.project_root }, { paths: result.effect.paths }).catch(() => {});
+      }
       break;
     }
     case "governance-migrate": {
