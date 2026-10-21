@@ -1,0 +1,1261 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:cortex-agent:canonical-control-records:1",
+  "title": "Unactivated canonical control records v1",
+  "description": "New backend-bound canonical identity, Owner, replay and audit records. No runtime permit. Schema adoption and bootstrap require independent approval. Legacy records never gain new authority by migration.",
+  "$defs": {
+    "identity": {
+      "type": "object",
+      "required": [
+        "kind",
+        "value"
+      ],
+      "properties": {
+        "kind": {
+          "const": "project_id"
+        },
+        "value": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 36,
+          "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$"
+        }
+      },
+      "additionalProperties": false
+    },
+    "owner": {
+      "type": "object",
+      "required": [
+        "schema_version",
+        "kind",
+        "project_id",
+        "identity_ref",
+        "identity_digest",
+        "subject",
+        "backend",
+        "bootstrap",
+        "status",
+        "generation",
+        "supersedes",
+        "role",
+        "execution_authorized"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": 1
+        },
+        "kind": {
+          "const": "project-owner-binding"
+        },
+        "project_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 36,
+          "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$"
+        },
+        "identity_ref": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 240,
+          "pattern": "^[A-Za-z0-9_-][A-Za-z0-9_.-]*(/[A-Za-z0-9_-][A-Za-z0-9_.-]*)*$"
+        },
+        "identity_digest": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 71,
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "subject": {
+          "type": "object",
+          "required": [
+            "provider",
+            "account_id"
+          ],
+          "properties": {
+            "provider": {
+              "const": "github"
+            },
+            "account_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 20,
+              "pattern": "^[1-9][0-9]{0,19}$"
+            }
+          },
+          "additionalProperties": false
+        },
+        "backend": {
+          "type": "object",
+          "required": [
+            "kind",
+            "repository_id",
+            "repository",
+            "authority_ref"
+          ],
+          "properties": {
+            "kind": {
+              "const": "github-ref"
+            },
+            "repository_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 20,
+              "pattern": "^[1-9][0-9]{0,19}$"
+            },
+            "repository": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 140,
+              "pattern": "^[A-Za-z0-9_-]+/[A-Za-z0-9_.-]+$"
+            },
+            "authority_ref": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^refs/heads/cortex-authority/[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$"
+            }
+          },
+          "additionalProperties": false
+        },
+        "bootstrap": {
+          "type": "object",
+          "required": [
+            "manifest_digest",
+            "source_audit_ref"
+          ],
+          "properties": {
+            "manifest_digest": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 71,
+              "pattern": "^sha256:[a-f0-9]{64}$"
+            },
+            "source_audit_ref": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 240,
+              "pattern": "^[A-Za-z0-9_-][A-Za-z0-9_.-]*(/[A-Za-z0-9_-][A-Za-z0-9_.-]*)*$"
+            }
+          },
+          "additionalProperties": false
+        },
+        "status": {
+          "enum": [
+            "active",
+            "revoked"
+          ]
+        },
+        "generation": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "supersedes": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1,
+          "maxLength": 240,
+          "pattern": "^[A-Za-z0-9_-][A-Za-z0-9_.-]*(/[A-Za-z0-9_-][A-Za-z0-9_.-]*)*$"
+        },
+        "role": {
+          "const": "project_approver"
+        },
+        "execution_authorized": {
+          "const": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "registration": {
+      "type": "object",
+      "required": [
+        "schema_version",
+        "kind",
+        "project_id",
+        "identity_ref",
+        "identity_digest",
+        "owner_ref",
+        "owner_digest",
+        "backend",
+        "manifest_digest",
+        "bootstrap_ref"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": 1
+        },
+        "kind": {
+          "const": "canonical-project-registration"
+        },
+        "project_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 36,
+          "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$"
+        },
+        "identity_ref": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 240,
+          "pattern": "^[A-Za-z0-9_-][A-Za-z0-9_.-]*(/[A-Za-z0-9_-][A-Za-z0-9_.-]*)*$"
+        },
+        "identity_digest": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 71,
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "owner_ref": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 240,
+          "pattern": "^[A-Za-z0-9_-][A-Za-z0-9_.-]*(/[A-Za-z0-9_-][A-Za-z0-9_.-]*)*$"
+        },
+        "owner_digest": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 71,
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "backend": {
+          "type": "object",
+          "required": [
+            "kind",
+            "repository_id",
+            "repository",
+            "authority_ref"
+          ],
+          "properties": {
+            "kind": {
+              "const": "github-ref"
+            },
+            "repository_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 20,
+              "pattern": "^[1-9][0-9]{0,19}$"
+            },
+            "repository": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 140,
+              "pattern": "^[A-Za-z0-9_-]+/[A-Za-z0-9_.-]+$"
+            },
+            "authority_ref": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^refs/heads/cortex-authority/[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$"
+            }
+          },
+          "additionalProperties": false
+        },
+        "manifest_digest": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 71,
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "bootstrap_ref": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 240,
+          "pattern": "^[A-Za-z0-9_-][A-Za-z0-9_.-]*(/[A-Za-z0-9_-][A-Za-z0-9_.-]*)*$"
+        }
+      },
+      "additionalProperties": false
+    },
+    "journal": {
+      "type": "object",
+      "required": [
+        "schema_version",
+        "kind",
+        "project_id",
+        "sequence",
+        "audit_ref",
+        "audit_digest"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": 1
+        },
+        "kind": {
+          "const": "canonical-control-journal-head"
+        },
+        "project_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 36,
+          "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$"
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "audit_ref": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 240,
+          "pattern": "^[A-Za-z0-9_-][A-Za-z0-9_.-]*(/[A-Za-z0-9_-][A-Za-z0-9_.-]*)*$"
+        },
+        "audit_digest": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 71,
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        }
+      },
+      "additionalProperties": false
+    },
+    "replay": {
+      "type": "object",
+      "required": [
+        "schema_version",
+        "kind",
+        "project_id",
+        "run_key",
+        "selection_key",
+        "operation_id",
+        "decision_id",
+        "audit_ref"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": 1
+        },
+        "kind": {
+          "const": "canonical-selection-consumption"
+        },
+        "project_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 36,
+          "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$"
+        },
+        "run_key": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 71,
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "selection_key": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 71,
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "operation_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "decision_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^D-[A-Za-z0-9][A-Za-z0-9._-]{0,125}$"
+        },
+        "audit_ref": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 240,
+          "pattern": "^[A-Za-z0-9_-][A-Za-z0-9_.-]*(/[A-Za-z0-9_-][A-Za-z0-9_.-]*)*$"
+        }
+      },
+      "additionalProperties": false
+    },
+    "audit": {
+      "type": "object",
+      "required": [
+        "schema_version",
+        "kind",
+        "project_id",
+        "sequence",
+        "previous_audit_ref",
+        "previous_audit_digest",
+        "action",
+        "operation_id",
+        "before_revision",
+        "source_digest",
+        "subject",
+        "context",
+        "manifest_digest",
+        "owner_generation",
+        "decision_ref",
+        "decision_before_digest",
+        "decision_after_digest",
+        "waitpoint_ref",
+        "waitpoint_before_digest",
+        "waitpoint_after_digest",
+        "resource_ref",
+        "resource_digest",
+        "run_key",
+        "selection_key",
+        "observed_at",
+        "expiry_semantics",
+        "execution_authorized",
+        "effect_permitted",
+        "source_ref",
+        "owner_before_digest",
+        "owner_after_digest"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": 1
+        },
+        "kind": {
+          "const": "canonical-control-audit"
+        },
+        "project_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 36,
+          "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$"
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "previous_audit_ref": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1,
+          "maxLength": 240,
+          "pattern": "^[A-Za-z0-9_-][A-Za-z0-9_.-]*(/[A-Za-z0-9_-][A-Za-z0-9_.-]*)*$"
+        },
+        "previous_audit_digest": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1,
+          "maxLength": 71,
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "action": {
+          "enum": [
+            "bootstrap",
+            "resolve_decision",
+            "release_waitpoint",
+            "revoke_owner"
+          ]
+        },
+        "operation_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "before_revision": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "required": [
+            "store_kind",
+            "value"
+          ],
+          "properties": {
+            "store_kind": {
+              "const": "git"
+            },
+            "value": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 40,
+              "pattern": "^[a-f0-9]{40}$"
+            }
+          },
+          "additionalProperties": false
+        },
+        "source_digest": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 71,
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "subject": {
+          "type": "object",
+          "required": [
+            "provider",
+            "account_id"
+          ],
+          "properties": {
+            "provider": {
+              "const": "github"
+            },
+            "account_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 20,
+              "pattern": "^[1-9][0-9]{0,19}$"
+            }
+          },
+          "additionalProperties": false
+        },
+        "context": {
+          "type": "object",
+          "required": [
+            "repository_id",
+            "repository",
+            "sender_id",
+            "actor_id",
+            "triggering_actor_id",
+            "event_name",
+            "run_id",
+            "run_attempt"
+          ],
+          "properties": {
+            "repository_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 20,
+              "pattern": "^[1-9][0-9]{0,19}$"
+            },
+            "repository": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 140,
+              "pattern": "^[A-Za-z0-9_-]+/[A-Za-z0-9_.-]+$"
+            },
+            "sender_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 20,
+              "pattern": "^[1-9][0-9]{0,19}$"
+            },
+            "actor_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 20,
+              "pattern": "^[1-9][0-9]{0,19}$"
+            },
+            "triggering_actor_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 20,
+              "pattern": "^[1-9][0-9]{0,19}$"
+            },
+            "event_name": {
+              "const": "workflow_dispatch"
+            },
+            "run_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 20,
+              "pattern": "^[1-9][0-9]{0,19}$"
+            },
+            "run_attempt": {
+              "const": 1
+            }
+          },
+          "additionalProperties": false
+        },
+        "manifest_digest": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 71,
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "owner_generation": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "decision_ref": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1,
+          "maxLength": 240,
+          "pattern": "^[A-Za-z0-9_-][A-Za-z0-9_.-]*(/[A-Za-z0-9_-][A-Za-z0-9_.-]*)*$"
+        },
+        "decision_before_digest": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1,
+          "maxLength": 71,
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "decision_after_digest": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1,
+          "maxLength": 71,
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "waitpoint_ref": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1,
+          "maxLength": 240,
+          "pattern": "^[A-Za-z0-9_-][A-Za-z0-9_.-]*(/[A-Za-z0-9_-][A-Za-z0-9_.-]*)*$"
+        },
+        "waitpoint_before_digest": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1,
+          "maxLength": 71,
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "waitpoint_after_digest": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1,
+          "maxLength": 71,
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "resource_ref": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "resource_digest": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1,
+          "maxLength": 71,
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "run_key": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 71,
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "selection_key": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 71,
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "observed_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "expiry_semantics": {
+          "const": "CLIENT_OBSERVATION_ONLY_NOT_HARD_FENCE"
+        },
+        "execution_authorized": {
+          "const": false
+        },
+        "effect_permitted": {
+          "const": false
+        },
+        "source_ref": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 240,
+          "pattern": "^[A-Za-z0-9_-][A-Za-z0-9_.-]*(/[A-Za-z0-9_-][A-Za-z0-9_.-]*)*$"
+        },
+        "owner_before_digest": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1,
+          "maxLength": 71,
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "owner_after_digest": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 71,
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        }
+      },
+      "additionalProperties": false
+    },
+    "scope": {
+      "type": "object",
+      "required": [
+        "schema_version",
+        "kind",
+        "project_id",
+        "resource_ref",
+        "decision_id",
+        "waitpoint_id",
+        "owner_workflow",
+        "owner_generation",
+        "task_ids",
+        "mission_ids",
+        "dependencies",
+        "valid_from",
+        "expires_at",
+        "execution_authorized"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": 1
+        },
+        "kind": {
+          "const": "canonical-control-scope"
+        },
+        "project_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 36,
+          "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$"
+        },
+        "resource_ref": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "decision_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^D-[A-Za-z0-9][A-Za-z0-9._-]{0,125}$"
+        },
+        "waitpoint_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^WP-[A-Za-z0-9][A-Za-z0-9._-]{0,124}$"
+        },
+        "owner_workflow": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^/[A-Za-z0-9][A-Za-z0-9-]*$"
+        },
+        "owner_generation": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "task_ids": {
+          "type": "array",
+          "maxItems": 16,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+          }
+        },
+        "mission_ids": {
+          "type": "array",
+          "maxItems": 8,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+          }
+        },
+        "dependencies": {
+          "type": "array",
+          "maxItems": 8,
+          "uniqueItems": true,
+          "items": {
+            "type": "object",
+            "required": [
+              "task_id",
+              "digest"
+            ],
+            "properties": {
+              "task_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+              },
+              "digest": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 71,
+                "pattern": "^sha256:[a-f0-9]{64}$"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "valid_from": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "expires_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "execution_authorized": {
+          "const": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "bootstrap": {
+      "type": "object",
+      "required": [
+        "schema_version",
+        "kind",
+        "project_id",
+        "manifest_digest",
+        "deployment",
+        "context",
+        "action",
+        "human_presence_verified"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": 1
+        },
+        "kind": {
+          "const": "canonical-owner-bootstrap-source"
+        },
+        "project_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 36,
+          "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$"
+        },
+        "manifest_digest": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 71,
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "deployment": {
+          "type": "object",
+          "required": [
+            "repository_id",
+            "repository",
+            "workflow_path",
+            "ref",
+            "workflow_sha",
+            "source_bundle_digest"
+          ],
+          "properties": {
+            "repository_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 20,
+              "pattern": "^[1-9][0-9]{0,19}$"
+            },
+            "repository": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 140,
+              "pattern": "^[A-Za-z0-9_-]+/[A-Za-z0-9_.-]+$"
+            },
+            "workflow_path": {
+              "type": "string",
+              "pattern": "^\\.github/workflows/[A-Za-z0-9_-][A-Za-z0-9_.-]+\\.ya?ml$"
+            },
+            "ref": {
+              "type": "string",
+              "pattern": "^refs/heads/[A-Za-z0-9_-]+$"
+            },
+            "workflow_sha": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 40,
+              "pattern": "^[a-f0-9]{40}$"
+            },
+            "source_bundle_digest": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 71,
+              "pattern": "^sha256:[a-f0-9]{64}$"
+            }
+          },
+          "additionalProperties": false
+        },
+        "context": {
+          "type": "object",
+          "required": [
+            "repository_id",
+            "repository",
+            "sender_id",
+            "actor_id",
+            "triggering_actor_id",
+            "event_name",
+            "run_id",
+            "run_attempt"
+          ],
+          "properties": {
+            "repository_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 20,
+              "pattern": "^[1-9][0-9]{0,19}$"
+            },
+            "repository": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 140,
+              "pattern": "^[A-Za-z0-9_-]+/[A-Za-z0-9_.-]+$"
+            },
+            "sender_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 20,
+              "pattern": "^[1-9][0-9]{0,19}$"
+            },
+            "actor_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 20,
+              "pattern": "^[1-9][0-9]{0,19}$"
+            },
+            "triggering_actor_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 20,
+              "pattern": "^[1-9][0-9]{0,19}$"
+            },
+            "event_name": {
+              "const": "workflow_dispatch"
+            },
+            "run_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 20,
+              "pattern": "^[1-9][0-9]{0,19}$"
+            },
+            "run_attempt": {
+              "const": 1
+            }
+          },
+          "additionalProperties": false
+        },
+        "action": {
+          "const": "appoint_owner"
+        },
+        "human_presence_verified": {
+          "const": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "manifest": {
+      "type": "object",
+      "required": [
+        "schema_version",
+        "kind",
+        "project_id",
+        "owner_account_id",
+        "product_repository",
+        "backend",
+        "controller",
+        "project_root_binding",
+        "owner_workflow",
+        "initial_records",
+        "selections",
+        "operations",
+        "max_control_transactions",
+        "valid_from",
+        "expires_at",
+        "bootstrap_expected_revision",
+        "max_initializations"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": 1
+        },
+        "kind": {
+          "const": "github-control-bootstrap"
+        },
+        "project_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 36,
+          "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$"
+        },
+        "owner_account_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 20,
+          "pattern": "^[1-9][0-9]{0,19}$"
+        },
+        "product_repository": {
+          "type": "object",
+          "required": [
+            "id",
+            "name",
+            "head_sha"
+          ],
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 20,
+              "pattern": "^[1-9][0-9]{0,19}$"
+            },
+            "name": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 140,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,38}/[A-Za-z0-9][A-Za-z0-9_.-]{0,99}$"
+            },
+            "head_sha": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 40,
+              "pattern": "^[a-f0-9]{40}$"
+            }
+          },
+          "additionalProperties": false
+        },
+        "backend": {
+          "type": "object",
+          "required": [
+            "kind",
+            "repository_id",
+            "repository",
+            "authority_ref"
+          ],
+          "properties": {
+            "kind": {
+              "const": "github-ref"
+            },
+            "repository_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 20,
+              "pattern": "^[1-9][0-9]{0,19}$"
+            },
+            "repository": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 140,
+              "pattern": "^[A-Za-z0-9_-]+/[A-Za-z0-9_.-]+$"
+            },
+            "authority_ref": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^refs/heads/cortex-authority/[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$"
+            }
+          },
+          "additionalProperties": false
+        },
+        "controller": {
+          "type": "object",
+          "required": [
+            "workflow_path",
+            "ref",
+            "source_bundle_digest"
+          ],
+          "properties": {
+            "workflow_path": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^\\.github/workflows/[A-Za-z0-9_-][A-Za-z0-9_.-]{0,100}\\.ya?ml$"
+            },
+            "ref": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 75,
+              "pattern": "^refs/heads/[A-Za-z0-9][A-Za-z0-9_-]{0,63}$"
+            },
+            "source_bundle_digest": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 71,
+              "pattern": "^sha256:[a-f0-9]{64}$"
+            }
+          },
+          "additionalProperties": false
+        },
+        "project_root_binding": {
+          "type": "object",
+          "required": [
+            "kind",
+            "reference",
+            "digest"
+          ],
+          "properties": {
+            "kind": {
+              "enum": [
+                "isolated-root",
+                "worktree"
+              ]
+            },
+            "reference": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 240
+            },
+            "digest": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 71,
+              "pattern": "^sha256:[a-f0-9]{64}$"
+            }
+          },
+          "additionalProperties": false
+        },
+        "owner_workflow": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^/[A-Za-z0-9][A-Za-z0-9-]*$"
+        },
+        "initial_records": {
+          "type": "array",
+          "minItems": 5,
+          "maxItems": 16,
+          "uniqueItems": true,
+          "items": {
+            "type": "object",
+            "required": [
+              "key",
+              "content",
+              "sha256"
+            ],
+            "properties": {
+              "key": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 80,
+                "pattern": "^(?:decisions/(?:index|D-[A-Za-z0-9][A-Za-z0-9_-]{0,63})|waitpoints/(?:index|WP-[A-Za-z0-9][A-Za-z0-9_-]{0,63})|(?:scopes|tasks)/[A-Za-z0-9][A-Za-z0-9_-]{0,63})\\.json$"
+              },
+              "content": {
+                "type": "string",
+                "minLength": 2,
+                "maxLength": 65536
+              },
+              "sha256": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 71,
+                "pattern": "^sha256:[a-f0-9]{64}$"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "selections": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 3,
+          "uniqueItems": true,
+          "items": {
+            "type": "object",
+            "required": [
+              "resource_ref",
+              "resource_key",
+              "decision_id",
+              "decision_key",
+              "operation_id",
+              "operation",
+              "allowed_actions"
+            ],
+            "properties": {
+              "resource_ref": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+              },
+              "resource_key": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 80,
+                "pattern": "^scopes/[A-Za-z0-9][A-Za-z0-9_-]{0,63}\\.json$"
+              },
+              "decision_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^D-[A-Za-z0-9][A-Za-z0-9._-]{0,125}$"
+              },
+              "decision_key": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 80,
+                "pattern": "^decisions/D-[A-Za-z0-9][A-Za-z0-9_-]{0,63}\\.json$"
+              },
+              "operation_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+              },
+              "operation": {
+                "enum": [
+                  "plan",
+                  "implement",
+                  "test",
+                  "review",
+                  "local_commit"
+                ]
+              },
+              "allowed_actions": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 3,
+                "uniqueItems": true,
+                "items": {
+                  "enum": [
+                    "approve",
+                    "reject",
+                    "request_revision"
+                  ]
+                }
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "operations": {
+          "const": [
+            "bootstrap",
+            "resolve_decision",
+            "release_waitpoint",
+            "revoke_owner"
+          ]
+        },
+        "max_control_transactions": {
+          "type": "integer",
+          "minimum": 2,
+          "maximum": 8
+        },
+        "valid_from": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "expires_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "bootstrap_expected_revision": {
+          "const": null
+        },
+        "max_initializations": {
+          "const": 1
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

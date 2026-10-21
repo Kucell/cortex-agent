@@ -464,6 +464,26 @@ function archiveProject(project, note, opts = {}) {
   catch (_) { fs.copyFileSync(file, latest); }
   const markdownArchive = { archivePath: file, latestPath: latest, stamp };
   const structured = createStructuredArchive(project, note || {}, opts, markdownArchive);
+  if (opts.queueLearningProposal === true) {
+    // Explicit project-local proposal intake only. Never enable this for the
+    // automatic continuity guard, invoke a Host, or write memory/index here.
+    let learningProposal;
+    try {
+      const evolution = require("../../evolution-pipeline/scripts/evolve.js");
+      const queued = evolution.enqueueFromArchive(structured.archiveJsonPath, {
+        proposalOnly: true, expectedProject: project,
+      });
+      learningProposal = {
+        status: queued.deduplicated ? "already_queued" : "queued",
+        task_id: queued.task_id, source_sha256: queued.source_archive.sha256,
+        execution_authorized: false,
+      };
+    } catch (error) {
+      // Preserve the successful archive even when proposal intake is unavailable.
+      learningProposal = { status: "unavailable", reason_code: error.code || "ERR_PROPOSAL_INTAKE", execution_authorized: false };
+    }
+    return { ...markdownArchive, ...structured, learning_proposal: learningProposal };
+  }
   return { ...markdownArchive, ...structured };
 }
 
@@ -1094,6 +1114,7 @@ function main() {
         target_host: flag("--to-host", argv) || null,
         reason: flag("--reason", argv) || null,
         full: argv.includes("--full"),
+        queueLearningProposal: argv.includes("--queue-learning-proposal"),
       });
     } catch (err) {
       fail("archive_failed", err.message);

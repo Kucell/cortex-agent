@@ -1,0 +1,51 @@
+name: Offline Package Acceptance
+
+on:
+  pull_request:
+    paths:
+      - "package.json"
+      - "package-lock.json"
+      - ".claude-plugin/**"
+      - "CHANGELOG.md"
+      - "bin/**"
+      - "lib/**"
+      - "packages/**"
+      - "templates/**"
+      - "scripts/release/offline-package-*"
+      - ".github/workflows/offline-package-acceptance.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  offline-package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ["22", "24"]
+    env:
+      SOURCE_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+      EXPECTED_GITLINK: e75626fb201e6bb8a25b6f86d59b4154c9100bdb
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ env.SOURCE_HEAD }}
+          fetch-depth: 1
+          submodules: false
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - name: Verify exact candidate and accept offline tar
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_HEAD"
+          VERSION="$(node -p 'JSON.parse(require("fs").readFileSync("package.json","utf8")).version')"
+          python3 scripts/release/offline-package-acceptance.py \
+            --expected-head "$SOURCE_HEAD" \
+            --expected-version "$VERSION" \
+            --expected-gitlink "$EXPECTED_GITLINK"

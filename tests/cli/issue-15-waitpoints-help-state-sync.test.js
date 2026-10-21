@@ -316,8 +316,8 @@ test("issue #15: successful waitpoints write DOES push state (positive control)"
   assert.ok(beforeDirty.length > 0, "fixture must start with unrelated dirty state");
 });
 
-test("decision resolve reports every auto-released waitpoint path", (t) => {
-  const { project } = mkInnerRepoWithOrigin();
+test("decision resolve reports only Decision-owned changes and leaves its Waitpoint untouched", (t) => {
+  const { project, agentDir } = mkInnerRepoWithOrigin();
   t.after(() => fs.rmSync(project, { recursive: true, force: true }));
   seedManagementScripts(project);
   const env = { CORTEX_STATE_SYNC: "off" };
@@ -346,6 +346,10 @@ test("decision resolve reports every auto-released waitpoint path", (t) => {
     "--decision-id", "D-MULTI",
   ], env);
   assert.equal(result.status, 0, result.stderr + result.stdout);
+  const waitpointFile = path.join(agentDir, "waitpoints", "WP-MULTI.json");
+  const waitpointIndex = path.join(agentDir, "waitpoints", "index.json");
+  const beforeWaitpoint = fs.readFileSync(waitpointFile, "utf8");
+  const beforeIndex = fs.readFileSync(waitpointIndex, "utf8");
 
   result = runCli(project, [
     "decisions", "resolve",
@@ -359,19 +363,14 @@ test("decision resolve reports every auto-released waitpoint path", (t) => {
   assert.equal(result.status, 0, result.stderr + result.stdout);
 
   const body = JSON.parse(result.stdout);
-  const paths = new Set(body.changed_paths || []);
-  for (const expected of [
+  assert.deepEqual(body.changed_paths, [
     ".agent/decisions/D-MULTI.json",
     ".agent/decisions/index.json",
-    ".agent/waitpoints/WP-MULTI.json",
-    ".agent/waitpoints/index.json",
-  ]) {
-    assert.ok(paths.has(expected), "missing changed path " + expected);
-  }
-  assert.deepEqual(
-    new Set(body.changed_resources || []),
-    new Set(["decision:D-MULTI", "waitpoint:WP-MULTI"]),
-  );
+  ]);
+  assert.deepEqual(body.changed_resources, ["decision:D-MULTI"]);
+  assert.equal(fs.readFileSync(waitpointFile, "utf8"), beforeWaitpoint);
+  assert.equal(fs.readFileSync(waitpointIndex, "utf8"), beforeIndex);
+  assert.equal(JSON.parse(beforeWaitpoint).status, "blocked");
 });
 
 // helpers ─────────────────────────────────────────────────────────────────────
