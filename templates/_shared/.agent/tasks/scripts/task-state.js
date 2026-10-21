@@ -246,6 +246,9 @@ const STAGE_PROGRESS = Object.freeze({
   draft: 0, spec: 15, plan: 30, implement: 55, validate: 75, review: 90, done: 100,
 });
 
+// Where a mission record lives, relative to the project root.
+const MISSION_REF_REL = ".agent/missions";
+
 // The validation gate is the one that ends at `validate`. Its status maps
 // onto the vocabulary consumers already use.
 function validationStatusFromGates(gates) {
@@ -271,9 +274,11 @@ function projectTaskRecord(record, options = {}) {
       ? "blocked"
       : record.status === "canceled"
         ? "canceled"
-        : record.status === "draft"
-          ? "open"
-          : "active";
+        : record.status === "superseded"
+          ? "superseded"
+          : record.status === "draft"
+            ? "open"
+            : "active";
   const refs = Array.isArray(record.source_refs) && record.source_refs.length
     ? record.source_refs.slice()
     : [".agent/plans/task-progress.md"];
@@ -291,6 +296,63 @@ function projectTaskRecord(record, options = {}) {
 
 function readJsonSafe(file) {
   try { return JSON.parse(require("fs").readFileSync(file, "utf8")); } catch (_) { return null; }
+}
+
+// ─── Mission projection ──────────────────────────────────────────────────────
+//
+// A mission record lives at `.agent/missions/<mission-id>/mission.json`. It
+// projects into the same task shape, but two things differ from a T- record:
+// its progress comes from its milestones, and its reference points at the
+// mission record itself rather than at a task file that does not exist.
+
+// A milestone that passed, or was explicitly waived, counts as done.
+function missionProgress(record) {
+  const milestones = Array.isArray(record.milestones) ? record.milestones : [];
+  if (!milestones.length) return 0;
+  const done = milestones.filter(
+    (milestone) => milestone && (milestone.status === "passed" || milestone.status === "waived")
+  ).length;
+  return Math.round((done / milestones.length) * 100);
+}
+
+// A mission record projects into the same task shape as a T- record.
+//
+// Two shapes are accepted. The schema shape (mission.schema.json) carries
+// `milestones` and no `stage`/`progress`, so its progress is derived from the
+// milestones. An older task-shaped record carries `stage`/`progress` directly;
+// when it does, those explicit values win.
+function projectMissionRecord(record) {
+  if (!record || !record.mission_id) return null;
+  const status = record.status === "completed"
+    ? "done"
+    : record.status === "canceled"
+      ? "canceled"
+      : record.status === "superseded"
+        ? "superseded"
+        : record.status === "blocked"
+          ? "blocked"
+          : record.status === "draft"
+            ? "open"
+            : "active";
+  const defaultRef = `${MISSION_REF_REL}/${record.mission_id}/mission.json`;
+  const refs = Array.isArray(record.source_refs) && record.source_refs.length
+    ? record.source_refs
+    : [defaultRef];
+  const progress = record.progress !== undefined
+    ? String(record.progress)
+    : record.stage !== undefined && STAGE_PROGRESS[record.stage] !== undefined
+      ? STAGE_PROGRESS[record.stage] + "%"
+      : missionProgress(record) + "%";
+  return {
+    id: record.mission_id,
+    priority: record.priority || "",
+    title: record.title || record.mission_id,
+    progress,
+    plan: refs[0],
+    source_refs: refs,
+    status,
+    validation_status: validationStatusFromGates(record.gates),
+  };
 }
 
 // Read the structured truth source. Returns null when the project has no
@@ -320,10 +382,7 @@ function readStructuredTasks(options = {}) {
     if (!fs.existsSync(missionFile)) continue;
     const record = readJsonSafe(missionFile);
     if (!record || !record.mission_id) continue;
-    const projected = projectTaskRecord({
-      ...record,
-      task_id: record.mission_id,
-    }, { progressOverride: record.progress });
+    const projected = projectMissionRecord(record);
     if (projected) out.push(projected);
   }
   if (!out.length) return null;
@@ -419,6 +478,9 @@ module.exports = {
   parseTaskProgress,
   validationStatusFromText,
   projectTaskRecord,
+  projectMissionRecord,
+  missionProgress,
+  MISSION_REF_REL,
   readStructuredTasks,
   resolveTasks,
   resolveTaskState,

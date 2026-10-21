@@ -23,6 +23,10 @@
 const fs = require("node:fs");
 const path = require("node:path");
 
+// The projection lives in task-state.js so the view, the management-api
+// projection and every other consumer read the truth source exactly one way.
+const { projectTaskRecord, projectMissionRecord, STAGE_PROGRESS } = require("./task-state.js");
+
 const AGENT_REL = ".agent";
 const PROGRESS_REL = path.join(AGENT_REL, "plans", "task-progress.md");
 const TASKS_REL = path.join(AGENT_REL, "tasks");
@@ -31,12 +35,6 @@ const ARCHIVE_REL = path.join(AGENT_REL, "plans", "task-progress-archive");
 
 const TASK_FILE_RE = /^(T-[A-Za-z0-9][A-Za-z0-9._-]*)\.json$/;
 const MISSION_FILE_RE = /^(M-[A-Za-z0-9][A-Za-z0-9._-]*)\.json$/;
-
-// stage -> progress percentage. Single source of truth for the mapping so
-// the view, the management-api projection and the renderer never disagree.
-const STAGE_PROGRESS = Object.freeze({
-  draft: 0, spec: 15, plan: 30, implement: 55, validate: 75, review: 90, done: 100,
-});
 
 const MANUAL_SECTIONS = Object.freeze([
   { key: "roadmap", heading: "🗺️ 路线图", marker: "manual:roadmap" },
@@ -64,11 +62,21 @@ function listTaskRecords(tasksDir) {
   return out;
 }
 
+// Mission records live in a per-mission directory, one directory per mission,
+// each holding its `mission.json` — that is the layout mission.schema.json
+// mandates. The flat `.agent/missions/M-xxx.json` form is still accepted for
+// projects that wrote it before the schema existed.
 function listMissionRecords(missionsDir) {
   let names = [];
   try { names = fs.readdirSync(missionsDir); } catch (_) { return []; }
   const out = [];
   for (const name of names) {
+    const nested = path.join(missionsDir, name, "mission.json");
+    if (fs.existsSync(nested)) {
+      const data = readJson(nested);
+      if (data && data.mission_id) out.push(data);
+      continue;
+    }
     if (!name.match(MISSION_FILE_RE)) continue;
     const data = readJson(path.join(missionsDir, name));
     if (data && data.mission_id) out.push(data);
@@ -168,10 +176,15 @@ function findManualHeading(source, key, heading) {
 
 function renderView({ source, tasks, missions, archives, now }) {
   const date = String(now).slice(0, 10);
-  const all = [...tasks, ...missions];
-  const isDone = (task) => task.status === "completed" || task.stage === "done";
+  // Tasks and missions share one projection, so the view and the consumers
+  // that read the same truth source can never disagree about a record.
+  const all = [
+    ...tasks.map((task) => projectTaskRecord(task)).filter(Boolean),
+    ...missions.map((mission) => projectMissionRecord(mission)).filter(Boolean),
+  ];
+  const isDone = (item) => item.status === "done" || item.status === "canceled" || item.status === "superseded";
   const done = all.filter(isDone);
-  const active = all.filter((task) => !isDone(task));
+  const active = all.filter((item) => !isDone(item));
   const overall = all.length > 0 ? Math.round((done.length / all.length) * 100) : 0;
 
   const out = [];
@@ -198,18 +211,16 @@ function renderView({ source, tasks, missions, archives, now }) {
   out.push("| 任务 ID | 优先级 | 任务说明 | 进度 | 关联计划 |");
   out.push("| :--- | :--- | :--- | :--- | :--- |");
   for (const task of active) {
-    const progress = STAGE_PROGRESS[task.stage] !== undefined
-      ? STAGE_PROGRESS[task.stage] + "%"
-      : "0%";
     const refs = Array.isArray(task.source_refs) && task.source_refs.length
       ? task.source_refs
-      : [TASKS_REL.split(path.sep).join("/") + "/" + task.task_id + ".json"];
+      : [TASKS_REL.split(path.sep).join("/") + "/" + task.id + ".json"];
     out.push(
-      "| " + escapeCell(task.task_id)
+      "| " + escapeCell(task.id)
       + " | " + escapeCell(task.priority)
       + " | " + escapeCell(task.title)
-      + " | " + progress
-      + " | " + escapeCell(refs[0]) + " |",
+      + " | " + escapeCell(task.progress)
+      + " | " + escapeCell(refs[0])
+      + " |",
     );
   }
   out.push("<!-- generated:active-tasks:end -->", "");
