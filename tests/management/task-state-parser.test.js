@@ -126,14 +126,20 @@ test("zh heading parses via the table path", () => {
   assert.equal(tasks[0].progress, "55%");
 });
 
-test("template and live parser copies stay byte-identical", () => {
+test("template and live parser copies stay byte-identical", {
+  skip: fs.existsSync(LIVE_PARSER) ? false : "live .agent copy is not part of this checkout",
+}, () => {
   assert.equal(
     fs.readFileSync(TEMPLATE_PARSER, "utf8"),
     fs.readFileSync(LIVE_PARSER, "utf8"),
   );
 });
 
-test("current project task-progress.md parses to a real table, not phantoms", () => {
+test("current project task-progress.md parses to a real table, not phantoms", {
+  skip: fs.existsSync(path.join(ROOT, ".agent", "plans", "task-progress.md"))
+    ? false
+    : "live .agent copy is not part of this checkout",
+}, () => {
   const live = fs.readFileSync(path.join(ROOT, ".agent", "plans", "task-progress.md"), "utf8");
   const tasks = parseTaskProgress(live);
   assert.ok(tasks.length > 0, "expected table-path tasks");

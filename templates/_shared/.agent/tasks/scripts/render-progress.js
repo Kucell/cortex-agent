@@ -267,6 +267,29 @@ function main(argv) {
   const current = fs.existsSync(progressFile) ? fs.readFileSync(progressFile, "utf8") : "";
 
   if (check) {
+    // The gate can only judge a projection when the truth source is present.
+    // A checkout that does not materialise the governance repository — CI
+    // checks out the framework repository alone — carries no task or mission
+    // record, so there is nothing to project and nothing to assert. That is a
+    // skip, not a drift: reporting it as drift would fail every checkout that
+    // does not own the records.
+    const hasSource = tasks.length > 0 || missions.length > 0;
+    if (!hasSource) {
+      if (asJson) {
+        process.stdout.write(JSON.stringify({
+          action: "render-progress --check",
+          ok: true,
+          drifted: false,
+          skipped: true,
+          task_count: 0,
+          mission_count: 0,
+          view_path: PROGRESS_REL.split(path.sep).join("/"),
+        }, null, 2) + "\n");
+      } else {
+        console.log("ok: 真源记录不存在（无任务 / mission 记录），跳过视图一致性校验。");
+      }
+      return;
+    }
     const drifted = current.trim() !== view.trim();
     if (asJson) {
       process.stdout.write(JSON.stringify({

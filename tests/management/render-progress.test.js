@@ -15,7 +15,12 @@ const test = require("node:test");
 const ROOT = path.resolve(__dirname, "..", "..");
 const LIVE_RENDERER = path.join(ROOT, ".agent", "tasks", "scripts", "render-progress.js");
 const TEMPLATE_RENDERER = path.join(ROOT, "templates", "_shared", ".agent", "tasks", "scripts", "render-progress.js");
-const { renderView, extractManualRegion, extractForeignMarkers, STAGE_PROGRESS } = require(LIVE_RENDERER);
+// The live copy only exists in a checkout that materialises the governance
+// repository. CI checks out the framework repository alone, so the template
+// copy is the one under test there.
+const LIVE_AVAILABLE = fs.existsSync(LIVE_RENDERER);
+const RENDERER = LIVE_AVAILABLE ? LIVE_RENDERER : TEMPLATE_RENDERER;
+const { renderView, extractManualRegion, extractForeignMarkers, STAGE_PROGRESS } = require(RENDERER);
 
 const TASK = {
   task_id: "T-REN-001",
@@ -153,7 +158,9 @@ test("the stage-to-progress mapping is the shared contract", () => {
   assert.equal(STAGE_PROGRESS.done, 100);
 });
 
-test("the template and live renderer copies stay byte-identical", () => {
+test("the template and live renderer copies stay byte-identical", {
+  skip: LIVE_AVAILABLE ? false : "live .agent copy is not part of this checkout",
+}, () => {
   assert.equal(
     fs.readFileSync(LIVE_RENDERER, "utf8"),
     fs.readFileSync(TEMPLATE_RENDERER, "utf8"),
@@ -173,13 +180,31 @@ test("render-progress --check exits non-zero when the view drifted", (t) => {
   fs.writeFileSync(path.join(cwd, ".agent", "plans", "task-progress.md"), "# 任务进度\n", "utf8");
 
   const { spawnSync } = require("node:child_process");
-  const result = spawnSync("node", [LIVE_RENDERER, "--check", "--project", cwd], { encoding: "utf8" });
+  const result = spawnSync("node", [RENDERER, "--check", "--project", cwd], { encoding: "utf8" });
   assert.equal(result.status, 1, result.stdout + result.stderr);
 
   // After a render the check passes.
-  const write = spawnSync("node", [LIVE_RENDERER, "--project", cwd], { encoding: "utf8" });
+  const write = spawnSync("node", [RENDERER, "--project", cwd], { encoding: "utf8" });
   assert.equal(write.status, 0, write.stdout + write.stderr);
-  const after = spawnSync("node", [LIVE_RENDERER, "--check", "--project", cwd], { encoding: "utf8" });
+  const after = spawnSync("node", [RENDERER, "--check", "--project", cwd], { encoding: "utf8" });
   assert.equal(after.status, 0, after.stdout + after.stderr);
+});
+
+// A checkout that does not carry the governance records cannot be judged.
+// The gate must report "nothing to assert" instead of "the view drifted",
+// otherwise every checkout without the records fails the build.
+test("render-progress --check skips when the truth source is absent", (t) => {
+  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-render-nosource-"));
+  t.after(() => fs.rmSync(cwd, { recursive: true, force: true }));
+
+  const { spawnSync } = require("node:child_process");
+  const result = spawnSync("node", [RENDERER, "--check", "--project", cwd, "--json"], {
+    encoding: "utf8",
+  });
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  const report = JSON.parse(result.stdout);
+  assert.equal(report.ok, true);
+  assert.equal(report.drifted, false);
+  assert.equal(report.skipped, true);
 });
 
