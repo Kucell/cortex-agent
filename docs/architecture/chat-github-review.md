@@ -1,6 +1,6 @@
 # ChatGPT / GitHub-native review: governance evidence bridge
 
-> Status: EXPERIMENTAL Draft PR, NOT RELEASED. This is an opt-in, review-only evidence transport, not a new authoritative GovernanceStore, Task machine, L3 approval, remote Lease, or execution gateway.
+> Status: EXPERIMENTAL review-only evidence helper in the advisor-only 1.16.0 candidate, NOT RELEASED. Receipt preparation is local and side-effect-free; the optional injected create-only submission operation needs separate authorization for its review branch. This helper does not execute tasks or establish an authoritative GovernanceStore, Task machine, L3 approval, remote Lease or execution gateway. Real execution remains subject to future 1.16.x L3 enablement gates.
 
 ## Purpose and topology
 

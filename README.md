@@ -6,7 +6,7 @@
 
 Cortex 管理的是**项目生命周期**，而不是某一次 Agent 会话的生命周期。Agent、设备、Cloud Sandbox 和聊天会话都可以是临时的；Task / Mission / Decision / Waitpoint / Queue / Lock / Handoff / Evidence 等治理事实必须保持持久、可恢复、可审计，并在并发写入时 fail closed。
 
-> **1.16 开发候选边界**：公开 `dispatch dry-run` 是只读预览；`dispatch execute`、`dispatch <task-id>`、`daemon` 和 `trigger` 仍为 Phase 0 stub。只读查询、局部存储原语与合成 fixture 的验证不等于已完成真实 Owner 授权边界或 AIHost 自主执行验收。以下既有手动集成与 provider 验证也不替代 1.16 的正式验收与发布门禁。
+> **1.16.0 建议型（advisor-only）候选范围，尚未发布**：本版交付只读 next-action 差距报告、建议计划草案、默认关闭的归档提案队列，以及升级保留与安全边界修复。公开 `dispatch dry-run` 仅提供只读预览；`dispatch execute`、`dispatch <task-id>`、`daemon` 和 `trigger` 继续为 Phase 0 stub，建议与 review receipt 均不授予执行权限。真实 L3 自主执行、Owner authority 与 AIHost 验收将在后续 **1.16.x** 按独立门槛逐步交付；formal28 是后续 L3 启用验收，不能把其全部未完成项当作本版建议型范围的前置条件。本版仍须完成对应候选验证及独立发布授权。
 
 ## Remote & Detached Governance
 

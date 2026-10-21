@@ -56,7 +56,9 @@ do not enable the public command or establish authenticated Owner authority.
   `daemon_enabled` remain frozen `false`. Local Decision/Waitpoint JSON and
   caller-supplied gate/actor strings are same-user workflow records, not
   authenticated Owner authority. Real authority and AIHost admission/effect
-  acceptance remain outstanding for the 1.16 development candidate.
+  acceptance are future L3 enablement gates for incremental 1.16.x delivery,
+  outside the advisor-only 1.16.0 scope. They remain mandatory before enabling
+  those effects; advice and fixture results do not satisfy them.
 - FAE-007 public lease wraps the audited M-008 / T-ACN-005 LeaseManager.
   It does not introduce a new algorithm; it persists to
   `.agent-runtime/coordination/leases/{state.json,idempotency.json}` with

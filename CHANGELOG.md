@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.16.0] - Unreleased development candidate
 
-Development candidate only; not published. Real L3 autonomy, real AI Host acceptance, and the formal 28-item authorization/L3/SelfEvolution acceptance matrix remain open.
+Advisor-only development candidate; not published. This release scope covers read-only advice, proposal preparation and upgrade/safety fixes. Real L3 autonomy and real AI Host execution are deferred to incremental, independently accepted 1.16.x delivery. The formal 28-item authorization/L3/SelfEvolution matrix remains a future L3 enablement gate, not a blanket prerequisite for this advisor-only release.
 
 ### Added
 
@@ -31,13 +31,19 @@ Development candidate only; not published. Real L3 autonomy, real AI Host accept
 - Restore the submodule mapping for the existing governance gitlink without initializing private governance content.
 - Preserve executable modes for the English/Chinese evolution helpers and shared/local management entrypoints; the new shared evolution helper is executable as well.
 
+### Not Delivered in 1.16.0
+
+- Public `dispatch execute`, `dispatch <task-id>`, `daemon` and `trigger` remain Phase 0 stubs. The bound next-action report retains `execution_authorized=false` and `authority_attested=false`. Review receipts retain `authority:none` and `execution_authorized=false`; neither authenticates an Owner or grants effect permission.
+- Strict fixtures remain disabled by default and test workers are excluded from the npm package. Canonical control has no real platform source configured and `approved-installation` remains null. No controller deployment, permission change, bootstrap refresh or Linux probe is authorized by this scope.
+- Real authority, Host admission/effect acceptance and the remaining formal28 checks are future L3 enablement gates, outside the advisor-only 1.16.0 scope.
+
 ### Release Validation and Pending Acceptance
 
 - Add exact-source tar file-manifest and digest checks, structural plugin checks, offline local-tar installation with lifecycle scripts disabled, and isolated synthetic upgrade-preservation checks.
 - Verify the official published 1.15.4 baseline tar against its registry metadata and exact public Git tree, with pinned SHA512 integrity and per-member blob/mode checks. Registry signatures and provenance remain unverified.
-- Verify actual installation of the pinned published 1.15.4 tar followed by source-candidate replacement and apply operations on four fresh English/Chinese managed/customized projects. The prior candidate run preserved custom content, nonempty historical state, and executable modes across 20 commands and eight apply operations. Both packages in that run were labeled 1.15.4; the 1.15.4-to-1.16.0 version transition requires a new exact-head run.
+- Verify actual installation of the pinned published 1.15.4 tar followed by source-candidate replacement and apply operations on four fresh English/Chinese managed/customized projects. The prior candidate run preserved custom content, nonempty historical state, and executable modes across 20 commands and eight apply operations. That historical run used two packages labeled 1.15.4 and is not evidence of a 1.15.4-to-1.16.0 transition. Version metadata is now aligned at 1.16.0; any later transition result must identify its exact source and artifacts separately, without implying publication.
 - Run the existing nine release CLI regressions in a fresh, verified public-source snapshot with allowlisted environment variables, an empty command search path, and temporary HOME/TMP directories. The runner is configured with bounded cooperating-process-group cleanup; the successful candidate run exited normally and did not exercise the timeout-cleanup branch.
-- Validation of this exact 1.16.0 candidate, including its published-baseline version transition, remains pending. Formal authorization, real L3 autonomy, real AI Host acceptance, and the formal 28-item authorization/L3/SelfEvolution acceptance matrix remain open. Baseline artifact identity and structural package checks do not establish candidate publication or actual Claude installation.
+- This advisor-only scope change does not itself establish validation of a final release artifact or its published-baseline version transition. Corresponding document, parity, boundary, next-action, archive-proposal, upgrade and package checks must be recorded against the reviewed candidate. Independent release authorization remains required. Baseline artifact identity and structural package checks do not establish publication, actual Claude installation or future L3 acceptance.
 
 ## [1.15.5] - 2026-10-19
 

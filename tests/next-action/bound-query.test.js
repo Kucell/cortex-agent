@@ -182,6 +182,7 @@ function preload(config) {
       GIT_OPTIONAL_LOCKS: "0", GIT_NO_LAZY_FETCH: "1", GIT_NO_REPLACE_OBJECTS: "1",
       GIT_ALLOW_PROTOCOL: "", GIT_PROTOCOL_FROM_USER: "0",
     };
+    if (process.platform === "darwin") expectedEnv.TMPDIR = "/tmp";
     if (JSON.stringify(Object.keys(options.env).sort()) !== JSON.stringify(Object.keys(expectedEnv).sort())
         || Object.keys(expectedEnv).some((key) => options.env[key] !== expectedEnv[key])
         || options.timeout !== 5000 || options.maxBuffer !== 1024 * 1024 + 1 || options.encoding !== null) fail("child-environment");
@@ -317,6 +318,14 @@ test("CLI relative project path resolves canonically", (t) => {
 test("CLI no explicit project uses bounded local discovery and non-Git cwd", (t) => {
   const f = fixture(t);
   assertGap(run(f, ["query", "next-action"]));
+});
+test("Git discovery never inherits caller TMPDIR", (t) => {
+  const f = fixture(t);
+  // The exact child-environment guard requires /tmp on Darwin and absence
+  // elsewhere; the nonexistent caller path must never reach a Git child.
+  assertGap(run(f, ["query", "next-action"], {
+    env: { TMPDIR: path.join(f.root, "untrusted-nonexistent-temp") },
+  }));
 });
 test("SDK caller cannot inject proof, sources, Host, scope or project identity", (t) => {
   const f = fixture(t);

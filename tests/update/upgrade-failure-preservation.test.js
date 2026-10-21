@@ -558,3 +558,60 @@ describe("ordinary verification scan failure reporting", { concurrency: 1 }, () 
     }));
   }
 });
+
+
+// Exercise the real additive walker with inert hooks and only temporary files.
+describe("upgrade locale selection", { concurrency: 1 }, () => {
+  function prepare(root) {
+    const ctx = upgradeContext(root, true);
+    ctx.lang = "zh";
+    ctx.command = "upgrade";
+    ctx.options.team = false;
+    put(root, "templates/.agent/workflows/conflict.md", "locale\n");
+    put(root, "virtual/templates/_shared/.agent/workflows/conflict.md", "shared\n");
+    put(root, "virtual/templates/_shared/.agent/workflows/shared-only.md", "shared only\n");
+    return ctx;
+  }
+  function run(root, ctx) {
+    const harness = upgradeHarness(root);
+    harness.exports.upgrade(ctx);
+    assert.notEqual(harness.process.exitCode, 1);
+  }
+  it("deduplicates shared/locale conflicts without preview writes", () => fixture((root) => {
+    const ctx = prepare(root);
+    const before = snapshot(root);
+    run(root, ctx);
+    assert.deepEqual(Array.from(ctx.options.dryRunReport.wouldAdd).sort(),
+      ["workflows/conflict.md", "workflows/shared-only.md"]);
+    assert.deepEqual(snapshot(root), before);
+  }));
+  it("applies the preview set once and selects locale content", () => fixture((root) => {
+    const ctx = prepare(root);
+    run(root, ctx);
+    const planned = Array.from(ctx.options.dryRunReport.wouldAdd).sort();
+    ctx.options.dryRun = false;
+    run(root, ctx);
+    assert.deepEqual(fs.readdirSync(path.join(root, ".agent/workflows")).map(x => "workflows/" + x).sort(), planned);
+    assert.equal(read(root, ".agent/workflows/conflict.md"), "locale\n");
+    assert.equal(read(root, ".agent/workflows/shared-only.md"), "shared only\n");
+  }));
+  it("has an empty additive plan after apply", () => fixture((root) => {
+    const ctx = prepare(root);
+    ctx.options.dryRun = false;
+    run(root, ctx);
+    const before = snapshot(root);
+    ctx.options.dryRun = true;
+    run(root, ctx);
+    assert.deepEqual(Array.from(ctx.options.dryRunReport.wouldAdd), []);
+    assert.deepEqual(snapshot(root), before);
+  }));
+  it("preserves local customizations against both template layers", () => fixture((root) => {
+    const ctx = prepare(root);
+    put(root, ".agent/workflows/conflict.md", "local customization\n");
+    run(root, ctx);
+    assert.equal(ctx.options.dryRunReport.wouldAdd.includes("workflows/conflict.md"), false);
+    ctx.options.dryRun = false;
+    run(root, ctx);
+    assert.equal(read(root, ".agent/workflows/conflict.md"), "local customization\n");
+  }));
+});
