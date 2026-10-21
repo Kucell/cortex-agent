@@ -93,7 +93,7 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: ${{ matrix.node }}
-      - name: Run only 84 canonical-plan, real-bin, and SDK query cases
+      - name: Run only 85 canonical-plan, real-bin, and SDK query cases
         shell: bash
         run: |
           set -euo pipefail
@@ -124,7 +124,7 @@ jobs:
           env -i PATH=/usr/bin:/bin "$node_bin" - "$scratch/tap.log" <<'NODE'
           const fs = require("node:fs"), assert = require("node:assert/strict");
           const text = fs.readFileSync(process.argv[2], "utf8");
-          for (const [key, count] of Object.entries({tests: 84, pass: 84, fail: 0, skipped: 0, cancelled: 0, todo: 0})) {
+          for (const [key, count] of Object.entries({tests: 85, pass: 85, fail: 0, skipped: 0, cancelled: 0, todo: 0})) {
             const matches = [...text.matchAll(new RegExp("^# " + key + " (\\d+)\\s*$", "gm"))].map((item) => Number(item[1]));
             assert.deepEqual(matches, [count], "Unexpected " + key + " summary");
           }

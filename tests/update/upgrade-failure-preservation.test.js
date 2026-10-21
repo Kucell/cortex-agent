@@ -350,7 +350,12 @@ function upgradeHarness(root, overrides) {
   const dependencies = {
     "node:fs": fs, "node:path": path,
     "node:child_process": { spawnSync() { throw new Error("subprocess forbidden"); } },
-    "./update/report": reports,
+    // Keep the real report builder inside the same explicit dependency boundary.
+    // Its late verify import must not escape into management/setup modules.
+    "./update/report": isolated("lib/commands/update/report.js", {
+      "node:fs": fs, "node:path": path,
+      "./verify": { collectSemanticMergeCandidates: () => [] },
+    }, root).exports,
     "./update/verify": {
       collectSemanticMergeCandidates: () => [],
       verificationCheck: check,

@@ -22,7 +22,7 @@ TEST_BLOBS = {
     "tests/cli/reconcile-entrypoint.test.js": "517259058790010d69220315df524d76697c20a5",
     "tests/cli/cli-contract.test.js": "fe8d027fdfe6fef1b7b12f7d154305e8a201c7a3",
 }
-GITLINK = "e75626fb201e6bb8a25b6f86d59b4154c9100bdb"
+GITLINK = "184694dc8fdba873a2846cbec2ffd23518d830ff"
 EXPECTED_TESTS = 9
 # Reviewed aliases outside these nine cases; never follow or recreate them.
 OMITTED_LINKS = {
