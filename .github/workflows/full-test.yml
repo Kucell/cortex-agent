@@ -1,0 +1,94 @@
+name: Full Test Suite
+
+# 为什么这个 workflow 不带 paths 过滤：
+#
+# 仓库里其它 workflow 全部按 paths 过滤（各有专项），导致两个问题：
+#   1. 改动落在任何现有 paths 之外时，PR 上一个 workflow 都不会跑；
+#   2. GitHub required status checks 只能绑定到「pull_request 触发且无 paths 限制」的
+#      workflow —— 有 paths 过滤的 workflow 在某些 PR 上根本不出现 check，
+#      配成 required 会让 PR 永远卡住。
+#
+# 见 .agent/rules/vcs-pr-flow.md §4.2。本 workflow 是仓库唯一的无过滤全量门禁，
+# required check context 名固定为 `Full Test Suite / full-test`。
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: full-test-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  full-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # `.agent` 在主仓是一个 gitlink（mode 160000），但仓库没有 .gitmodules，
+      # 所以 `submodules: true` 拉不到它 —— checkout 只会留下一个空目录。
+      # 而全量测试里有 61 个测试文件依赖 `.agent/` 工作实例（规则、workflow、
+      # skill 脚本），缺了它这些测试会失败。
+      #
+      # 这里按 gitlink 里记录的 pin 显式拉取，保证 CI 拿到与主仓一致的
+      # 治理记录版本，不引入硬编码的 commit。
+      #
+      # pin 暂时不在远端（嵌套仓尚未 push）时回退到远端 HEAD，而不是让 CI 挂掉。
+      - name: Fetch .agent governance repo at gitlink pin
+        run: |
+          set -euo pipefail
+          PIN=$(git ls-tree HEAD .agent | awk '{print $3}')
+          if [ -z "$PIN" ]; then
+            echo "::warning::no .agent gitlink found — tests that need the governance repo will fail"
+            exit 0
+          fi
+          git init -q .agent
+          git -C .agent remote add origin https://github.com/Kucell/cortex-agent-agent.git
+          if git -C .agent fetch -q --depth 1 origin "$PIN" 2>/dev/null; then
+            git -C .agent checkout -q FETCH_HEAD
+            echo "::notice::.agent checked out at pinned $PIN"
+          else
+            echo "::warning::pin $PIN is not on the remote yet (governance repo not pushed); falling back to remote HEAD"
+            git -C .agent fetch -q --depth 1 origin HEAD
+            git -C .agent checkout -q FETCH_HEAD
+            echo "::notice::.agent checked out at $(git -C .agent rev-parse HEAD)"
+          fi
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.19.0"
+
+      - name: Enable pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.13.1 --activate
+          pnpm --version
+
+      - name: Frozen workspace install
+        run: pnpm install --frozen-lockfile
+
+      - name: L3 distribution boundary check
+        run: pnpm check:l3
+
+      - name: Template parity check
+        run: pnpm check:parity
+
+      - name: Run full test suite
+        run: pnpm test
+
+      - name: Upload test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: full-test-evidence-${{ github.run_id }}
+          path: .agent/artifacts/
+          if-no-files-found: warn
+          retention-days: 7
