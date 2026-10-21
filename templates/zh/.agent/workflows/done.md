@@ -1,6 +1,17 @@
 ---
 name: done
 description: 快速标记任务完成，更新 task-progress.md 的状态和整体进度百分比。
+type: procedure
+applicable_to:
+  - all
+inputs: []
+outputs: []
+linked_skills: []
+linked_rules: []
+linked_workflows: []
+owner: Kucell
+last_verified: 2026-10-21
+status: stable
 ---
 
 # 任务完成工作流 (/done)
@@ -9,6 +20,19 @@ description: 快速标记任务完成，更新 task-progress.md 的状态和整�
 > 仅在**不经过代码审查直接标记完成**时单独使用（如文档任务、计划更新等）。
 
 用于快速将一个或多个任务标记为完成，并同步更新进度文档。
+
+## 任务状态写入契约（T-TS-003 / MS-3）
+
+`.agent/tasks/<task-id>.json`（mission 用 `.agent/missions/<mission-id>/mission.json`）是任务状态的唯一真源；
+`.agent/plans/task-progress.md` 是由真源派生的视图。写入顺序固定为：
+
+1. 改 JSON 真源（`stage` / `status` / `gates` / `artifacts`）
+2. 跑 `node .agent/tasks/scripts/render-progress.js` 重新生成视图
+3. JSON 与视图一起提交
+
+禁止手工编辑视图里的 `<!-- generated:* -->` 区（渲染器拥有它，下次渲染会覆盖）。
+提交前用 `node .agent/tasks/scripts/render-progress.js --check` 验证（不一致时退出码 1）。
+视图的 `<!-- manual:roadmap --> / <!-- manual:backlog --> / <!-- manual:resume -->` 手工区由人维护，渲染器原样保留。
 
 ## 使用方式
 

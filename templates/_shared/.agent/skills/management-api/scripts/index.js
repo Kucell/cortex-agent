@@ -28,7 +28,7 @@ const projectionRegistryPath = path.join(__dirname, "projection-registry.json");
 
 const root = process.cwd();
 const agentRoot = path.join(root, ".agent");
-const { parseTaskProgress } = require(path.join(__dirname, "../../../tasks/scripts/task-state.js"));
+const { resolveTaskState } = require(path.join(__dirname, "../../../tasks/scripts/task-state.js"));
 const args = process.argv.slice(2);
 
 const RUN_PHASES = new Set([
@@ -174,8 +174,11 @@ function rel(file) {
 }
 
 function parseTasks() {
-  const file = path.join(agentRoot, "plans", "task-progress.md");
-  return parseTaskProgress(read(file));
+  // T-TS-003 / MS-3: the structured records (.agent/tasks/*.json +
+  // .agent/missions/*/mission.json) are the truth source. The markdown view
+  // stays a fallback so a project that has not migrated keeps working.
+  const resolved = resolveTaskState({ projectRoot: root });
+  return resolved.tasks;
 }
 
 function parseWorktrees() {

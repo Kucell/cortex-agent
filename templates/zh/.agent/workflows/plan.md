@@ -1,11 +1,35 @@
 ---
 name: plan
 description: 将已确认的方案或需求转化为结构化任务清单，写入 task-progress.md，衔接 /arch-design 与 /start-task。
+type: procedure
+applicable_to:
+  - all
+inputs: []
+outputs: []
+linked_skills: []
+linked_rules: []
+linked_workflows: []
+owner: Kucell
+last_verified: 2026-10-21
+status: stable
 ---
 
 # 方案落地工作流 (/plan)
 
 当你和 AI 确认了一个设计方案或需求后，执行此流程将其转化为可执行的任务计划。
+
+## 任务状态写入契约（T-TS-003 / MS-3）
+
+`.agent/tasks/<task-id>.json`（mission 用 `.agent/missions/<mission-id>/mission.json`）是任务状态的唯一真源；
+`.agent/plans/task-progress.md` 是由真源派生的视图。写入顺序固定为：
+
+1. 改 JSON 真源（`stage` / `status` / `gates` / `artifacts`）
+2. 跑 `node .agent/tasks/scripts/render-progress.js` 重新生成视图
+3. JSON 与视图一起提交
+
+禁止手工编辑视图里的 `<!-- generated:* -->` 区（渲染器拥有它，下次渲染会覆盖）。
+提交前用 `node .agent/tasks/scripts/render-progress.js --check` 验证（不一致时退出码 1）。
+视图的 `<!-- manual:roadmap --> / <!-- manual:backlog --> / <!-- manual:resume -->` 手工区由人维护，渲染器原样保留。
 
 ## 使用方式
 

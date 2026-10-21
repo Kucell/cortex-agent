@@ -17,6 +17,19 @@ status: stable
 
 当你开始新的一天工作，需要快速进入状态时，执行此流程：
 
+## 任务状态写入契约（T-TS-003 / MS-3）
+
+`.agent/tasks/<task-id>.json`（mission 用 `.agent/missions/<mission-id>/mission.json`）是任务状态的唯一真源；
+`.agent/plans/task-progress.md` 是由真源派生的视图。写入顺序固定为：
+
+1. 改 JSON 真源（`stage` / `status` / `gates` / `artifacts`）
+2. 跑 `node .agent/tasks/scripts/render-progress.js` 重新生成视图
+3. JSON 与视图一起提交
+
+禁止手工编辑视图里的 `<!-- generated:* -->` 区（渲染器拥有它，下次渲染会覆盖）。
+提交前用 `node .agent/tasks/scripts/render-progress.js --check` 验证（不一致时退出码 1）。
+视图的 `<!-- manual:roadmap --> / <!-- manual:backlog --> / <!-- manual:resume -->` 手工区由人维护，渲染器原样保留。
+
 ## 0. Runtime Continuity 恢复包
 
 先运行只读恢复入口，读取同一项目在不同 agent 工具之间同步的结构化工作状态：

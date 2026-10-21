@@ -1,5 +1,17 @@
 ---
 description: 用于多任务并行开发时的计划对齐集、进度同步与冲突检测
+name: sync-plans
+type: procedure
+applicable_to:
+  - all
+inputs: []
+outputs: []
+linked_skills: []
+linked_rules: []
+linked_workflows: []
+owner: Kucell
+last_verified: 2026-10-21
+status: stable
 ---
 
 # 计划同步与对齐工作流 (/sync-plans)
@@ -27,6 +39,8 @@ description: 用于多任务并行开发时的计划对齐集、进度同步与�
 ## 4. 综合对齐与更新
 // turbo
 - **更新 `task-progress.md`**：反映最新的百分比进度、已完成项和当前最优先级任务。
+  - 真源是 `.agent/tasks/<task-id>.json`；改完 JSON 后跑 `node .agent/tasks/scripts/render-progress.js` 重新生成视图，再一起提交。
+  - 提交前用 `node .agent/tasks/scripts/render-progress.js --check` 验证视图与真源一致。
 - **更新各子计划**：确保每个活跃计划文件的 "Context" 或 "Next Steps" 都是最新的，且不与其他任务冲突。
 
 ## 5. 输出对齐报告

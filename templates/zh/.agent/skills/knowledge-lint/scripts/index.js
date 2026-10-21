@@ -168,15 +168,50 @@ function collectMissingReadmes() {
     .map((relativePath) => ({ path: relativePath }));
 }
 
+// T-TS-003 / MS-3: the structured truth source is authoritative for the
+// active-task count. The markdown regex stays a fallback for projects that
+// have not run `migrate-task-state` yet.
+function countActiveTasksFromTruthSource() {
+  try {
+    const taskState = require(path.join(root, '.agent', 'tasks', 'scripts', 'task-state.js'));
+    const count = taskState.countActiveTasksStructured({ projectRoot: root });
+    return count === null || count === undefined ? null : count;
+  } catch (_) {
+    return null;
+  }
+}
+
+// The active-tasks heading must appear exactly once in the whole file.
+// A duplicated section is the drift signature this project has hit before:
+// writers append a second active-tasks block and readers silently pick
+// the wrong one.
+function countActiveSectionHeadings(content) {
+  const matches = content.match(/^##\s+.*(?:当前活跃任务|Active Tasks).*$/gm);
+  return matches ? matches.length : 0;
+}
+
 function countActiveTasks(taskProgressContent) {
-  const sectionMatch = taskProgressContent.match(/## 🔥 当前活跃任务([\s\S]*?)(?:\n## |\n---|$)/);
+  // T-TS-003 / MS-3: prefer the structured truth source. Fall back to the
+  // markdown table when the project has no task records (not migrated yet).
+  const structured = countActiveTasksFromTruthSource();
+  if (structured !== null) return structured;
+
+  // The heading may be localized. Both the Chinese and the English title
+  // match, and the LAST section wins (a later write is newer).
+  const sections = taskProgressContent.match(
+    /^##\s+.*(?:当前活跃任务|Active Tasks).*$[\s\S]*?(?=^##\s|\n---|$)/gm,
+  );
+  if (!sections || !sections.length) return 0;
+  const sectionMatch = sections[sections.length - 1].match(
+    /(?:当前活跃任务|Active Tasks)([\s\S]*?)(?:\n## |\n---|$)/,
+  );
   if (!sectionMatch) return 0;
 
   return sectionMatch[1]
     .split('\n')
     .filter((line) => /^\|/.test(line))
     .filter((line) => !line.includes(':---'))
-    .filter((line) => !/任务 ID|优先级|描述|进度/.test(line))
+    .filter((line) => !/任务 ID|优先级|描述|进度|Task ID|Priority|Description|Progress/.test(line))
     .filter((line) => line.trim() !== '|')
     .length;
 }
@@ -194,6 +229,18 @@ function collectPlanIssues() {
   }
 
   const taskProgressContent = readFile(taskProgressPath);
+
+  // T-TS-003 / MS-3: the active-tasks section must be unique. A second
+  // heading means two writers produced two views and readers may pick
+  // the wrong one.
+  const headingCount = countActiveSectionHeadings(taskProgressContent);
+  if (headingCount > 1) {
+    issues.push({
+      type: 'duplicate_active_section',
+      message: `task-progress.md has ${headingCount} active-tasks sections; exactly one is allowed`,
+    });
+  }
+
   const activeTasks = countActiveTasks(taskProgressContent);
   const activePlanDir = path.join(root, 'docs', 'exec-plans', 'active');
   const completedPlanDir = path.join(root, 'docs', 'exec-plans', 'completed');
