@@ -355,3 +355,52 @@ test("countActiveTasksStructured follows the merged view", (t) => {
   assert.equal(countActiveTasksStructured({ projectRoot: path.join(ROOT, "tests") }), null);
 });
 
+
+test("a view with only a removed header marker is still treated as generated", (t) => {
+  const { resolveTaskState } = require(TEMPLATE_PARSER);
+  const cwd = projectFixture({
+    taskProgress: [
+      "# 任务进度",
+      "",
+      "<!-- generated:active-tasks:start -->",
+      "| T-STR-001 | P0 | 结构化任务 | 55% | x |",
+      "<!-- generated:active-tasks:end -->",
+      "",
+    ].join("\n"),
+    tasks: [STRUCTURED_TASK],
+  });
+  t.after(() => fs.rmSync(cwd, { recursive: true, force: true }));
+
+  // The file header marker is gone but the generated region is not: the view
+  // is still a projection, so a hand-added row must not leak into the
+  // truth source.
+  const resolved = resolveTaskState({ projectRoot: cwd });
+  assert.equal(resolved.source, "structured");
+  assert.equal(resolved.tasks.length, 1);
+  assert.equal(resolved.tasks[0].id, "T-STR-001");
+});
+
+test("a hand-edited row in a generated view never reaches the projection", (t) => {
+  const { resolveTaskState } = require(TEMPLATE_PARSER);
+  const cwd = projectFixture({
+    taskProgress: [
+      "# 任务进度",
+      "",
+      "<!-- generated:task-progress v1 -->",
+      "",
+      "<!-- generated:active-tasks:start -->",
+      "| T-FAKE-999 | P0 | 手工塞入的假任务 | 50% | x |",
+      "| T-STR-001 | P0 | 结构化任务 | 55% | x |",
+      "<!-- generated:active-tasks:end -->",
+      "",
+    ].join("\n"),
+    tasks: [STRUCTURED_TASK],
+  });
+  t.after(() => fs.rmSync(cwd, { recursive: true, force: true }));
+
+  const resolved = resolveTaskState({ projectRoot: cwd });
+  assert.equal(resolved.source, "structured");
+  assert.equal(resolved.tasks.length, 1);
+  assert.equal(resolved.tasks.some((task) => task.id === "T-FAKE-999"), false);
+});
+

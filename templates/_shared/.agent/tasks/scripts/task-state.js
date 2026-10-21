@@ -332,13 +332,24 @@ function readStructuredTasks(options = {}) {
 
 // The single entry point consumers should use: structured truth source first,
 // markdown view as fallback. `source` reports which path produced the data.
-// A view carrying this marker was produced by `migrate-task-state` or
+// A view carrying generated regions was produced by `migrate-task-state` or
 // `render-progress`: it is a pure projection of the structured records, so
 // the structured source is complete and authoritative for it.
-const GENERATED_VIEW_MARKER = "<!-- generated:task-progress v1";
+//
+// The check looks for ANY `generated:*` region marker, not just the file
+// header one. A view whose header marker was accidentally removed still
+// has its generated regions, and treating it as a legacy view would let a
+// hand-edited row leak back into the truth source projection — exactly the
+// phantom-task failure mode MS-1 was written to eliminate.
+const GENERATED_VIEW_MARKERS = Object.freeze([
+  "<!-- generated:task-progress v1",
+  "<!-- generated:active-tasks:start -->",
+  "<!-- generated:archive-index:start -->",
+]);
 
 function isGeneratedView(text) {
-  return String(text || "").includes(GENERATED_VIEW_MARKER);
+  const source = String(text || "");
+  return GENERATED_VIEW_MARKERS.some((marker) => source.includes(marker));
 }
 
 // Resolve the effective task set.
