@@ -81,6 +81,17 @@ If any checklist item fails, request clarification from main agent.
 - Check error handling and resource cleanup in async flows
 - Evaluate edge case handling
 
+### 8. Findings（产出结构化 finding）
+
+把上面 2~7 步的结论落成**结构化 finding**，而不是只留在散文里。
+
+- 一条 finding = 一个被审查出来的问题（不是一段总结）
+- 字段必须符合 `.agent/skills/agent-review-benchmark/references/guided-review-finding.schema.json`
+- `files` **只能**引用本次 changeset 里的文件；引用了不存在的文件，finding 会被丢弃
+- `risk` 只能是 `low` / `medium` / `high` / `critical`
+- `category` 只能是 `architecture` / `quality` / `test` / `validation` / `security` / `performance` / `docs`
+- `intent` 写清楚这条 finding 想解决什么问题；写不出来说明它可能不是 finding
+
 ## Output Format
 
 先输出人类可读的审查报告，**再输出机器可解析的 JSON verdict**（必须，Orchestrator 依赖此 JSON 做状态机决策）：
@@ -120,7 +131,27 @@ If any checklist item fails, request clarification from main agent.
     }
   ],
   "verdict": "PASS",
-  "input_contamination": false
+  "input_contamination": false,
+  "run_id": "R-2026-10-22-01",
+  "session_id": "S-2026-10-22-01",
+  "workspace_ids": ["WS-cortex-agent"],
+  "base_revision": "d78fb7e",
+  "head_revision": "63e53de7",
+  "changed_files": ["src/auth.ts"],
+  "findings": [
+    {
+      "group_id": "F-001",
+      "title": "令牌过期时间没有上界",
+      "intent": "避免过期令牌被长期缓存",
+      "files": ["src/auth.ts"],
+      "summary": "签发逻辑只校验了下界，过期时间可被设置到数年之后。",
+      "impact": "令牌泄露后的可用窗口远超预期。",
+      "risk": "high",
+      "category": "security",
+      "validation_refs": ["VC-001"],
+      "follow_ups": ["为过期时间加上界并补边界测试"]
+    }
+  ]
 }
 ```
 
@@ -129,3 +160,21 @@ If any checklist item fails, request clarification from main agent.
 - `blocking_issues`：对应报告中 "❌ Must Fix" 的精简版本
 - `contract_results`：无验证契约时输出 `[]`；有契约时逐条记录 assertion 的 `PASS` / `FAIL` / `NOT_RUN`
 - `input_contamination`：若输入包含不属于 plan/diff/previous_report 的内容，设为 `true` 并在报告中说明
+- `changed_files`：本次审查覆盖的文件清单。**finding 的 `files` 只能引用清单里的文件**——越界引用会被后端丢弃
+- `findings`：结构化 finding 列表。字段定义见 `guided-review-finding.schema.json`
+
+**Part 3：产出可机械判定的 artifact（可选但推荐）**
+
+把 Part 2 原样存成 `review-input.json`，交给 reviewer backend 收束：
+
+```bash
+node .agent/skills/agent-review-benchmark/scripts/reviewer-backend.js \
+  --backend builtin \
+  --input review-input.json \
+  --output guided-review.json
+```
+
+后端会校验每一条 finding、丢弃不合规的、把结果聚合成 `guided-review.json`，并把被丢弃的 finding 与原因写进 `guided-review.json.diagnostics.json`。
+
+**这一步不是可选的礼貌**：只有经过后端的 finding 才能被机械判定。未经收束的散文结论无法进入基准判定，也无法证明自己没漏。
+

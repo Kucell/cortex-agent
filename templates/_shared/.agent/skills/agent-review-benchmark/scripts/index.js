@@ -37,6 +37,29 @@ function strings(values) {
   return Array.from(new Set(values || [])).sort();
 }
 
+// The summary is derived, never supplied. It is extracted as a pure function so
+// that the reviewer backend and this CLI score a finding set identically —
+// two implementations of the same count would drift, and the drift would show
+// up as a benchmark regression nobody can explain.
+function summarizeGroups(groups) {
+  const riskCounts = { low: 0, medium: 0, high: 0, critical: 0 };
+  for (const group of groups) {
+    if (!(group.risk in riskCounts)) {
+      const error = new Error(`invalid risk: ${group.risk}`);
+      error.risk = group.risk;
+      throw error;
+    }
+    riskCounts[group.risk] += 1;
+  }
+  return {
+    group_count: groups.length,
+    file_count: new Set(groups.flatMap((group) => group.files)).size,
+    risk_counts: riskCounts,
+    validation_ref_count: new Set(groups.flatMap((group) => group.validation_refs)).size,
+    follow_up_count: new Set(groups.flatMap((group) => group.follow_ups)).size
+  };
+}
+
 function guidedReview(input) {
   required(input, ["artifact_id", "task_id", "run_id", "session_id", "workspace_ids", "base_revision", "head_revision", "groups", "generated_at"], "review");
   if (!Array.isArray(input.groups) || !input.groups.length) fail("groups_required", "At least one group is required.", 2);
@@ -45,10 +68,11 @@ function guidedReview(input) {
     if (!Array.isArray(group.files) || !group.files.length) fail("files_required", group.group_id, 2);
     return { ...group, files: strings(group.files), validation_refs: strings(group.validation_refs), follow_ups: strings(group.follow_ups) };
   }).sort((left, right) => left.group_id.localeCompare(right.group_id));
-  const riskCounts = { low: 0, medium: 0, high: 0, critical: 0 };
-  for (const group of groups) {
-    if (!(group.risk in riskCounts)) fail("invalid_risk", group.risk, 2);
-    riskCounts[group.risk] += 1;
+  let summary;
+  try {
+    summary = summarizeGroups(groups);
+  } catch (error) {
+    fail("invalid_risk", error.risk, 2);
   }
   return {
     type: "guided_review",
@@ -60,13 +84,7 @@ function guidedReview(input) {
     base_revision: input.base_revision,
     head_revision: input.head_revision,
     groups,
-    summary: {
-      group_count: groups.length,
-      file_count: new Set(groups.flatMap((group) => group.files)).size,
-      risk_counts: riskCounts,
-      validation_ref_count: new Set(groups.flatMap((group) => group.validation_refs)).size,
-      follow_up_count: new Set(groups.flatMap((group) => group.follow_ups)).size
-    },
+    summary,
     generated_at: input.generated_at
   };
 }
@@ -126,4 +144,8 @@ function main() {
   process.stdout.write(`${JSON.stringify({ ok: true, output: path.resolve(args.output), type: output.type })}\n`);
 }
 
-main();
+if (require.main === module) {
+  main();
+}
+
+module.exports = { benchmark, guidedReview, main, summarizeGroups };

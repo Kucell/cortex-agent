@@ -142,6 +142,34 @@ jobs:
           pnpm verify:runtime-evidence
           pnpm verify:runtime-evidence:noop
 
+      - name: Guided review benchmark (real review-defect dataset)
+        # A reviewer backend is judged on the finding set it produces, so the
+        # dataset judges findings. It has to fail in both directions:
+        #   reference — the builtin backend enforces the published finding
+        #              schema, drops findings outside the reviewed changeset
+        #              and findings that cite a file which does not exist, so
+        #              every blocking assertion must hold (10000 bp);
+        #   noop     — a candidate that produces no review at all must score
+        #              materially lower (< 5000 bp).
+        # The absence assertions are what give the dataset teeth: a backend
+        # that reports everything it is handed passes every presence
+        # assertion and still fails, because it never dropped the findings it
+        # should have.
+        # It must stay after `Run full test suite`: it writes into
+        # .agent/metrics/, and the strict-hermetic gate forbids any write
+        # there while the suite is running.
+        run: |
+          pnpm benchmark:guided-review
+          pnpm benchmark:guided-review:noop
+
+      - name: Guided review benchmark results (CI summary)
+        if: always()
+        run: |
+          node scripts/append-ci-summary.cjs \
+            --title "Guided review benchmark (finding set quality)" \
+            --input .agent/metrics/guided-review-summary.json \
+            --input .agent/metrics/guided-review-noop.json
+
       - name: Upload test evidence
         if: always()
         uses: actions/upload-artifact@v4
