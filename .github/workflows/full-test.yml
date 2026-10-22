@@ -100,6 +100,21 @@ jobs:
         # is a genuine non-hermetic test. See .agent/rules/test-policy.md §3.4.
         run: pnpm test:ci
 
+      - name: Agent review benchmark (real regression dataset)
+        # The dataset is the gate, and it has to be able to fail in both
+        # directions:
+        #   reference — every blocking assertion must hold (10000 bp), so a
+        #              regression in the governance bootstrap surface fails CI;
+        #   noop     — a candidate that does nothing must score materially
+        #              lower (< 5000 bp), so the dataset is proven to detect a
+        #              regression instead of merely confirming that the code
+        #              under test still runs.
+        # A dataset that only ever sees a perfect candidate would pass just as
+        # well against a broken build.
+        run: |
+          pnpm benchmark:agent-review
+          pnpm benchmark:agent-review:noop
+
       - name: Upload test evidence
         if: always()
         uses: actions/upload-artifact@v4
