@@ -359,3 +359,59 @@ test("a mission row with a mission record is not reported as a missing task reco
     false,
   );
 });
+
+// ─── The machine-readable contract: snake_case ───────────────────────────────
+//
+// Every JSON envelope the CLI emits is snake_case (doctor, plan). `detect`
+// used to spread the internal detection object, which put `needsMigration`
+// next to `already_migrated` in the same document — the internal API follows
+// the JavaScript convention (camelCase), the contract does not.
+
+function assertSnakeCaseKeys(payload, label) {
+  for (const key of Object.keys(payload)) {
+    assert.match(
+      key,
+      /^[a-z][a-z0-9]*(_[a-z0-9]+)*$/,
+      `${label}: "${key}" is not snake_case`,
+    );
+  }
+}
+
+test("every migrate-task-state subcommand emits snake_case", (t) => {
+  const cwd = legacyProject();
+  t.after(() => fs.rmSync(cwd, { recursive: true, force: true }));
+  const cli = path.join(ROOT, "bin", "cli.js");
+
+  for (const args of [["detect"], ["plan"], ["apply", "--confirm"]]) {
+    const out = spawnSync(
+      process.execPath,
+      [cli, "migrate-task-state", ...args, "--project", cwd],
+      { encoding: "utf8" },
+    );
+    const label = `migrate-task-state ${args[0]}`;
+    const payload = JSON.parse(out.stdout.slice(out.stdout.indexOf("{")));
+    assertSnakeCaseKeys(payload, label);
+    // The nested records carry the same convention.
+    for (const finding of payload.findings || []) {
+      assertSnakeCaseKeys(finding, `${label} findings[]`);
+    }
+    for (const written of payload.written || []) {
+      assertSnakeCaseKeys(written, `${label} written[]`);
+    }
+  }
+});
+
+test("detect reports the migration verdict under its contract name", (t) => {
+  const cwd = legacyProject();
+  t.after(() => fs.rmSync(cwd, { recursive: true, force: true }));
+  const out = spawnSync(
+    process.execPath,
+    [path.join(ROOT, "bin", "cli.js"), "migrate-task-state", "detect", "--project", cwd],
+    { encoding: "utf8" },
+  );
+  const payload = JSON.parse(out.stdout.slice(out.stdout.indexOf("{")));
+  assert.equal(payload.needs_migration, true);
+  assert.equal(payload.reason, "migration_available");
+  assert.equal(payload.existing_task_count, 0);
+  assert.deepEqual(payload.table_task_ids.sort(), ["T-LEG-001", "T-LEG-002"]);
+});
