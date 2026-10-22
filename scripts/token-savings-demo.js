@@ -18,13 +18,19 @@ const os = require("node:os");
 const path = require("node:path");
 
 const ROOT = path.resolve(__dirname, "..");
-const CCSWITCH = path.join(os.homedir(), ".codex", "cc-switch-model-catalog.json");
 const SKILL_DIRS = [
   "templates/zh/.agent/skills",
   "templates/en/.agent/skills",
   "templates/_shared/.agent/skills",
   "templates/general/.agent/skills",
 ];
+
+// Resolved lazily so callers (and tests) can point HOME at a fixture before
+// the path is computed. Resolving it at module load made the demo's baseline
+// depend on whatever cc-switch catalog happened to exist on the machine.
+function ccSwitchCatalogPath() {
+  return path.join(os.homedir(), ".codex", "cc-switch-model-catalog.json");
+}
 
 function tokenize(s) {
   if (typeof s !== "string") return 0;
@@ -34,8 +40,9 @@ function tokenize(s) {
 }
 
 function loadBaseInstructions() {
-  if (!fs.existsSync(CCSWITCH)) return null;
-  const cat = JSON.parse(fs.readFileSync(CCSWITCH, "utf8"));
+  const catalogPath = ccSwitchCatalogPath();
+  if (!fs.existsSync(catalogPath)) return null;
+  const cat = JSON.parse(fs.readFileSync(catalogPath, "utf8"));
   const arr = Array.isArray(cat) ? cat : (cat.models || cat.providers || []);
   const models = Array.isArray(arr) ? arr : Object.values(arr).flat();
   if (models.length === 0) return null;
@@ -123,7 +130,7 @@ function report(taskId) {
   return {
     task_id: taskId,
     sources: {
-      cc_switch: CCSWITCH,
+      cc_switch: ccSwitchCatalogPath(),
       base_instructions_loaded: base !== null,
     },
     skills: {

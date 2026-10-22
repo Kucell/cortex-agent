@@ -146,15 +146,20 @@ test("legacy project with existing .agent/global-shared-skills/ entity dir keeps
   // user-local vendor skills. init must not clobber it; linkGlobalConfig's
   // `existing_non_symlink` skip preserves the directory and prints the
   // documented "preserving local content" warning.
+  //
+  // That path is only reached when `~/.agents/skills/` exists, so the test
+  // provides a fake HOME instead of depending on the developer's machine.
   const dir = mkTmp("cortex-gss-legacy-");
+  const fakeHome = mkTmp("cortex-gss-legacy-home-");
   try {
+    fs.mkdirSync(path.join(fakeHome, ".agents", "skills"), { recursive: true });
     fs.mkdirSync(path.join(dir, ".agent"), { recursive: true });
     const existingDir = path.join(dir, ".agent", "global-shared-skills");
     fs.mkdirSync(existingDir, { recursive: true });
     const sentinel = path.join(existingDir, "local-skill.md");
     fs.writeFileSync(sentinel, "keep this\n", "utf8");
 
-    const init = runCli(dir, ["init", "--mode", "general"]);
+    const init = runCli(dir, ["init", "--mode", "general"], { HOME: fakeHome });
     assert.equal(init.status, 0, `init exit=${init.status}\nstderr=${init.stderr}`);
     assert.equal(
       fs.lstatSync(existingDir).isSymbolicLink(),
@@ -173,5 +178,6 @@ test("legacy project with existing .agent/global-shared-skills/ entity dir keeps
     );
   } finally {
     rmrf(dir);
+    rmrf(fakeHome);
   }
 });

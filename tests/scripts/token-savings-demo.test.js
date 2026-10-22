@@ -8,6 +8,29 @@ const test = require("node:test");
 
 const { report, tokenize, loadBaseInstructions, loadAllSkills, projectTaskState } = require("../../scripts/token-savings-demo");
 
+// The demo's baseline is measured against the base_instructions of the
+// cc-switch model catalog. Reading the developer's real
+// ~/.codex/cc-switch-model-catalog.json made both the "loaded" flag and the
+// savings ratio machine-dependent (and absent on CI), so the tests below
+// run against a synthetic catalog instead.
+function withCatalogFixture(fn) {
+  const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-token-demo-"));
+  const originalHome = process.env.HOME;
+  try {
+    fs.mkdirSync(path.join(fakeHome, ".codex"), { recursive: true });
+    fs.writeFileSync(
+      path.join(fakeHome, ".codex", "cc-switch-model-catalog.json"),
+      JSON.stringify([{ name: "terra-fixture", base_instructions: "x".repeat(24000) }]),
+      "utf8"
+    );
+    process.env.HOME = fakeHome;
+    return fn();
+  } finally {
+    process.env.HOME = originalHome;
+    fs.rmSync(fakeHome, { recursive: true, force: true });
+  }
+}
+
 test("tokenize: counts CJK and latin separately", () => {
   assert.equal(tokenize("hello world"), 3);
   assert.equal(tokenize("你好世界你好"), 4);
@@ -18,11 +41,19 @@ test("tokenize: counts CJK and latin separately", () => {
 });
 
 test("loadBaseInstructions: reads from cc-switch-model-catalog.json", () => {
-  const bi = loadBaseInstructions();
-  if (fs.existsSync(path.join(os.homedir(), ".codex", "cc-switch-model-catalog.json"))) {
+  withCatalogFixture(() => {
+    const bi = loadBaseInstructions();
     assert.ok(typeof bi === "string" && bi.length > 1000);
-  } else {
-    assert.equal(bi, null);
+  });
+  // Without a catalog the loader must degrade to null rather than throw.
+  const originalHome = process.env.HOME;
+  const bareHome = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-token-demo-bare-"));
+  try {
+    process.env.HOME = bareHome;
+    assert.equal(loadBaseInstructions(), null);
+  } finally {
+    process.env.HOME = originalHome;
+    fs.rmSync(bareHome, { recursive: true, force: true });
   }
 });
 
@@ -58,7 +89,7 @@ test("projectTaskState: returns compact summary with required fields", () => {
 
 test("report: produces baseline + optimized with savings >= 50% on T-TCP-001", () => {
   if (!fs.existsSync(".agent/tasks/T-TCP-001.json")) return;
-  const r = report("T-TCP-001");
+  const r = withCatalogFixture(() => report("T-TCP-001"));
   if (r === null) return;
   assert.equal(r.task_id, "T-TCP-001");
   assert.ok(r.skills.total >= 40);
