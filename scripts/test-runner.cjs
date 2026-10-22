@@ -446,6 +446,13 @@ function restoreGuardedArtifacts(snapshot) {
 
 const AGENT_DIR = path.join(ROOT, '.agent');
 
+// Operating-system metadata. macOS Finder rewrites `.DS_Store` inside any
+// directory a human or a GUI tool touched, and Windows Explorer writes
+// `Thumbs.db`. Neither is governance state, neither is produced by the test
+// suite, and both would otherwise surface as NON-HERMETIC drift on a
+// developer's machine while CI (Linux) never sees them.
+const OS_METADATA_FILES = new Set(['.DS_Store', 'Thumbs.db', 'desktop.ini']);
+
 function listFilesRecursive(dir, base, acc) {
   let entries;
   try {
@@ -455,6 +462,7 @@ function listFilesRecursive(dir, base, acc) {
   }
   for (const entry of entries) {
     if (entry.name === '.git') continue;
+    if (OS_METADATA_FILES.has(entry.name)) continue;
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) listFilesRecursive(full, base, acc);
     else acc.push(path.relative(base, full));
