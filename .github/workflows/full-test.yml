@@ -38,29 +38,38 @@ jobs:
       # 而全量测试里有 61 个测试文件依赖 `.agent/` 工作实例（规则、workflow、
       # skill 脚本），缺了它这些测试会失败。
       #
-      # 这里按 gitlink 里记录的 pin 显式拉取，保证 CI 拿到与主仓一致的
-      # 治理记录版本，不引入硬编码的 commit。
-      #
-      # pin 暂时不在远端（嵌套仓尚未 push）时回退到远端 HEAD，而不是让 CI 挂掉。
+      # cortex-agent-agent 是私有仓，CI 需要用仓库已有的只读治理 token
+      # （与 governance-read-preflight 同一个 secret）来拉取。
+      # 这里按 gitlink 里记录的 pin 显式拉取，不硬编码 commit。
       - name: Fetch .agent governance repo at gitlink pin
+        env:
+          CORTEX_GOVERNANCE_READ_TOKEN: ${{ secrets.CORTEX_GOVERNANCE_READ_TOKEN }}
         run: |
           set -euo pipefail
           PIN=$(git ls-tree HEAD .agent | awk '{print $3}')
           if [ -z "$PIN" ]; then
-            echo "::warning::no .agent gitlink found — tests that need the governance repo will fail"
-            exit 0
+            echo "::error::no .agent gitlink found in the tree"
+            exit 1
           fi
+          if [ -z "${CORTEX_GOVERNANCE_READ_TOKEN:-}" ]; then
+            echo "::error::CORTEX_GOVERNANCE_READ_TOKEN is not available — cannot read the private governance repo"
+            exit 1
+          fi
+          AUTH=$(printf 'x-access-token:%s' "$CORTEX_GOVERNANCE_READ_TOKEN" | base64 | tr -d '\n')
           git init -q .agent
           git -C .agent remote add origin https://github.com/Kucell/cortex-agent-agent.git
-          if git -C .agent fetch -q --depth 1 origin "$PIN" 2>/dev/null; then
+          if git -C .agent -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $AUTH" \
+                fetch -q --depth 1 origin "$PIN"; then
             git -C .agent checkout -q FETCH_HEAD
             echo "::notice::.agent checked out at pinned $PIN"
           else
-            echo "::warning::pin $PIN is not on the remote yet (governance repo not pushed); falling back to remote HEAD"
-            git -C .agent fetch -q --depth 1 origin HEAD
-            git -C .agent checkout -q FETCH_HEAD
+            echo "::warning::could not fetch pinned $PIN directly; fetching main and looking it up"
+            git -C .agent -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $AUTH" \
+              fetch -q --depth 200 origin main
+            git -C .agent checkout -q "$PIN" || git -C .agent checkout -q FETCH_HEAD
             echo "::notice::.agent checked out at $(git -C .agent rev-parse HEAD)"
           fi
+          echo "::notice::.agent rules: $(ls .agent/rules | wc -l) files"
 
       - uses: actions/setup-node@v4
         with:
@@ -89,6 +98,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: full-test-evidence-${{ github.run_id }}
-          path: .agent/artifacts/
+          path: .agent/metrics/
           if-no-files-found: warn
           retention-days: 7
