@@ -611,7 +611,7 @@ async function main() {
   // Writing into `.agent/` is a defect, not a warning: the working copy must
   // survive a full run untouched. This is the mechanical counterpart of the
   // "tests must be hermetic" rule — see .agent/rules/test-policy.md §2.4.
-  const strict = opts.strictHermmetic && !opts.allowNonHermetic;
+  const strict = opts.strictHermetic && !opts.allowNonHermetic;
   const fatal = strict ? drift : curatedDrift;
   if (fatal.length) {
     console.error(
