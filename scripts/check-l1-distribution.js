@@ -295,6 +295,19 @@ function main() {
     .map((entry) => entry.name)
     .sort();
 
+  // The distribution layers: `_shared` is the base, `zh`/`en` overlay it, and
+  // `cortex-agent init` lets the language layer win on conflict. Both the
+  // file-set check and the content check below have to reason per layer,
+  // because that is what a downstream project actually receives.
+  const sharedLayer = { name: '_shared', agentDir: path.join(root, 'templates/_shared/.agent') };
+  const layers = [sharedLayer].concat(
+    fs.readdirSync(path.join(root, 'templates'), { withFileTypes: true })
+      .filter((entry) => entry.isDirectory() && entry.name !== '_shared')
+      .map((entry) => ({ name: entry.name, agentDir: path.join(root, 'templates', entry.name, '.agent') }))
+      .filter((layer) => fs.existsSync(path.join(layer.agentDir, 'skills')))
+      .sort((left, right) => left.name.localeCompare(right.name))
+  );
+
   const violations = [];
   let manifestsChecked = 0;
   let filesCompared = 0;
@@ -344,19 +357,55 @@ function main() {
       linksChecked += checkLinks(root, l1Dir, skill, manifest, violations);
     }
 
-    // ── Check 2: file-set parity (L1 ⊇ L3, minus exclusions) ─────────────
-    // Only for skills that are distributed at all. A skill that exists solely
-    // in L3 is L3-specific and is never shipped, so it has no parity duty.
-    if (!fs.existsSync(l3Dir)) continue;
-    for (const rel of listSkillFiles(path.join(root, '.agent'), 'skills/' + skill)) {
-      if (isExcluded(skill, rel)) continue;
-      filesCompared += 1;
-      if (!fs.existsSync(path.join(l1Dir, rel))) {
+  }
+
+  // ── Check 2: file-set parity, per distribution layer ────────────────────
+  // A downstream project receives `_shared` laid down first and then the
+  // language layer on top, so the shipped surface of a layer is its own files
+  // plus the shared base layer. A skill that exists solely in L3 is
+  // L3-specific and is never shipped, so it carries no parity duty.
+  //
+  // The layer matters. `context-budget`, `resource-ingest`,
+  // `retrieval-trajectory`, `uri-resolver` and `evolution-pipeline` exist
+  // only in the language layers — nothing in `_shared` ships them — so a file
+  // added to one of those skills in L3 and forgotten in `zh`/`en` would reach
+  // no downstream project at all, and a check that only walked `_shared`
+  // would never notice.
+  const sharedSkillsDir = path.join(sharedLayer.agentDir, 'skills');
+  const sharedSkills = fs.existsSync(sharedSkillsDir)
+    ? fs.readdirSync(sharedSkillsDir, { withFileTypes: true })
+        .filter((entry) => entry.isDirectory())
+        .map((entry) => entry.name)
+    : [];
+
+  for (const layer of layers) {
+    const layerSkillsDir = path.join(layer.agentDir, 'skills');
+    if (!fs.existsSync(layerSkillsDir)) continue;
+    const layerSkills = fs.readdirSync(layerSkillsDir, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name);
+    // Each layer owns the skills that only it ships. A skill present in both
+    // `_shared` and the language layer is already covered by the shared
+    // layer's own duty, and the language layer's surface contains the shared
+    // base anyway — so checking it twice would only produce duplicate noise.
+    const surfaceSkills = layer.name === '_shared'
+      ? new Set(sharedSkills)
+      : new Set(layerSkills.filter((name) => !sharedSkills.includes(name)));
+
+    for (const skill of surfaceSkills) {
+      const l3SkillDir = path.join(root, '.agent', 'skills', skill);
+      if (!fs.existsSync(l3SkillDir)) continue;
+      for (const rel of listSkillFiles(path.join(root, '.agent'), 'skills/' + skill)) {
+        if (isExcluded(skill, rel)) continue;
+        filesCompared += 1;
+        const inLayer = fs.existsSync(path.join(layerSkillsDir, skill, rel));
+        const inShared = fs.existsSync(path.join(sharedSkillsDir, skill, rel));
+        if (inLayer || inShared) continue;
         violations.push({
           kind: 'missing-implementation',
           skill,
-          file: path.relative(root, path.join(l1Dir, rel)),
-          detail: `L1 缺少实现文件 ${rel}（该 skill 在下游不可用）`,
+          file: path.relative(root, path.join(layerSkillsDir, skill, rel)),
+          detail: `分发层 ${layer.name} 缺少实现文件 ${rel}（该 skill 在下游不可用）`,
         });
       }
     }
@@ -369,14 +418,6 @@ function main() {
   // wolf gets ignored.
   const l3Repo = path.join(root, '.agent');
   const l3Files = new Set(listRepoFiles(l3Repo, ''));
-  const sharedLayer = { name: '_shared', agentDir: path.join(root, 'templates/_shared/.agent') };
-  const layers = [sharedLayer].concat(
-    fs.readdirSync(path.join(root, 'templates'), { withFileTypes: true })
-      .filter((entry) => entry.isDirectory() && entry.name !== '_shared')
-      .map((entry) => ({ name: entry.name, agentDir: path.join(root, 'templates', entry.name, '.agent') }))
-      .filter((layer) => fs.existsSync(path.join(layer.agentDir, 'skills')))
-      .sort((left, right) => left.name.localeCompare(right.name))
-  );
   const appliedExemptions = new Set();
 
   // The comparison runs per *distribution layer*, because that is what a

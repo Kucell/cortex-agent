@@ -201,6 +201,52 @@ test("every content exemption still resolves to a real implementation file", () 
   }
 });
 
+test("a skill that lives only in a language layer still carries a file-set duty", (t) => {
+  // `context-budget`, `resource-ingest`, `retrieval-trajectory`,
+  // `uri-resolver` and `evolution-pipeline` exist only in the language
+  // layers — nothing in `_shared` ships them. A file added to one of those
+  // skills in L3 and forgotten in `zh`/`en` would reach no downstream project
+  // at all, and a check that only walked `_shared` would never notice.
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-l1-layer-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+
+  // The shared base layer has to exist for the gate to run at all, even when
+  // it ships nothing.
+  fs.mkdirSync(path.join(root, "templates", "_shared", ".agent", "skills"), { recursive: true });
+
+  const l3 = path.join(root, ".agent", "skills", "zh-only-skill");
+  write(path.join(l3, "SKILL.md"), manifest("zh-only-skill"));
+  write(path.join(l3, "scripts", "index.js"), "// implementation\n");
+
+  // The language layer ships the skill, but not the implementation file.
+  const zh = path.join(root, "templates", "zh", ".agent", "skills", "zh-only-skill");
+  write(path.join(zh, "SKILL.md"), manifest("zh-only-skill"));
+
+  const result = runCheck(root);
+  assert.equal(result.status, 1);
+  assert.match(result.stdout, /缺少实现文件/);
+  assert.match(result.stdout, /分发层 zh/);
+  assert.match(result.stdout, /scripts\/index\.js/);
+});
+
+test("a language-layer skill that ships every L3 file passes", (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-l1-layer-ok-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+
+  fs.mkdirSync(path.join(root, "templates", "_shared", ".agent", "skills"), { recursive: true });
+
+  const l3 = path.join(root, ".agent", "skills", "zh-only-skill");
+  write(path.join(l3, "SKILL.md"), manifest("zh-only-skill"));
+  write(path.join(l3, "scripts", "index.js"), "// implementation\n");
+
+  const zh = path.join(root, "templates", "zh", ".agent", "skills", "zh-only-skill");
+  write(path.join(zh, "SKILL.md"), manifest("zh-only-skill"));
+  write(path.join(zh, "scripts", "index.js"), "// implementation\n");
+
+  const result = runCheck(root);
+  assert.equal(result.status, 0, `expected pass, got:\n${result.stdout}${result.stderr}`);
+});
+
 test("the real repository distribution surface passes the gate", () => {
   const result = spawnSync(process.execPath, [CHECK], { encoding: "utf8", cwd: ROOT });
   assert.equal(result.status, 0, `expected pass, got:\n${result.stdout}${result.stderr}`);
