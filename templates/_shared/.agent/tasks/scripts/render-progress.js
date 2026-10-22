@@ -15,6 +15,13 @@
 //   - write path:  change the JSON truth source -> run render-progress -> commit both
 //   - check path:  `--check` exits 1 when the view has drifted from the truth source
 //
+// A project that has not migrated yet keeps its task state in the view itself.
+// The view is a projection of the truth source, so rendering it from records
+// would replace those rows with an empty table — the data would be gone with
+// no trace of it. The migration is what turns the legacy shape into a
+// projection; until then this renderer reports the mismatch (check path) and
+// refuses to overwrite (write path).
+//
 // Usage:
 //   node .agent/tasks/scripts/render-progress.js            # write the view
 //   node .agent/tasks/scripts/render-progress.js --check    # CI / pre-commit drift check
@@ -25,7 +32,14 @@ const path = require("node:path");
 
 // The projection lives in task-state.js so the view, the management-api
 // projection and every other consumer read the truth source exactly one way.
-const { projectTaskRecord, projectMissionRecord, STAGE_PROGRESS, listTaskRecordFiles } = require("./task-state.js");
+const {
+  projectTaskRecord,
+  projectMissionRecord,
+  STAGE_PROGRESS,
+  listTaskRecordFiles,
+  parseTaskProgress,
+  isGeneratedView,
+} = require("./task-state.js");
 
 const AGENT_REL = ".agent";
 const PROGRESS_REL = path.join(AGENT_REL, "plans", "task-progress.md");
@@ -259,6 +273,43 @@ function buildView(projectRoot, now) {
   return { view, tasks, missions, archives };
 }
 
+// The task rows of a project that has not been migrated yet: rows that live
+// in the view itself and have no structured record behind them.
+//
+// A generated view is already a projection — stale rows in it are dropped by
+// design. A hand-maintained view is different: its rows ARE the task state,
+// so rendering it from records would delete them.
+//
+// The primitives (which files are records, how a view is read, whether a view
+// is generated) come from task-state.js, so this rule cannot drift away from
+// the rest of the projection.
+//
+// A hand-maintained view whose task table cannot be parsed is reported as
+// `malformed`: the rows cannot be enumerated, so overwriting it cannot be
+// shown to be safe.
+function legacyViewRows(projectRoot, text) {
+  const empty = { ids: [], malformed: false };
+  if (!text) return empty;
+  if (isGeneratedView(text)) return empty;
+  const recordIds = new Set(
+    listTaskRecordFiles(path.join(projectRoot, TASKS_REL)).map((name) => name.replace(/\.json$/, "")),
+  );
+  const rows = parseTaskProgress(text);
+  if (rows && rows.malformed) return { ids: [], malformed: true };
+  return {
+    ids: (rows || [])
+      .map((task) => task && task.id)
+      .filter((id) => id && !recordIds.has(id)),
+    malformed: false,
+  };
+}
+
+const MIGRATION_REMINDER = [
+  "视图与真源对不上：这些任务行只存在于 task-progress.md，没有结构化真源记录。",
+  "迁移到结构化真源：`cortex-agent migrate-task-state apply --confirm`",
+  "只读预览：`cortex-agent migrate-task-state plan`",
+].join("\n  ");
+
 function main(argv) {
   const args = argv.slice(2);
   const check = args.includes("--check");
@@ -272,6 +323,8 @@ function main(argv) {
   const { view, tasks, missions } = buildView(projectRoot, now);
   const progressFile = path.join(projectRoot, PROGRESS_REL);
   const current = fs.existsSync(progressFile) ? fs.readFileSync(progressFile, "utf8") : "";
+  const legacy = legacyViewRows(projectRoot, current);
+  const unmigrated = legacy.ids;
 
   if (check) {
     // The gate can only judge a projection when the truth source is present.
@@ -288,12 +341,50 @@ function main(argv) {
           ok: true,
           drifted: false,
           skipped: true,
+          // The view still carries task rows that no record backs: the data
+          // structures do not line up yet. Reported, not failed — the gate
+          // must not turn a project's first upgrade into a red build.
+          not_migrated: unmigrated.length > 0 || legacy.malformed,
+          unmigrated_task_ids: unmigrated,
+          malformed_view: legacy.malformed,
           task_count: 0,
           mission_count: 0,
           view_path: PROGRESS_REL.split(path.sep).join("/"),
         }, null, 2) + "\n");
+      } else if (unmigrated.length > 0 || legacy.malformed) {
+        console.warn(
+          `${legacy.malformed
+            ? "⚠️  视图的任务表无法解析，无法确认覆盖是否安全。"
+            : `⚠️  数据未迁移：${unmigrated.length} 个任务行没有对应的结构化真源记录`
+              + `（${unmigrated.slice(0, 8).join(", ")}${unmigrated.length > 8 ? " …" : ""}）。`}`
+          + `\n  ${MIGRATION_REMINDER}`,
+        );
       } else {
         console.log("ok: 真源记录不存在（无任务 / mission 记录），跳过视图一致性校验。");
+      }
+      return;
+    }
+    if (unmigrated.length > 0) {
+      // Records exist, but the view still carries rows they do not cover.
+      // The projection is not the whole truth source yet.
+      if (asJson) {
+        process.stdout.write(JSON.stringify({
+          action: "render-progress --check",
+          ok: true,
+          drifted: false,
+          skipped: true,
+          not_migrated: true,
+          unmigrated_task_ids: unmigrated,
+          malformed_view: legacy.malformed,
+          task_count: tasks.length,
+          mission_count: missions.length,
+          view_path: PROGRESS_REL.split(path.sep).join("/"),
+        }, null, 2) + "\n");
+      } else {
+        console.warn(
+          `⚠️  数据未迁移：${unmigrated.length} 个任务行没有对应的结构化真源记录`
+          + `（${unmigrated.slice(0, 8).join(", ")}${unmigrated.length > 8 ? " …" : ""}）。\n  ${MIGRATION_REMINDER}`,
+        );
       }
       return;
     }
@@ -313,6 +404,40 @@ function main(argv) {
       console.log("✓ task-progress.md 与真源一致。");
     }
     if (drifted) process.exitCode = 1;
+    return;
+  }
+
+  // Writing a projection over a hand-maintained view would replace the rows
+  // that have no record behind them with an empty table — the task state
+  // would be gone, with no trace of it. The migration is the only path that
+  // may turn the legacy shape into a projection, so this renderer refuses.
+  if (unmigrated.length > 0 || legacy.malformed) {
+    const detail = legacy.malformed
+      ? "视图的任务表无法解析，无法确认覆盖是否安全"
+      : `${unmigrated.length} 个任务行没有对应的结构化真源记录`
+        + `（${unmigrated.slice(0, 8).join(", ")}${unmigrated.length > 8 ? " …" : ""}）`;
+    if (asJson) {
+      process.stdout.write(JSON.stringify({
+        action: "render-progress",
+        ok: false,
+        written: null,
+        refused: "not_migrated",
+        not_migrated: true,
+        unmigrated_task_ids: unmigrated,
+        malformed_view: legacy.malformed,
+        detail,
+        remedy: "cortex-agent migrate-task-state apply --confirm",
+        task_count: tasks.length,
+        mission_count: missions.length,
+      }, null, 2) + "\n");
+    } else {
+      console.error(
+        `❌ 拒绝写入：${detail}。\n`
+        + "  渲染会用真源覆盖这些行，任务数据会消失且无处可查。\n"
+        + `  ${MIGRATION_REMINDER}`,
+      );
+    }
+    process.exitCode = 1;
     return;
   }
 
