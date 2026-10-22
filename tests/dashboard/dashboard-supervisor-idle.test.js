@@ -218,7 +218,11 @@ test("stale Dashboard owner cannot kill a same-root process without the token", 
 });
 
 test("ownership-lost daemon cannot overwrite successor state", async () => {
-  const fixture = createFixture();
+  // Long idle window on purpose: this test needs the daemon to still be
+  // ALIVE when it is signalled, otherwise there is no daemon that could
+  // overwrite the successor state. With the default 200ms idle shutdown the
+  // daemon exited first under load and the signal failed with ESRCH.
+  const fixture = createFixture({ idleShutdownMs: 60000 });
   try {
     const enabled = callSupervisor(fixture.root, ["auto", "enable"]);
     assert.equal(enabled.status, 0, enabled.stderr);
@@ -243,6 +247,13 @@ test("ownership-lost daemon cannot overwrite successor state", async () => {
       last_reason: "successor_started",
     };
     fs.writeFileSync(path.join(runtime, "state.json"), `${JSON.stringify(successorState, null, 2)}\n`);
+    let daemonAlive = true;
+    try {
+      process.kill(oldPid, 0);
+    } catch (_) {
+      daemonAlive = false;
+    }
+    assert.ok(daemonAlive, "supervisor daemon must still be alive before it is signalled");
     process.kill(oldPid, "SIGUSR1");
     await waitFor(() => {
       try {

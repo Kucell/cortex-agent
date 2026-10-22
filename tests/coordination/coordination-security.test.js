@@ -48,6 +48,20 @@ test("rejects personal absolute paths and infrastructure addresses", () => {
   })), { key: "ERR_INVALID_EVENT" });
 });
 
+test("allows ordinary temporary paths — only local sockets are rejected", () => {
+  // The local_socket_path rule targets IPC endpoints. A blanket ban on every
+  // /tmp path also rejected ordinary temporary directories, which made event
+  // submission platform-dependent: on Linux os.tmpdir() is /tmp, so the
+  // governed launcher's ownership-failure event (message carries the resolved
+  // scope path) was rejected while the same code passed on macOS.
+  assert.doesNotThrow(() => validateEvent(safeEvent({
+    message: "scope missing at /tmp/cortex-governed-launcher-abc/nonexistent-scope",
+  })));
+  assert.doesNotThrow(() => validateEvent(safeEvent({
+    message: "worktree /var/run/cortex-agent/workspace-1",
+  })));
+});
+
 test("allows stable IDs and repository-relative evidence", () => {
   const event = safeEvent({
     message: "validation complete",

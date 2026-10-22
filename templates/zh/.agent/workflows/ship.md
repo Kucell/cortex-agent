@@ -96,11 +96,23 @@ status: stable
 - ✅ 代码文件已写入/编辑
 - ✅ git status 显示改动
 
-**执行**: 运行 `.agent/hooks/pre-commit-check.sh`
+**执行**: 运行机械门禁的 lint 检查
+
+```bash
+node .agent/skills/phase-gate/scripts/gate.js --lint-only \
+  --task <task-id> \
+  --write-lint-result .agent/artifacts/<task-id>/lint-result.json
+```
+
 - Linter 检查（ESLint, Ruff 等）
 - 密钥扫描
 
-**Blocking Condition**: Linter 失败 → 阻断，提示修复
+> ⚠️ **不要直接执行 `.agent/hooks/pre-commit-check.sh`**：它是 Claude Code 的 PostToolUse 钩子，
+> 依赖 stdin JSON payload 取目标文件，单独执行会对任何输入都 exit 0（门禁空转）。
+> 上面的 runner 负责构造正确 payload 并逐文件聚合结果。
+
+**Blocking Condition**: runner exit code ≠ 0 → 阻断，提示修复
+（runner 在钩子缺失或 `jq` 缺失时 **fail-closed**，不会静默放行）
 
 **Max Retry**: 2 次（连续 2 次 lint 失败 → 请求人工检查规则或手动修复）
 
@@ -109,7 +121,14 @@ status: stable
 ### Phase 3: REVIEW
 
 **Gate Check**: `phase-gate --from LINT --to REVIEW`
-- ✅ Linter 检查通过（exit code 0）
+
+```bash
+node .agent/skills/phase-gate/scripts/gate.js --from LINT --to REVIEW \
+  --task <task-id> \
+  --lint-result .agent/artifacts/<task-id>/lint-result.json
+```
+
+- ✅ Linter 检查通过（runner exit code 0）
 - ✅ 无安全漏洞检测
 
 **执行**: 调用 `code-reviewer` sub-agent
@@ -127,6 +146,15 @@ status: stable
 ### Summary
 ```
 
+**必须落盘的 verdict JSON**（Phase 4 门禁的证据来源，缺了就无法通过 `REVIEW → COMMIT`）：
+
+```bash
+# code-reviewer 输出的机器可解析 verdict 必须写入此路径
+.agent/plans/<task-id>/review_verdict.json
+```
+
+最少字段：`verdict`（`PASS` / `FAIL`）与 `blocking_issues`（数组）。
+
 **Blocking Condition**: "❌ Must Fix" 非空 → 阻断，回滚到 EXECUTE 阶段
 
 **Max Retry**: 2 次
@@ -136,8 +164,14 @@ status: stable
 ### Phase 4: COMMIT
 
 **Gate Check**: `phase-gate --from REVIEW --to COMMIT`
-- ✅ 代码审查完成
-- ✅ 无阻断性问题（"❌ Must Fix" 为空）
+
+```bash
+node .agent/skills/phase-gate/scripts/gate.js --from REVIEW --to COMMIT --task <task-id>
+```
+
+- ✅ 代码审查完成（review verdict JSON 存在且可解析）
+- ✅ review verdict = PASS
+- ✅ `blocking_issues` 为空（等价于报告里 "❌ Must Fix" 为空）
 
 **执行**: 调用 `/commit` 逻辑
 - 分析 git diff 生成 Conventional Commits 消息

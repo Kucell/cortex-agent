@@ -890,7 +890,14 @@ test("launch ownership failure emits task.failed event and task.state=FAILED", a
     const task = service.getTask("TASK-OWN-FAIL-001");
     assert.ok(task);
     assert.equal(task.assignee, "claude-agent");
-    assert.equal(task.state, STATES.FAILED);
+    assert.equal(
+      task.state,
+      STATES.FAILED,
+      `task state not persisted — taskStatePersisted=${result.taskStatePersisted} ` +
+        `persistenceError=${JSON.stringify(result.persistenceError)} ` +
+        `events=${JSON.stringify(service.listEvents({ taskId: "TASK-OWN-FAIL-001" }).map((e) => e.eventType))} ` +
+        `journalEvents=${JSON.stringify((service.listEvents() || []).map((e) => e.eventType))}`,
+    );
   } finally {
     service.close();
     fs.rmSync(dir, { recursive: true, force: true });
