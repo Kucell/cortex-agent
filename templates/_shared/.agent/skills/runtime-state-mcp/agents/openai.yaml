@@ -1,0 +1,5 @@
+interface:
+  display_name: "Runtime State MCP"
+  short_description: "Expose read-only runtime projections over MCP"
+  default_prompt: "Use $runtime-state-mcp to inspect Cortex Agent runtime state through the read-only Management API projection."
+

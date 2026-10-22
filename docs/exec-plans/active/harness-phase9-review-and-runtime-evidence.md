@@ -37,7 +37,7 @@ Phase 8 把应用可理解性的**文档层**做完了（6/6 任务已完成）�
 
 ## 任务拆解
 
-### T-H24 [待办] M1 · L1 分发完整性修复（manifest + 实现 + 垃圾）
+### T-H24 [已完成] M1 · L1 分发完整性修复（manifest + 实现 + 垃圾）
 
 **T-H24a 补齐 15 个 L1 skill 的 SKILL.md**
 - 目标 skill：`agent-visibility`、`architecture-guard`、`doc-gardening`、`graphify`、`knowledge-lint`、`mission-progress`、`runtime-continuity`、`runtime-evidence`、`runtime-state-integration`、`runtime-state-mcp`、`secrets`、`session-triage`、`sync-global`、`vcs-pr`、`weekly-report`
@@ -59,7 +59,7 @@ Phase 8 把应用可理解性的**文档层**做完了（6/6 任务已完成）�
 
 - 验收：`templates/_shared/.agent/skills/*/SKILL.md` 覆盖全部 33 个 skill；5 处实现补齐；`node scripts/check-l3-boundary.js` 零违规；无未分发路径的链接
 
-### T-H25 [待办] M1 · L1 分发完整性机械门禁
+### T-H25 [已完成] M1 · L1 分发完整性机械门禁
 
 三条只读、hermetic 的检查：
 
@@ -167,3 +167,5 @@ Phase 8 把应用可理解性的**文档层**做完了（6/6 任务已完成）�
 - 2026-10-22：实证 L3 边界检查为 `scope: L3` 标记驱动，复制本批 15 个 SKILL.md 不触发该门禁；且这 15 个不引用任何 L3-only 规则。据此把 T-H24 的风险从「内容越界需重写」修正为「仅需修 1 处下游死链」
 - 2026-10-22：提案成文，待批准后按 M1 → M2 → M3 推进
 - 2026-10-22：追加 L1↔L3 文件集对等核查，发现 5 处实现文件缺失——`vcs-pr` 与 `maturity-tracker` 缺入口文件导致 skill 在下游**完全不可用**（而 L1 的 `config/vcs.yml.example` 正在教用户使用 `vcs-pr`）。据此把 P-003 从「补 manifest」升级为「修分发完整性」，门禁从一条扩展为三条（新增文件集对等性），并调整 T-H24/T-H25 拆分为 a/b/c
+- 2026-10-22：T-H24 完成——同步 15 个 SKILL.md + 5 处实现文件，清理分发垃圾，修掉 `runtime-evidence` manifest 的 2 处死链（指向未分发的 `docs/` 与 `workflows/`）
+- 2026-10-22：T-H25 完成——新增 `scripts/check-l1-distribution.js`（manifest 完整性 / 文件集对等性 / 链接有效性三条检查，分发集以各自 git index 为准），接入 `pnpm check:l1-distribution` 与 CI；反向验证 8 项测试全过
