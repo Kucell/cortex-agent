@@ -393,7 +393,11 @@ function printResult(r, idx, total) {
     const dim = colorize('', 'dim', useColor);
     const first = r.firstFailure || {};
     const firstWhere = first.signal ? `signal=${first.signal}` : `exit=${first.code}`;
-    console.log(dim + `    ↺ 首次并行失败（${firstWhere}）→ 独占重跑通过（疑似资源争用）` + COLOR.reset);
+    // 重试也失败时不能说「重跑通过」——那会把真失败说成资源争用。
+    const outcome = r.ok
+      ? '独占重跑通过（疑似资源争用）'
+      : '独占重跑仍失败';
+    console.log(dim + `    ↺ 首次并行失败（${firstWhere}）→ ${outcome}` + COLOR.reset);
   }
   if (!r.ok && (r.stderr || r.stdout)) {
     const text = (r.stderr || r.stdout);
