@@ -3,17 +3,43 @@
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
-const os = require("node:os");
 const { execFileSync } = require("node:child_process");
 const test = require("node:test");
 
-const ROOT = path.resolve(__dirname, "..", "..");
+const { createAgentSandbox } = require("../helpers/agent-sandbox");
+
+const REPO_ROOT = path.resolve(__dirname, "..", "..");
 const VARS = {
-  zh: path.join(ROOT, "templates", "zh", ".agent"),
-  en: path.join(ROOT, "templates", "en", ".agent"),
+  zh: path.join(REPO_ROOT, "templates", "zh", ".agent"),
+  en: path.join(REPO_ROOT, "templates", "en", ".agent"),
 };
-const INGEST = path.join(ROOT, ".agent", "skills", "resource-ingest", "scripts", "ingest.js");
-const BUILD_L0L1 = path.join(ROOT, ".agent", "skills", "context-budget", "scripts", "build-l0l1.js");
+// The scripts stay in the real repository: they resolve state paths from
+// `process.cwd()` but siblings through `__dirname`, so only the working
+// directory moves into the sandbox. Everything they write lands there.
+const INGEST = path.join(REPO_ROOT, ".agent", "skills", "resource-ingest", "scripts", "ingest.js");
+const BUILD_L0L1 = path.join(REPO_ROOT, ".agent", "skills", "context-budget", "scripts", "build-l0l1.js");
+
+let sandbox = null;
+let ROOT = "";
+let RESOURCES_DIR = "";
+let EXTERNAL_DIR = "";
+let MANIFEST_FILE = "";
+let URI_MAP = "";
+let INDEX_FILE = "";
+
+test.before(() => {
+  sandbox = createAgentSandbox();
+  ROOT = sandbox.root;
+  RESOURCES_DIR = path.join(ROOT, ".agent", "resources");
+  EXTERNAL_DIR = path.join(RESOURCES_DIR, "external");
+  MANIFEST_FILE = path.join(RESOURCES_DIR, "MANIFEST.json");
+  URI_MAP = path.join(ROOT, ".agent", "registry", "uri-map.json");
+  INDEX_FILE = path.join(ROOT, ".agent", "context-index.json");
+});
+
+test.after(() => {
+  if (sandbox) sandbox.cleanup();
+});
 
 function runScript(script, args = []) {
   return JSON.parse(execFileSync(process.execPath, [script, ...args], { encoding: "utf8", cwd: ROOT }));
@@ -22,12 +48,6 @@ function runScript(script, args = []) {
 function loadJson(p) {
   return JSON.parse(fs.readFileSync(p, "utf8"));
 }
-
-const RESOURCES_DIR = path.join(ROOT, ".agent", "resources");
-const EXTERNAL_DIR = path.join(RESOURCES_DIR, "external");
-const MANIFEST_FILE = path.join(RESOURCES_DIR, "MANIFEST.json");
-const URI_MAP = path.join(ROOT, ".agent", "registry", "uri-map.json");
-const INDEX_FILE = path.join(ROOT, ".agent", "context-index.json");
 
 test("resource-ingest dry-run reports plan without writing", () => {
   const result = runScript(INGEST, [

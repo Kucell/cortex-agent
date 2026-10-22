@@ -8,8 +8,11 @@ name: Full Test Suite
 #      workflow —— 有 paths 过滤的 workflow 在某些 PR 上根本不出现 check，
 #      配成 required 会让 PR 永远卡住。
 #
-# 见 .agent/rules/vcs-pr-flow.md §4.2。本 workflow 是仓库唯一的无过滤全量门禁，
-# required check context 名固定为 `Full Test Suite / full-test`。
+# 见 .agent/rules/vcs-pr-flow.md §4.2。本 workflow 是仓库唯一的无过滤全量门禁。
+#
+# required status check 的 context 名 = check run 的 name 字段 = job id，
+# 即 `full-test`（**不是** PR 页面上显示的 `Full Test Suite / full-test`）。
+# 配成展示串会导致 check 明明 success 但 PR 永远卡在 BLOCKED。
 
 on:
   pull_request:
@@ -91,7 +94,11 @@ jobs:
         run: pnpm check:parity
 
       - name: Run full test suite
-        run: pnpm test
+        # test:ci runs the runner in strict hermetic mode: the suite must not
+        # write a single byte into .agent/. In CI nothing else can write there
+        # (no live agent session, no Dashboard supervisor daemon), so any drift
+        # is a genuine non-hermetic test. See .agent/rules/test-policy.md §3.4.
+        run: pnpm test:ci
 
       - name: Upload test evidence
         if: always()

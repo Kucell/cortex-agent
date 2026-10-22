@@ -11,34 +11,61 @@
  * The reconciliation engine and self-check skill live in the inner
  * .agent workspace; this test exercises the public CLI and asserts
  * the contract from the main repo.
+ *
+ * The scripts resolve their state paths from `process.cwd()`, so they run
+ * against a sandboxed copy of `.agent/` — otherwise every run rewrites the
+ * tracked reports in the developer's working copy.
  */
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
-const { execFileSync } = require("node:child_process");
+const { spawnSync } = require("node:child_process");
 
-const ROOT = path.resolve(__dirname, "..", "..");
-const SELF_CHECK = path.join(ROOT, ".agent", "skills", "self-check", "scripts", "index.js");
-const REALITY_REC = path.join(ROOT, ".agent", "skills", "self-check", "scripts", "reality-reconciliation.js");
+const { createAgentSandbox } = require("../helpers/agent-sandbox");
+
+const REPO_ROOT = path.resolve(__dirname, "..", "..");
+// Scripts stay in the real repository (self-check requires `../../../../lib/…`
+// through `__dirname`); only the working directory moves into the sandbox.
+const SELF_CHECK = path.join(REPO_ROOT, ".agent", "skills", "self-check", "scripts", "index.js");
+const REALITY_REC = path.join(REPO_ROOT, ".agent", "skills", "self-check", "scripts", "reality-reconciliation.js");
+
+let sandbox = null;
+let ROOT = "";
+let REALITY_REPORT_FILE = "";
+
+test.before(() => {
+  sandbox = createAgentSandbox();
+  ROOT = sandbox.root;
+  REALITY_REPORT_FILE = path.join(ROOT, ".agent", "metrics", "reality-reconciliation-report.json");
+});
+
+test.after(() => {
+  if (sandbox) sandbox.cleanup();
+});
 
 function runSelfCheck(args = []) {
   // self-check exits with non-zero on fail, but its JSON report is still
   // the contract surface; capture stdout regardless.
-  const result = require("node:child_process").spawnSync("node", [SELF_CHECK, ...args], { encoding: "utf8" });
+  const result = spawnSync("node", [SELF_CHECK, ...args], { encoding: "utf8", cwd: ROOT });
   return { status: result.status, report: JSON.parse(result.stdout) };
 }
 
 function runRealityRec(args = []) {
-  const result = require("node:child_process").spawnSync("node", [REALITY_REC, ...args], { encoding: "utf8" });
-  return { status: result.status, report: JSON.parse(result.stdout) };
+  // The CLI prints a human-readable summary (not JSON) and exits non-zero
+  // when the report is critical; the persisted JSON file is the contract
+  // surface, so the caller reads that instead of stdout.
+  const result = spawnSync("node", [REALITY_REC, ...args], { encoding: "utf8", cwd: ROOT });
+  return { status: result.status, stdout: result.stdout, stderr: result.stderr };
 }
 
 test("self-check report shape covers VC-008 completeness vocabulary", () => {
   const { report } = runSelfCheck(["check"]);
   assert.ok(typeof report.overall_status === "string");
-  assert.ok(["pass", "warn", "fail"].includes(report.overall_status));
+  // self-check vocabulary is pass | warning | fail (see runFullCheck()).
+  assert.ok(["pass", "warning", "fail"].includes(report.overall_status),
+    `self-check overall_status must be pass|warning|fail, got: ${report.overall_status}`);
   assert.ok(["L0", "L1", "L2", "L3"].includes(report.drift_level));
   assert.ok(report.results && typeof report.results === "object");
   assert.ok(Object.keys(report.results).length > 0);
@@ -67,31 +94,30 @@ test("reality reconciliation report keeps the contract surface alive", () => {
   // keys; the completeness vocabulary ("complete"/"partial"/"unknown")
   // is documented in the report header even when not present in the
   // current findings.
-  const reportFile = path.join(ROOT, ".agent", "metrics", "reality-reconciliation-report.json");
-  if (!fs.existsSync(reportFile)) {
-    require("node:child_process").spawnSync("node", [REALITY_REC], { encoding: "utf8" });
-  }
-  assert.ok(fs.existsSync(reportFile), "reality-reconciliation must persist its JSON report");
-  const report = JSON.parse(fs.readFileSync(reportFile, "utf8"));
+  //
+  // The report is regenerated here instead of read from the working copy:
+  // a committed report would only prove what an earlier run wrote.
+  runRealityRec();
+  assert.ok(fs.existsSync(REALITY_REPORT_FILE), "reality-reconciliation must persist its JSON report");
+  const persisted = JSON.parse(fs.readFileSync(REALITY_REPORT_FILE, "utf8"));
   // Required schema keys
   for (const key of ["gate", "overall_status", "git_reality", "runtime_state", "missions", "findings", "repair_plan"]) {
-    assert.ok(key in report, `reality report missing required key: ${key}`);
+    assert.ok(key in persisted, `reality report missing required key: ${key}`);
   }
   // overall_status must be one of the documented levels
-  assert.ok(["ok", "warning", "critical"].includes(report.overall_status),
-    `reality report overall_status must be ok|warning|critical, got: ${report.overall_status}`);
+  assert.ok(["pass", "warn", "critical"].includes(persisted.overall_status),
+    `reality report overall_status must be pass|warn|critical, got: ${persisted.overall_status}`);
   // findings is an array; empty array is acceptable
-  assert.ok(Array.isArray(report.findings));
+  assert.ok(Array.isArray(persisted.findings));
 });
 
 test("self-check report file is written under .agent/metrics (VC-009 anchor)", () => {
   const { report } = runSelfCheck(["check"]);
   assert.ok(typeof report.run_at === "string");
   const metricsFile = path.join(ROOT, ".agent", "metrics", "self-check-report.json");
-  if (fs.existsSync(metricsFile)) {
-    const persisted = JSON.parse(fs.readFileSync(metricsFile, "utf8"));
-    assert.strictEqual(persisted.skill || persisted.skill_id, report.skill || report.skill_id);
-  }
+  assert.ok(fs.existsSync(metricsFile), "self-check must persist its JSON report");
+  const persisted = JSON.parse(fs.readFileSync(metricsFile, "utf8"));
+  assert.strictEqual(persisted.skill || persisted.skill_id, report.skill || report.skill_id);
 });
 
 test("self-check cannot report PASS when a critical reconciliation gap exists (VC-009)", () => {
