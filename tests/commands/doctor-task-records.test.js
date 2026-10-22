@@ -122,3 +122,48 @@ test("doctor: --json envelope carries the task_records self-check", async (t) =>
   assert.equal(parsed.task_records.invalid, 1);
   assert.equal(parsed.task_records.ok, false);
 });
+
+test("doctor --fix reports the schema verdict before the migration runs", async (t) => {
+  const { spawnSync } = require("node:child_process");
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-doctor-fix-plan-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+
+  // A legacy project whose records cannot satisfy the shipped schema.
+  const tasks = path.join(root, ".agent", "tasks");
+  fs.mkdirSync(tasks, { recursive: true });
+  fs.mkdirSync(path.join(root, ".agent", "plans"), { recursive: true });
+  fs.mkdirSync(path.join(root, ".agent", "scripts"), { recursive: true });
+  fs.copyFileSync(
+    path.join(TEMPLATE_AGENT, "tasks", "task.schema.json"),
+    path.join(tasks, "task.schema.json"),
+  );
+  fs.copyFileSync(
+    path.join(TEMPLATE_AGENT, "scripts", "json-schema.js"),
+    path.join(root, ".agent", "scripts", "json-schema.js"),
+  );
+  const strict = JSON.parse(fs.readFileSync(path.join(tasks, "task.schema.json"), "utf8"));
+  strict.required = [...strict.required, "reviewer"];
+  fs.writeFileSync(path.join(tasks, "task.schema.json"), JSON.stringify(strict, null, 2), "utf8");
+  fs.writeFileSync(
+    path.join(root, ".agent", "plans", "task-progress.md"),
+    [
+      "## 🔥 当前活跃任务",
+      "",
+      "| 任务 ID | 优先级 | 描述 | 进度 |",
+      "| :--- | :--- | :--- | :--- |",
+      "| T-LEG-001 | P0 | 旧版任务 | 40% |",
+      "",
+    ].join("\n"),
+    "utf8",
+  );
+
+  const out = spawnSync(
+    process.execPath,
+    [path.join(ROOT, "bin", "cli.js"), "doctor", "--fix", "--project", root],
+    { encoding: "utf8", input: "" },
+  );
+  assert.match(out.stdout, /schema check: failed/);
+  assert.match(out.stdout, /the migration will abort/);
+  // Nothing was written: the plan is not compliant, so no record exists.
+  assert.equal(fs.existsSync(path.join(tasks, "T-LEG-001.json")), false);
+});

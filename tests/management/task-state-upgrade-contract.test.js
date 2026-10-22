@@ -216,3 +216,23 @@ test("a record that violates the schema is reported, not silently accepted", (t)
   assert.equal(audit.invalid.length, 1);
   assert.equal(audit.invalid[0].task_id, "T-LEG-001");
 });
+
+test("the plan preview shows whether the records would satisfy the schema", (t) => {
+  const { spawnSync } = require("node:child_process");
+  const cwd = legacyProject();
+  t.after(() => fs.rmSync(cwd, { recursive: true, force: true }));
+
+  const out = spawnSync(
+    process.execPath,
+    [path.join(ROOT, "bin", "cli.js"), "migrate-task-state", "plan", "--project", cwd],
+    { encoding: "utf8" },
+  );
+  const payload = JSON.parse(out.stdout.slice(out.stdout.indexOf("{")));
+  assert.equal(payload.action, "migrate-task-state plan");
+  assert.deepEqual(payload.planned_tasks.sort(), ["T-LEG-001", "T-LEG-002"]);
+  // The read-only preview carries the compliance verdict: `apply` refuses to
+  // write records that do not satisfy the schema, so the plan must say so
+  // before the user commits to it.
+  assert.ok(payload.validation, "the plan must report the schema verdict");
+  assert.equal(payload.validation.ok, true);
+});
