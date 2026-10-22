@@ -37,6 +37,28 @@ const DEFAULT_GUARD_WINDOW_MS = 5 * 60 * 60 * 1000;
 const DEFAULT_GUARD_POLL_MS = 60 * 1000;
 const GUARD_START_GRACE_MS = 5000;
 
+// resume-bundle --auto --inject (P-002 / MS-002) budget defaults:
+//   - DEFAULT_BUDGET_PERCENT: summarization threshold expressed as a
+//     percentage of the context window (40% ceiling per context-budget).
+//   - DEFAULT_CONTEXT_WINDOW_TOKENS: conservative assumed window when neither
+//     --budget-tokens nor CORTEX_CONTEXT_WINDOW_TOKENS is provided.
+const DEFAULT_BUDGET_PERCENT = 40;
+const DEFAULT_CONTEXT_WINDOW_TOKENS = 128000;
+// Milestone states considered "done" when scanning for the current milestone.
+const DONE_MILESTONE_STATES = new Set([
+  "VALIDATE_PASSED", "VALIDATED", "COMPLETED", "COMPLETE", "DONE",
+  "CLOSED", "PASSED", "SHIPPED", "CANCELLED", "REJECTED", "WAIVED",
+]);
+// Decision statuses considered "resolved" (no longer the current decision).
+const DECISION_DONE_STATUSES = new Set([
+  "approved", "rejected", "closed", "cancelled", "superseded", "resolved", "waived",
+]);
+// Mission-plan states that exclude a mission from the active-mission heuristic
+// (P-003 方案 C, M-030 MS-003).  Case-insensitive; a mission whose
+// mission-plan.md carries no matched state line defaults to ACTIVE
+// (presence heuristic — "mission-plan 目录存在性启发式").
+const MISSION_DONE_STATES = new Set(["done", "blocked", "completed", "complete"]);
+
 const GATES_TIGHT = new Set(["user", "agent"]);
 const GATES_DESTRUCTIVE = new Set(["user"]);
 
@@ -231,6 +253,13 @@ function createRuntimeEvent(project, argv, defaults = {}) {
     exit_code: exitCodeRaw == null ? null : Number(exitCodeRaw),
     summary: flag("--command-summary", argv) || "",
   }] : [];
+  // MS-003 (方案 C): mission_context carried into the checkpoint / log event
+  // payload via `--mission-context-json` (additive; null when absent).
+  const missionContextRaw = flag("--mission-context-json", argv) || defaults.mission_context_raw || null;
+  let missionContext = null;
+  if (missionContextRaw) {
+    try { missionContext = JSON.parse(missionContextRaw); } catch (_) { missionContext = null; }
+  }
   const event = {
     event_id: eventId,
     project,
@@ -240,6 +269,7 @@ function createRuntimeEvent(project, argv, defaults = {}) {
     session_id: flag("--session-id", argv) || defaults.session_id || findLatestSessionId(project),
     task_id: flag("--task-id", argv) || defaults.task_id || null,
     mission_id: flag("--mission-id", argv) || defaults.mission_id || null,
+    ...(missionContext ? { mission_context: missionContext } : {}),
     type: defaults.type || flag("--type", argv) || "work_log",
     phase: flag("--phase", argv) || defaults.phase || null,
     message: flag("--message", argv) || defaults.message || "",
@@ -267,6 +297,7 @@ function createRuntimeEvent(project, argv, defaults = {}) {
     runtime_event: rel(file),
     phase: event.phase,
     message: event.message,
+    ...(event.mission_context ? { mission_context: event.mission_context } : {}),
   });
   return { event, eventPath: file };
 }
@@ -752,6 +783,311 @@ function buildResumeBundle(project) {
   };
 }
 
+// ─── resume-bundle --auto --inject (P-002 / MS-002) ─────────────────────────
+// SessionStart auto-injection path: `resume-bundle --auto --inject
+// [--budget-percent <0-100>] [--budget-tokens <N>]`.  Read-only — same data
+// as the plain `resume-bundle`, but emits a `[CORTEX-RESUME]` block (marker
+// line + JSON) and, when the estimated bundle size exceeds the budget share
+// of the context window, replaces the payload with summarizeForResume()'s
+// tiered digest.  --auto makes any failure graceful (exit 0 + stderr log) so
+// SessionStart hooks are never blocked.
+
+function parsePercent(value, fallback) {
+  if (value == null || value === "") return fallback;
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < 0) return fallback;
+  return Math.min(n, 100);
+}
+
+function contextWindowTokens() {
+  const env = Number(process.env.CORTEX_CONTEXT_WINDOW_TOKENS);
+  return Number.isFinite(env) && env > 0 ? env : DEFAULT_CONTEXT_WINDOW_TOKENS;
+}
+
+// Estimate the token cost of a bundle.  Primary: context-budget skill
+// estimator CLI if it exists (contract below); fallback: ~4 chars/token
+// heuristic — built-in, zero npm deps, never depends on the skill existing.
+//   node .agent/skills/context-budget/scripts/estimate-tokens.js --json -
+//     → stdout {"ok":true,"tokens":<n>}
+function estimateBundleTokens(obj) {
+  const json = JSON.stringify(obj);
+  const estimator = path.join(AGENT_ROOT, "skills", "context-budget", "scripts", "estimate-tokens.js");
+  if (fs.existsSync(estimator)) {
+    try {
+      const res = spawnSync(process.execPath, [estimator, "--json", "-"], {
+        input: json,
+        encoding: "utf8",
+        timeout: 3000,
+      });
+      if (res.status === 0 && res.stdout) {
+        const parsed = JSON.parse(res.stdout);
+        const tokens = Number(parsed && parsed.tokens);
+        if (Number.isFinite(tokens) && tokens >= 0) return tokens;
+      }
+    } catch (_) { /* fall through to heuristic */ }
+  }
+  return Math.ceil(json.length / 4);
+}
+
+function excerptFile(file, maxChars) {
+  try {
+    const text = fs.readFileSync(file, "utf8").replace(/\s+/g, " ").trim();
+    return text.length > maxChars ? `${text.slice(0, maxChars)}…` : text;
+  } catch (_) {
+    return "";
+  }
+}
+
+function readActiveRunSummary() {
+  const runId = findActiveRunId();
+  if (!runId) return null;
+  const run = readJson(path.join(RUNS_DIR, `${runId}.json`));
+  if (!run) return null;
+  const events = Array.isArray(run.events) ? run.events : [];
+  const typeCounts = {};
+  for (const e of events) {
+    const t = e && e.type ? String(e.type) : "unknown";
+    typeCounts[t] = (typeCounts[t] || 0) + 1;
+  }
+  const recent = events.slice(-5).map((e) => ({
+    type: e && e.type ? String(e.type) : null,
+    phase: e && e.phase ? String(e.phase) : null,
+    at: (e && (e.at || e.created_at)) || null,
+    message: e && e.message ? String(e.message).slice(0, 120) : null,
+  }));
+  return {
+    run_id: run.run_id || runId,
+    status: run.status || null,
+    phase: run.phase || null,
+    mission_id: run.mission_id || null,
+    task_id: run.task_id || null,
+    updated_at: run.updated_at || null,
+    events_recent: recent,
+    event_type_counts: typeCounts,
+  };
+}
+
+function milestoneStateDone(state) {
+  const upper = String(state || "").toUpperCase().trim();
+  if (!upper) return false;
+  for (const token of DONE_MILESTONE_STATES) {
+    if (upper.startsWith(token)) return true;
+  }
+  return false;
+}
+
+function scanCurrentMilestone(missionId) {
+  const dir = path.join(AGENT_ROOT, "missions", missionId, "milestones");
+  if (!fs.existsSync(dir)) return null;
+  const files = fs.readdirSync(dir).filter((f) => f.endsWith(".md")).sort();
+  for (const file of files) {
+    let text = "";
+    try { text = fs.readFileSync(path.join(dir, file), "utf8"); } catch (_) { continue; }
+    const stateMatch = text.match(/^## Status[\s\S]*?^- State:\s*(.+)$/m);
+    const state = stateMatch ? stateMatch[1].trim() : "";
+    if (milestoneStateDone(state)) continue;
+    const goalMatch = text.match(/^## Goal\s*\n+([\s\S]*?)(?=^## )/m);
+    const goal = (goalMatch ? goalMatch[1].trim() : "").split(/\n/)[0].slice(0, 200);
+    return {
+      mission_id: missionId,
+      milestone: file.replace(/\.md$/, ""),
+      pointer: rel(path.join(dir, file)),
+      state: state || null,
+      goal: goal || null,
+    };
+  }
+  return null;
+}
+
+function readCurrentMilestone(activeMissionId) {
+  if (activeMissionId) {
+    const direct = scanCurrentMilestone(activeMissionId);
+    if (direct) return direct;
+  }
+  const missionsDir = path.join(AGENT_ROOT, "missions");
+  if (!fs.existsSync(missionsDir)) return null;
+  const missions = fs.readdirSync(missionsDir)
+    .filter((n) => /^M-\d/.test(n))
+    .filter((n) => { try { return fs.statSync(path.join(missionsDir, n)).isDirectory(); } catch (_) { return false; } })
+    .sort((a, b) => {
+      try {
+        return fs.statSync(path.join(missionsDir, b)).mtimeMs - fs.statSync(path.join(missionsDir, a)).mtimeMs;
+      } catch (_) { return 0; }
+    });
+  for (const missionId of missions) {
+    const found = scanCurrentMilestone(missionId);
+    if (found) return found;
+  }
+  return null;
+}
+
+function readCurrentDecision() {
+  const indexFile = path.join(AGENT_ROOT, "decisions", "index.json");
+  const index = readJson(indexFile);
+  if (!index || !Array.isArray(index.decisions) || !index.decisions.length) return null;
+  const open = index.decisions.filter((d) => {
+    const s = String((d && d.status) || "").toLowerCase();
+    return !DECISION_DONE_STATUSES.has(s);
+  });
+  const pool = open.length ? open : index.decisions;
+  const latest = pool.slice().sort((a, b) => {
+    const at = String((a && a.updated_at) || "");
+    const bt = String((b && b.updated_at) || "");
+    return bt.localeCompare(at);
+  })[0];
+  return {
+    decision_id: (latest && latest.decision_id) || null,
+    status: (latest && latest.status) || null,
+    type: (latest && latest.type) || null,
+    path: latest && latest.path ? rel(latest.path) : null,
+    updated_at: (latest && latest.updated_at) || null,
+    open_count: open.length,
+    pointer: rel(indexFile),
+  };
+}
+
+function summarizeArtifacts(paths) {
+  const list = Array.isArray(paths) ? paths : [];
+  const byStatus = {};
+  let readable = 0;
+  for (const p of list) {
+    const state = readJson(path.resolve(process.cwd(), p));
+    if (!state) continue;
+    readable += 1;
+    const s = String(state.status || state.state || "unknown");
+    byStatus[s] = (byStatus[s] || 0) + 1;
+  }
+  return { count: list.length, readable, by_status: byStatus };
+}
+
+// Tiered digest per P-002 §2.3.  Kept high-priority fields + latest_archive
+// metadata verbatim; long bodies/events/artifact lists collapsed to excerpts,
+// counts, and pointers; raw stdout / full commit log / giant nested JSON
+// dropped.  Only paths, summaries and pointers — no host private state.
+function summarizeForResume(bundle, context = {}) {
+  const archive = bundle.archive || {};
+  const archiveState = archive.state || {};
+  const activeRun = context.activeRun != null ? context.activeRun : readActiveRunSummary();
+  const milestone = context.milestone != null ? context.milestone : readCurrentMilestone(activeRun ? activeRun.mission_id : null);
+  const decision = context.decision != null ? context.decision : readCurrentDecision();
+  const artifacts = summarizeArtifacts(bundle.artifact_states || []);
+  const markdownPath = bundle.latest_markdown_archive;
+  const bodyExcerpt = markdownPath ? excerptFile(markdownPath, 200) : "";
+  return {
+    ok: true,
+    action: "resume-bundle",
+    inject: true,
+    summarized: true,
+    project: bundle.project,
+    generated_at: nowIso(),
+    latest_archive: {
+      path: bundle.latest_archive,
+      archive_id: archive.archive_id || null,
+      created_at: archive.created_at || null,
+      source_host: archive.source_host || null,
+      target_host: archive.target_host || null,
+      reason: archive.reason || null,
+      current_goal: archiveState.current_goal || null,
+      in_progress: archiveState.in_progress || null,
+      body_excerpt: bodyExcerpt || null,
+      body_pointer: bodyExcerpt ? "see .agent/runtime-continuity/archives/latest.md" : null,
+      markdown_path: markdownPath,
+    },
+    pending_handoffs: bundle.pending_handoffs || [],
+    runs: activeRun
+      ? {
+          active: {
+            run_id: activeRun.run_id,
+            status: activeRun.status,
+            phase: activeRun.phase,
+            mission_id: activeRun.mission_id,
+            task_id: activeRun.task_id,
+            updated_at: activeRun.updated_at,
+            events_recent: activeRun.events_recent,
+            event_type_counts: activeRun.event_type_counts,
+          },
+        }
+      : { active: null },
+    current_milestone: milestone,
+    current_decision: decision,
+    artifact_states: artifacts,
+    runtime_events_count: Array.isArray(bundle.runtime_events) ? bundle.runtime_events.length : 0,
+    sessions_count: Array.isArray(bundle.sessions) ? bundle.sessions.length : 0,
+    git: bundle.git ? { branch: bundle.git.branch, head: bundle.git.head } : null,
+    next_action: bundle.next_action || null,
+    read_first: bundle.read_first || [],
+    recommended_commands: bundle.recommended_commands || [],
+  };
+}
+
+// Under-budget inject block: the full bundle plus the mission/decision/run
+// pointers the [CORTEX-RESUME] block format always carries (P-002 §2.1).
+function enrichResumeBlock(bundle, context) {
+  const activeRun = context.activeRun;
+  const milestone = context.milestone;
+  const decision = context.decision;
+  return {
+    ...bundle,
+    inject: true,
+    summarized: false,
+    active_run: activeRun
+      ? {
+          run_id: activeRun.run_id,
+          status: activeRun.status,
+          phase: activeRun.phase,
+          mission_id: activeRun.mission_id,
+          task_id: activeRun.task_id,
+          updated_at: activeRun.updated_at,
+        }
+      : null,
+    current_milestone: milestone,
+    current_decision: decision,
+  };
+}
+
+// Build the `[CORTEX-RESUME]` block.  Under budget → full bundle tagged with
+// inject markers + mission/decision pointers; over budget → summarizeForResume()
+// digest.  Budget metadata is always attached so the host / agent can see how
+// the decision was made.
+function buildResumeBlock(bundle, { budgetPercent = DEFAULT_BUDGET_PERCENT, budgetTokens = null } = {}) {
+  const windowTokens = budgetTokens || contextWindowTokens();
+  const estimated = estimateBundleTokens(bundle);
+  const limitTokens = Math.round(windowTokens * (budgetPercent / 100));
+  const over = estimated > limitTokens;
+  const activeRun = readActiveRunSummary();
+  const context = {
+    activeRun,
+    milestone: readCurrentMilestone(activeRun ? activeRun.mission_id : null),
+    decision: readCurrentDecision(),
+  };
+  const block = over
+    ? summarizeForResume(bundle, context)
+    : enrichResumeBlock(bundle, context);
+  block.budget = {
+    estimated_tokens: estimated,
+    window_tokens: windowTokens,
+    budget_percent: budgetPercent,
+    limit_tokens: limitTokens,
+    summarized: over,
+  };
+  return block;
+}
+
+// Emit the graceful-degrade envelope shared by the --auto failure path.
+function degradedResumeBundle(project, error, inject) {
+  const envelope = {
+    ok: false,
+    action: "resume-bundle",
+    project,
+    degraded: true,
+    error,
+    generated_at: nowIso(),
+  };
+  process.stderr.write(`[runtime-continuity] resume-bundle --auto graceful degrade: ${error}\n`);
+  if (inject) process.stdout.write("[CORTEX-RESUME]\n");
+  emit(envelope);
+}
+
 // ─── Mode 4 — status ─────────────────────────────────────────────────────────
 function continuityGuardStatus() {
   const state = readJson(GUARD_STATE_FILE);
@@ -844,7 +1180,7 @@ function listContextsAll({ since, format }) {
   }
   const projects = [];
   for (const project of fs.readdirSync(CONTEXT_HOME)) {
-    const dir = path.join(CONTEXT_HOME, project);
+    const dir = contextDir(project);
     if (!fs.statSync(dir).isDirectory()) continue;
     const archives = listContexts(project);
     const recent = archives.filter((a) => !sinceMs || a.mtime >= sinceMs);
@@ -907,6 +1243,193 @@ function markSessionLastHost(project, toHost) {
   if (body.status === "closed" || !body.status) body.status = "running";
   fs.writeFileSync(target, JSON.stringify(body, null, 2), "utf8");
   return body.session_id || sessionId;
+}
+
+// ─── mission 上下文检测 (P-003 方案 C, M-030 MS-003) ────────────────────────
+// Mission-plan 目录存在性启发式：扫描 `.agent/missions/<M-xxx>/mission-plan.md`，
+// 状态行（`> **状态**:` / `> **State**:` / `**State**:` / `> State:`，不区分
+// 大小写、中英文、空格容忍，兼容仓库实际使用的 `> **Status**:` 变体）非
+// done/blocked/completed/complete → 视为活跃；无状态行 → 默认活跃（存在性
+// 启发式）。零 schema 变更：只读 missions/，不写 sessions/tasks/runs。
+
+// Match a mission-plan status line.  Tolerates optional list markers (`-`/`*`),
+// blockquote `>`, bold `**`, and whitespace around the colon; labels 状态 /
+// State / Status (case-insensitive).
+const MISSION_STATE_LINE_RE = /^\s*(?:[-*]\s*)?(?:>\s*)?(?:\*\*)?(状态|State|Status)\s*(?:\*\*)?\s*:\s*(.+)$/i;
+
+function missionStateExcluded(state) {
+  if (!state) return false; // no matched state line → active (presence heuristic)
+  const cleaned = String(state).replace(/[*`>]/g, "").trim();
+  const lower = cleaned.toLowerCase();
+  for (const token of MISSION_DONE_STATES) {
+    if (lower === token || lower.startsWith(`${token} `) || lower.startsWith(`${token}-`) || lower.startsWith(`${token}_`)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// Read only the first 8 KiB of a mission-plan (state lines live near the top;
+// bounded read keeps the scan < 50ms for ≤10 missions) and return the matched
+// state value, or null when no state line matched.
+function readMissionPlanState(planFile) {
+  let head = "";
+  try {
+    const fd = fs.openSync(planFile, "r");
+    try {
+      const buf = Buffer.alloc(8192);
+      const bytes = fs.readSync(fd, buf, 0, buf.length, 0);
+      head = buf.toString("utf8", 0, bytes);
+    } finally {
+      fs.closeSync(fd);
+    }
+  } catch (_) {
+    return null;
+  }
+  const lines = head.split(/\r?\n/).slice(0, 20);
+  for (const line of lines) {
+    const match = line.match(MISSION_STATE_LINE_RE);
+    if (match) return match[2].replace(/[*`>]/g, "").trim();
+  }
+  return null;
+}
+
+function findActiveMissionHeuristic() {
+  const missionsDir = path.join(AGENT_ROOT, "missions");
+  const scannedAt = nowIso();
+  try {
+    if (!fs.existsSync(missionsDir)) {
+      return { active_missions: [], heuristic_version: "v1", scanned_at: scannedAt };
+    }
+    const active = [];
+    for (const name of fs.readdirSync(missionsDir)) {
+      if (!/^M-/.test(name)) continue;
+      const missionDir = path.join(missionsDir, name);
+      try {
+        if (!fs.statSync(missionDir).isDirectory()) continue;
+      } catch (_) { continue; }
+      const plan = path.join(missionDir, "mission-plan.md");
+      if (!fs.existsSync(plan)) continue;
+      const state = readMissionPlanState(plan);
+      if (missionStateExcluded(state)) continue;
+      active.push({
+        mission_id: name,
+        mission_dir: rel(missionDir),
+        state: state || null,
+        plan_pointer: rel(plan),
+      });
+    }
+    active.sort((a, b) => String(a.mission_id).localeCompare(String(b.mission_id)));
+    return { active_missions: active, heuristic_version: "v1", scanned_at: scannedAt };
+  } catch (err) {
+    return { active_missions: [], heuristic_version: "v1", error: err.message, scanned_at: scannedAt };
+  }
+}
+
+// mission 上下文解析（方案 C）：--mission-id 显式 > 启发式检测 > null。
+// host-switch 与 pre-departure 共用。显式时跳过启发式（不扫描）。
+function buildMissionContext(argv) {
+  const explicit = flag("--mission-id", argv);
+  if (explicit) {
+    return {
+      mission_id: explicit,
+      heuristic_version: "v1",
+      source: "explicit",
+      scanned_at: nowIso(),
+    };
+  }
+  const heuristic = findActiveMissionHeuristic();
+  if (!heuristic || heuristic.error) return null;
+  return {
+    heuristic_version: heuristic.heuristic_version,
+    scanned_at: heuristic.scanned_at,
+    active_missions: heuristic.active_missions || [],
+  };
+}
+
+// ─── handoff JSON 自动生成 (P-003 方案 C, M-030 MS-003) ────────────────────
+// writeHandoffFromSwitch() 在 host-switch 时按 handoff.schema.json 必填字段
+// 自动生成 `.agent/handoffs/H-<ts>-host-switch-<from>-<to>.json`（既有惯例：
+// H- 前缀 + ts，listHandoffs 的 `^H-` 过滤器可直接拾取），并调用
+// handoff-protocol.js validate 校验。source/target/payload 语义映射到
+// schema 字段：from.agent_id = "runtime-continuity:auto-<host>"、produced_at =
+// source.timestamp、to.role/model_pref = target.kind/to_host、
+// artifacts.* = payload 指针。MS-003 附加元数据（kind / mission_context /
+// candidates）以文档化键写入（见 SKILL.md §11），不在 handoff.schema.json
+// property set 内；去除这些键后严格满足 schema。
+function writeHandoffFromSwitch({ project, fromHost, toHost, reason, missionId, missionContext, kind, candidates, note, sessionId, archive }) {
+  const stamp = ts();
+  const handoffId = `H-${stamp}-host-switch-${safeSlug(fromHost)}-${safeSlug(toHost)}`;
+  const file = path.join(AGENT_ROOT, "handoffs", `${handoffId}.json`);
+  const latestJson = archive && archive.archiveJsonPath ? archive.archiveJsonPath : latestArchiveJson();
+  const latestMd = archive && archive.latestPath ? archive.latestPath : resolveLatest(project);
+  const done = asList(note && note.done);
+  const next = asList(note && note.next);
+  const inProgress = (note && (note.in_progress || note.blocked)) || "Resume on the new host from the latest archive.";
+  const payload = {
+    handoff_id: handoffId,
+    mode: "AGENT_RESUME",
+    from: {
+      agent_id: `runtime-continuity:auto-${fromHost}`,
+      model: "runtime-continuity",
+      session_id: sessionId || null,
+    },
+    to: {
+      role: "session-start",
+      model_pref: [toHost || "unknown"].filter(Boolean),
+      required_capabilities: ["resume-bundle"],
+    },
+    task_id: project || "host-switch",
+    mission_id: missionId || null,
+    task_progress: {
+      current_step: `Host switch ${fromHost} → ${toHost}${missionId ? ` (mission ${missionId})` : ""}`,
+      completed_steps: done.length ? done : [`Archive created: ${latestJson ? rel(latestJson) : "n/a"}`],
+      in_progress: inProgress,
+      remaining_steps: next.length ? next : ["Run resume-bundle on the new host to pick up state"],
+    },
+    artifacts: {
+      completed: done,
+      context_snapshot_ref: latestJson ? rel(latestJson) : "",
+      markdown_ref: latestMd ? rel(latestMd) : "",
+      artifact_refs: [],
+    },
+    next_action: `New host (${toHost}): run \`node .agent/skills/runtime-continuity/scripts/index.js resume-bundle --project ${project}\` then continue from the latest archive.`,
+    constraints: [
+      "Auto-generated by runtime-continuity host-switch (M-030 MS-003, 方案 C)",
+      reason ? `reason: ${reason}` : null,
+    ].filter(Boolean),
+    verification: {
+      commands_run: [],
+      commands_needed: [
+        `node .agent/skills/runtime-continuity/scripts/index.js resume-bundle --project ${project}`,
+      ],
+      known_failures: [],
+    },
+    graphify_context: null,
+    context_budget_hint: null,
+    produced_at: nowIso(),
+  };
+  // MS-003 additive metadata (documented; outside handoff.schema.json property set):
+  payload.kind = kind || "host-switch";
+  if (missionContext) payload.mission_context = missionContext;
+  if (candidates) payload.candidates = candidates;
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  writeJsonAtomic(file, payload);
+  let validation = null;
+  try {
+    const proto = path.join(AGENT_ROOT, "handoffs", "scripts", "handoff-protocol.js");
+    if (fs.existsSync(proto)) {
+      const res = spawnSync(process.execPath, [proto, "validate", "--payload-file", rel(file)], {
+        cwd: process.cwd(),
+        encoding: "utf8",
+        timeout: 5000,
+      });
+      validation = { exit_code: res.status, ok: res.status === 0, output: String(res.stdout || "").trim() };
+    }
+  } catch (err) {
+    validation = { exit_code: null, ok: false, error: err.message };
+  }
+  return { file, payload, validation };
 }
 
 // ─── run event appender ──────────────────────────────────────────────────────
@@ -1009,8 +1532,16 @@ function main() {
     return;
   }
 
-  const project = flag("--project", argv);
-  if (!project) fail("missing_project", "--project is required for archive / restore / status / host-switch.");
+  // --auto (host-switch / pre-departure automation path) tolerates a missing
+  // --project by defaulting to the current directory basename; resume-bundle
+  // --auto keeps its own graceful-degrade for a missing project (MS-002).
+  // Every other mode keeps the strict missing-project error.
+  let project = flag("--project", argv);
+  const autoProjectOk = (mode === "host-switch" || mode === "pre-departure") && argv.includes("--auto");
+  if (!project && autoProjectOk) project = path.basename(process.cwd());
+  if (!project && !(mode === "resume-bundle" && argv.includes("--auto"))) {
+    fail("missing_project", "--project is required for archive / restore / status / host-switch / pre-departure / resume-bundle.");
+  }
 
   if (mode === "log" || mode === "checkpoint") {
     requireGate([...GATES_TIGHT]);
@@ -1028,7 +1559,37 @@ function main() {
   }
 
   if (mode === "resume-bundle") {
-    emit(buildResumeBundle(project));
+    // Existing behavior (no flags): emit the full bundle JSON, read-only.
+    // New flags (P-002 §2.1, additive):
+    //   --auto            any failure → graceful degrade (exit 0 + stderr log)
+    //   --inject          emit a `[CORTEX-RESUME]` marker line + JSON block
+    //   --budget-percent  summarization threshold (% of context window, def 40)
+    //   --budget-tokens   explicit context window size (tokens), optional
+    const auto = argv.includes("--auto");
+    const inject = argv.includes("--inject");
+    const budgetPercent = parsePercent(flag("--budget-percent", argv), DEFAULT_BUDGET_PERCENT);
+    const budgetTokensRaw = Number(flag("--budget-tokens", argv));
+    const budgetTokens = Number.isFinite(budgetTokensRaw) && budgetTokensRaw > 0 ? budgetTokensRaw : null;
+    try {
+      if (!project) {
+        degradedResumeBundle(project, "missing --project (auto mode)", inject);
+        return; // exit 0 — never block SessionStart
+      }
+      const bundle = buildResumeBundle(project);
+      if (inject) {
+        const block = buildResumeBlock(bundle, { budgetPercent, budgetTokens });
+        process.stdout.write("[CORTEX-RESUME]\n");
+        emit(block);
+      } else {
+        emit(bundle);
+      }
+    } catch (err) {
+      if (auto) {
+        degradedResumeBundle(project, err.message, inject);
+        return; // exit 0 — graceful degrade, never block SessionStart
+      }
+      fail("resume_bundle_failed", err.message);
+    }
     return;
   }
 
@@ -1040,9 +1601,14 @@ function main() {
     //   2. updates sessions/<active>.json with last_host / last_switch_at
     //   3. writes host_switch_initiated event to active run
     //   4. emits a hand-off package the new host can use to resume
-    requireGate([...GATES_DESTRUCTIVE]);
+    // MS-003 (P-003 方案 C, additive): mission 上下文检测 + handoff JSON 自动
+    // 生成。--mission-id 显式 > 启发式检测 > null。--auto（runtime-continuity
+    // 自动链路）跳过 user gate 并在缺 --project 时以 cwd basename 兜底；
+    // 手动调用仍需 --gate user。既有 archive / session / 事件行为不变。
+    const hostSwitchAuto = argv.includes("--auto");
+    if (!hostSwitchAuto) requireGate([...GATES_DESTRUCTIVE]);
     const fromHost = flag("--from-host", argv) || "unknown";
-    const toHost = flag("--to-host", argv) || "unknown";
+    const toHost = flag("--to-host", argv) || flag("--next-host", argv) || "unknown";
     const reason = flag("--reason", argv) || "";
     let archived;
     try {
@@ -1065,6 +1631,81 @@ function main() {
       archive_path: archived.archivePath,
       archive_json_path: archived.archiveJsonPath,
     });
+
+    // MS-003: mission 上下文检测（方案 C）→ handoff JSON 自动生成
+    const missionIdFlag = flag("--mission-id", argv);
+    let missionId = missionIdFlag;
+    let missionContext = null;
+    let handoffKind = "host-switch";
+    let candidates = null;
+    if (missionIdFlag) {
+      // 显式指定：跳过启发式，直接关联
+      missionContext = {
+        mission_id: missionIdFlag,
+        heuristic_version: "v1",
+        source: "explicit",
+        scanned_at: nowIso(),
+      };
+    } else {
+      const heuristic = findActiveMissionHeuristic();
+      if (heuristic && heuristic.error) {
+        handoffKind = "host-switch-without-mission";
+        missionContext = {
+          heuristic_version: "v1",
+          error: heuristic.error,
+          scanned_at: nowIso(),
+        };
+      } else if (heuristic) {
+        missionContext = {
+          heuristic_version: heuristic.heuristic_version,
+          scanned_at: heuristic.scanned_at,
+          active_missions: heuristic.active_missions || [],
+        };
+        const active = heuristic.active_missions || [];
+        if (active.length === 0) {
+          handoffKind = "host-switch-without-mission";
+        } else if (active.length === 1) {
+          missionId = active[0].mission_id;
+          handoffKind = "host-switch";
+        } else {
+          // ≥2 活跃 mission：不自动选，写 ambiguous handoff 交由后续 disambiguation
+          handoffKind = "host-switch-multi-mission-ambiguous";
+          candidates = active.map((m) => ({
+            mission_id: m.mission_id,
+            state: m.state || null,
+            plan_pointer: m.plan_pointer,
+          }));
+        }
+      }
+    }
+    let handoff = null;
+    let handoffError = null;
+    try {
+      handoff = writeHandoffFromSwitch({
+        project,
+        fromHost,
+        toHost,
+        reason,
+        missionId,
+        missionContext,
+        kind: handoffKind,
+        candidates,
+        note: parseNote(argv),
+        sessionId: sid,
+        archive: archived,
+      });
+      appendRunEvent({
+        type: "host_switch_handoff",
+        project,
+        handoff_path: rel(handoff.file),
+        mission_id: handoff.payload.mission_id,
+        kind: handoff.payload.kind,
+      });
+    } catch (err) {
+      handoffError = err.message;
+      appendRunEvent({ type: "host_switch_handoff_error", project, error: err.message });
+    }
+
     emit({
       ok: true,
       action: "host-switch",
@@ -1074,12 +1715,134 @@ function main() {
       reason,
       archive: archived,
       session_id: sid,
+      mission_context: missionContext,
+      handoff: handoff ? {
+        path: rel(handoff.file),
+        mission_id: handoff.payload.mission_id,
+        kind: handoff.payload.kind,
+        candidates: handoff.payload.candidates || null,
+        validation: handoff.validation,
+      } : null,
+      handoff_error: handoffError,
       next_steps_for_new_host: [
         "1. Read archive body via: runtime-continuity restore --project <P> --load latest",
         "2. Pick up active run via: read .agent/runs/<id>.json events[] (latest host_switch_initiated tells you where to resume)",
         "3. If the new host uses the same ~/.agent/contexts/, no extra import is required — the latest.md symlink is already in place.",
         "4. host-only reattach: the archive does NOT carry hook secrets; re-establish Authorization: token ${secret://<ref>} via the secrets skill if needed.",
+        "5. Auto handoff JSON (M-030 MS-003): run handoff-protocol.js resume-prompt --payload-file <path> on the new host for the resume prompt.",
       ],
+    });
+    return;
+  }
+
+  if (mode === "pre-departure") {
+    // Pre-departure trigger (P-001 / MS-001): SessionEnd hooks call this so
+    // the outgoing host writes a checkpoint + host_switch_initiated event
+    // before the session closes.  Auto path (--gate agent) — NEVER blocks
+    // session close:
+    //   1. checkpoint event (phase=session_ending) via createRuntimeEvent
+    //   2. host_switch_initiated event (from_host/to_host/reason/archive_pending)
+    //   3. if 1 or 2 throws -> degrade to archiveProject(source_host='auto-pre-departure')
+    //      + pre_departure_fallback event
+    //   4. any exception -> graceful degrade: record pre_departure_graceful_degrade
+    //      event (if possible) and ALWAYS exit 0 — never propagate to the hook layer
+    // MS-003 (P-003 方案 C, additive): --mission-id flag + mission_context 注入
+    // checkpoint 事件 payload（--mission-id 显式 > 启发式检测）。--auto 跳过
+    // gate 并在缺 --project 时以 cwd basename 兜底；手动调用仍需 --gate。
+    if (!argv.includes("--auto")) requireGate([...GATES_TIGHT]);
+    const fromHost = flag("--from-host", argv) || flag("--host", argv) || "unknown";
+    const toHost = flag("--next-host", argv) || process.env.CORTEX_NEXT_HOST || "unknown";
+    const reason = flag("--reason", argv) || "session_end_auto";
+    const events = [];
+    const problems = [];
+    let degraded = false;
+    const missionContext = buildMissionContext(argv);
+    const checkpointArgv = missionContext ? [...argv, "--mission-context-json", JSON.stringify(missionContext)] : argv;
+
+    const recordProblem = (step, message) => {
+      degraded = true;
+      problems.push({ step, error: message });
+    };
+
+    // Degrade path: capture a structured archive + pre_departure_fallback event.
+    const fallbackArchive = (step, err) => {
+      recordProblem(step, err.message);
+      try {
+        const archived = archiveProject(project, parseNote(argv), {
+          source_host: "auto-pre-departure",
+          target_host: toHost,
+          reason: `pre_departure_fallback: ${reason}`,
+        });
+        appendRunEvent({
+          type: "pre_departure_fallback",
+          project,
+          from_host: fromHost,
+          to_host: toHost,
+          reason,
+          archive_path: archived.archivePath,
+          archive_json_path: archived.archiveJsonPath,
+        });
+        events.push("pre_departure_fallback");
+      } catch (err2) {
+        recordProblem("pre_departure_fallback_archive", err2.message);
+      }
+    };
+
+    // 1. checkpoint 事件（phase=session_ending；MS-003 附带 mission_context）
+    try {
+      createRuntimeEvent(project, checkpointArgv, {
+        type: "checkpoint",
+        phase: "session_ending",
+        message: reason || "session ending (pre-departure)",
+        host: fromHost,
+      });
+      events.push("checkpoint");
+    } catch (err) {
+      fallbackArchive("pre_departure_checkpoint", err);
+    }
+
+    // 2. host_switch_initiated 事件（archive_pending=true）
+    try {
+      const recorded = appendRunEvent({
+        type: "host_switch_initiated",
+        project,
+        from_host: fromHost,
+        to_host: toHost,
+        reason,
+        archive_pending: true,
+        via: "pre_departure",
+      });
+      if (recorded) events.push("host_switch_initiated");
+      else recordProblem("host_switch_initiated_run_append", "no active run to append host_switch_initiated");
+    } catch (err) {
+      fallbackArchive("host_switch_initiated", err);
+    }
+
+    // 3/4. graceful degrade：任何残留异常只记录、绝不抛出、绝不退出非 0
+    try {
+      if (degraded) {
+        appendRunEvent({
+          type: "pre_departure_graceful_degrade",
+          project,
+          from_host: fromHost,
+          to_host: toHost,
+          reason,
+          problems,
+        });
+        events.push("pre_departure_graceful_degrade");
+      }
+    } catch (_) { /* never block session close */ }
+
+    emit({
+      ok: true,
+      action: "pre-departure",
+      project,
+      from_host: fromHost,
+      to_host: toHost,
+      reason,
+      events,
+      problems,
+      mission_context: missionContext,
     });
     return;
   }
@@ -1127,7 +1890,7 @@ function main() {
 
   fail(
     "unknown_command",
-    "Usage: runtime-continuity {assess|log|checkpoint|archive|restore|status|warm|host-switch|resume-bundle|list-contexts} [--project P] [--gate user|agent] ...",
+    "Usage: runtime-continuity {assess|log|checkpoint|archive|restore|status|warm|host-switch|pre-departure|resume-bundle|list-contexts} [--project P] [--gate user|agent] ...; host-switch extra flags: [--auto --mission-id <M-xxx> --next-host <H>]; pre-departure extra flags: [--auto --mission-id <M-xxx>]; resume-bundle extra flags: [--auto --inject --budget-percent <0-100> --budget-tokens <N>]",
   );
 }
 
@@ -1149,4 +1912,15 @@ module.exports = {
   continuityGuardStatus,
   markSessionLastHost,
   findActiveRunId,
+  // resume-bundle --auto --inject (P-002 / MS-002)
+  estimateBundleTokens,
+  summarizeForResume,
+  buildResumeBlock,
+  readActiveRunSummary,
+  readCurrentMilestone,
+  readCurrentDecision,
+  // mission 上下文检测 + handoff JSON 自动生成 (P-003 方案 C / MS-003)
+  findActiveMissionHeuristic,
+  buildMissionContext,
+  writeHandoffFromSwitch,
 };

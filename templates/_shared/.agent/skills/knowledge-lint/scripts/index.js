@@ -1,6 +1,6 @@
 const fs = require('fs');
 const path = require('path');
-const { spawnSync } = require('child_process');
+const { execFileSync, spawnSync } = require('child_process');
 
 const root = process.cwd();
 const metricsDir = path.join(root, '.agent', 'metrics');
@@ -168,28 +168,6 @@ function collectMissingReadmes() {
     .map((relativePath) => ({ path: relativePath }));
 }
 
-// T-TS-003 / MS-3: the structured truth source is authoritative for the
-// active-task count. The markdown regex stays a fallback for projects that
-// have not run `migrate-task-state` yet.
-function countActiveTasksFromTruthSource() {
-  try {
-    const taskState = require(path.join(root, '.agent', 'tasks', 'scripts', 'task-state.js'));
-    const count = taskState.countActiveTasksStructured({ projectRoot: root });
-    return count === null || count === undefined ? null : count;
-  } catch (_) {
-    return null;
-  }
-}
-
-// The active-tasks heading must appear exactly once in the whole file.
-// A duplicated section is the drift signature this project has hit before:
-// writers append a second active-tasks block and readers silently pick
-// the wrong one.
-function countActiveSectionHeadings(content) {
-  const matches = content.match(/^##\s+.*(?:当前活跃任务|Active Tasks).*$/gm);
-  return matches ? matches.length : 0;
-}
-
 function countActiveTasks(taskProgressContent) {
   // T-TS-003 / MS-3: prefer the structured truth source. Fall back to the
   // markdown table when the project has no task records (not migrated yet).
@@ -214,6 +192,28 @@ function countActiveTasks(taskProgressContent) {
     .filter((line) => !/任务 ID|优先级|描述|进度|Task ID|Priority|Description|Progress/.test(line))
     .filter((line) => line.trim() !== '|')
     .length;
+}
+
+// T-TS-003 / MS-3: the structured truth source is authoritative for the
+// active-task count. The markdown regex stays a fallback for projects that
+// have not run `migrate-task-state` yet.
+function countActiveTasksFromTruthSource() {
+  try {
+    const taskState = require(path.join(root, '.agent', 'tasks', 'scripts', 'task-state.js'));
+    const count = taskState.countActiveTasksStructured({ projectRoot: root });
+    return count === null || count === undefined ? null : count;
+  } catch (_) {
+    return null;
+  }
+}
+
+// The active-tasks heading must appear exactly once in the whole file.
+// A duplicated section is the drift signature this project has hit before:
+// writers append a second "## 🔥 当前活跃任务" block and readers silently
+// pick the wrong one.
+function countActiveSectionHeadings(content) {
+  const matches = content.match(/^##\s+.*(?:当前活跃任务|Active Tasks).*$/gm);
+  return matches ? matches.length : 0;
 }
 
 function collectPlanIssues() {
@@ -354,6 +354,82 @@ function collectArchitectureDocMismatches() {
   return issues;
 }
 
+// ===== Frontmatter OKF V0.2 checks (M-018 MS-001 F-003) =====
+
+// OKF V0.2 + post-V0.2 扩展。V0.2 原始枚举为 stable/draft/deprecated；
+// 新增 experimental (POC/试运行但未 ship) 与 reference (文档化但未 ship, 仅做知识参考)。
+// 注: experimental 与 reference 区别于 stable (已 ship + 主路径使用) 与 draft (草稿/编写中)。
+const OKF_STATUS_VALUES = new Set(['stable', 'draft', 'deprecated', 'experimental', 'reference']);
+
+// 简单 frontmatter 解析:仅识别 key-value / inline-list / block-list
+// 不依赖 yaml 包(零依赖)
+function parseFrontmatterLite(content) {
+  const m = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+  if (!m) return null;
+  const fm = {};
+  const lines = m[1].split(/\r?\n/);
+  let currentKey = null;
+  for (const line of lines) {
+    if (/^\s*-\s+/.test(line) && currentKey) {
+      if (!Array.isArray(fm[currentKey])) fm[currentKey] = [];
+      fm[currentKey].push(line.replace(/^\s*-\s+/, '').replace(/^["']|["']$/g, '').trim());
+    } else {
+      const km = line.match(/^([a-zA-Z_][a-zA-Z0-9_]*)\s*:\s*(.*)$/);
+      if (km) {
+        currentKey = km[1];
+        const v = km[2].trim();
+        if (v === '' || v === undefined) fm[currentKey] = [];
+        else if (v === '[]' || v === '[ ]') fm[currentKey] = [];
+        else if (v.startsWith('[') && v.endsWith(']')) {
+          fm[currentKey] = v.slice(1, -1).split(',').map((s) => s.trim().replace(/^["']|["']$/g, '')).filter(Boolean);
+        } else fm[currentKey] = v.replace(/^["']|["']$/g, '');
+      }
+    }
+  }
+  return fm;
+}
+
+const FRONTMATTER_SCAN_DIRS = [
+  path.join(root, '.agent', 'references'),
+  path.join(root, '.agent', 'workflows'),
+  path.join(root, '.agent', 'rules'),
+];
+
+function collectFrontmatterViolations() {
+  const violations = [];
+  for (const dir of FRONTMATTER_SCAN_DIRS) {
+    if (!exists(dir)) continue;
+    const mdFiles = listMarkdownFiles(dir);
+    for (const filepath of mdFiles) {
+      const rel = path.relative(root, filepath);
+      const content = readFile(filepath);
+      const fm = parseFrontmatterLite(content);
+      if (!fm) continue; // 无 frontmatter 不强制要求
+
+      // R-LINT-007: linked_decisions 为空 (warning, 非阻塞)
+      if (Array.isArray(fm.linked_decisions) && fm.linked_decisions.length === 0) {
+        violations.push({
+          rule_id: 'R-LINT-007',
+          severity: 'warning',
+          file: rel,
+          message: 'linked_decisions is empty (建议关联一个或多个 ADR)',
+        });
+      }
+
+      // R-LINT-008: status 非法值 (warning)
+      if (fm.status !== undefined && !OKF_STATUS_VALUES.has(fm.status)) {
+        violations.push({
+          rule_id: 'R-LINT-008',
+          severity: 'warning',
+          file: rel,
+          message: `status "${fm.status}" 不是 OKF V0.2 枚举 (stable / draft / deprecated / experimental / reference)`,
+        });
+      }
+    }
+  }
+  return violations;
+}
+
 function computeHealthScore(summary) {
   const penalty =
     summary.broken_links * 12 +
@@ -361,6 +437,8 @@ function computeHealthScore(summary) {
     summary.missing_readmes * 8 +
     summary.plan_issues * 10 +
     summary.architecture_doc_mismatches * 7 +
+    summary.frontmatter_violations * 2 + // warning 级,低权重
+    summary.required_field_violations * 15 + // 必填字段硬缺失,高权重
     summary.memory_integrity_issues * 10;
 
   return Math.max(0, 100 - penalty);
@@ -387,12 +465,33 @@ function runMemoryIntegrityValidator() {
   }
 }
 
+// 集成 validate-frontmatter.js: 调用其 --json 模式, 把必填字段硬校验结果并入报告
+function runFrontmatterValidator() {
+  const scriptPath = path.join(root, '.agent', 'scripts', 'validate-frontmatter.js');
+  if (!exists(scriptPath)) return null;
+
+  try {
+    execFileSync(process.execPath, [scriptPath, '--json'], { cwd: root, stdio: 'ignore' });
+    return { summary: { total_violations: 0 }, violations: [] };
+  } catch (err) {
+    try {
+      const outPath = path.join(root, '.agent', 'metrics', 'frontmatter-validation.json');
+      if (exists(outPath)) return JSON.parse(readFile(outPath));
+    } catch (_) {
+      /* 忽略解析错误 */
+    }
+    return { summary: { total_violations: 0 }, violations: [] };
+  }
+}
+
 function run() {
   const markdownFiles = internalDocRoots.flatMap((dir) => listMarkdownFiles(dir));
   const { brokenLinks, brokenAnchors } = collectBrokenLinks(markdownFiles);
   const missingReadmes = collectMissingReadmes();
   const planIssues = collectPlanIssues();
   const architectureDocMismatches = collectArchitectureDocMismatches();
+  const frontmatterViolations = collectFrontmatterViolations();
+  const requiredFieldViolations = runFrontmatterValidator();
   const memoryIntegrity = runMemoryIntegrityValidator();
 
   const summary = {
@@ -402,6 +501,8 @@ function run() {
     missing_readmes: missingReadmes.length,
     plan_issues: planIssues.length,
     architecture_doc_mismatches: architectureDocMismatches.length,
+    frontmatter_violations: frontmatterViolations.length,
+    required_field_violations: requiredFieldViolations ? requiredFieldViolations.summary.total_violations : 0,
     memory_integrity_issues: memoryIntegrity.issues.length,
   };
 
@@ -416,6 +517,8 @@ function run() {
       missing_readmes: missingReadmes,
       plan_issues: planIssues,
       architecture_doc_mismatches: architectureDocMismatches,
+      frontmatter_violations: frontmatterViolations,
+      required_field_violations: requiredFieldViolations ? requiredFieldViolations.violations : [],
       memory_integrity: memoryIntegrity.issues,
     },
   };
@@ -429,6 +532,8 @@ function run() {
   console.log(`Missing READMEs: ${summary.missing_readmes}`);
   console.log(`Plan issues: ${summary.plan_issues}`);
   console.log(`Architecture doc mismatches: ${summary.architecture_doc_mismatches}`);
+  console.log(`Frontmatter violations (R-LINT-007/008): ${summary.frontmatter_violations}`);
+  console.log(`Required field violations (V-FM): ${summary.required_field_violations}`);
   console.log(`Health score: ${payload.health_score}/100`);
   console.log(`Output: ${path.relative(root, outputPath)}`);
 }

@@ -13,6 +13,8 @@
 
 Phase 8 把应用可理解性的**文档层**做完了（6/6 任务已完成），但生产端是空的：`.agent/metrics/verification-summary.json` 恒为 `not_run`，`/ship` CLEAN 的阻断能力实际为空。本阶段补上生产端。
 
+M4 补的是另一类「看起来绿、实际不对」：M1 修好了 L1 的**文件集**，但没管**文件内容** —— 下游可能拿到一份几个月前的实现。本阶段把内容对等也变成机械门禁。
+
 ---
 
 ## 范围
@@ -20,6 +22,7 @@ Phase 8 把应用可理解性的**文档层**做完了（6/6 任务已完成）�
 - **P-003**（M1）：修 L1 分发完整性——补齐 15 个缺失的 skill `SKILL.md`、5 处缺失的实现文件、清理分发垃圾，并新增三条机械门禁（manifest 完整性 / 文件集对等性 / 链接有效性）
 - **P-002**（M2）：定义 runtime-evidence 数据集格式，落地第一个真实 API 层验证数据集，把结果接入 `verification-summary.json` 与 `/ship` CLEAN
 - **P-001**（M3）：定义 `guided-review` finding schema，落地 builtin reviewer backend，把 finding 纳入 benchmark 机械判定
+- **P-003 续**（M4）：补上 L1/L3 **内容**对等门禁 —— M1 管的是「L1 缺不缺文件」，M4 管的是「L1 的文件是不是旧的」
 
 **统一机制**：全部复用 S6 已交付的 `scripts/agent-review-benchmark-runner.cjs` 与现有 11 种断言，不重造 harness。
 
@@ -131,10 +134,32 @@ Phase 8 把应用可理解性的**文档层**做完了（6/6 任务已完成）�
 - 判定结果通过 `scripts/append-ci-summary.cjs` 进入 GitHub job summary（门禁只写 JSON 文件的话，读 CI 的人看不见）
 - 复用 S6 引擎，不重造 harness；数据集 fixture 支持直接写 JSON 值，避免在 dataset 里手工转义嵌套 JSON
 
-### T-H32 [待办] M4 · UI 层（不排期）
+### T-H32 [待办] M5 · UI 层（不排期）
 
 - 依赖宿主浏览器能力；cortex 只定义 `browser-verification.json` 的产出格式与校验
 - 宿主能力成熟后单独立项，本阶段不承诺时间
+
+### T-H33 [已完成] M4 · L1/L3 实现文件内容对等门禁
+
+M1 修的是「L1 缺文件」，但没有管「L1 的文件内容是不是旧的」。全量扫描发现 **75 个实现文件里有 10 个内容不一致**，其中包含两个真问题：
+
+- **L1 的 secrets skill 是坏的**：`secrets/scripts/index.js` 引用了 `REDACT_TOKEN`，而 L1 的 `redact.js` 没有导出它 → 运行即 ReferenceError
+- **L1 分发面保留着已修掉的安全漏洞**：L3 已移除 `--account` 覆盖（yunxiao-pkg-upload 越权读事故），L1 还在 honoring 它
+
+**改动**
+
+- `check-l1-distribution.js` 新增**检查 4：实现文件内容对等**（L1 ≡ L3，逐字一致）
+  - 范围限定为**实现文件**（`skills/*/scripts`、`skills/*/agents`、`hooks/`、`plugins/*/scripts`、`handoffs/scripts/`、`tasks/scripts/`、`artifacts/scripts/`、`scripts/`；扩展名 js/cjs/mjs/sh/yaml/yml）。文档按语言与场景差异化是设计意图，运行时状态在 L1 是模板、在 L3 是活记录 —— 这两类逐字比对只会让门禁喊狼来了
+  - 显式豁免清单，每条必须带理由；**豁免失效（两边已一致）会被报出来**，防止清单腐烂成永久盲区
+- **按分发层检查**，不只查 `_shared`：`cortex-agent init` 是「共享层打底 + 语言层覆盖，语言层赢」。只查 `_shared` 会漏掉即将被覆盖层发出去的旧副本。检查面从 75 个实现文件扩到 **348 个**
+- 同步方向是**双向的**，由证据逐个定，不预设「L3 是真相」：
+  - **L3 → L1**：`secrets/scripts/redact.js`（L1 缺 `REDACT_TOKEN` 导出 → L1 的 secrets skill 是坏的）、`secrets/scripts/index.js`（L1 保留着已修掉的 `--account` 越权漏洞）、`knowledge-lint`、`mission-progress`、`handoffs-protocol`、`runtime-continuity`
+  - **L1 → L3**：`hooks/claude-code-transcript-link-reporter.sh`（L3 版硬编码 `/Users/xueyq` 机器路径）、`plugins/graphify/scripts/post-commit-update.js`（L3 版是重复的独立实现）、`minimax-cli/SKILL.md`（`/Users/xueyq/.mmx/*` → `~/.mmx/*`，三层都分发）
+  - **en → L3**：`vcs-pr/scripts/{index.js,backends/gitlab.js}`（en 层带 labels/reviewers 与 fail-closed run 关联，L3 落后）
+  - **L3 → zh**：`management-api/scripts/index.js`（zh 层自己的版本不认识 `task-state` 投影，而投影注册表三层都有 —— zh 层自身就是坏的）
+- 修 **L3 自身**的缺口：`runtime-continuity` 缺 `--project` 的 fails-closed 校验（`--project .` 会把上下文写进 contexts 根、`--project ..` 会逃出 `~/.agent`）与 `exists` 契约字段，移植自 zh 层；改后 L3 成为超集，四个副本逐字一致
+- 清理 L3 侧垃圾：25 个 `.bak`/`.bak.prev` + 两处路径事故产生的嵌套重复目录（`skills/secrets/secrets/`、`skills/vcs-pr/vcs-pr/`，均确认为旧版残留）；删除 `en` 层误分发的 `gitlab.test.js`
+- 反向验证 3 项：内容漂移必失败、豁免失效必失败、豁免条目必须指向真实文件且理由非空
 
 ---
 
@@ -168,6 +193,12 @@ Phase 8 把应用可理解性的**文档层**做完了（6/6 任务已完成）�
 | 数据集区分度 | reference 10000 bp（11/11）、lenient 5172 bp、noop 0 bp |
 | CI summary | 判定结果进入 GitHub job summary |
 | 依赖 | 新增 0 个 npm 依赖；新增代码只用 Node 内置模块 |
+
+### M4
+- 实现文件内容对等门禁接入 CI，且能反向失败（内容漂移 / 豁免失效 / 豁免无理由）
+- 按分发层（`_shared` + `zh` + `en`）统计，L1 与 L3 内容不一致数为 0（豁免项除外，且豁免带理由）
+- L1 分发面不再保留已在上游修掉的安全漏洞与坏文件
+- 分发面无机器特定路径（`/Users/xueyq`）残留
 
 ### 全量
 - CI `full-test` 全绿且零 NON-HERMETIC 漂移
@@ -214,4 +245,12 @@ Phase 8 把应用可理解性的**文档层**做完了（6/6 任务已完成）�
 - 2026-10-22：M3 T-H30 —— external backend 只预留接口，不提供实现、不引入依赖；adapter 只能提议 finding，无法绕过任何一条校验（已用测试证明：adapter 提出的越界 finding 同样被拒）
 - 2026-10-22：M3 T-H31 —— S6 引擎新增 `finding_present` / `finding_absent` / `artifact_schema_valid` 三种断言，落地真实历史缺陷数据集。区分度梯度：reference 10000 bp、lenient 5172 bp、noop 0 bp。`lenient`（不校验的审查器）证明 absent 断言有牙齿
 - 2026-10-22：M3 T-H31 —— 判定结果进入 GitHub job summary。门禁只写 JSON 文件的话，读 CI 的人看不见那个数字
+- 2026-10-22：M4 T-H33 —— 补上 L1/L3 **内容**对等门禁（M1 只管文件集，不管内容）。全量扫描 75 个实现文件，10 个内容不一致。查出两个真问题：L1 的 secrets skill **是坏的**（index.js 引用 REDACT_TOKEN，L1 的 redact.js 没导出），以及 **L1 分发面保留着已修掉的 `--account` 越权漏洞**
+- 2026-10-22：M4 T-H33 —— 漂移是**双向**的：7 个文件 L3→L1 同步，但 `hooks/claude-code-transcript-link-reporter.sh` 的 L3 版硬编码了 `/Users/xueyq` 机器路径、`plugins/graphify/scripts/post-commit-update.js` 的 L3 版是重复的独立实现 —— 这两条要 **L1→L3**。同步方向由证据决定，不由「L3 是真相」的假设决定
+- 2026-10-22：M4 T-H33 —— 门禁只对**实现文件**要求逐字一致。文档按语言差异化、运行时状态在 L1 是模板在 L3 是活记录，这两类逐字比对只会让门禁喊狼来了，而一个喊狼来了的门禁会被无视。豁免必须带理由，且豁免失效会被报出来
+- 2026-10-22：M4 T-H33 —— 清理 L3 侧垃圾：25 个 `.bak`/`.bak.prev` 与两处路径事故产生的嵌套重复目录（`skills/secrets/secrets/`、`skills/vcs-pr/vcs-pr/`，逐文件比对确认是旧版残留）。M1 当时把这条账留到「另行清理」，现在清掉
+- 2026-10-22：M4 T-H33 —— **门禁按分发层扩展后才看清全貌**：`cortex-agent init` 是「共享层打底 + 语言层覆盖，语言层赢」，所以只查 `_shared` 会漏掉即将被覆盖层发出去的旧副本。检查面从 75 个实现文件扩到 348 个，一轮就抓出 20 处 zh/en 层漂移
+- 2026-10-22：M4 T-H33 —— **同步方向是双向的，且「L3 是真相」是错的假设**：en 层的 vcs-pr 更新、zh 层的 management-api 反而是坏的（不认识 `task-state` 投影）、L3 自己的 runtime-continuity 缺 `--project` 的 fails-closed 安全校验。每处的方向都由 diff 证据定，不预设
+- 2026-10-22：M4 T-H33 —— 修 L3 的 runtime-continuity 缺口（fails-closed + `exists` 契约）后，四个副本逐字一致，37 项 `--project` 解析测试全绿
+- 2026-10-22：M4 T-H33 —— 自己的同步一度**越界**：把 L3-only 的 `scripts/` 与 zh 层原本没有的 `secrets/`、`vcs-pr/` 新增进层里，等于改变了分发面结构。已回退为「只同步该层原本就有的文件」，新增文件由文件集对等检查负责
 

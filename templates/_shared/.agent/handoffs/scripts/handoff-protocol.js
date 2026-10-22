@@ -91,7 +91,20 @@ function requireArray(issues, object, key, prefix) {
   if (!Array.isArray(object[key])) issues.push(`${prefix}.${key}`);
 }
 
+// Extract handoff payload from an artifact envelope.
+// An envelope is identified by the presence of an `artifact_id` plus a nested
+// `payload` object — i.e. the shape produced by `.agent/artifacts/scripts/artifact-bus.js`
+// for `kind: "handoff"` records. Non-envelope inputs (a bare handoff payload)
+// are returned unchanged so existing CLI flows keep working.
+function extractHandoffPayload(input) {
+  if (!isObject(input)) return input;
+  if (typeof input.artifact_id !== "string") return input;
+  if (isObject(input.payload)) return input.payload;
+  return input;
+}
+
 function validatePayload(payload) {
+  payload = extractHandoffPayload(payload);
   const issues = [];
   for (const key of REQUIRED_TOP_LEVEL) {
     if (payload[key] === undefined || payload[key] === null || payload[key] === "") issues.push(key);
@@ -187,7 +200,8 @@ function validate(args) {
 }
 
 function publish(args) {
-  const { payload, payloadPath } = readPayload(args);
+  const { payload: rawPayload, payloadPath } = readPayload(args);
+  const payload = extractHandoffPayload(rawPayload);
   const issues = validatePayload(payload);
   if (issues.length > 0) fail("Invalid handoff payload", { path: relativeToRoot(payloadPath), issues });
 
@@ -251,7 +265,8 @@ function publish(args) {
 }
 
 function resumePrompt(args) {
-  const { payload, payloadPath } = readPayload(args);
+  const { payload: rawPayload, payloadPath } = readPayload(args);
+  const payload = extractHandoffPayload(rawPayload);
   const issues = validatePayload(payload);
   if (issues.length > 0) fail("Invalid handoff payload", { path: relativeToRoot(payloadPath), issues });
   print({
@@ -287,4 +302,23 @@ function main() {
   process.exit(command ? 1 : 0);
 }
 
-main();
+// Module export: enables self-check and other tools to require this file
+// as a CommonJS module (e.g. `require(".agent/handoffs/scripts/handoff-protocol")`)
+// and call validatePayload / extractHandoffPayload directly, without spawning
+// a child process. The CLI entry point below only fires when invoked as the
+// main module, so import-side effects are preserved.
+if (require.main !== module) {
+  module.exports = {
+    REQUIRED_TOP_LEVEL,
+    isObject,
+    requireString,
+    requireArray,
+    extractHandoffPayload,
+    validatePayload,
+    validate,
+    publish,
+    resumePrompt,
+  };
+} else {
+  main();
+}
