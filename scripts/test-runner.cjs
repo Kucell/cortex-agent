@@ -174,6 +174,17 @@ function filterFiles(files, opts) {
 
 // ---- Worker -------------------------------------------------------------
 
+// A runner that is itself started from inside a test file inherits
+// NODE_TEST_CONTEXT. A child process that sees it runs as a test *child*: it
+// prints no TAP output and exits 0 even when the test fails. The runner
+// would then read that as a green result it never saw — a silent false
+// green. The variable must not reach any child.
+function childEnv() {
+  const env = { ...process.env };
+  delete env.NODE_TEST_CONTEXT;
+  return env;
+}
+
 function runOne(file, timeoutSec, perTestTimeoutMs, idleTimeoutSec) {
   return new Promise((resolve) => {
     const start = Date.now();
@@ -185,7 +196,7 @@ function runOne(file, timeoutSec, perTestTimeoutMs, idleTimeoutSec) {
     const child = spawn(process.execPath, childArgv, {
       cwd: ROOT,
       stdio: ['ignore', 'pipe', 'pipe'],
-      env: process.env,
+      env: childEnv(),
     });
     let stdout = '';
     let stderr = '';
@@ -258,12 +269,45 @@ async function runParallel(files, workers, timeoutSec, quiet, perTestTimeoutMs, 
   let completed = 0;
   const total = files.length;
 
+  // ---- Exclusive retry ----------------------------------------------------
+  //
+  // The suite spawns hundreds of child processes. On a machine that is out of
+  // memory the kernel refuses the fork/exec (EAGAIN / ENOMEM) and the child
+  // never starts — a failure that says nothing about the code under test, but
+  // that the test file reports as a plain assertion error.
+  //
+  // Re-running a failed file *alone* discriminates the two cases: it passes
+  // alone → the parallel run was contended; it fails alone → the failure is
+  // real and stays red. Other workers stop starting new files while the
+  // retry owns the machine, which is what makes the retry meaningful.
+  //
+  // This is a discriminator, not a mask. A file that fails twice is reported
+  // as failed, and every retry is printed and counted in the summary.
+  let exclusive = null;
+
   async function worker() {
     while (queue.length) {
+      // While another worker owns an exclusive retry, start no new files.
+      while (exclusive) await exclusive;
       const file = queue.shift();
       if (!file) return;
       inflight += 1;
-      const r = await runOne(file, timeoutSec, perTestTimeoutMs, idleTimeoutSec);
+      let r = await runOne(file, timeoutSec, perTestTimeoutMs, idleTimeoutSec);
+      if (!r.ok && !r.killed) {
+        let release;
+        exclusive = new Promise((resolve) => { release = resolve; });
+        try {
+          const retry = await runOne(file, timeoutSec, perTestTimeoutMs, idleTimeoutSec);
+          r = {
+            ...retry,
+            retried: true,
+            firstFailure: { code: r.code, signal: r.signal, duration: r.duration },
+          };
+        } finally {
+          exclusive = null;
+          release();
+        }
+      }
       inflight -= 1;
       completed += 1;
       results.push(r);
@@ -284,7 +328,7 @@ function runSerial(files, timeoutSec) {
     const child = spawn(process.execPath, ['--test', ...files], {
       cwd: ROOT,
       stdio: 'inherit',
-      env: process.env,
+      env: childEnv(),
     });
     const timer = setTimeout(() => {
       try { child.kill('SIGKILL'); } catch (_) {}
@@ -338,13 +382,19 @@ function printResult(r, idx, total) {
   const tag = r.killed
     ? colorize('⏱ TIMEOUT', 'yellow', useColor)
     : r.ok
-      ? colorize('✓', 'green', useColor)
+      ? (r.retried ? colorize('✓↺', 'yellow', useColor) : colorize('✓', 'green', useColor))
       : colorize('✗', 'red', useColor);
   const where = r.signal
     ? `signal=${r.signal}`
     : `exit=${r.code}`;
   const idxStr = total ? `[${String(idx).padStart(String(total).length)}/${total}]` : '';
   console.log(`${tag} ${idxStr} ${r.rel}  (${r.duration}ms, ${where})`);
+  if (r.retried) {
+    const dim = colorize('', 'dim', useColor);
+    const first = r.firstFailure || {};
+    const firstWhere = first.signal ? `signal=${first.signal}` : `exit=${first.code}`;
+    console.log(dim + `    ↺ 首次并行失败（${firstWhere}）→ 独占重跑通过（疑似资源争用）` + COLOR.reset);
+  }
   if (!r.ok && (r.stderr || r.stdout)) {
     const text = (r.stderr || r.stdout);
     const lines = text.split('\n').filter(l => l.trim().length > 0);
@@ -596,11 +646,13 @@ async function main() {
   const pass = results.filter(r => r.ok).length;
   const fail = results.length - pass;
   const timeouts = results.filter(r => r.killed).length;
+  const retried = results.filter(r => r.retried).length;
 
   console.log('');
   console.log(colorize(
     `[test-runner] ${pass}/${results.length} passed in ${total}ms` +
     (timeouts ? ` (${timeouts} TIMEOUT)` : '') +
+    (retried ? ` (${retried} 经独占重跑通过)` : '') +
     (fail ? `, ${fail} FAILED` : ''),
     fail === 0 ? 'green' : 'red', useColor,
   ));
@@ -634,10 +686,25 @@ async function main() {
   }
 }
 
-main().catch(err => {
-  console.error('[test-runner] fatal:', err && err.stack || err);
-  process.exit(2);
-});
+// The runner is a script first and a module second: requiring it must not
+// start a run, otherwise the unit test for the exclusive-retry behaviour
+// could not drive `runParallel` against fixtures.
+if (require.main === module) {
+  main().catch(err => {
+    console.error('[test-runner] fatal:', err && err.stack || err);
+    process.exit(2);
+  });
+}
+
+module.exports = {
+  filterFiles,
+  listTestFiles,
+  parseArgs,
+  runOne,
+  runParallel,
+  runSerial,
+  toRel,
+};
 
 // ---- Signal handling: kill all spawned children on Ctrl-C / SIGTERM ----------
 //
