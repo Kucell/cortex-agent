@@ -190,6 +190,48 @@ test("render-progress --check exits non-zero when the view drifted", (t) => {
   assert.equal(after.status, 0, after.stdout + after.stderr);
 });
 
+// The render timestamp records when the view was produced, not what it says.
+// A gate that compared it would expire every midnight: the truth source
+// unchanged, the view still faithful, and yet the date line no longer
+// matching — a red gate with nothing to fix.
+test("render-progress --check ignores the render timestamp but still catches drift", (t) => {
+  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-render-timestamp-"));
+  t.after(() => fs.rmSync(cwd, { recursive: true, force: true }));
+  fs.mkdirSync(path.join(cwd, ".agent", "plans"), { recursive: true });
+  fs.mkdirSync(path.join(cwd, ".agent", "tasks"), { recursive: true });
+  fs.writeFileSync(
+    path.join(cwd, ".agent", "tasks", "T-REN-001.json"),
+    JSON.stringify(TASK, null, 2),
+    "utf8",
+  );
+
+  const { spawnSync } = require("node:child_process");
+  const write = spawnSync("node", [RENDERER, "--project", cwd], { encoding: "utf8" });
+  assert.equal(write.status, 0, write.stdout + write.stderr);
+
+  // A view rendered on a later day: only the timestamp line differs.
+  const viewFile = path.join(cwd, ".agent", "plans", "task-progress.md");
+  const rendered = fs.readFileSync(viewFile, "utf8");
+  fs.writeFileSync(
+    viewFile,
+    rendered.replace(/^> \*\*最后更新时间\*\*: .*$/m, "> **最后更新时间**: 2030-12-31"),
+    "utf8",
+  );
+
+  const check = spawnSync("node", [RENDERER, "--check", "--project", cwd], { encoding: "utf8" });
+  assert.equal(check.status, 0, check.stdout + check.stderr);
+
+  // Changing the record still drifts: the gate ignores the timestamp, not
+  // the projection.
+  fs.writeFileSync(
+    path.join(cwd, ".agent", "tasks", "T-REN-001.json"),
+    JSON.stringify({ ...TASK, stage: "done" }, null, 2),
+    "utf8",
+  );
+  const drifted = spawnSync("node", [RENDERER, "--check", "--project", cwd], { encoding: "utf8" });
+  assert.equal(drifted.status, 1, drifted.stdout + drifted.stderr);
+});
+
 // A checkout that does not carry the governance records cannot be judged.
 // The gate must report "nothing to assert" instead of "the view drifted",
 // otherwise every checkout without the records fails the build.
