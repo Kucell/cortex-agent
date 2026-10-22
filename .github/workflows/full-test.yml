@@ -124,6 +124,24 @@ jobs:
           pnpm benchmark:agent-review
           pnpm benchmark:agent-review:noop
 
+      - name: Runtime evidence dataset (real API-layer verification)
+        # The runtime-evidence contract (verification-summary.json) had no
+        # producer at all: nothing could turn results.api.status from
+        # "not_run" into "pass"/"fail". This dataset is that producer, and it
+        # has to fail in both directions:
+        #   reference — every blocking assertion must hold (10000 bp), so a
+        #              regression in the API layer fails CI;
+        #   noop     — a candidate that does nothing must score materially
+        #              lower (< 5000 bp), so the dataset is proven to detect a
+        #              regression instead of merely confirming that the code
+        #              under test still runs.
+        # It must stay after `Run full test suite`: it writes into
+        # .agent/metrics/, and the strict-hermetic gate forbids any write
+        # there while the suite is running.
+        run: |
+          pnpm verify:runtime-evidence
+          pnpm verify:runtime-evidence:noop
+
       - name: Upload test evidence
         if: always()
         uses: actions/upload-artifact@v4

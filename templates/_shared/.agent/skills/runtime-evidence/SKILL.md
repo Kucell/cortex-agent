@@ -24,7 +24,7 @@ description: 初始化三类运行时验证证据文件（API 摘要、UI 截图
 
 ### `verification-summary.json`
 
-**由谁写入**：`/ship` REVIEW 阶段执行完三类验证后汇总写入；也可由 Agent 手动合并 `runtime-health.json` 和 `browser-verification.json` 生成。
+**由谁写入**：runtime-evidence runner 跑完验证数据集后写入 `overall_status` 与 `coverage`/`results`/`blockers`；`generate-summary.js` 补仓库健康度（`components`、`repo_health_*`），不覆盖验证结论。
 
 **读取方**：`/briefing`（步骤 9 展示上次验证状态）、`/ship` CLEAN 阶段（`overall_status: "fail"` 时阻断发布）。
 
@@ -125,10 +125,29 @@ node .agent/skills/runtime-evidence/scripts/generate-summary.js
 
 **说明**：
 - 若某输入文件不存在，对应组件标记为 `"status": "unknown"`，不影响其他组件
-- 综合状态（`overall_status`）基于已知组件的最差状态计算：任一 `critical` → `critical`；任一 `warning` → `warning`；否则 `healthy`
-- 综合评分（`overall_score`）为已知组件评分的加权平均
+- 仓库健康度写入 `repo_health_status`（`healthy` / `warning` / `critical` / `unknown`）与 `repo_health_score`，与验证结论**分开**
+- `overall_status` 由**验证侧**拥有：只有 runtime-evidence runner 跑过验证数据集才会写 `pass` / `fail` / `partial`。本脚本**不覆盖**已有的验证结论；没有验证记录时保持 `not_run`
+- 为什么必须分开：「仓库健康」不等于「应用已验证」。让健康度覆盖 `overall_status`，CLEAN 门禁就会把「没跑过验证」读成「验证通过」
 - `actions_needed` 会根据各组件状态自动生成具体修复建议
 - 脚本零外部依赖，仅使用 Node.js built-in
+
+## 跑验证数据集（生产端）
+
+验证结论由**验证数据集**的生产端写入。驱动脚本在 cortex-agent 框架仓库根目录（`scripts/`，不随模板分发，与 S6 的 benchmark runner 同位置）：
+
+```bash
+# 在 cortex-agent 框架仓库根目录执行
+node scripts/runtime-evidence-runner.cjs run \
+  --dataset benchmarks/runtime-evidence/<app>/dataset.json \
+  --candidate reference \
+  --output .agent/metrics/verification-summary.json
+```
+
+数据集与 S6 的 `benchmarks/agent-review/` 同构：物化 fixture → 跑候选命令 → 逐条机械断言 → 计数 → summary。断言失败会进 `blockers[]`，`overall_status` 变为 `partial` 或 `fail`。
+
+> 覆盖边界：API 层只覆盖**可机械断言的运行行为**（退出码、输出结构、端点响应），不覆盖渲染与交互断言——那属于 UI 层，依赖宿主浏览器能力。
+>
+> 下游项目用本 skill 的 `init.js` / `generate-summary.js` 获得空壳与健康度聚合；验证结论需要项目自己的生产端写入。
 
 ## 与工作流的集成点
 
@@ -136,7 +155,7 @@ node .agent/skills/runtime-evidence/scripts/generate-summary.js
 |--------|---------|
 | `/briefing` | 读取 `verification-summary.json` 展示上次验证状态 |
 | `/ship` REVIEW | 执行验证模板后更新三个文件 |
-| `/ship` CLEAN | 读取 `verification-summary.json`，`fail` 时阻断发布 |
+| `/ship` CLEAN | 读取 `verification-summary.json`：`fail` 阻断发布，`partial` 与 `not_run` 明确告警（不再静默通过） |
 
 ## 跨机/跨进程证据时间源
 
@@ -179,8 +198,9 @@ node .agent/skills/runtime-evidence/scripts/generate-summary.js
 
 ## 相关文档
 
-> 以下文档属于 cortex-agent 主仓，不随模板分发（分发面不含 `docs/` 与
-> `workflows/`），下游项目需自行按上述三类验证模板落地。
+> 这两份文档在 L3（框架自举层）位于 `.agent/docs/reliability/` 与 `.agent/workflows/`，
+> **不随模板分发**。因此这里只写纯文本说明，不放链接——放了就是一条指向
+> 未分发路径的死链，而每次 L3→L1 同步都会把它带回来。
 
-- 三类验证模板与 JSON 格式规范：主仓 `docs/reliability/verification-templates.md`
-- 验证状态在晨播简报中的展示位置：主仓 `workflows/briefing.md`
+- `docs/reliability/verification-templates.md` — 三类验证模板与 JSON 格式规范（L3 本地文档，不分发）
+- `workflows/briefing.md` — 验证状态在晨播简报中的展示位置（L3 本地文档，不分发）

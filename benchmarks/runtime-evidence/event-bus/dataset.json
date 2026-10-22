@@ -1,0 +1,96 @@
+{
+  "dataset_id": "runtime-evidence-event-bus",
+  "dataset_version": "1",
+  "description": "第一个真实的 API 层验证数据集：把 event-bus CLI 当成被测服务，publish 一条事件后用 list-events 读回，断言事件真的落盘并能被检索到。选它是因为它纯 stdlib、可离线启动、不写 .agent/，所以它既能当 CI 门禁，又不会把工作区弄脏。断言全部落在候选命令的 stdout 上（候选不产出输出就必然失败），所以这份数据集能区分「真的跑通了」和「什么都没做」。",
+  "cases": [
+    {
+      "case_id": "event-bus-publish-then-list",
+      "weight": 1,
+      "description": "publish 之后 list-events 必须能读回同一条事件：事件名、payload、bus 路由都要原样保留。--bus-id 必须显式给出 —— 默认值会用主机名拼出带点号的 bus_id，不满足 ^[a-z0-9-]+:[a-z0-9-]+$ 模式，换台机器就跑不通，数据集也就不可移植。",
+      "setup": [
+        {
+          "command": [
+            "node",
+            "${cortex}/bin/cli.js",
+            "event-bus",
+            "publish",
+            "--bus-id",
+            "verify-bus:global",
+            "--event",
+            "custom:probe",
+            "--payload",
+            "{\"k\":1}",
+            "--data-dir",
+            ".data"
+          ]
+        }
+      ],
+      "candidates": {
+        "reference": {
+          "command": [
+            "node",
+            "${cortex}/bin/cli.js",
+            "event-bus",
+            "list-events",
+            "--bus-id",
+            "verify-bus:global",
+            "--json",
+            "--data-dir",
+            ".data"
+          ]
+        },
+        "noop": {
+          "command": ["node", "-e", "process.exit(0)"]
+        }
+      },
+      "assertions": [
+        {
+          "id": "list-events-ok",
+          "kind": "output_json_field_equals",
+          "field": "ok",
+          "value": true
+        },
+        {
+          "id": "single-event-count",
+          "kind": "output_json_field_equals",
+          "field": "count",
+          "value": 1
+        },
+        {
+          "id": "event-name-preserved",
+          "kind": "output_json_field_equals",
+          "field": "events.0.event_name",
+          "value": "custom:probe"
+        },
+        {
+          "id": "payload-round-trip",
+          "kind": "output_json_field_equals",
+          "field": "events.0.payload.k",
+          "value": 1
+        },
+        {
+          "id": "bus-id-routed",
+          "kind": "output_json_field_equals",
+          "field": "events.0.bus_id",
+          "value": "verify-bus:global"
+        },
+        {
+          "id": "list-events-exits-clean",
+          "kind": "command_exit",
+          "command": [
+            "node",
+            "${cortex}/bin/cli.js",
+            "event-bus",
+            "list-events",
+            "--bus-id",
+            "verify-bus:global",
+            "--json",
+            "--data-dir",
+            ".data"
+          ],
+          "expect": 0
+        }
+      ]
+    }
+  ]
+}

@@ -74,19 +74,19 @@ Phase 8 把应用可理解性的**文档层**做完了（6/6 任务已完成）�
 - **文件集对等性这条不能省**：只查 manifest 会漏掉 `maturity-tracker` 这类「manifest 在、实现缺」的情况
 - 门禁自身必须 hermetic（只读，不写 `.agent/`）
 
-### T-H26 [待办] M2 · 定义 runtime-evidence 数据集格式
+### T-H26 [已完成] M2 · 定义 runtime-evidence 数据集格式
 
 - 在 `benchmarks/runtime-evidence/<app>/dataset.json` 落地数据集格式，语义与 S6 的 `benchmarks/agent-review/` 对齐
 - 复用现有 11 种断言；候选 = 真实启动命令 / 健康检查 / 端点探测
 - 明确**覆盖边界**：API 层只覆盖可机械断言的运行行为，不覆盖渲染/交互断言
 
-### T-H27 [待办] M2 · 落地第一个真实 API 层验证数据集
+### T-H27 [已完成] M2 · 落地第一个真实 API 层验证数据集
 
 - 选一个真实可启动的本仓或下游目标
 - reference 候选必须 10000 bp；noop 候选必须 < 5000 bp（区分力强制要求）
 - 每条断言必须被真实评估，不允许恒真断言
 
-### T-H28 [待办] M2 · 接入 verification-summary.json 与 /ship CLEAN
+### T-H28 [已完成] M2 · 接入 verification-summary.json 与 /ship CLEAN
 
 - 验证执行后写入 `.agent/metrics/verification-summary.json`，`overall_status` 能取到 `pass` / `fail` / `partial`
 - `/ship` CLEAN：`fail` 阻断；`not_run` 给出明确告警，不再静默通过
@@ -169,4 +169,7 @@ Phase 8 把应用可理解性的**文档层**做完了（6/6 任务已完成）�
 - 2026-10-22：追加 L1↔L3 文件集对等核查，发现 5 处实现文件缺失——`vcs-pr` 与 `maturity-tracker` 缺入口文件导致 skill 在下游**完全不可用**（而 L1 的 `config/vcs.yml.example` 正在教用户使用 `vcs-pr`）。据此把 P-003 从「补 manifest」升级为「修分发完整性」，门禁从一条扩展为三条（新增文件集对等性），并调整 T-H24/T-H25 拆分为 a/b/c
 - 2026-10-22：T-H24 完成——同步 15 个 SKILL.md + 5 处实现文件，清理分发垃圾，修掉 `runtime-evidence` manifest 的 2 处死链（指向未分发的 `docs/` 与 `workflows/`）
 - 2026-10-22：T-H25 完成——新增 `scripts/check-l1-distribution.js`（manifest 完整性 / 文件集对等性 / 链接有效性三条检查，分发集以各自 git index 为准），接入 `pnpm check:l1-distribution` 与 CI；反向验证 8 项测试全过
+- 2026-10-22：M2 完成——契约统一与生产端补齐。`verification-summary.json` 原有两个生产方且取值空间互斥（init 写 `not_run`、generate-summary 写 `healthy/warning/critical`），下游 telemetry 只认 `pass/fail`，因此**信号从未被消费**。现统一为：`overall_status` 归验证侧（`pass`/`fail`/`partial`/`not_run`），仓库健康度移到 `repo_health_status`/`repo_health_score`，两个生产方各自只写自己拥有的字段、互不覆盖
+- 2026-10-22：M2 落地第一个真实 API 层数据集 `benchmarks/runtime-evidence/event-bus/`（event-bus CLI 发布→读回，1 case / 6 断言），reference = 10000 bp、noop = 1666 bp；新增 `scripts/runtime-evidence-runner.cjs` 复用 S6 引擎与 bp 口径，只换输出契约
+- 2026-10-22：M2 打通 `/ship` CLEAN 的阻断能力：`phase-gate/scripts/gate.js` 新增 `runtime_verification` 检查——`fail` 阻断、`partial`/`not_run` 明确告警。此前 CLEAN 只判 `self_check_report`（advisory），**从不读** `verification-summary.json`，阻断能力在机械层实际为空
 - 2026-10-22：M1 验证期间发现并行负载下 fork/exec 会被拒（EAGAIN/ENOMEM），子进程根本没启动的失败形态与产品缺陷无法区分。抽取公共 `tests/helpers/spawn-retry.js`，只在「进程从未启动」这一类失败上做有界重试，跑起来并非零退出的结果一律不重试

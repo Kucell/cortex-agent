@@ -255,9 +255,17 @@ function executeCase(item, candidateId, dataset) {
 
 // ---- main ------------------------------------------------------------------
 
-function main() {
-  const args = parseArgs(process.argv.slice(2));
-  if (args.command !== "run") fail("unknown_command", args.command || "<none>", 2);
+// The engine behind every dataset in this repository: it materializes a
+// fixture, runs a candidate command, evaluates the assertions mechanically and
+// hands the counts to the benchmark skill for the basis-point score.
+//
+// It is exported so that a dataset with a different *output* contract can
+// reuse the same engine — the runtime-evidence runner scores the same way but
+// writes `.agent/metrics/verification-summary.json` instead of a benchmark
+// summary. The dataset semantics, the assertion vocabulary and the
+// discriminating contract (reference = 10000 bp, noop materially lower) are
+// identical for both.
+function runBenchmark(args) {
   const dataset = loadDataset(args.dataset);
   const candidateId = args.candidate;
   if (!candidateId) fail("candidate_required", "Pass --candidate <id>.", 2);
@@ -321,37 +329,58 @@ function main() {
       })),
     }, null, 2)}\n`);
 
-    const candidate = summary.candidates[0];
-    process.stdout.write(`${JSON.stringify({
-      ok: true,
-      dataset_id: summary.dataset_id,
-      candidate_id: candidate.candidate_id,
-      quality_basis_points: candidate.quality_basis_points,
-      passed_assertions: candidate.passed_assertions,
-      total_assertions: candidate.total_assertions,
-      output: target,
-    })}\n`);
-
-    if (args["min-quality-bp"] !== undefined && candidate.quality_basis_points < Number(args["min-quality-bp"])) {
-      fail("quality_below_threshold", {
-        quality_basis_points: candidate.quality_basis_points,
-        required: Number(args["min-quality-bp"]),
-      }, 1);
-    }
-
-    // The upper bound is what makes a dataset *discriminating*: a candidate
-    // that does nothing at all has to score materially lower than the
-    // reference. Without it, a dataset whose assertions never fail would
-    // still report a perfect score and could not detect a regression.
-    if (args["max-quality-bp"] !== undefined && candidate.quality_basis_points > Number(args["max-quality-bp"])) {
-      fail("quality_above_threshold", {
-        quality_basis_points: candidate.quality_basis_points,
-        required: Number(args["max-quality-bp"]),
-      }, 1);
-    }
+    return { summary, benchmarkInput, executed, target, skillScript };
   } finally {
     fs.rmSync(scratch, { recursive: true, force: true });
   }
 }
 
-main();
+function main() {
+  const args = parseArgs(process.argv.slice(2));
+  if (args.command !== "run") fail("unknown_command", args.command || "<none>", 2);
+
+  const { summary, target } = runBenchmark(args);
+  const candidate = summary.candidates[0];
+  process.stdout.write(`${JSON.stringify({
+    ok: true,
+    dataset_id: summary.dataset_id,
+    candidate_id: candidate.candidate_id,
+    quality_basis_points: candidate.quality_basis_points,
+    passed_assertions: candidate.passed_assertions,
+    total_assertions: candidate.total_assertions,
+    output: target,
+  })}\n`);
+
+  if (args["min-quality-bp"] !== undefined && candidate.quality_basis_points < Number(args["min-quality-bp"])) {
+    fail("quality_below_threshold", {
+      quality_basis_points: candidate.quality_basis_points,
+      required: Number(args["min-quality-bp"]),
+    }, 1);
+  }
+
+  // The upper bound is what makes a dataset *discriminating*: a candidate
+  // that does nothing at all has to score materially lower than the
+  // reference. Without it, a dataset whose assertions never fail would
+  // still report a perfect score and could not detect a regression.
+  if (args["max-quality-bp"] !== undefined && candidate.quality_basis_points > Number(args["max-quality-bp"])) {
+    fail("quality_above_threshold", {
+      quality_basis_points: candidate.quality_basis_points,
+      required: Number(args["max-quality-bp"]),
+    }, 1);
+  }
+}
+
+if (require.main === module) {
+  main();
+}
+
+module.exports = {
+  evaluate,
+  executeCase,
+  findSkillScript,
+  loadDataset,
+  main,
+  parseArgs,
+  runBenchmark,
+  runCommand,
+};

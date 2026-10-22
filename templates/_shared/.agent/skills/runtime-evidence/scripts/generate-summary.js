@@ -1,8 +1,8 @@
 /**
  * generate-summary.js
  *
- * 聚合已有的四类 metrics 文件，生成 verification-summary.json。
- * 供 /briefing 展示综合健康度，供 /ship CLEAN 阶段判断是否阻断。
+ * 聚合已有的四类 metrics 文件，把**仓库健康度**并入 verification-summary.json。
+ * 供 /briefing 展示综合健康度。
  *
  * 输入源（均从 .agent/metrics/ 读取）：
  *   - self-check-report.json     → harness 组件
@@ -13,6 +13,14 @@
  * 输出：
  *   .agent/metrics/verification-summary.json
  *
+ * 分工（为什么这里是「合并」而不是「覆盖」）：
+ *   verification-summary.json 有两个生产方——本脚本与 runtime-evidence
+ *   runner。runner 跑过验证数据集才有资格写 overall_status（pass/fail/
+ *   partial）；本脚本只拥有 components 与仓库健康度。
+ *   两者写同一个文件，所以本脚本**必须保留**对方已经写下的验证结论：
+ *   覆盖写会让「跑过一次验证」的结果退化成 not_run，CLEAN 门禁随之
+ *   静默放行——这正是 Phase 8 之后一直存在的那个洞。
+ *
  * 零外部依赖，仅使用 Node.js built-in。
  */
 
@@ -20,6 +28,8 @@
 
 const fs = require('fs');
 const path = require('path');
+
+const { buildDefaults } = require('./init.js');
 
 // ─── 路径解析 ───────────────────────────────────────────────────────────────
 
@@ -86,7 +96,7 @@ function statusWeight(status) {
  * @param {string[]} statuses
  * @returns {'healthy'|'warning'|'critical'|'unknown'}
  */
-function computeOverallStatus(statuses) {
+function computeHealthStatus(statuses) {
   const known = statuses.filter((s) => s !== 'unknown');
   if (known.length === 0) return 'unknown';
   if (known.includes('critical')) return 'critical';
@@ -268,18 +278,32 @@ function run() {
   // 汇总
   const componentList = [harness, knowledge, entropy, coordinator];
   const statuses = componentList.map((c) => c.status);
-  const overallStatus = computeOverallStatus(statuses);
-  const overallScore = computeOverallScore(componentList);
+  const healthStatus = computeHealthStatus(statuses);
+  const healthScore = computeOverallScore(componentList);
   const actionsNeeded = buildActions({ harness, knowledge, entropy, coordinator });
 
   const now = new Date();
   const nextCheck = new Date(now.getTime() + 24 * 60 * 60 * 1000);
 
+  // 验证侧由 runtime-evidence runner 拥有：只有它跑过数据集才有资格写
+  // overall_status。本脚本只做仓库健康度聚合，**不覆盖**验证结论——
+  // 否则「仓库健康」会被读成「应用已验证」，CLEAN 门禁随之静默放行。
+  const shell = buildDefaults(now.toISOString())['verification-summary.json'];
+  const existing = readJson(OUT) || {};
+  const verificationStatus = ['pass', 'fail', 'partial'].includes(existing.overall_status)
+    ? existing.overall_status
+    : 'not_run';
+
   const summary = {
     generated_at: now.toISOString(),
     triggered_by: 'generate-summary',
-    overall_status: overallStatus,
-    overall_score: overallScore,
+    overall_status: verificationStatus,
+    coverage: existing.coverage || shell.coverage,
+    results: existing.results || shell.results,
+    blockers: existing.blockers || shell.blockers,
+    warnings: existing.warnings || shell.warnings,
+    repo_health_status: healthStatus,
+    repo_health_score: healthScore,
     components: {
       harness: {
         score: harness.score,
@@ -337,7 +361,8 @@ function run() {
     unknown: '❓',
   };
 
-  console.log(`\n综合状态: ${statusEmoji[overallStatus] || ''} ${overallStatus} (${overallScore}/100)\n`);
+  console.log(`\n验证状态: ${verificationStatus}`);
+  console.log(`仓库健康度: ${statusEmoji[healthStatus] || ''} ${healthStatus} (${healthScore}/100)\n`);
   console.log('各组件状态:');
   console.log(`  harness     : ${statusEmoji[harness.status] || ''} ${harness.status} (${harness.score ?? 'N/A'}/100)`);
   console.log(`  knowledge   : ${statusEmoji[knowledge.status] || ''} ${knowledge.status} (${knowledge.score ?? 'N/A'}/100)`);
