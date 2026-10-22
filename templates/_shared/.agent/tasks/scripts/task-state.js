@@ -20,6 +20,14 @@ function listTaskRecordFiles(tasksDir) {
   return names.filter((name) => TASK_FILE_RE.test(name)).sort();
 }
 
+// A task id as it appears in a table cell or in prose: `T-…` or `M-…`.
+// The daily parser and the upgrade path must recognise the same ids, so the
+// pattern lives here instead of being restated by each consumer.
+const TASK_ID_RE = /\b(?:T|M)-[A-Za-z0-9-]+\b/;
+
+// A list item can only be a task (`T-…`), never a mission (`M-…`).
+const LIST_ITEM_TASK_ID_RE = /\bT-[A-Za-z0-9-]+\b/;
+
 function validationStatusFromText(value) {
   const matches = [...String(value || "").matchAll(/\b(NOT_RUN|PARTIAL|PASS|FAIL)\b/gi)];
   return matches.length ? matches[matches.length - 1][1].toUpperCase() : "";
@@ -66,6 +74,11 @@ const HEADER_ALIASES = Object.freeze({
   plan: [/^关联计划$/, /^计划$/, /^plan$/i],
 });
 
+// A markdown separator row (`| --- | --- |`) carries no data.
+function isSeparatorRow(cells) {
+  return cells.every((cell) => /^:?-{2,}:?$/.test(String(cell || "").trim()));
+}
+
 // Split a markdown table row into cells, honouring escaped pipes (`\|`).
 // A literal pipe inside a cell (e.g. `templates/zh\|en/`) would otherwise
 // split the row into the wrong number of columns and shift every value.
@@ -111,7 +124,7 @@ function classifyHeader(cells) {
 // without a recognizable header) the historical positional layout is used.
 function taskFromTableCells(cells, header) {
   const idColumn = header && header.id !== undefined ? header.id : 0;
-  const id = (String(cells[idColumn] || "").match(/\b(?:T|M)-[A-Za-z0-9-]+\b/) || [])[0];
+  const id = (String(cells[idColumn] || "").match(TASK_ID_RE) || [])[0];
   if (!id) return null;
   // When a header is known, a column the header does not declare does not
   // exist: reading it by position would return a neighbouring value (a 5
@@ -174,13 +187,13 @@ function tasksFromActiveSection(section) {
   let header = null;
   for (const line of section.split(/\r?\n/)) {
     const trimmed = line.trim();
-    if (!trimmed.startsWith("|") || /^\|\s*:?-{3,}/.test(trimmed)) continue;
     const cells = splitTableRow(trimmed);
+    if (!cells || isSeparatorRow(cells)) continue;
     if (cells.length < 3) continue;
     const candidate = classifyHeader(cells);
     // A header row never carries a task id; a data row always does.
     const headerLike = candidate.id !== undefined && candidate.progress !== undefined
-      && !/\b(?:T|M)-[A-Za-z0-9-]+\b/.test(cells[candidate.id] || "");
+      && !TASK_ID_RE.test(cells[candidate.id] || "");
     if (headerLike) {
       header = candidate;
       continue;
@@ -199,6 +212,54 @@ function tasksFromActiveSection(section) {
   return tasks;
 }
 
+// ─── Legacy table collector (upgrade path) ───────────────────────────────────
+//
+// A project that has not migrated yet keeps its tasks in markdown tables. The
+// upgrade path (`cortex-agent migrate-task-state`) needs EVERY task table in
+// the file — including the completed rows the active-tasks view drops — so the
+// collector is separate from `parseTaskProgress`, which reads only the active
+// section.
+//
+// A table is a task table when its header row exposes an id column AND a
+// progress column; a header without those is a milestone/SP table and must
+// not be treated as a task list. Each row carries the id the shared rule
+// resolved, so callers never re-derive it.
+function parseTaskTables(source) {
+  const lines = String(source || "").split(/\r?\n/);
+  const tables = [];
+  let current = null;
+  for (let index = 0; index < lines.length; index += 1) {
+    const cells = splitTableRow(lines[index]);
+    if (!cells) {
+      if (current) { tables.push(current); current = null; }
+      continue;
+    }
+    if (isSeparatorRow(cells)) continue;
+    const header = classifyHeader(cells);
+    // A header row never carries a task id; a data row always does. Without
+    // this guard a data row can be mistaken for a header and reset the table
+    // being collected.
+    const headerLike = header.id !== undefined && header.progress !== undefined
+      && !TASK_ID_RE.test(cells[header.id] || "");
+    if (headerLike) {
+      if (current) tables.push(current);
+      current = { header, rows: [], line: index + 1 };
+      continue;
+    }
+    if (!current) continue;
+    // Data rows are read through the header captured when the table started;
+    // re-classifying the row itself finds no aliases and loses the id column.
+    const idMatch = (cells[current.header.id] || "").match(TASK_ID_RE);
+    if (!idMatch) {
+      tables.push(current); current = null;
+      continue;
+    }
+    current.rows.push({ cells, line: index + 1, id: idMatch[0] });
+  }
+  if (current) tables.push(current);
+  return tables;
+}
+
 function fallbackTaskScan(source) {
   const seen = new Set();
   const tasks = [];
@@ -207,7 +268,7 @@ function fallbackTaskScan(source) {
     // History logs live in blockquotes and code fences; neither is a task list.
     if (/^\s*```/.test(line)) { inFence = !inFence; continue; }
     if (inFence || /^\s*>/.test(line)) continue;
-    const id = (line.match(/\bT-[A-Za-z0-9-]+\b/) || [])[0];
+    const id = (line.match(LIST_ITEM_TASK_ID_RE) || [])[0];
     if (!id || seen.has(id)) continue;
     seen.add(id);
     const done = /\[[xX]\]|✅|完成|Done/i.test(line);
@@ -504,6 +565,9 @@ module.exports = {
   validationStatusFromGates,
   STAGE_PROGRESS,
   TASK_FILE_RE,
+  TASK_ID_RE,
   listTaskRecordFiles,
+  parseTaskTables,
+  classifyHeader,
 };
 
