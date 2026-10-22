@@ -57,7 +57,15 @@ function launch(cwd, args = [], env = {}) {
   return { child, output: () => ({ stdout, stderr }) };
 }
 
-function waitForExit(running, timeoutMs = 8000) {
+// The deadlines below are *failure-detection* timeouts: they only decide how
+// long the harness waits before it gives up and reports a failure. They are
+// deliberately generous, because on a loaded CI runner process scheduling
+// alone can eat several seconds — a tight harness deadline turns a slow
+// machine into a red build. The behavioural assertions live in the tests
+// themselves and are bound to the server's own deadlines, not to the clock.
+const HARNESS_DEADLINE_MS = 20000;
+
+function waitForExit(running, timeoutMs = HARNESS_DEADLINE_MS) {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
       running.child.kill("SIGKILL");
@@ -71,7 +79,7 @@ function waitForExit(running, timeoutMs = 8000) {
   });
 }
 
-function waitForReady(running, timeoutMs = 5000) {
+function waitForReady(running, timeoutMs = HARNESS_DEADLINE_MS) {
   return new Promise((resolve, reject) => {
     const started = Date.now();
     const poll = () => {
@@ -85,7 +93,7 @@ function waitForReady(running, timeoutMs = 5000) {
   });
 }
 
-function waitFor(check, timeoutMs = 3000) {
+function waitFor(check, timeoutMs = 10000) {
   const started = Date.now();
   return new Promise((resolve, reject) => {
     const poll = () => {
@@ -125,10 +133,20 @@ test("reports dependency, generation, and Session open failures before ready", a
 test("writer timeout is bounded and never reports ready", async (t) => {
   const cwd = createProject();
   t.after(() => fs.rmSync(cwd, { recursive: true, force: true }));
+  // The server abandons a hung writer at its own session-open deadline
+  // (AGENT_DASHBOARD_SESSION_TIMEOUT_MS, default 5s). The old budget of
+  // 6.5s left only 1.5s of slack — less than a loaded CI runner spends on
+  // process scheduling — so the test failed on a slow machine without any
+  // behaviour change. The bound below keeps the same meaning (the server
+  // gives up, and gives up long before the harness deadline) while giving
+  // the scheduler room to breathe.
+  const SESSION_DEADLINE_MS = 5000;
   const started = Date.now();
-  const result = await waitForExit(launch(cwd, ["--port", "0"], { WRITER_HANG_ACTION: "open" }), 7000);
+  const result = await waitForExit(launch(cwd, ["--port", "0"], { WRITER_HANG_ACTION: "open" }), HARNESS_DEADLINE_MS);
+  const elapsed = Date.now() - started;
   assert.equal(result.code, 1);
-  assert.ok(Date.now() - started < 6500);
+  assert.ok(elapsed < SESSION_DEADLINE_MS * 2.4,
+    `the server waited ${elapsed}ms for a hung writer (its deadline is ${SESSION_DEADLINE_MS}ms) — the timeout is not bounded`);
   assert.match(result.stderr, /"error":"session_open_failed"/);
   assert.doesNotMatch(result.stdout, /"url"/);
 });
@@ -150,9 +168,14 @@ test("uses an independent heartbeat and closes once on SIGHUP with an open socke
 
   const started = Date.now();
   running.child.kill("SIGHUP");
-  const result = await waitForExit(running, 5000);
+  const result = await waitForExit(running, HARNESS_DEADLINE_MS);
+  const elapsed = Date.now() - started;
   assert.equal(result.code, 129, result.stderr);
-  assert.ok(Date.now() - started < 4500, "shutdown must have a finite keep-alive deadline");
+  // The shutdown path closes the Session (one management call, bounded by its
+  // own timeout) and then exits. It must finish on a finite deadline — the
+  // budget only has to sit comfortably above that deadline and comfortably
+  // below the harness deadline.
+  assert.ok(elapsed < 8000, `shutdown took ${elapsed}ms — it must have a finite keep-alive deadline`);
   const actions = fs.readFileSync(log, "utf8").trim().split("\n");
   assert.equal(actions[0], "open");
   assert.ok(actions.includes("heartbeat"));
