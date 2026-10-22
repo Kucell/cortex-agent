@@ -22,8 +22,12 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
-const { spawnSync } = require("node:child_process");
 const { test, describe, before, after } = require("node:test");
+
+// Spawning the template CLI as a child process can fail transiently under
+// memory pressure (the kernel refuses fork/exec with EAGAIN / ENOMEM). The
+// shared helper retries only that class; a process that ran is never retried.
+const { spawnSyncWithRetry } = require("../helpers/spawn-retry");
 
 const ROOT = path.resolve(__dirname, "..", "..");
 const TEMPLATES = ["_shared", "zh", "en"];
@@ -74,7 +78,7 @@ after(() => {
 function runApi(tpl, args) {
   const root = path.join(project, tpl);
   const script = path.join(root, ".agent", "skills", "management-api", "scripts", "index.js");
-  return spawnSync("node", [script, ...args], {
+  return spawnSyncWithRetry("node", [script, ...args], {
     cwd: root,
     encoding: "utf8",
     env: { ...process.env, LANG: "en_US.UTF-8" },

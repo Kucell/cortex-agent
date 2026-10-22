@@ -93,6 +93,15 @@ jobs:
       - name: Template parity check
         run: pnpm check:parity
 
+      - name: L1 distribution integrity check
+        # The L1 template tree is what every downstream project receives.
+        # Without this gate a skill can ship in a state that is silently
+        # broken downstream: no SKILL.md (undiscoverable), a missing
+        # implementation file (unusable), or a manifest link pointing at a
+        # path L1 does not distribute (404). See
+        # docs/architecture/harness-review-and-runtime-evidence-design.md P-003.
+        run: pnpm check:l1-distribution
+
       - name: Run full test suite
         # test:ci runs the runner in strict hermetic mode: the suite must not
         # write a single byte into .agent/. In CI nothing else can write there

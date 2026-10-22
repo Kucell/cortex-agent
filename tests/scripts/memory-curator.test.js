@@ -10,7 +10,8 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
-const { execFileSync } = require('child_process');
+
+const { execFileWithRetry } = require('../helpers/spawn-retry');
 
 const CLI = path.resolve(__dirname, '..', '..', 'templates', 'general', '.agent', 'skills', 'memory-curator', 'scripts', 'memory-curator.js');
 
@@ -24,15 +25,24 @@ function mkTmp() {
   return dir;
 }
 
+// The CLI is spawned as a child process. Under a loaded parallel test run the
+// spawn itself can fail transiently (the process table is saturated and
+// fork/exec returns EAGAIN), which surfaces as status=null with no stdout or
+// stderr — a failure that has nothing to do with the code under test.
+// The shared helper retries only that class of failure (the process never
+// started); a CLI that ran and exited non-zero is a real result and is never
+// retried.
+function spawnCli(args, cwd) {
+  return execFileWithRetry('node', [CLI, ...args], { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+}
+
 function run(args, cwd) {
-  const out = execFileSync('node', [CLI, ...args], { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
-  return JSON.parse(out);
+  return JSON.parse(spawnCli(args, cwd));
 }
 
 function runExit(args, cwd) {
   try {
-    const out = execFileSync('node', [CLI, ...args], { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
-    return { code: 0, body: JSON.parse(out) };
+    return { code: 0, body: JSON.parse(spawnCli(args, cwd)) };
   } catch (e) {
     return { code: e.status || 1, body: e.stdout ? JSON.parse(e.stdout) : null };
   }
