@@ -167,3 +167,63 @@ test("doctor --fix reports the schema verdict before the migration runs", async 
   // Nothing was written: the plan is not compliant, so no record exists.
   assert.equal(fs.existsSync(path.join(tasks, "T-LEG-001.json")), false);
 });
+
+test("doctor --json tells a machine consumer that the project is not migrated", async (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-doctor-legacy-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  fs.mkdirSync(path.join(root, ".agent", "plans"), { recursive: true });
+  fs.mkdirSync(path.join(root, ".agent", "tasks"), { recursive: true });
+  fs.writeFileSync(
+    path.join(root, ".agent", "plans", "task-progress.md"),
+    [
+      "# 任务进度",
+      "",
+      "## 🔥 当前活跃任务",
+      "",
+      "| 任务 ID | 优先级 | 描述 | 进度 |",
+      "| :--- | :--- | :--- | :--- |",
+      "| T-LEG-001 | P0 | 旧版任务 | 30% |",
+      "",
+    ].join("\n"),
+    "utf8",
+  );
+
+  const out = await runDoctor(root, { json: true });
+  const parsed = JSON.parse(out.slice(out.indexOf("{")));
+  assert.ok(parsed.task_state_integrity, "task_state_integrity field is required");
+  assert.equal(parsed.task_state_integrity.needs_migration, true);
+  assert.equal(parsed.task_state_integrity.ok, false);
+  assert.match(parsed.task_state_integrity.remedy, /migrate-task-state apply --confirm/);
+});
+
+test("doctor --json reports a migrated project as migrated", async (t) => {
+  const root = projectWithTaskRecords({ "T-OK-001": validRecord("T-OK-001") });
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  fs.mkdirSync(path.join(root, ".agent", "plans"), { recursive: true });
+  fs.writeFileSync(
+    path.join(root, ".agent", "tasks", "index.json"),
+    JSON.stringify({ tasks: [{ task_id: "T-OK-001" }] }, null, 2),
+    "utf8",
+  );
+  fs.writeFileSync(
+    path.join(root, ".agent", "plans", "task-progress.md"),
+    [
+      "# 任务进度",
+      "",
+      "<!-- generated:task-progress v1; source=.agent/tasks,index.json; 请勿手改生成区 -->",
+      "",
+      "## 🔥 当前活跃任务",
+      "",
+      "| 任务 ID | 优先级 | 任务说明 | 进度 |",
+      "| :--- | :--- | :--- | :--- |",
+      "| T-OK-001 | P0 | 合规记录 | 10% |",
+      "",
+    ].join("\n"),
+    "utf8",
+  );
+
+  const out = await runDoctor(root, { json: true });
+  const parsed = JSON.parse(out.slice(out.indexOf("{")));
+  assert.equal(parsed.task_state_integrity.needs_migration, false);
+  assert.equal(parsed.task_state_integrity.ok, true);
+});
