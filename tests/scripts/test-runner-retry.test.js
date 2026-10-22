@@ -74,12 +74,27 @@ test("a file that also fails alone stays a failure", async (t) => {
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
 
   const broken = writeFixture(dir, "broken.test.js", ALWAYS_FAIL_BODY);
-  const results = await runParallel([broken], 1, 60, true, 0, 0);
+
+  const lines = [];
+  const original = console.log;
+  console.log = (...args) => { lines.push(args.join(" ")); };
+  t.after(() => { console.log = original; });
+  let results;
+  try {
+    results = await runParallel([broken], 1, 60, false, 0, 0);
+  } finally {
+    console.log = original;
+  }
 
   assert.equal(results.length, 1);
   const r = results[0];
   assert.equal(r.ok, false, "a file that fails twice must stay red");
   assert.equal(r.retried, true, "the second attempt must be recorded as a retry");
+  // The note must not claim the retry passed — that would report a real
+  // failure as an environment problem.
+  const output = lines.join("\n");
+  assert.match(output, /独占重跑仍失败/, "a failed retry must be reported as such");
+  assert.doesNotMatch(output, /独占重跑通过/, "a failed retry must not be reported as a pass");
 });
 
 test("a file that passes on the first attempt is never retried", async (t) => {

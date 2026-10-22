@@ -543,6 +543,40 @@ const TRANSITIONS = {
         return fileExists(abs) ? ok(`自检报告存在：${abs}。`) : warn(`未找到 ${abs}。`);
       },
     },
+    {
+      // CLEAN 需要**验证证据**，不只是「没报错」。自检报告只证明治理状态
+      // 健康，不证明应用行为符合预期——两者不能互相顶替。
+      //
+      // 判据（与 docs/reliability/verification-templates.md §7 一致）：
+      //   fail    → 阻断，发布前必须先修掉失败的验证
+      //   partial → 告警，存在未通过的断言
+      //   not_run → 告警，明确写出「未执行验证」，不再静默通过
+      id: "runtime_verification",
+      severity: "required",
+      run: (ctx) => {
+        const abs = path.join(ctx.cwd, ".agent", "metrics", "verification-summary.json");
+        const data = readJson(abs);
+        if (!data) {
+          return warn(`未找到 ${abs} —— 运行时验证未执行（not_run）。`);
+        }
+        const status = data.overall_status;
+        if (status === "fail") {
+          const blockers = Array.isArray(data.blockers) ? data.blockers : [];
+          const detail = blockers
+            .slice(0, 5)
+            .map((b) => `${b.case_id}#${b.assertion_id}`)
+            .join("；");
+          return fail(`运行时验证失败（fail）：${detail || "详见 verification-summary.json"}。`);
+        }
+        if (status === "partial") {
+          return warn("运行时验证部分通过（partial）—— 存在未通过的断言，详见 verification-summary.json。");
+        }
+        if (status === "pass") {
+          return ok("运行时验证通过（pass）。");
+        }
+        return warn(`运行时验证状态为 ${status || "缺失"} —— 按未执行处理。`);
+      },
+    },
   ],
 };
 
