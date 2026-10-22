@@ -22,7 +22,7 @@
 |---|---|---|---|---|
 | 异构审查 | `guided-review.schema.json`、`benchmark-summary.schema.json` 已定义 | **散文**（`/code-review` workflow 六步），无结构化产出 | 正常 | finding 只能人读，无法机械判定 |
 | 应用可理解性 | `verification-summary.json` 等三件套已定义 | **空**（`init.js` 只写 `not_run` 空壳） | 正常 | `/ship` CLEAN 的阻断能力实际为空 |
-| Skill 能力分发 | 脚本实现已在 L1 | 存在 | **缺**（15 个 skill 无 `SKILL.md`；L1 无 `skill-index.json`） | 下游项目的 agent 不知道这些能力存在 |
+| Skill 能力分发 | 脚本实现应在 L1 | 部分缺（`vcs-pr`/`maturity-tracker` 缺入口文件） | **缺**（15 个 skill 无 `SKILL.md`；L1 无 `skill-index.json`） | 下游既发现不了这些能力，也有 skill 直接跑不起来 |
 
 **统一原则**：任何对外承诺的能力，必须同时具备可执行判定、可发现说明、以及从生产到判定的机械通路。三者缺一，能力就是幻觉。
 
@@ -47,7 +47,7 @@
 - `runtime-evidence/SKILL.md` 自述：`browser-verification.json` 是「由 UI/E2E 验证流程（Playwright、Chrome DevTools、手动截图）完成后写入」——**cortex 定义契约，但自己不生产证据**。
 - 推论：`/ship` CLEAN 读 `verification-summary.json`，`overall_status: "fail"` 才阻断；而**没有任何组件会把它变成 `fail`**，它恒为 `not_run`。S1 把 `/ship` 的散文门禁机械化时，接的是这条证据链的**下游**，生产端是空的。
 
-### 2.3 Skill 分发：能力在，说明缺
+### 2.3 Skill 分发：既缺说明，也有 skill 不可用
 
 - L1 模板 `templates/_shared/.agent/skills/` 共 33 个 skill，其中 **15 个只有 `scripts/`，没有 `SKILL.md`**：`agent-visibility`、`architecture-guard`、`doc-gardening`、`graphify`、`knowledge-lint`、`mission-progress`、`runtime-continuity`、`runtime-evidence`、`runtime-state-integration`、`runtime-state-mcp`、`secrets`、`session-triage`、`sync-global`、`vcs-pr`、`weekly-report`。
 - 这些 `SKILL.md` **在 L1 的 git 历史中从未存在过**（不是被删的回归），说明是长期状态。
@@ -61,6 +61,24 @@
 - 唯一的真实耦合：`runtime-evidence/SKILL.md` 末行引用 `../../../docs/reliability/verification-templates.md`，而 **L1 模板不发布 `docs/` 目录**（`templates/_shared/` 下只有 `integrations/`）——该链接在下游必然失效。
 
 因此 P-003 的实际风险远低于初判：**主因是「缺说明」，不是「内容越界」**；需要处理的是 1 处死链，而不是 15 份内容重写。
+
+### 2.4 更严重的一层：L1 有 skill 完全不可用
+
+进一步做 L1↔L3 文件集对等核查（排除 `.bak` / `.DS_Store` / `*.test.js` / 嵌套重复目录）后，发现**除缺 manifest 外，还有 5 处实现文件缺失**，其中 2 处导致 skill 在下游完全不可用：
+
+| skill | L1 缺失 | 后果 |
+|---|---|---|
+| `vcs-pr` | `scripts/index.js` | **完全不可用**。该文件是 PR 编排器，承担密钥解析（经 secrets skill 取 `token_ref`）、backend 调用与 `vcs_pr_opened/merged/closed` 事件发射；L1 只有 3 个 backend 文件，无人调用它们。而 L1 的 `config/vcs.yml.example` 正在教用户配置并使用 `vcs-pr` |
+| `maturity-tracker` | `scripts/index.js` | **完全不可用**，且 L1 **有** `SKILL.md`——manifest 存在却指向不存在的实现 |
+| `runtime-evidence` | `scripts/generate-summary.js` | SKILL.md 声明的「核心功能」不可用（只剩初始化空壳） |
+| `secrets` | `scripts/generate.js` | 密钥生成器缺失 |
+| `runtime-state-integration` / `runtime-state-mcp` | `agents/openai.yaml` | agent 清单缺失 |
+
+另有分发垃圾：`templates/_shared/.agent/skills/runtime-evidence/.DS_Store` 被随模板分发。
+
+L3 侧也存在两处**路径事故产生的重复目录**（`secrets/secrets/scripts/*`、`vcs-pr/vcs-pr/scripts/backends/*`），不应被同步进 L1。
+
+> 这把 P-003 的性质从「补文档」升级为「修分发完整性」：缺 manifest 是**不可发现**，缺实现是**不可用**，两者后果不同，但根因相同——L1 与 L3 之间没有对等性约束。
 
 ### 2.4 相关事实
 
@@ -134,15 +152,28 @@ benchmarks/runtime-evidence/<app>/dataset.json
 
 ---
 
-### P-003 L1 Skill Manifest 分发缺口
+### P-003 L1 分发完整性（manifest + 实现 + 垃圾清理）
 
-**目标**：消除「能力在、说明缺」的反向实例，让下游项目能发现并正确使用已分发的能力。
+**目标**：让 L1 与 L3 之间的分发对等性成为**可机械校验的约束**，消除「不可发现」与「不可用」两类缺口。
 
-**三项动作**：
+**四项动作**：
 
 1. **补齐 15 个 L1 skill 的 `SKILL.md`**。来源为 L3 `.agent/skills/<name>/SKILL.md`。已实证：这 15 个文件**既无 `scope: L3` 标记，也不引用任何 L3-only 规则**，因此同步不需要逐个重写；同步后需做的是**修正下游必然失效的引用**（当前已知 1 处：`runtime-evidence` → `docs/reliability/verification-templates.md`，而 L1 不发布 `docs/`）。同步仍需过 `scripts/check-l3-boundary.js` 作为回归保险。
-2. **补 L1 的 `skill-index.json`**（或明确声明 L1 不走索引发现）。需要先决策：L1 走「manifest 发现」还是「索引发现」。当前 L3 两者都有，L1 两者都没有。
-3. **新增机械门禁**：L1 每个 skill 目录必须有 `SKILL.md`（可扩展为 frontmatter 必填字段校验），接入 CI。否则缺口会再次漂移。
+2. **补齐 5 处缺失的实现文件**：`vcs-pr/scripts/index.js`、`maturity-tracker/scripts/index.js`、`runtime-evidence/scripts/generate-summary.js`、`secrets/scripts/generate.js`、`runtime-state-{integration,mcp}/agents/openai.yaml`。其中前两项让 skill 从「不可用」变为「可用」，是本子提案的**最高优先级**。
+3. **清理分发垃圾**：移除 `templates/_shared/.agent/skills/runtime-evidence/.DS_Store`；同步时**排除** L3 侧的 `.bak` / `.bak.prev` / `.new` / `.DS_Store` / `*.test.js` 以及两处路径事故产生的嵌套重复目录（`secrets/secrets/scripts/*`、`vcs-pr/vcs-pr/scripts/backends/*`）。
+4. **新增机械门禁**（见下），接入 CI。
+
+**门禁设计（三条，全部只读、hermetic）**：
+
+| 检查 | 判据 |
+|---|---|
+| manifest 完整性 | L1 每个 skill 目录必须有 `SKILL.md`，且 frontmatter 必填字段合规 |
+| **文件集对等性** | L1 相对 L3 不得缺实现文件（按第 3 条的排除清单过滤） |
+| 链接有效性 | manifest 内的文档链接必须指向 L1 实际分发的路径（`docs/` 属未分发路径） |
+
+**为什么门禁必须包含「文件集对等性」**：只查 manifest 会漏掉 `maturity-tracker` 这类**manifest 在、实现缺**的情况——那是最难被发现的一类，因为表面看完全正常。
+
+**发现机制选型**（待定，R6）：L1 走「manifest 发现」还是「索引发现」。当前 L3 两者都有（`skill-index.json` 38 条 + 全部 SKILL.md），L1 两者都没有。本子提案先只做 manifest（低风险、可机械校验），索引策略单独立项。
 
 **注意**：本子提案是三件里唯一**纯分发修复**、无设计风险的部分，可独立先行。
 
@@ -181,10 +212,11 @@ benchmarks/runtime-evidence/<app>/dataset.json
 |---|---|---|---|
 | R1 | 数据集沦为「给实现写的同义反复测试」 | 门禁看似通过，实则无发现力 | 强制复用历史真实缺陷；强制 noop 区分力（< 5000 bp）；每条断言必须被真实评估 |
 | R2 | P-002 API 层无法覆盖 UI/交互断言 | 用户误以为 P1 已完成 | 在 schema 与 SKILL.md 中显式声明覆盖边界；UI 层单列里程碑 |
-| R3 | 补 15 个 SKILL.md 扩大 L1 分发体积 | 下游安装变重 | 先量化体积增量；若显著，改为「索引发现 + 精简 manifest」双轨 |
+| R3 | 补 15 个 manifest + 5 个实现文件扩大 L1 分发体积 | 下游安装变重 | 先量化体积增量；若显著，改为「索引发现 + 精简 manifest」双轨 |
 | R4 | 下游死链：L1 的 `SKILL.md` 引用本仓 `docs/` 路径（L1 不发布 `docs/`） | 下游 agent 点了链接得到 404 | 已实证当前至少 1 处（`runtime-evidence`）；manifest 门禁需包含链接有效性检查 |
-| R5 | 与 S6 已交付机制重复造轮子 | 维护两份相似 harness | 提案明确**复用** `agent-review-benchmark-runner.cjs` 与 11 种断言，只新增数据集格式 |
-| R6 | 发现机制选型未定（manifest vs 索引） | P-003 动作 2 无法定稿 | P-003 拆两步：先补 manifest（低风险），索引策略单独立项 |
+| R5 | 同步引入 L3 垃圾（`.bak` / `.DS_Store` / 路径事故产生的嵌套重复目录） | L1 带上无用文件，体积与噪音上升 | 同步时按排除清单过滤；L3 侧垃圾另行清理 |
+| R6 | 与 S6 已交付机制重复造轮子 | 维护两份相似 harness | 提案明确**复用** `agent-review-benchmark-runner.cjs` 与 11 种断言，只新增数据集格式 |
+| R7 | 发现机制选型未定（manifest vs 索引） | P-003 的发现策略无法定稿 | P-003 拆两步：先补 manifest（低风险），索引策略单独立项 |
 
 ---
 
@@ -203,8 +235,9 @@ benchmarks/runtime-evidence/<app>/dataset.json
 
 **M1**
 - `templates/_shared/.agent/skills/*/SKILL.md` 覆盖全部 33 个 skill
-- 新增 L1 manifest 完整性检查脚本并接入 CI；人为删除一个 SKILL.md 必须让检查失败
-- manifest 内的文档链接指向 L1 实际分发的路径（L1 不发布 `docs/`，指向 `docs/` 的链接必须改写或移除）
+- 5 处缺失实现文件补齐，`vcs-pr` 与 `maturity-tracker` 在下游**从不可用变为可用**
+- L1 内无 `.DS_Store` / `.bak` / 嵌套重复目录等分发垃圾
+- 新增 L1 分发完整性检查脚本并接入 CI，三条检查（manifest 完整性 / 文件集对等性 / 链接有效性）全部覆盖；反向验证：人为删除一个 `SKILL.md`、人为删除一个实现文件、写入一条 `docs/` 死链，都必须让检查失败
 - `pnpm check:l3` 零违规
 
 **M2**

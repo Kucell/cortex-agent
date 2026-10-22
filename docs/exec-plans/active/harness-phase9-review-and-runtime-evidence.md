@@ -17,7 +17,7 @@ Phase 8 把应用可理解性的**文档层**做完了（6/6 任务已完成）�
 
 ## 范围
 
-- **P-003**（M1）：补齐 L1 模板中 15 个缺失的 skill `SKILL.md`，并新增 manifest 完整性机械门禁
+- **P-003**（M1）：修 L1 分发完整性——补齐 15 个缺失的 skill `SKILL.md`、5 处缺失的实现文件、清理分发垃圾，并新增三条机械门禁（manifest 完整性 / 文件集对等性 / 链接有效性）
 - **P-002**（M2）：定义 runtime-evidence 数据集格式，落地第一个真实 API 层验证数据集，把结果接入 `verification-summary.json` 与 `/ship` CLEAN
 - **P-001**（M3）：定义 `guided-review` finding schema，落地 builtin reviewer backend，把 finding 纳入 benchmark 机械判定
 
@@ -37,20 +37,42 @@ Phase 8 把应用可理解性的**文档层**做完了（6/6 任务已完成）�
 
 ## 任务拆解
 
-### T-H24 [待办] M1 · 补齐 15 个 L1 skill 的 SKILL.md
+### T-H24 [待办] M1 · L1 分发完整性修复（manifest + 实现 + 垃圾）
 
+**T-H24a 补齐 15 个 L1 skill 的 SKILL.md**
 - 目标 skill：`agent-visibility`、`architecture-guard`、`doc-gardening`、`graphify`、`knowledge-lint`、`mission-progress`、`runtime-continuity`、`runtime-evidence`、`runtime-state-integration`、`runtime-state-mcp`、`secrets`、`session-triage`、`sync-global`、`vcs-pr`、`weekly-report`
 - 来源：L3 `.agent/skills/<name>/SKILL.md`
 - **已实证**：这 15 个文件既无 `scope: L3` 标记，也不引用任何 L3-only 规则，同步**不需要逐个重写**
 - 同步后需修正下游必然失效的引用：已知 `runtime-evidence/SKILL.md` 指向 `../../../docs/reliability/verification-templates.md`，而 L1 模板不发布 `docs/`（`templates/_shared/` 下只有 `integrations/`）
-- 验收：`templates/_shared/.agent/skills/*/SKILL.md` 覆盖全部 33 个 skill；`node scripts/check-l3-boundary.js` 零违规；无指向未分发路径的链接
 
-### T-H25 [待办] M1 · L1 manifest 完整性机械门禁
+**T-H24b 补齐 5 处缺失的实现文件**（最高优先级：前两项让 skill 从不可用变为可用）
+- `vcs-pr/scripts/index.js` — PR 编排器，承担密钥解析（经 secrets skill 取 `token_ref`）、backend 调用、`vcs_pr_opened/merged/closed` 事件发射。L1 缺它则 3 个 backend 无人调用，而 L1 的 `config/vcs.yml.example` 正在教用户使用该 skill
+- `maturity-tracker/scripts/index.js` — L1 有 SKILL.md 但缺实现，manifest 指向不存在的脚本，最难发现的一类
+- `runtime-evidence/scripts/generate-summary.js` — SKILL.md 声明的核心功能
+- `secrets/scripts/generate.js`
+- `runtime-state-integration/agents/openai.yaml`、`runtime-state-mcp/agents/openai.yaml`
 
-- 新增检查脚本：遍历 `templates/_shared/.agent/skills/*/`，校验每个目录存在 `SKILL.md`、frontmatter 必填字段合规、**文档链接指向 L1 实际分发的路径**
+**T-H24c 清理分发垃圾**
+- 移除 `templates/_shared/.agent/skills/runtime-evidence/.DS_Store`
+- 同步时排除 L3 侧的 `.bak` / `.bak.prev` / `.new` / `.DS_Store` / `*.test.js`
+- 不同步 L3 侧两处路径事故产生的嵌套重复目录：`secrets/secrets/scripts/*`、`vcs-pr/vcs-pr/scripts/backends/*`（L3 侧本身也需另行清理，不在本任务范围）
+
+- 验收：`templates/_shared/.agent/skills/*/SKILL.md` 覆盖全部 33 个 skill；5 处实现补齐；`node scripts/check-l3-boundary.js` 零违规；无未分发路径的链接
+
+### T-H25 [待办] M1 · L1 分发完整性机械门禁
+
+三条只读、hermetic 的检查：
+
+| 检查 | 判据 |
+|---|---|
+| manifest 完整性 | L1 每个 skill 目录必须有 `SKILL.md`，frontmatter 必填字段合规 |
+| 文件集对等性 | L1 相对 L3 不得缺实现文件（按 T-H24c 的排除清单过滤） |
+| 链接有效性 | manifest 内的文档链接必须指向 L1 实际分发的路径 |
+
 - 接入 `.github/workflows/full-test.yml`，作为独立步骤
-- 反向验证：人为删除一个 `SKILL.md`、以及人为写入一条指向 `docs/` 的死链，都必须让检查失败
-- 门禁自身必须是 hermetic 的（只读，不写 `.agent/`）
+- 反向验证（三个都必须失败）：人为删除一个 `SKILL.md`；人为删除一个实现文件；写入一条指向 `docs/` 的死链
+- **文件集对等性这条不能省**：只查 manifest 会漏掉 `maturity-tracker` 这类「manifest 在、实现缺」的情况
+- 门禁自身必须 hermetic（只读，不写 `.agent/`）
 
 ### T-H26 [待办] M2 · 定义 runtime-evidence 数据集格式
 
@@ -97,7 +119,9 @@ Phase 8 把应用可理解性的**文档层**做完了（6/6 任务已完成）�
 
 ### M1
 - `templates/_shared/.agent/skills/*/SKILL.md` 覆盖全部 33 个 skill
-- manifest 完整性检查接入 CI，且反向验证有效（删一个即失败）
+- 5 处缺失实现补齐，`vcs-pr` 与 `maturity-tracker` 在下游**从不可用变为可用**
+- L1 内无 `.DS_Store` / `.bak` / 嵌套重复目录等分发垃圾
+- 分发完整性检查接入 CI，三条检查全部覆盖，且三个反向验证（删 manifest / 删实现 / 写死链）均能让检查失败
 - `pnpm check:l3` 零违规；`pnpm check:parity` 通过
 
 ### M2
@@ -121,10 +145,11 @@ Phase 8 把应用可理解性的**文档层**做完了（6/6 任务已完成）�
 
 - **R1 数据集同义反复**：数据集沦为「给实现写的测试」。缓解：必须复现历史真实缺陷 + 强制 noop 区分力 + 断言不得恒真
 - **R2 覆盖边界被误解**：用户可能以为 P1 已完成。缓解：schema 与 SKILL.md 显式声明边界；UI 层单列 M4
-- **R3 L1 体积膨胀**：补 15 个 manifest 增大分发体积。缓解：先量化增量，必要时改「索引发现 + 精简 manifest」双轨
-- **R4 下游死链**：L1 的 `SKILL.md` 引用本仓 `docs/` 路径，而 L1 不发布 `docs/`。缓解：manifest 门禁包含链接有效性检查；同步时逐个改写（已实证当前至少 1 处）
-- **R5 机制重复**：与 S6 已有 harness 重复造轮子。缓解：明确复用，只新增数据集格式
-- **R6 发现机制选型未定**：manifest vs 索引路线未定。缓解：T-H24/T-H25 只做 manifest（低风险），索引策略单独立项
+- **R3 L1 体积膨胀**：补 15 个 manifest + 5 个实现文件增大分发体积。缓解：先量化增量，必要时改「索引发现 + 精简 manifest」双轨
+- **R4 下游死链**：L1 的 `SKILL.md` 引用本仓 `docs/` 路径，而 L1 不发布 `docs/`。缓解：分发完整性门禁包含链接有效性检查；同步时逐个改写（已实证当前至少 1 处）
+- **R5 同步引入 L3 垃圾**：L3 侧有 `.bak` / `.DS_Store` / 路径事故产生的嵌套重复目录。缓解：同步时按排除清单过滤；L3 侧垃圾另行清理
+- **R6 机制重复**：与 S6 已有 harness 重复造轮子。缓解：明确复用，只新增数据集格式
+- **R7 发现机制选型未定**：manifest vs 索引路线未定。缓解：T-H24/T-H25 只做 manifest（低风险），索引策略单独立项
 
 **依赖**
 - T-H26 ~ T-H28 依赖 S6 已交付的 benchmark harness（已在 main）
@@ -141,3 +166,4 @@ Phase 8 把应用可理解性的**文档层**做完了（6/6 任务已完成）�
 - 2026-10-22：`architecture-guard` 自动审计通过（2085 个源文件，0 违规）
 - 2026-10-22：实证 L3 边界检查为 `scope: L3` 标记驱动，复制本批 15 个 SKILL.md 不触发该门禁；且这 15 个不引用任何 L3-only 规则。据此把 T-H24 的风险从「内容越界需重写」修正为「仅需修 1 处下游死链」
 - 2026-10-22：提案成文，待批准后按 M1 → M2 → M3 推进
+- 2026-10-22：追加 L1↔L3 文件集对等核查，发现 5 处实现文件缺失——`vcs-pr` 与 `maturity-tracker` 缺入口文件导致 skill 在下游**完全不可用**（而 L1 的 `config/vcs.yml.example` 正在教用户使用 `vcs-pr`）。据此把 P-003 从「补 manifest」升级为「修分发完整性」，门禁从一条扩展为三条（新增文件集对等性），并调整 T-H24/T-H25 拆分为 a/b/c
