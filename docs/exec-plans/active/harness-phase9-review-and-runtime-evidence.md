@@ -134,6 +134,22 @@ M4 补的是另一类「看起来绿、实际不对」：M1 修好了 L1 的**�
 - 判定结果通过 `scripts/append-ci-summary.cjs` 进入 GitHub job summary（门禁只写 JSON 文件的话，读 CI 的人看不见）
 - 复用 S6 引擎，不重造 harness；数据集 fixture 支持直接写 JSON 值，避免在 dataset 里手工转义嵌套 JSON
 
+### T-H34 [已完成] M5 · 文件集对等的分层覆盖
+
+M4 把**内容**对等做成了按层检查，但**文件集**对等（检查 2）仍然只在 `_shared/skills/` 内做。漏的地方很具体：
+
+- `context-budget`、`resource-ingest`、`retrieval-trajectory`、`uri-resolver`、`evolution-pipeline` **只存在于语言层** —— `_shared` 完全不分发它们
+- 后果：往这些 skill 里新增一个实现文件却忘了同步到 `zh`/`en`，**下游一个项目都拿不到**，而只走 `_shared` 的检查永远看不见
+
+**改动**
+
+- 检查 2 改为**按层遍历**，每层只对自己的**独有** skill 负责（`_shared` 有且语言层也有的 skill 义务已由共享层覆盖，不重复报）
+- 检查面从 182 扩到 **859** 个文件
+- 门禁当场抓出 6 处真缺口并已补齐：
+  - `context-budget/scripts/{compact-mcp-schema.js,prune-history.js}` —— context-budget 的核心工具，缺了下游能力不完整 → 同步到 `zh`/`en`
+  - `context-budget/docs/system-prompt-refactor.md` —— 有效设计文档，但 L1 不发布 skill 内的 `docs/`，且无任何引用 → 移到 `references/`（L1 会分发该目录，`agent-review-benchmark` 有先例），文档得以随 skill 分发
+- 反向验证 2 项：语言层独有 skill 漏同步必失败；补齐后通过
+
 ### T-H32 [待办] M5 · UI 层（不排期）
 
 - 依赖宿主浏览器能力；cortex 只定义 `browser-verification.json` 的产出格式与校验
@@ -194,6 +210,11 @@ M1 修的是「L1 缺文件」，但没有管「L1 的文件内容是不是旧�
 | CI summary | 判定结果进入 GitHub job summary |
 | 依赖 | 新增 0 个 npm 依赖；新增代码只用 Node 内置模块 |
 
+### M5
+- 文件集对等门禁按层覆盖，语言层独有的 skill 也受约束
+- 分发层缺失实现文件数 = 0（`context-budget` 的 3 处已补齐）
+- 反向验证：语言层独有 skill 漏同步必失败，补齐后通过
+
 ### M4
 - 实现文件内容对等门禁接入 CI，且能反向失败（内容漂移 / 豁免失效 / 豁免无理由）
 - 按分发层（`_shared` + `zh` + `en`）统计，L1 与 L3 内容不一致数为 0（豁免项除外，且豁免带理由）
@@ -252,5 +273,7 @@ M1 修的是「L1 缺文件」，但没有管「L1 的文件内容是不是旧�
 - 2026-10-22：M4 T-H33 —— **门禁按分发层扩展后才看清全貌**：`cortex-agent init` 是「共享层打底 + 语言层覆盖，语言层赢」，所以只查 `_shared` 会漏掉即将被覆盖层发出去的旧副本。检查面从 75 个实现文件扩到 348 个，一轮就抓出 20 处 zh/en 层漂移
 - 2026-10-22：M4 T-H33 —— **同步方向是双向的，且「L3 是真相」是错的假设**：en 层的 vcs-pr 更新、zh 层的 management-api 反而是坏的（不认识 `task-state` 投影）、L3 自己的 runtime-continuity 缺 `--project` 的 fails-closed 安全校验。每处的方向都由 diff 证据定，不预设
 - 2026-10-22：M4 T-H33 —— 修 L3 的 runtime-continuity 缺口（fails-closed + `exists` 契约）后，四个副本逐字一致，37 项 `--project` 解析测试全绿
+- 2026-10-22：M5 T-H34 —— **文件集对等也必须按层**。M4 只把内容对等做成了按层，文件集对等还留在 `_shared/skills/` 里，于是「只存在于语言层的 skill」完全没有分发义务 —— 往 `context-budget` 这类 skill 加文件而忘同步，下游一个都拿不到，门禁也看不见
+- 2026-10-22：M5 T-H34 —— 门禁当场抓出 `context-budget` 缺 3 个文件。其中 `docs/system-prompt-refactor.md` 的处置不是「豁免掉」而是**移到 `references/`**：L1 会分发 `references/`，而 skill 内的 `docs/` 是 L3 独有的布局习惯。把有效设计文档留在下游拿不到的地方，等于把文档白写
 - 2026-10-22：M4 T-H33 —— 自己的同步一度**越界**：把 L3-only 的 `scripts/` 与 zh 层原本没有的 `secrets/`、`vcs-pr/` 新增进层里，等于改变了分发面结构。已回退为「只同步该层原本就有的文件」，新增文件由文件集对等检查负责
 
