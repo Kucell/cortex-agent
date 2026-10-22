@@ -220,7 +220,19 @@ test('fetchCatalog: throws on invalid tree response', async () => {
 // -- getDefaultCachePath ----------------------------------------------------
 
 test('getDefaultCachePath: ends with design-catalog-cache.json under ~/.agent/cache', () => {
-  const p = getDefaultCachePath();
+  // An explicit env keeps the assertion independent of the caller's environment.
+  const p = getDefaultCachePath({});
+  assert.ok(p.endsWith(path.join('.agent', 'cache', 'design-catalog-cache.json')),
+    `expected path to end with ~/.agent/cache/design-catalog-cache.json, got ${p}`);
+});
+
+test('getDefaultCachePath: CORTEX_AGENT_DESIGN_CACHE overrides the home location', () => {
+  const p = getDefaultCachePath({ CORTEX_AGENT_DESIGN_CACHE: '/tmp/somewhere/design-cache.json' });
+  assert.equal(p, '/tmp/somewhere/design-cache.json');
+});
+
+test('getDefaultCachePath: blank override falls back to the home location', () => {
+  const p = getDefaultCachePath({ CORTEX_AGENT_DESIGN_CACHE: '   ' });
   assert.ok(p.endsWith(path.join('.agent', 'cache', 'design-catalog-cache.json')),
     `expected path to end with ~/.agent/cache/design-catalog-cache.json, got ${p}`);
 });
