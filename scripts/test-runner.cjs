@@ -59,6 +59,8 @@ function parseArgs(argv) {
     idleTimeoutSec: 0,    // 0 = no activity timeout. Set --idle-timeout SEC to kill children that print nothing for N seconds.
     help: false,
     quiet: false,
+    allowNonHermetic: false,
+    strictHermetic: false,
   };
   for (let i = 2; i < argv.length; i++) {
     const a = argv[i];
@@ -74,6 +76,8 @@ function parseArgs(argv) {
       case '--per-test-timeout':  opts.perTestTimeoutMs = parseInt(argv[++i], 10); break;
       case '--idle-timeout':       opts.idleTimeoutSec = parseInt(argv[++i], 10); break;
       case '-q': case '--quiet':   opts.quiet = true; break;
+      case '--allow-non-hermetic':  opts.allowNonHermetic = true; break;
+      case '--strict-hermetic':     opts.strictHermetic = true; break;
       case '-h': case '--help':    opts.help = true; break;
       default:
         if (a.startsWith('-')) {
@@ -100,6 +104,9 @@ Options:
   --per-test-timeout MS   Pass through to node --test --test-timeout (Node 24+)
   --idle-timeout SEC      Kill a child if it prints nothing for N seconds (default 0 = off)
   -q, --quiet             Suppress per-file output, only print summary
+  --allow-non-hermetic    Report (but do not fail on) writes into .agent/
+  --strict-hermetic       Fail on ANY write into .agent/ (CI mode: nothing
+                          else can write there, so every drift is a defect)
   -h, --help              Show this help
 
 Examples:
@@ -372,6 +379,23 @@ const GUARDED_ARTIFACTS = Object.freeze([
   '~/.agent/cache/design-catalog-cache.json',
 ]);
 
+// Curated governance state: only the explicit build / ingest / evolution flows
+// write these, so a test that rewrites them is definitively non-hermetic.
+//
+// The rest of `.agent/` is *shared* — every worktree symlinks its `.agent` to
+// this one, and live agent sessions plus the Dashboard supervisor daemon write
+// runs/, sessions/, artifacts/ and metrics/ continuously. Failing on any drift
+// there would produce false positives whenever another session is active, so
+// the local mode only fails on the curated set. CI runs in strict mode
+// (`--strict-hermetic`), where nothing else can write and any drift is a
+// defect — see .agent/rules/test-policy.md §3.4.
+const CURATED_ARTIFACTS = Object.freeze([
+  '.agent/context-index.json',
+  '.agent/memory/MEMORY.md',
+  '.agent/registry/uri-map.json',
+  '.agent/plans/context-manifest.json',
+]);
+
 function resolveArtifact(rel) {
   return rel.startsWith('~/')
     ? path.join(os.homedir(), rel.slice(2))
@@ -407,6 +431,63 @@ function restoreGuardedArtifacts(snapshot) {
     }
   }
   return touched;
+}
+
+// ---- Whole-tree fingerprint of .agent/ ---------------------------------------
+//
+// The guarded list above only covers the artifacts that were known to be
+// rewritten. It cannot catch a suite that writes somewhere else in the
+// governance workspace, so the whole `.agent/` tree is fingerprinted as well:
+// the suite must not add, remove or rewrite a single file there.
+//
+// The fingerprint is size + mtime. It costs one stat per file (~40ms) and
+// still catches every write, because any write updates mtime — content
+// hashing the whole tree would cost ~0.5s per run for no extra signal.
+
+const AGENT_DIR = path.join(ROOT, '.agent');
+
+function listFilesRecursive(dir, base, acc) {
+  let entries;
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return acc;
+  }
+  for (const entry of entries) {
+    if (entry.name === '.git') continue;
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) listFilesRecursive(full, base, acc);
+    else acc.push(path.relative(base, full));
+  }
+  return acc;
+}
+
+function snapshotAgentTree() {
+  const snapshot = new Map();
+  for (const rel of listFilesRecursive(AGENT_DIR, AGENT_DIR, [])) {
+    try {
+      const st = fs.statSync(path.join(AGENT_DIR, rel));
+      snapshot.set(rel, `${st.size}:${st.mtimeMs}`);
+    } catch {
+      /* vanished between listing and stat — treated as absent */
+    }
+  }
+  return snapshot;
+}
+
+function diffAgentTree(before) {
+  const after = snapshotAgentTree();
+  const added = [];
+  const removed = [];
+  const rewritten = [];
+  for (const [rel, sig] of after) {
+    if (!before.has(rel)) added.push(rel);
+    else if (before.get(rel) !== sig) rewritten.push(rel);
+  }
+  for (const rel of before.keys()) {
+    if (!after.has(rel)) removed.push(rel);
+  }
+  return { added, removed, rewritten };
 }
 
 async function main() {
@@ -449,6 +530,7 @@ async function main() {
 
   const t0 = Date.now();
   const artifactSnapshot = snapshotGuardedArtifacts();
+  const agentTreeSnapshot = snapshotAgentTree();
   let results;
   if (opts.serial || files.length === 1) {
     results = await runSerial(files, opts.timeoutSec * Math.max(1, files.length));
@@ -467,6 +549,42 @@ async function main() {
     ));
   }
 
+  // Everything the suite touched inside `.agent/`. The guarded artifacts are
+  // already restored and reported above; the tree diff catches writes the
+  // guarded list did not know about (new files, deletions, other state files).
+  const treeDiff = diffAgentTree(agentTreeSnapshot);
+  const guardedSet = new Set(
+    GUARDED_ARTIFACTS
+      .filter((rel) => rel.startsWith('.agent/'))
+      .map((rel) => rel.slice('.agent/'.length)),
+  );
+  const curatedSet = new Set(CURATED_ARTIFACTS);
+  const drift = [
+    ...touchedArtifacts.map((rel) => ({ entry: `rewrote ${rel}`, path: rel })),
+    ...treeDiff.rewritten.filter((rel) => !guardedSet.has(rel))
+      .map((rel) => ({ entry: `rewrote .agent/${rel}`, path: `.agent/${rel}` })),
+    ...treeDiff.added.map((rel) => ({ entry: `created .agent/${rel}`, path: `.agent/${rel}` })),
+    ...treeDiff.removed.map((rel) => ({ entry: `deleted .agent/${rel}`, path: `.agent/${rel}` })),
+  ];
+
+  // Two severity levels:
+  //   curated — only explicit build/ingest/evolution flows write these, so a
+  //             test touching them is unambiguously non-hermetic → always fails
+  //   shared  — `.agent/` is shared with every worktree; live sessions and the
+  //             Dashboard supervisor write there continuously → only fails in
+  //             strict mode (CI), where nothing else can be running
+  const curatedDrift = drift.filter((d) => curatedSet.has(d.path));
+  const sharedDrift = drift.filter((d) => !curatedSet.has(d.path));
+
+  if (drift.length) {
+    console.log(colorize(
+      `[test-runner] NON-HERMETIC: the suite wrote ${drift.length} path(s) into .agent/.\n` +
+      `  Tests must exercise governance scripts against a sandbox ` +
+      `(tests/helpers/agent-sandbox.js), never against the working copy:\n` +
+      drift.map((d) => `    - ${d.entry}`).join('\n'),
+      'yellow', useColor,
+    ));
+  }
   const pass = results.filter(r => r.ok).length;
   const fail = results.length - pass;
   const timeouts = results.filter(r => r.killed).length;
@@ -487,6 +605,23 @@ async function main() {
         console.log(`  ${tag}  ${r.rel}  (${r.duration}ms)`);
       }
     }
+    process.exit(1);
+  }
+
+  // Writing into `.agent/` is a defect, not a warning: the working copy must
+  // survive a full run untouched. This is the mechanical counterpart of the
+  // "tests must be hermetic" rule — see .agent/rules/test-policy.md §2.4.
+  const strict = opts.strictHermmetic && !opts.allowNonHermetic;
+  const fatal = strict ? drift : curatedDrift;
+  if (fatal.length) {
+    console.error(
+      `[test-runner] FAILED: ${fatal.length} non-hermetic write(s) into .agent/. ` +
+      (strict
+        ? 'Strict mode treats every drift as a defect.'
+        : `Only curated governance state is fatal locally; ${sharedDrift.length} shared-runtime ` +
+          `path(s) were reported above (they are written by live sessions too).`) +
+      ' Re-run with --allow-non-hermetic to downgrade this to a warning.',
+    );
     process.exit(1);
   }
 }
