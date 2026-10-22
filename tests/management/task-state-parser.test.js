@@ -7,6 +7,7 @@
 
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
+const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
 
@@ -410,3 +411,32 @@ test("a hand-edited row in a generated view never reaches the projection", (t) =
   assert.equal(resolved.tasks.some((task) => task.id === "T-FAKE-999"), false);
 });
 
+
+// The parser is distributed to user projects from the L1 template, and the
+// framework repository keeps its own copy of the same file. Two copies of one
+// rule drift apart silently — the live one is what the framework repo runs,
+// the template one is what every managed project gets.
+test("the template and live parser copies stay byte-identical", {
+  skip: fs.existsSync(LIVE_PARSER) ? false : "live .agent copy is not part of this checkout",
+}, () => {
+  assert.equal(
+    fs.readFileSync(LIVE_PARSER, "utf8"),
+    fs.readFileSync(TEMPLATE_PARSER, "utf8"),
+  );
+});
+
+// Which files count as task records is a rule, not a filename convention:
+// the renderer, the parser and the truth-source auditor must agree on it.
+test("the parser exports the single task-record discovery rule", () => {
+  const parser = require(TEMPLATE_PARSER);
+  assert.equal(typeof parser.listTaskRecordFiles, "function");
+  assert.equal(typeof parser.TASK_FILE_RE, "object");
+
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-task-files-"));
+  const tasksDir = path.join(root, ".agent", "tasks");
+  fs.mkdirSync(tasksDir, { recursive: true });
+  for (const name of ["T-OK-001.json", "T-B-002.json", "index.json", "sample.json", "task.schema.json"]) {
+    fs.writeFileSync(path.join(tasksDir, name), "{}");
+  }
+  assert.deepEqual(parser.listTaskRecordFiles(tasksDir), ["T-B-002.json", "T-OK-001.json"]);
+});

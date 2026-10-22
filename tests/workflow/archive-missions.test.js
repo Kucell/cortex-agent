@@ -147,3 +147,67 @@ test("archive leaves active missions untouched", () => {
   assert.ok(fs.existsSync(path.join(root, ".agent/missions/M-002")), "active kept");
   assert.ok(fs.existsSync(path.join(root, ".agent/missions/archive/M-001")), "complete archived");
 });
+
+// ─── reused mission ids ──────────────────────────────────────────────────────
+//
+// A mission id can be reused by a later, unrelated mission: the archive
+// already holds a different M-032 than the one it is asked to archive. The
+// move must not overwrite the earlier record, and it must not rewrite the
+// mission it moves — so it lands in a qualified directory instead.
+
+test("archive qualifies the target name when the mission id is already taken", () => {
+  const root = makeRepo();
+  const dir = writeMission(root, "M-032", COMPLETE_PLAN);
+  fs.writeFileSync(
+    path.join(dir, "mission.json"),
+    JSON.stringify({ mission_id: "M-032", created_at: "2026-09-09T20:04:50+08:00" })
+  );
+  // The archive already holds a DIFFERENT mission under the same id.
+  const existing = path.join(root, ".agent/missions/archive/M-032");
+  fs.mkdirSync(existing, { recursive: true });
+  fs.writeFileSync(path.join(existing, "mission-plan.md"), "PRE-EXISTING\n");
+
+  const result = am.archiveMissions(root, { dryRun: false });
+  assert.equal(result.ok, true);
+  assert.equal(result.errors.length, 0);
+  assert.equal(result.archived.length, 1);
+
+  // The earlier record is untouched.
+  assert.equal(fs.readFileSync(path.join(existing, "mission-plan.md"), "utf8"), "PRE-EXISTING\n");
+  // The moved mission keeps its id and lands under a qualified name.
+  const qualified = path.join(root, ".agent/missions/archive/M-032-20260909");
+  assert.ok(fs.existsSync(qualified));
+  assert.equal(fs.existsSync(path.join(root, ".agent/missions/M-032")), false);
+  const record = JSON.parse(fs.readFileSync(path.join(qualified, "mission.json"), "utf8"));
+  assert.equal(record.mission_id, "M-032");
+  assert.equal(record.created_at, "2026-09-09T20:04:50+08:00");
+});
+
+test("dry-run shows the qualified target before anything moves", () => {
+  const root = makeRepo();
+  const dir = writeMission(root, "M-032", COMPLETE_PLAN);
+  fs.writeFileSync(
+    path.join(dir, "mission.json"),
+    JSON.stringify({ mission_id: "M-032", created_at: "2026-09-09T20:04:50+08:00" })
+  );
+  fs.mkdirSync(path.join(root, ".agent/missions/archive/M-032"), { recursive: true });
+
+  const result = am.archiveMissions(root, { dryRun: true });
+  assert.equal(result.archived.length, 0);
+  assert.equal(result.runs[0].qualified, true);
+  assert.equal(result.runs[0].conflict, false);
+  assert.equal(result.runs[0].to, path.join(".agent", "missions", "archive", "M-032-20260909"));
+  // Nothing moved.
+  assert.ok(fs.existsSync(path.join(root, ".agent/missions/M-032")));
+});
+
+test("a mission without a creation date keeps reporting the conflict", () => {
+  const root = makeRepo();
+  writeMission(root, "M-032", COMPLETE_PLAN);
+  fs.mkdirSync(path.join(root, ".agent/missions/archive/M-032"), { recursive: true });
+
+  const result = am.archiveMissions(root, { dryRun: false });
+  assert.equal(result.ok, false);
+  assert.equal(result.errors[0].error, "archive_target_exists");
+  assert.ok(fs.existsSync(path.join(root, ".agent/missions/M-032")));
+});
