@@ -22,13 +22,18 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
-const { spawnSync } = require("node:child_process");
 const test = require("node:test");
 
 const ROOT = path.resolve(__dirname, "..", "..");
 const CLI = path.join(ROOT, "bin", "cli.js");
 const modeInfer = require("../../lib/coordination/mode-infer");
 const { inferMode, isInferModeEnabled, selectTemplateDir } = modeInfer;
+
+// The file spawns git and the CLI as child processes. Under memory pressure the
+// kernel can refuse the fork/exec (EAGAIN / ENOMEM) and the child never
+// starts — a failure that says nothing about the code under test. The shared
+// helper retries only that class; a process that ran is never retried.
+const { spawnSyncWithRetry } = require("../helpers/spawn-retry");
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
@@ -41,7 +46,7 @@ function rmrf(dir) {
 }
 
 function runCli(cwd, args, env = {}) {
-  return spawnSync(process.execPath, [CLI, ...args], {
+  return spawnSyncWithRetry(process.execPath, [CLI, ...args], {
     cwd,
     encoding: "utf8",
     env: { ...process.env, LANG: "en_US.UTF-8", ...env },
@@ -49,7 +54,7 @@ function runCli(cwd, args, env = {}) {
 }
 
 function readBaseCommit() {
-  const out = spawnSync("git", ["rev-parse", "HEAD"], {
+  const out = spawnSyncWithRetry("git", ["rev-parse", "HEAD"], {
     cwd: ROOT,
     encoding: "utf8",
   });
@@ -330,7 +335,7 @@ test("init explicit --mode general still wins over auto-inference (skip if MS-00
 
 test("MS-003 does not modify lib/commands.js", () => {
   const base = readBaseCommit();
-  const diff = spawnSync(
+  const diff = spawnSyncWithRetry(
     "git",
     ["diff", `${base}..HEAD`, "--", "lib/commands.js"],
     { cwd: ROOT, encoding: "utf8" },
@@ -345,7 +350,7 @@ test("MS-003 does not modify lib/commands.js", () => {
 
 test("MS-003 does not modify language templates", () => {
   const base = readBaseCommit();
-  const diff = spawnSync(
+  const diff = spawnSyncWithRetry(
     "git",
     ["diff", `${base}..HEAD`, "--", "templates/zh", "templates/en"],
     { cwd: ROOT, encoding: "utf8" },
@@ -360,7 +365,7 @@ test("MS-003 does not modify language templates", () => {
 
 test("MS-003 only touches its 3 owned files", () => {
   const base = readBaseCommit();
-  const diff = spawnSync(
+  const diff = spawnSyncWithRetry(
     "git",
     [
       "diff",
@@ -387,7 +392,7 @@ test("MS-003 only touches its 3 owned files", () => {
 
 test("MS-003 does not delete any line of bin/cli.js", () => {
   const base = readBaseCommit();
-  const diff = spawnSync(
+  const diff = spawnSyncWithRetry(
     "git",
     ["diff", `${base}..HEAD`, "--", "bin/cli.js"],
     { cwd: ROOT, encoding: "utf8" },
@@ -413,7 +418,7 @@ test("MS-003 does not modify the inferMode function body in lib/mode-infer.js", 
   // file, but the file moved +83 lines after our addition). The diff against
   // the MS-002 base commit will show no `-` lines for the inferMode function
   // because we only appended below `return "general";`.
-  const diff = spawnSync(
+  const diff = spawnSyncWithRetry(
     "git",
     ["diff", `${base}..HEAD`, "--", "lib/mode-infer.js"],
     { cwd: ROOT, encoding: "utf8" },

@@ -169,3 +169,4 @@ Phase 8 把应用可理解性的**文档层**做完了（6/6 任务已完成）�
 - 2026-10-22：追加 L1↔L3 文件集对等核查，发现 5 处实现文件缺失——`vcs-pr` 与 `maturity-tracker` 缺入口文件导致 skill 在下游**完全不可用**（而 L1 的 `config/vcs.yml.example` 正在教用户使用 `vcs-pr`）。据此把 P-003 从「补 manifest」升级为「修分发完整性」，门禁从一条扩展为三条（新增文件集对等性），并调整 T-H24/T-H25 拆分为 a/b/c
 - 2026-10-22：T-H24 完成——同步 15 个 SKILL.md + 5 处实现文件，清理分发垃圾，修掉 `runtime-evidence` manifest 的 2 处死链（指向未分发的 `docs/` 与 `workflows/`）
 - 2026-10-22：T-H25 完成——新增 `scripts/check-l1-distribution.js`（manifest 完整性 / 文件集对等性 / 链接有效性三条检查，分发集以各自 git index 为准），接入 `pnpm check:l1-distribution` 与 CI；反向验证 8 项测试全过
+- 2026-10-22：M1 验证期间发现并行负载下 fork/exec 会被拒（EAGAIN/ENOMEM），子进程根本没启动的失败形态与产品缺陷无法区分。抽取公共 `tests/helpers/spawn-retry.js`，只在「进程从未启动」这一类失败上做有界重试，跑起来并非零退出的结果一律不重试
