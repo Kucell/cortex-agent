@@ -142,6 +142,84 @@ function readText(file) {
   }
 }
 
+// ─── Implementation content parity ───────────────────────────────────────────
+//
+// The file-set check above proves that L1 ships every file L3 ships. It says
+// nothing about the *content* of those files: L1 can ship a stale copy of a
+// script and still pass, and the downstream project then runs code that is
+// months behind the governance repo. That is not theoretical — the secrets
+// skill shipped an L1 copy that still honoured a `--account` override the L3
+// copy had already removed for being a cross-account read.
+//
+// So implementation files must be byte-identical. Only implementation files:
+// documentation is deliberately localised (the `_shared` layer is language
+// neutral, `zh`/`en` carry their own copies), and runtime state (task
+// indexes, metrics, context-index) is a template in L1 and a live record in
+// L3. Neither can be compared byte-for-byte, and pretending otherwise would
+// make the check cry wolf.
+
+const IMPLEMENTATION_SCOPE = Object.freeze([
+  /^skills\/[^/]+\/scripts\//,
+  /^skills\/[^/]+\/agents\//,
+  /^hooks\//,
+  /^plugins\/[^/]+\/scripts\//,
+  /^handoffs\/scripts\//,
+  /^tasks\/scripts\//,
+  /^artifacts\/scripts\//,
+  /^scripts\//,
+]);
+
+const IMPLEMENTATION_EXTENSIONS = Object.freeze([
+  '.js', '.cjs', '.mjs', '.sh', '.yaml', '.yml',
+]);
+
+// Explicit exemptions. Every entry must carry a reason: an exemption without
+// a reason is just a hole in the gate. An exemption that no longer applies
+// (the files have converged) is reported as stale, so the list cannot rot
+// into a permanent list of unchecked files.
+const CONTENT_EXEMPTIONS = Object.freeze([
+  {
+    path: 'hooks/pre-commit-check.sh',
+    reason: 'L1 为英文版、L3 为中文版：_shared 是语言中立层，zh/en 各自带 pre-commit-check.md。脚本逻辑一致，只有注释与提示文案不同。',
+  },
+]);
+
+function isImplementationFile(relativePath) {
+  if (!IMPLEMENTATION_SCOPE.some((pattern) => pattern.test(relativePath))) return false;
+  return IMPLEMENTATION_EXTENSIONS.includes(path.extname(relativePath));
+}
+
+function exemptionFor(relativePath) {
+  return CONTENT_EXEMPTIONS.find((entry) => entry.path === relativePath) || null;
+}
+
+// Lists files of a repository subtree, relative to that subtree. Uses git's
+// index when the directory is a repository root (that is the shipped surface),
+// and the filesystem otherwise (fixture trees).
+function listRepoFiles(repoDir, prefix) {
+  const tracked = gitTrackedFiles(repoDir);
+  const clean = String(prefix || '').replace(/^\/+|\/+$/g, '');
+  if (tracked) {
+    if (!clean) return tracked.slice().sort();
+    const normalized = clean + '/';
+    return tracked
+      .filter((rel) => rel.startsWith(normalized))
+      .map((rel) => rel.slice(normalized.length))
+      .filter(Boolean)
+      .sort();
+  }
+  const dir = clean ? path.join(repoDir, clean) : repoDir;
+  return walkFiles(dir, dir, []).sort();
+}
+
+function sameBytes(left, right) {
+  try {
+    return fs.readFileSync(left).equals(fs.readFileSync(right));
+  } catch (_) {
+    return false;
+  }
+}
+
 // ─── Frontmatter ──────────────────────────────────────────────────────────────
 
 function frontmatterOf(text) {
@@ -220,6 +298,7 @@ function main() {
   const violations = [];
   let manifestsChecked = 0;
   let filesCompared = 0;
+  let contentCompared = 0;
   let linksChecked = 0;
   const l3OnlySkills = l3Skills.filter((name) => !l1Skills.includes(name));
 
@@ -283,12 +362,92 @@ function main() {
     }
   }
 
+  // ── Check 4: implementation content parity (L1 ≡ L3, byte-for-byte) ───
+  // Only implementation files. Documentation is localised by design and
+  // runtime state is a template in L1 and a live record in L3 — comparing
+  // those byte-for-byte would make the gate cry wolf, and a gate that cries
+  // wolf gets ignored.
+  const l3Repo = path.join(root, '.agent');
+  const l3Files = new Set(listRepoFiles(l3Repo, ''));
+  const sharedLayer = { name: '_shared', agentDir: path.join(root, 'templates/_shared/.agent') };
+  const layers = [sharedLayer].concat(
+    fs.readdirSync(path.join(root, 'templates'), { withFileTypes: true })
+      .filter((entry) => entry.isDirectory() && entry.name !== '_shared')
+      .map((entry) => ({ name: entry.name, agentDir: path.join(root, 'templates', entry.name, '.agent') }))
+      .filter((layer) => fs.existsSync(path.join(layer.agentDir, 'skills')))
+      .sort((left, right) => left.name.localeCompare(right.name))
+  );
+  const appliedExemptions = new Set();
+
+  // The comparison runs per *distribution layer*, because that is what a
+  // downstream project actually receives: `cortex-agent init` lays the
+  // `_shared` base down and then overlays the language layer, and the language
+  // layer wins on conflict. Checking only `_shared` would miss a stale copy
+  // that the overlay is about to ship.
+  for (const layer of layers) {
+    const layerFiles = new Set(listRepoFiles(layer.agentDir, ''));
+    const sharedFiles = listRepoFiles(sharedLayer.agentDir, '');
+    const surface = new Set([...sharedFiles, ...layerFiles]);
+
+    for (const rel of surface) {
+      if (!isImplementationFile(rel)) continue;
+      const own = layerFiles.has(rel);
+      const l1Path = path.join(own ? layer.agentDir : sharedLayer.agentDir, rel);
+      const l3Path = path.join(l3Repo, rel);
+      // A file L3 does not ship is not a content question — the file-set check
+      // above already owns that, and its scope is the distributed skills.
+      if (!l3Files.has(rel) || !fs.existsSync(l3Path)) continue;
+
+      filesCompared += 1;
+      contentCompared += 1;
+      const exemption = exemptionFor(rel);
+      if (exemption) {
+        if (!exemption.reason || !exemption.reason.trim()) {
+          violations.push({
+            kind: 'invalid-exemption',
+            skill: '-',
+            file: path.relative(root, l1Path),
+            detail: `豁免条目缺少理由：${rel}`,
+          });
+          continue;
+        }
+        appliedExemptions.add(rel);
+      }
+
+      if (sameBytes(l1Path, l3Path)) {
+        if (exemption) {
+          violations.push({
+            kind: 'stale-exemption',
+            skill: '-',
+            file: path.relative(root, l1Path),
+            detail: `豁免已失效（两边内容已一致），请删除该豁免条目：${rel}`,
+          });
+        }
+        continue;
+      }
+      if (exemption) continue;
+
+      violations.push({
+        kind: 'content-divergence',
+        skill: rel.includes('/') ? rel.split('/')[0] : '-',
+        file: path.relative(root, l1Path),
+        detail: `分发层 ${layer.name} 的实现文件与 L3 内容不一致：${rel}（下游跑的是旧实现）`,
+      });
+    }
+  }
+
+  // An exemption whose file no longer exists cannot be reported here: this
+  // check also runs against fixture trees that legitimately do not contain it.
+  // The test suite asserts that every exemption still resolves.
+
   // ─── Report ────────────────────────────────────────────────────────────────
   console.log(`\n🔍 L1 Distribution Integrity Report (Harness Phase 9 / P-003)`);
   console.log(`   L1 skills:      ${l1Skills.length}`);
   console.log(`   L3-only skills: ${l3OnlySkills.length} (不随模板分发，无对等义务)`);
   console.log(`   Manifests checked: ${manifestsChecked}`);
-  console.log(`   Implementation files compared: ${filesCompared}`);
+  console.log(`   Implementation files in file-set parity: ${filesCompared}`);
+  console.log(`   Implementation files content-compared: ${contentCompared}`);
+  console.log(`   Content exemptions: ${CONTENT_EXEMPTIONS.length}`);
   console.log(`   Links checked: ${linksChecked}`);
   console.log(`   Violations: ${violations.length}`);
 
@@ -298,6 +457,9 @@ function main() {
       'invalid-manifest': 'SKILL.md frontmatter 不合规',
       'missing-implementation': '缺少实现文件（skill 在下游不可用）',
       'dead-link': '死链（指向未分发路径）',
+      'content-divergence': '实现文件内容漂移（下游跑的是旧实现）',
+      'stale-exemption': '豁免已失效（请删除该豁免条目）',
+      'invalid-exemption': '豁免条目缺少理由',
     };
     for (const [kind, title] of Object.entries(groups)) {
       const items = violations.filter((v) => v.kind === kind);
@@ -312,7 +474,7 @@ function main() {
     process.exit(1);
   }
 
-  console.log(`\n✅ L1 分发完整性检查通过：manifest 完整、实现齐全、链接可达`);
+  console.log(`\n✅ L1 分发完整性检查通过：manifest 完整、实现齐全、链接可达、实现内容对等`);
   process.exit(0);
 }
 

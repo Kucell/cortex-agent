@@ -1180,7 +1180,7 @@ function listContextsAll({ since, format }) {
   }
   const projects = [];
   for (const project of fs.readdirSync(CONTEXT_HOME)) {
-    const dir = path.join(CONTEXT_HOME, project);
+    const dir = contextDir(project);
     if (!fs.statSync(dir).isDirectory()) continue;
     const archives = listContexts(project);
     const recent = archives.filter((a) => !sinceMs || a.mtime >= sinceMs);
