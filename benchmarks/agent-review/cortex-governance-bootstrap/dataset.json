@@ -1,0 +1,142 @@
+{
+  "dataset_id": "cortex-governance-bootstrap",
+  "dataset_version": "1",
+  "description": "Real regression cases for the Cortex Agent governance bootstrap surface. Every case reproduces a defect class that actually occurred in this repository's history and asserts the invariant mechanically — no LLM judge, no network.",
+  "cases": [
+    {
+      "case_id": "init-produces-usable-governance-tree",
+      "weight": 3,
+      "description": "`cortex-agent init` must produce a governance tree the runtime can actually use, and must not leave absolute symlinks inside `.agent/` (regression of 483550da — absolute `.agent` symlinks broke version control and leaked machine-specific paths).",
+      "fixture": {
+        "files": {
+          "README.md": "# benchmark fixture\n\nMinimal project used by the governance bootstrap regression dataset.\n"
+        }
+      },
+      "candidates": {
+        "reference": {
+          "command": ["node", "${cortex}/bin/cli.js", "init", "--lang", "zh"]
+        },
+        "noop": {
+          "command": ["node", "-e", "process.exit(0)"]
+        }
+      },
+      "assertions": [
+        {
+          "id": "entry-file",
+          "kind": "file_exists",
+          "path": "AGENTS.md"
+        },
+        {
+          "id": "entry-points-at-agent-dir",
+          "kind": "file_contains",
+          "path": "AGENTS.md",
+          "pattern": "\\.agent/"
+        },
+        {
+          "id": "management-api-present",
+          "kind": "file_exists",
+          "path": ".agent/skills/management-api/scripts/index.js"
+        },
+        {
+          "id": "task-state-present",
+          "kind": "file_exists",
+          "path": ".agent/tasks/scripts/task-state.js"
+        },
+        {
+          "id": "cross-tool-anchor-written",
+          "kind": "file_exists",
+          "path": "docs/cortex-agent/anchor.md"
+        },
+        {
+          "id": "anchor-carries-v1-marker",
+          "kind": "file_contains",
+          "path": "docs/cortex-agent/anchor.md",
+          "pattern": "cortex-agent:anchor:v1"
+        },
+        {
+          "id": "no-absolute-symlink-in-agent",
+          "kind": "no_absolute_symlink",
+          "path": ".agent"
+        }
+      ]
+    },
+    {
+      "case_id": "update-restores-missing-managed-files",
+      "weight": 2,
+      "description": "`cortex-agent update` must add managed files that are missing while preserving local modifications — the safe-update contract that keeps a developer's own edits from being overwritten.",
+      "setup": [
+        { "command": ["node", "${cortex}/bin/cli.js", "init", "--lang", "zh"] }
+      ],
+      "fixture": {
+        "remove": [".agent/tasks/scripts/task-state.js"]
+      },
+      "candidates": {
+        "reference": {
+          "command": ["node", "${cortex}/bin/cli.js", "update", "--lang", "zh"]
+        },
+        "noop": {
+          "command": ["node", "-e", "process.exit(0)"]
+        }
+      },
+      "assertions": [
+        {
+          "id": "missing-managed-script-restored",
+          "kind": "file_exists",
+          "path": ".agent/tasks/scripts/task-state.js"
+        },
+        {
+          "id": "update-report-written",
+          "kind": "file_exists",
+          "path": ".agent/updates/latest.json"
+        },
+        {
+          "id": "entry-file-intact",
+          "kind": "file_exists",
+          "path": "AGENTS.md"
+        }
+      ]
+    },
+    {
+      "case_id": "export-anchor-is-discoverable",
+      "weight": 2,
+      "description": "The cross-tool recognition anchor must stay machine-readable and carry a stable identity, so other tools can recognise a Cortex-managed project without parsing prose (anchor contract v1).",
+      "setup": [
+        { "command": ["node", "${cortex}/bin/cli.js", "init", "--lang", "zh"] }
+      ],
+      "candidates": {
+        "reference": {
+          "command": ["node", "${cortex}/bin/cli.js", "export-anchor", "--format", "json", "--project", "."]
+        },
+        "noop": {
+          "command": ["node", "-e", "process.exit(0)"]
+        }
+      },
+      "assertions": [
+        {
+          "id": "anchor-schema",
+          "kind": "output_json_field_equals",
+          "field": "schema",
+          "value": "cortex-agent.anchor"
+        },
+        {
+          "id": "anchor-version",
+          "kind": "output_json_field_equals",
+          "field": "version",
+          "value": "v1"
+        },
+        {
+          "id": "anchor-agent-dir",
+          "kind": "output_json_field_equals",
+          "field": "agent_dir",
+          "value": ".agent/"
+        },
+        {
+          "id": "anchor-public-path",
+          "kind": "output_json_field_equals",
+          "field": "public_anchor",
+          "value": "docs/cortex-agent/anchor.md"
+        }
+      ]
+    }
+  ]
+}
