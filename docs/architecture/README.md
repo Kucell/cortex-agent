@@ -51,5 +51,6 @@
 - [Graphify Integration Proposal](./graphify-integration-proposal.md)
 - [Grok Build Research](./grok-build-research.md)
 - [Harness Optimization Design](./harness-optimization-design.md)
+- [Harness Review and Runtime Evidence Design](./harness-review-and-runtime-evidence-design.md)
 - [Host Adapter](./host-adapter/)
 - [MCP Bridge](./mcp-bridge.md)
