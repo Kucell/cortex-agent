@@ -74,6 +74,45 @@ function findSkillScript() {
   return null;
 }
 
+// The guided-review schema is the contract a reviewer backend's output has to
+// satisfy. It lives next to the skill, so the same two locations apply.
+function findSchemaPath(name) {
+  const candidates = [
+    path.join(ROOT, ".agent", "skills", "agent-review-benchmark", "references", name),
+    path.join(ROOT, "templates", "_shared", ".agent", "skills", "agent-review-benchmark", "references", name),
+  ];
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) return candidate;
+  }
+  return null;
+}
+
+let cachedSchema = null;
+
+function loadGuidedReviewSchema() {
+  if (cachedSchema !== null) return cachedSchema;
+  const file = findSchemaPath("guided-review.schema.json");
+  if (!file) fail("schema_missing", "guided-review.schema.json not found", 2);
+  try {
+    cachedSchema = JSON.parse(fs.readFileSync(file, "utf8"));
+  } catch (error) {
+    fail("schema_unreadable", error.message, 2);
+  }
+  return cachedSchema;
+}
+
+function loadSchemaValidator() {
+  const candidates = [
+    path.join(ROOT, ".agent", "skills", "agent-review-benchmark", "scripts", "lib", "json-schema.js"),
+    path.join(ROOT, "templates", "_shared", ".agent", "skills", "agent-review-benchmark", "scripts", "lib", "json-schema.js"),
+  ];
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) return require(candidate);
+  }
+  fail("schema_validator_missing", "json-schema.js not found", 2);
+  return null;
+}
+
 function loadDataset(file) {
   if (!file) fail("dataset_required", "Pass --dataset <dataset.json>.", 2);
   let raw;
@@ -147,6 +186,47 @@ function readJsonField(file, field) {
   return current;
 }
 
+// ---------------------------------------------------------------------------
+// Finding assertions
+// ---------------------------------------------------------------------------
+// A reviewer backend is judged on the finding set it produces, not on prose.
+// The artifact is read from the workspace, so the assertions describe the
+// *outcome* of a candidate command rather than how it got there.
+
+function loadFindingSet(workspace, relative) {
+  const at = path.join(workspace, relative || "guided-review.json");
+  if (!fs.existsSync(at)) return null;
+  try {
+    const data = JSON.parse(fs.readFileSync(at, "utf8"));
+    return Array.isArray(data.groups) ? data.groups : null;
+  } catch {
+    return null;
+  }
+}
+
+// A finding matches when every constraint the assertion states holds. An
+// assertion that states no constraint would match everything, so at least one
+// constraint is always required.
+function matchesFinding(group, assertion) {
+  if (!group || typeof group !== "object") return false;
+  if (assertion.group_id !== undefined && group.group_id !== assertion.group_id) return false;
+  if (assertion.file !== undefined) {
+    if (!Array.isArray(group.files) || !group.files.includes(assertion.file)) return false;
+  }
+  if (assertion.risk !== undefined && group.risk !== assertion.risk) return false;
+  if (assertion.category !== undefined && group.category !== assertion.category) return false;
+  if (assertion.title_contains !== undefined) {
+    if (!new RegExp(assertion.title_contains).test(String(group.title || ""))) return false;
+  }
+  return true;
+}
+
+function findingHasConstraint(assertion) {
+  return ["group_id", "file", "risk", "category", "title_contains"].some(
+    (key) => assertion[key] !== undefined
+  );
+}
+
 function evaluate(assertion, context) {
   const { workspace, run } = context;
   const at = path.join(workspace, assertion.path || "");
@@ -198,6 +278,31 @@ function evaluate(assertion, context) {
       const probe = runCommand(assertion.command, workspace);
       return probe.exitCode === assertion.expect;
     }
+    case "finding_present": {
+      // A missing artifact means the candidate produced no review at all.
+      // Scoring it as "the finding is absent" would hand points to a broken
+      // candidate, so a missing artifact fails every finding assertion.
+      if (!findingHasConstraint(assertion)) return false;
+      const groups = loadFindingSet(workspace, assertion.path);
+      if (!groups) return false;
+      return groups.some((group) => matchesFinding(group, assertion));
+    }
+    case "finding_absent": {
+      // The artifact has to exist for an absence to mean anything: "the
+      // backend rejected this finding" and "the backend never ran" are
+      // different outcomes and only the first one is a pass.
+      if (!findingHasConstraint(assertion)) return false;
+      const groups = loadFindingSet(workspace, assertion.path);
+      if (!groups) return false;
+      return !groups.some((group) => matchesFinding(group, assertion));
+    }
+    case "artifact_schema_valid": {
+      const groups = loadFindingSet(workspace, assertion.path);
+      if (!groups) return false;
+      const validator = loadSchemaValidator();
+      const artifact = JSON.parse(fs.readFileSync(path.join(workspace, assertion.path || "guided-review.json"), "utf8"));
+      return validator.validate(loadGuidedReviewSchema(), artifact).ok;
+    }
     default:
       fail("unknown_assertion", assertion.kind, 2);
       return false;
@@ -211,7 +316,12 @@ function executeCase(item, candidateId, dataset) {
   try {
     for (const step of item.setup || []) runCommand(step.command, workspace);
     const fixture = item.fixture || {};
-    for (const [relative, content] of Object.entries(fixture.files || {})) writeFile(workspace, relative, content);
+    for (const [relative, content] of Object.entries(fixture.files || {})) {
+      // A fixture file may be given as a plain string or as a JSON value. The
+      // JSON form keeps a dataset readable — a nested JSON document would
+      // otherwise have to be escaped by hand inside the dataset file.
+      writeFile(workspace, relative, typeof content === "string" ? content : `${JSON.stringify(content, null, 2)}\n`);
+    }
     for (const relative of fixture.remove || []) removePath(workspace, relative);
 
     const candidate = (item.candidates || {})[candidateId];
@@ -377,9 +487,12 @@ if (require.main === module) {
 module.exports = {
   evaluate,
   executeCase,
+  findSchemaPath,
   findSkillScript,
   loadDataset,
+  loadFindingSet,
   main,
+  matchesFinding,
   parseArgs,
   runBenchmark,
   runCommand,

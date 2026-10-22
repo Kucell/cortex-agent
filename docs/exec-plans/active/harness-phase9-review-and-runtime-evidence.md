@@ -92,21 +92,44 @@ Phase 8 把应用可理解性的**文档层**做完了（6/6 任务已完成）�
 - `/ship` CLEAN：`fail` 阻断；`not_run` 给出明确告警，不再静默通过
 - 沿用 Phase 8 已有的 `docs/reliability/verification-templates.md` 与 `runtime-evidence-integration.md` 作为设计依据
 
-### T-H29 [待办] M3 · 定义 guided-review finding schema
+### T-H29 [已完成] M3 · 定义 guided-review finding schema
 
 - 发布 finding 的结构化 schema，字段与 `agent-review-benchmark` 的 `guided-review.schema.json` 保持一致
 - 不改 `agent-review-benchmark` skill 的「默认不用外部 LLM judge」契约
 
-### T-H30 [待办] M3 · builtin reviewer backend
+**实施要点**
+
+- 新增 `references/guided-review-finding.schema.json`：一条 finding = 一个被审查出来的问题，字段与 artifact 的 group 定义**逐字段一致**（测试逐字段比对，防止漂移）
+- **修掉一个真 bug**：既有 `guided-review.schema.json` 的 `summary` 子对象写了 `additionalProperties:false` 却没有 `properties`，于是所有属性都被禁止；而 `required` 又要求那 5 个字段必须存在。两句话放在一起的结果是**任何文档都过不了校验**，包括 skill 自己产出的那一份。也就是说这份「已发布 schema」从来没有真正约束过任何东西。修好后既有的真实历史产物（`009-ms002-guided-review.json`）能通过校验——反向验证证明旧定义确实不可满足
+- 仓库零 npm 依赖，`ajv` 不可用。新增 `scripts/lib/json-schema.js`：零依赖 JSON Schema 子集校验器。**它遇到自己没有实现的 keyword 会报错而不是默默忽略**——默默忽略的 keyword 会让一份坏 schema 看起来像好 schema
+- group 增加可选 `category` 字段（`architecture`/`quality`/`test`/`validation`/`security`/`performance`/`docs`），对齐 `code-reviewer` 子代理的 7 个审查维度；既有产物保持有效
+
+### T-H30 [已完成] M3 · builtin reviewer backend
 
 - backend 形态：把 `/code-review` workflow + `code-reviewer` 子代理的产出收束成合规 finding
 - 预留 external backend 接口但不进 core：外部审查器作为可选 adapter 存在，不引入依赖、不进分发
 
-### T-H31 [待办] M3 · finding 纳入 benchmark 机械判定
+**实施要点**
+
+- 新增 `scripts/reviewer-backend.js`。核心不变式是**产出与判定分离**：谁产出都行，但**校验不外泄**——每条 finding 在进入 artifact 之前都要过校验，artifact 在写出之前还要再过一次
+- 一条 finding 被接受需要同时满足三条：符合 finding schema（`schema_invalid`）、只引用本次 changeset 里的文件（`file_not_in_changeset`）、引用的文件在工作区真实存在（`file_not_found`）。第二条把 `code-reviewer` 的「输入隔离」原则变成机械约束，第三条挡住幻觉路径
+- 一条不合格 finding **不连累其余 finding**：被丢弃的 finding 与原因写进 `<output>.diagnostics.json`，丢弃从不静默
+- `external` backend 预留 adapter 接口（`module.exports = { review(context) → { findings } }`），**不提供实现、不引入依赖**。adapter 只提议 finding，无法绕过任何一条校验
+- `code-reviewer` 子代理与 `/code-review` 工作流的输出契约同步更新：Part 2 JSON 增加 `changed_files` 与 `findings`，并给出后端调用方式
+
+### T-H31 [已完成] M3 · finding 纳入 benchmark 机械判定
 
 - builtin backend 产出的 finding 集作为 dataset 参与判定
 - 强制区分力：noop finding 集得分显著低于 reference
 - 判定结果进入 CI summary
+
+**实施要点**
+
+- S6 引擎新增 3 种断言：`finding_present`（finding 存在且满足全部约束）、`finding_absent`（artifact 存在且不含该 finding）、`artifact_schema_valid`（artifact 符合已发布 schema）。**缺 artifact 时全部失败**——「后端拒绝了这条 finding」和「后端根本没跑」是两回事，只有前者算通过，否则什么都不做的候选会白拿 absent 断言的分
+- 数据集 `benchmarks/guided-review/cortex-agent-review/`：2 个 case，全部来自本仓真实历史缺陷（`test-runner.cjs` 的 `NODE_TEST_CONTEXT` 假绿与「独占重跑通过」文案 bug；`runtime-evidence/SKILL.md` 指向未分发 `docs/` 的死链），权重 3 + 2
+- 三个候选形成区分度梯度：**reference = 10000 bp（11/11）**、**lenient = 5172 bp**、**noop = 0 bp**。`lenient` 候选（拿到什么写什么、完全不校验）证明 `finding_absent` 断言有牙齿：它能通过全部 `finding_present`，却必须因为没丢弃该丢的 finding 而失分
+- 判定结果通过 `scripts/append-ci-summary.cjs` 进入 GitHub job summary（门禁只写 JSON 文件的话，读 CI 的人看不见）
+- 复用 S6 引擎，不重造 harness；数据集 fixture 支持直接写 JSON 值，避免在 dataset 里手工转义嵌套 JSON
 
 ### T-H32 [待办] M4 · UI 层（不排期）
 
@@ -133,6 +156,18 @@ Phase 8 把应用可理解性的**文档层**做完了（6/6 任务已完成）�
 - finding schema 发布，summary 仍符合已发布 schema
 - 至少一个 builtin backend 产出合规 finding
 - 判定具备区分力（noop 显著低于 reference）
+
+**M3 实测**
+
+| 项 | 结果 |
+|---|---|
+| finding schema | `guided-review-finding.schema.json`，与 artifact group 定义逐字段一致（测试守卫） |
+| 旧 schema 可满足性 | 修前不可满足（反向验证），修后真实历史产物通过 |
+| builtin backend | 接受合规 finding；`schema_invalid` / `file_not_in_changeset` / `file_not_found` 三类拒绝各有原因码 |
+| external backend | 接口已预留，无实现、无依赖；adapter 提出的越界 finding 同样被拒 |
+| 数据集区分度 | reference 10000 bp（11/11）、lenient 5172 bp、noop 0 bp |
+| CI summary | 判定结果进入 GitHub job summary |
+| 依赖 | 新增 0 个 npm 依赖；新增代码只用 Node 内置模块 |
 
 ### 全量
 - CI `full-test` 全绿且零 NON-HERMETIC 漂移
@@ -173,3 +208,10 @@ Phase 8 把应用可理解性的**文档层**做完了（6/6 任务已完成）�
 - 2026-10-22：M2 落地第一个真实 API 层数据集 `benchmarks/runtime-evidence/event-bus/`（event-bus CLI 发布→读回，1 case / 6 断言），reference = 10000 bp、noop = 1666 bp；新增 `scripts/runtime-evidence-runner.cjs` 复用 S6 引擎与 bp 口径，只换输出契约
 - 2026-10-22：M2 打通 `/ship` CLEAN 的阻断能力：`phase-gate/scripts/gate.js` 新增 `runtime_verification` 检查——`fail` 阻断、`partial`/`not_run` 明确告警。此前 CLEAN 只判 `self_check_report`（advisory），**从不读** `verification-summary.json`，阻断能力在机械层实际为空
 - 2026-10-22：M1 验证期间发现并行负载下 fork/exec 会被拒（EAGAIN/ENOMEM），子进程根本没启动的失败形态与产品缺陷无法区分。抽取公共 `tests/helpers/spawn-retry.js`，只在「进程从未启动」这一类失败上做有界重试，跑起来并非零退出的结果一律不重试
+- 2026-10-22：M3 T-H29 —— 发布 `guided-review-finding.schema.json`（与 artifact group 定义逐字段一致）。**修掉一个此前从未被发现的真 bug**：既有 `guided-review.schema.json` 的 `summary` 写了 `additionalProperties:false` 却没写 `properties`，导致**任何文档都无法通过校验**——这份「已发布 schema」从来没有真正约束过任何东西。修好后既有的真实历史产物能通过校验，反向验证证明旧定义确实不可满足
+- 2026-10-22：M3 T-H29 —— 仓库零 npm 依赖，`ajv` 不可用。新增零依赖 JSON Schema 子集校验器，且**遇到未实现的 keyword 报错而非忽略**：默默忽略会让一份坏 schema 看起来像好 schema
+- 2026-10-22：M3 T-H30 —— 落地 builtin reviewer backend。核心是**产出与判定分离**：finding 谁产出都行，但校验不外泄，每条 finding 进 artifact 前要过 schema、changeset 归属、文件存在性三关。丢弃从不静默，原因写进 diagnostics
+- 2026-10-22：M3 T-H30 —— external backend 只预留接口，不提供实现、不引入依赖；adapter 只能提议 finding，无法绕过任何一条校验（已用测试证明：adapter 提出的越界 finding 同样被拒）
+- 2026-10-22：M3 T-H31 —— S6 引擎新增 `finding_present` / `finding_absent` / `artifact_schema_valid` 三种断言，落地真实历史缺陷数据集。区分度梯度：reference 10000 bp、lenient 5172 bp、noop 0 bp。`lenient`（不校验的审查器）证明 absent 断言有牙齿
+- 2026-10-22：M3 T-H31 —— 判定结果进入 GitHub job summary。门禁只写 JSON 文件的话，读 CI 的人看不见那个数字
+

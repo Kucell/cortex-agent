@@ -41,6 +41,8 @@
     "check:l1-distribution": "node scripts/check-l1-distribution.js",
     "benchmark:agent-review": "node scripts/agent-review-benchmark-runner.cjs run --dataset benchmarks/agent-review/cortex-governance-bootstrap/dataset.json --candidate reference --output .agent/metrics/agent-benchmark-summary.json --min-quality-bp 10000",
     "benchmark:agent-review:noop": "node scripts/agent-review-benchmark-runner.cjs run --dataset benchmarks/agent-review/cortex-governance-bootstrap/dataset.json --candidate noop --output .agent/metrics/agent-benchmark-noop.json --max-quality-bp 5000",
+    "benchmark:guided-review": "node scripts/agent-review-benchmark-runner.cjs run --dataset benchmarks/guided-review/cortex-agent-review/dataset.json --candidate reference --output .agent/metrics/guided-review-summary.json --min-quality-bp 10000",
+    "benchmark:guided-review:noop": "node scripts/agent-review-benchmark-runner.cjs run --dataset benchmarks/guided-review/cortex-agent-review/dataset.json --candidate noop --output .agent/metrics/guided-review-noop.json --max-quality-bp 5000",
     "verify:runtime-evidence": "node scripts/runtime-evidence-runner.cjs run --dataset benchmarks/runtime-evidence/event-bus/dataset.json --candidate reference --output .agent/metrics/verification-summary.json --min-quality-bp 10000",
     "verify:runtime-evidence:noop": "node scripts/runtime-evidence-runner.cjs run --dataset benchmarks/runtime-evidence/event-bus/dataset.json --candidate noop --output .agent/metrics/verification-evidence-noop.json --max-quality-bp 5000",
     "hooks:install": "node scripts/install-dev-hooks.js",
