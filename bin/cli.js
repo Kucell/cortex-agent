@@ -602,6 +602,13 @@ async function initModeGeneral() {
     case "list":        listPlatforms(ctx); break;
     case "export-anchor": exportAnchor(ctx); break;
     case "upgrade":
+      // Help must be a zero-write operation. `upgrade` copies templates into
+      // the project, so asking for usage must not install anything: without
+      // this guard `upgrade --help` silently rewrites the project.
+      if (ctx.args.includes("--help") || ctx.args.includes("-h")) {
+        args.includes("--json") ? cliHelp(ctx) : printHelp();
+        break;
+      }
       if (l1Ctx.options.team) {
         console.error("❌ `upgrade --team` is rejected: `upgrade` is additive-only and never touches Team Pack. Use `update --team` for Team Pack sync. See .agent/plans/proposals/projects/team-agent-pack/proposals/P-002-team-pack-cli-lifecycle-proposal.md §4.");
         process.exitCode = 3;
