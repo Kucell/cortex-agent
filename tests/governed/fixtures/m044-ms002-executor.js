@@ -47,6 +47,9 @@ let secret = null;
 // The descendant that holds the transferred IPC handle. It is created in the
 // `relay` mode below; the message handler refers to it directly.
 let relayGrandchild = null;
+// Set by the `relay` mode below. The request handler calls it so the
+// accomplice is started while the coordinator's request is in flight.
+let relayStart = null;
 
 /**
  * Write a frame straight onto the IPC socket.
@@ -155,6 +158,13 @@ function handleMessage(message) {
       // the wire by the time the coordinator sees the relayed request. That
       // ordering makes the case deterministic instead of a race between the
       // coordinator's answer and the attacker's.
+      // Start the accomplice now, so the handle is transferred WHILE the
+      // coordinator's request is in flight. The coordinator's pre-dispatch
+      // audit already ran, so this transfer happens after it: the relayed
+      // inbound request really reaches the coordinator and has to be refused
+      // on authentication grounds rather than being blocked before dispatch.
+      if (relayStart) relayStart();
+
       if (relayGrandchild) {
         try {
           relayGrandchild.stdin.write(`${JSON.stringify(message)}\n`);
@@ -305,16 +315,50 @@ if (mode === "relay") {
   // the child it supervises.
   const { spawn } = require("node:child_process");
   const path = require("node:path");
-  const grandchild = spawn(process.execPath, [path.join(__dirname, "m044-ms002-relay.js")], {
-    // stdin carries the request to replay, stdout is unused, stderr carries
-    // the report, and fd 3 is the transferred IPC handle.
-    stdio: ["pipe", "pipe", "pipe", 3],
-  });
-  relayGrandchild = grandchild;
+
+  // The accomplice is started LAZILY, when the first request arrives, not
+  // during startup. That ordering matters for what this case proves.
+  //
+  // A coordinator that audits the channel BEFORE dispatching refuses the
+  // request outright when the handle was already transferred — which is the
+  // right behaviour, but it means the request never reaches the wire and the
+  // inbound-MAC path is never exercised. Starting the accomplice on the
+  // first request makes the transfer happen DURING the round trip, so the
+  // request is dispatched and the relayed inbound request really reaches the
+  // coordinator, where it has to be refused on authentication grounds.
+  const startGrandchild = () => {
+    if (relayGrandchild) return relayGrandchild;
+    const grandchild = spawn(process.execPath, [path.join(__dirname, "m044-ms002-relay.js")], {
+      // stdin carries the request to replay, stdout is unused, stderr carries
+      // the report, and fd 3 is the transferred IPC handle.
+      stdio: ["pipe", "pipe", "pipe", 3],
+    });
+    relayGrandchild = grandchild;
+
+    grandchild.stderr.on("data", (chunk) => {
+      const text = chunk.toString();
+      for (const line of text.split("\n")) {
+        const match = line.match(/\{.*\}/);
+        if (!match) continue;
+        try {
+          send({ type: "relay-report", requestId: "relay", body: JSON.parse(match[0]) });
+        } catch (_) {
+          // Best effort.
+        }
+      }
+    });
+    grandchild.on("exit", () => {
+      send({ type: "relay-report", requestId: "relay", body: { relayExited: true } });
+    });
+
+    return grandchild;
+  };
+  relayStart = startGrandchild;
 
   const killGrandchild = () => {
+    if (!relayGrandchild) return;
     try {
-      grandchild.kill();
+      relayGrandchild.kill();
     } catch (_) {
       // Already gone.
     }
@@ -327,23 +371,6 @@ if (mode === "relay") {
   process.on("SIGINT", () => {
     killGrandchild();
     process.exit(0);
-  });
-
-  grandchild.stderr.on("data", (chunk) => {
-    const text = chunk.toString();
-    for (const line of text.split("\n")) {
-      const match = line.match(/\{.*\}/);
-      if (!match) continue;
-      try {
-        send({ type: "relay-report", requestId: "relay", body: JSON.parse(match[0]) });
-      } catch (_) {
-        // Best effort.
-      }
-    }
-  });
-  grandchild.stderr.on("data", () => {});
-  grandchild.on("exit", () => {
-    send({ type: "relay-report", requestId: "relay", body: { relayExited: true } });
   });
 
   setTimeout(() => {

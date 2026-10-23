@@ -15,10 +15,34 @@ const {
 } = require("../../lib/governed/managed-caller-supervisor");
 const {
   ManagedCallerSession,
+  CHANNEL_MESSAGE,
   newSessionId,
 } = require("../../lib/governed/managed-caller-session");
 
 const EXECUTOR = path.join(__dirname, "fixtures", "m044-ms002-executor.js");
+
+/**
+ * Read a process's process-group id.
+ *
+ * A detached child is placed in its own process group, so its pgid differs
+ * from the coordinator's. That difference is how a detached spawn is
+ * detected from the outside.
+ *
+ * @param {number} pid
+ * @returns {number|null}
+ */
+function readPgid(pid) {
+  try {
+    // `ps` reports the process group on both platforms, and unlike /proc it
+    // exists on macOS too. Without it the comparison would be between two
+    // nulls, which would pass no matter what.
+    const output = execFileSync("ps", ["-o", "pgid=", "-p", String(pid)], { encoding: "utf8" });
+    const pgid = Number.parseInt(output.trim(), 10);
+    return Number.isInteger(pgid) ? pgid : null;
+  } catch (_) {
+    return null;
+  }
+}
 
 /** Kill a child and wait until it is really gone. */
 async function killChild(child) {
@@ -514,6 +538,44 @@ describe("governed/managed-caller-session - negative cases required by VC-044-00
     assert.doesNotMatch(source, /context\.json/);
     assert.doesNotMatch(source, /detached:\s*true/);
   });
+
+  test("the spawn escape hatch cannot detach the supervised child", async () => {
+    // The stdio layout and the `detached` flag are part of the trust
+    // primitive: the IPC channel has to be the inherited descriptor the
+    // identity is bound to, and a detached child would outlive the
+    // coordinator. The caller's options used to be spread last, which let
+    // them replace both.
+    const { session, child } = await startManagedCallerSession({
+      modulePath: EXECUTOR,
+      handshakeTimeoutMs: 5_000,
+      requestTimeoutMs: 5_000,
+      spawnOptions: { detached: true },
+    });
+    try {
+      // The handshake succeeding proves the child was started; the process
+      // group is what proves it was NOT detached.
+      assert.equal(session.established, true, "expected the handshake to succeed");
+      assert.equal(
+        child.spawnargs.length > 0,
+        true,
+        "expected spawn arguments to be recorded",
+      );
+
+      // A detached child gets its own process group, so its pgid differs
+      // from the coordinator's. An attached child keeps the coordinator's.
+      const childPgid = process.kill(child.pid, 0)
+        ? readPgid(child.pid)
+        : null;
+      assert.equal(
+        childPgid,
+        readPgid(process.pid),
+        "the supervised child must not be in its own process group",
+      );
+    } finally {
+      await session.close("test_cleanup");
+      await killChild(child);
+    }
+  });
 });
 
 describe("governed/managed-caller-session - identity does not come from self-report", () => {
@@ -592,20 +654,26 @@ describe("governed/managed-caller-session - identity does not come from self-rep
   test("a session without a usable socket address refuses to dispatch", async () => {
     // The audit has to run on the request path, and a missing socket address
     // has to stop the request instead of letting it through.
+    const realFacts = require("../../lib/governed/managed-caller-identity");
     const { session, child } = await startManagedCallerSession({
       modulePath: EXECUTOR,
       handshakeTimeoutMs: 5_000,
       requestTimeoutMs: 5_000,
+      factSource: {
+        ...realFacts,
+        collectProcessFacts: () => ({
+          pid: 0,
+          startToken: null,
+          commandDigest: null,
+          socketAddress: null,
+          socketEndpoint: null,
+          holders: [],
+        }),
+      },
     });
     try {
-      // Simulate an environment where the socket address cannot be found.
       const original = session.childIdentity;
-      assert.ok(original.socketAddress, "expected a socket address for the live session");
-
-      session._childIdentity = Object.freeze({
-        ...original,
-        socketAddress: null,
-      });
+      assert.equal(original.socketAddress, null, "expected no socket address in this environment");
 
       const audit = session.auditChannelHolders();
       assert.equal(audit.ok, false, "an unknown socket address must not report a clean channel");
@@ -622,26 +690,114 @@ describe("governed/managed-caller-session - identity does not come from self-rep
     }
   });
 
+  test("a refused dispatch never puts the payload on the channel", async () => {
+    // The audit has to run BEFORE the request frame is written. A request
+    // that is refused afterwards has already leaked its payload to whoever
+    // holds the transferred handle: the coordinator reports "refused to
+    // dispatch" while the sensitive body has already gone out over the
+    // wire.
+    const realFacts = require("../../lib/governed/managed-caller-identity");
+    const { session, child } = await startManagedCallerSession({
+      modulePath: EXECUTOR,
+      handshakeTimeoutMs: 5_000,
+      requestTimeoutMs: 5_000,
+      factSource: {
+        ...realFacts,
+        collectProcessFacts: () => ({
+          pid: 0,
+          startToken: null,
+          commandDigest: null,
+          socketAddress: null,
+          socketEndpoint: null,
+          holders: [],
+        }),
+      },
+    });
+    try {
+      const written = [];
+      const originalSend = session.child.send.bind(session.child);
+      session.child.send = (message, ...rest) => {
+        written.push(message);
+        return originalSend(message, ...rest);
+      };
+
+      await assert.rejects(
+        () => session.request(SUPERVISOR_OPERATIONS.PING, { SENSITIVE: "LEAK-ME" }),
+        /refused to dispatch|socket_address_unknown/,
+      );
+
+      const requestFrames = written.filter((message) => message
+        && message.type === CHANNEL_MESSAGE.REQUEST);
+      assert.equal(
+        requestFrames.length,
+        0,
+        "a refused request must not be written to the channel",
+      );
+    } finally {
+      await session.close("test_cleanup");
+      await killChild(child);
+    }
+  });
+
+  test("the identity slot itself cannot be replaced from the outside", async () => {
+    // `childIdentity` is exposed through a read-only accessor, but the slot
+    // behind it used to be a plain writable property. Anything holding a
+    // reference to the session could overwrite the slot and thereby defeat
+    // the pid-reuse check, which compares against the recorded start token.
+    await withSession({}, async (session) => {
+      const original = session.childIdentity;
+
+      // Writing the old slot name must not change what the session reports.
+      session._childIdentity = { pid: 1, owner: "attacker" };
+      assert.equal(session.childIdentity, original, "the identity was replaced");
+
+      // The writer that does exist is not reachable in a way that can be
+      // pointed somewhere else.
+      assert.throws(() => {
+        Object.defineProperty(session, "_setChildIdentity", {
+          value: () => {},
+        });
+      }, /Cannot redefine property/);
+    });
+  });
+
   test("a replaced process behind the same pid is detected", async () => {
     // The pid reuse negative case. The pid stays the same but the process
     // behind it is not the one the session established, which is exactly what
     // the OS does when it hands a pid to a new process. The start token is
     // what tells the two apart, so the continuity audit has to refuse.
+    const realFacts = require("../../lib/governed/managed-caller-identity");
+    // The handshake records the token of the process that was there then.
+    // Afterwards the fact source reports a different token, which is what
+    // the OS does when it hands the same pid to a new process.
+    let replaced = false;
     const { session, child } = await startManagedCallerSession({
       modulePath: EXECUTOR,
       handshakeTimeoutMs: 5_000,
       requestTimeoutMs: 5_000,
+      factSource: {
+        ...realFacts,
+        collectProcessFacts: () => ({
+          pid: process.pid,
+          startToken: replaced
+            ? "linux:the-process-that-replaced-it"
+            : "linux:the-process-that-was-established",
+          commandDigest: null,
+          socketAddress: null,
+          socketEndpoint: null,
+          holders: [],
+        }),
+      },
     });
     try {
+      assert.equal(
+        session.childIdentity.startToken,
+        "linux:the-process-that-was-established",
+      );
       assert.equal(session.auditProcessContinuity().ok, true);
 
-      // A different process would carry a different start token. Simulate the
-      // reuse by recording a token that the running process does not have.
-      const original = session.childIdentity;
-      session._childIdentity = Object.freeze({
-        ...original,
-        startToken: `${original.startToken}-replaced`,
-      });
+      // The pid is now held by a different process.
+      replaced = true;
 
       const audit = session.auditProcessContinuity();
       assert.equal(audit.ok, false, "a replaced process must not pass the continuity audit");
@@ -655,18 +811,62 @@ describe("governed/managed-caller-session - identity does not come from self-rep
   test("a missing start token fails the continuity audit closed", async () => {
     // Without a start token a pid reuse cannot be detected at all, so the
     // audit has to refuse rather than treat the missing fact as a pass.
+    const realFacts = require("../../lib/governed/managed-caller-identity");
     const { session, child } = await startManagedCallerSession({
       modulePath: EXECUTOR,
       handshakeTimeoutMs: 5_000,
       requestTimeoutMs: 5_000,
+      factSource: {
+        ...realFacts,
+        // No start token is available at all: the environment cannot answer
+        // the question the continuity audit has to ask.
+        collectProcessFacts: () => ({
+          pid: process.pid,
+          startToken: null,
+          commandDigest: null,
+          socketAddress: null,
+          socketEndpoint: null,
+          holders: [],
+        }),
+      },
     });
     try {
-      const original = session.childIdentity;
-      session._childIdentity = Object.freeze({ ...original, startToken: null });
-
       const audit = session.auditProcessContinuity();
       assert.equal(audit.ok, false, "a missing start token must not pass the continuity audit");
       assert.equal(audit.reason, "start_token_unavailable");
+    } finally {
+      await session.close("test_cleanup");
+      await killChild(child);
+    }
+  });
+
+  test("a coarse start token fails the continuity audit closed", async () => {
+    // `ps -o lstart=` resolves to whole seconds, so a token derived from it
+    // is shared by every process started in that second. A pid reuse by such
+    // a process would compare EQUAL, and the audit would report a pass for a
+    // replacement it cannot see. The audit has to refuse a comparison it
+    // cannot make.
+    const realFacts = require("../../lib/governed/managed-caller-identity");
+    const { session, child } = await startManagedCallerSession({
+      modulePath: EXECUTOR,
+      handshakeTimeoutMs: 5_000,
+      requestTimeoutMs: 5_000,
+      factSource: {
+        ...realFacts,
+        collectProcessFacts: () => ({
+          pid: process.pid,
+          startToken: "ps-coarse:Sat Oct 23 12:00:00 2026",
+          commandDigest: null,
+          socketAddress: null,
+          socketEndpoint: null,
+          holders: [],
+        }),
+      },
+    });
+    try {
+      const audit = session.auditProcessContinuity();
+      assert.equal(audit.ok, false, "a coarse token must not pass the continuity audit");
+      assert.equal(audit.reason, "start_token_too_coarse");
     } finally {
       await session.close("test_cleanup");
       await killChild(child);

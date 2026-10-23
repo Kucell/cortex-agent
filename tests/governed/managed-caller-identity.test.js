@@ -8,7 +8,8 @@ const {
   collectProcessFacts,
   readProcessStartToken,
   readSocketHolders,
-  readIpcSocketAddress,
+  readIpcSocketEndpoint,
+  readSocketInode,
   readCommandDigest,
 } = require("../../lib/governed/managed-caller-identity");
 
@@ -85,18 +86,52 @@ describe("governed/managed-caller-identity - socket facts", () => {
     // An address that no live socket can have. The all-zero address is NOT a
     // safe sample: on Linux it is a real unnamed-socket address, and a busy
     // machine has plenty of those.
-    assert.deepEqual(readSocketHolders("0xdeadbeefdeadbeef"), []);
-    assert.deepEqual(readSocketHolders(""), []);
+    assert.deepEqual(readSocketHolders({ address: "0xdeadbeefdeadbeef" }), []);
+    assert.deepEqual(readSocketHolders({ address: "" }), []);
     assert.deepEqual(readSocketHolders(null), []);
+    assert.deepEqual(readSocketHolders({}), []);
   });
 
   test("socket addresses are compared case-insensitively", () => {
-    assert.deepEqual(readSocketHolders("0xDEADBEEFDEADBEEF"), []);
+    assert.deepEqual(readSocketHolders({ address: "0xDEADBEEFDEADBEEF" }), []);
   });
 
-  test("an invalid pid has no IPC socket address", () => {
-    assert.equal(readIpcSocketAddress(0), null);
-    assert.equal(readIpcSocketAddress(999_999_999), null);
+  test("an invalid pid has no IPC socket endpoint", () => {
+    assert.equal(readIpcSocketEndpoint(0), null);
+    assert.equal(readIpcSocketEndpoint(999_999_999), null);
+  });
+
+  test("an invalid pid has no socket inode", () => {
+    assert.equal(readSocketInode(0, 3), null);
+    assert.equal(readSocketInode(999_999_999, 3), null);
+    assert.equal(readSocketInode(process.pid, 999_999), null);
+  });
+
+  test("the holder lookup identifies the socket by inode on Linux", () => {
+    // On Linux the `0x...` column of `lsof -U` is a HASH of the socket's
+    // inode, and it collides with unrelated sockets on a busy machine. That
+    // collision made the audit report a transferred handle for a clean
+    // channel, which failed CI. The inode identifies the socket object
+    // itself, so the lookup has to use it where it is available.
+    if (process.platform !== "linux") return;
+
+    const child = spawn(process.execPath, ["-e", "setTimeout(() => {}, 5000)"], {
+      stdio: ["ignore", "pipe", "pipe", "ipc"],
+    });
+    try {
+      const endpoint = readIpcSocketEndpoint(child.pid);
+      assert.ok(endpoint, "expected an IPC socket endpoint for the child");
+      assert.equal(typeof endpoint.inode, "number", "expected a socket inode on Linux");
+
+      const holders = readSocketHolders(endpoint);
+      assert.ok(holders.includes(child.pid), "the child itself must be a holder");
+    } finally {
+      try {
+        child.kill("SIGKILL");
+      } catch (_) {
+        // Already gone.
+      }
+    }
   });
 });
 
@@ -107,6 +142,7 @@ describe("governed/managed-caller-identity - fact collection", () => {
     assert.equal(facts.startToken, null);
     assert.equal(facts.commandDigest, null);
     assert.equal(facts.socketAddress, null);
+    assert.equal(facts.socketEndpoint, null);
     assert.deepEqual(facts.holders, []);
   });
 
