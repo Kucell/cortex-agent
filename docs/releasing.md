@@ -248,6 +248,7 @@ closed instead of publishing a different candidate.
 - Never publish from a non-`main` ref.
 - Never place npm credentials in repository files, logs, governance state, or release evidence.
 - Validation must pass before any Git or registry write occurs.
+- The checked-in cross-tool anchor (`docs/cortex-agent/anchor.md`) must state the current version. It is a generated file: the release bump re-renders it from the anchor template, and the release consistency gate rejects a stale copy.
 
 ## Evidence
 
