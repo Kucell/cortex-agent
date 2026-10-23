@@ -3,7 +3,12 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const MATCH = /^\/cortex-release publish v(\d+\.\d+\.\d+) decision=(D-[A-Za-z0-9._-]+) waitpoint=(WP-[A-Za-z0-9._-]+)$/;
-const ALLOWED = new Set(["package.json","package-lock.json","pnpm-lock.yaml",".claude-plugin/plugin.json",".claude-plugin/marketplace.json","CHANGELOG.md","tests/release/release-version-consistency.test.js"]);
+// The allowlist is derived from the version-carrier registry so a carrier
+// cannot join the release flow without also being permitted in the
+// release-preparation PR. Beyond the carriers themselves, a release PR needs
+// the changelog and the consistency test that guards the carrier versions.
+const { carrierFiles } = require(path.join(__dirname, "..", "..", "lib", "release", "version-carriers"));
+const ALLOWED = new Set([...carrierFiles(), "pnpm-lock.yaml", "CHANGELOG.md", "tests/release/release-version-consistency.test.js"]);
 function must(ok, reason) { if (!ok) throw new Error("RELEASE_GATE_BLOCKED: " + reason); }
 function parseCommand(body) {
   const m = String(body || "").trim().match(MATCH);
@@ -160,4 +165,4 @@ async function main() {
   console.log("Governed release gate verified exact HEAD "+result.sha+" from merged PR #"+result.pr);
 }
 if (require.main === module) main().catch(e=>{console.error(e.message);process.exitCode=1;});
-module.exports = {parseCommand,hasIndependentApproval,validateGovernance,resolveReleaseTrigger,verifyApproval};
+module.exports = {parseCommand,hasIndependentApproval,validateGovernance,resolveReleaseTrigger,verifyApproval,ALLOWED};
