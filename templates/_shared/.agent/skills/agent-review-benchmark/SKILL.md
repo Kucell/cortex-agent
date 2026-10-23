@@ -67,6 +67,22 @@ node .agent/skills/agent-review-benchmark/scripts/index.js review \
 4. Check that every group explains intent, impact, risk, files, validation evidence, and follow-ups.
 5. Attach the output to `/ship`, Artifact Bus, or the owning Mission milestone. Treat missing evidence as incomplete, not passed.
 
+### Publish to a pull request
+
+An artifact that never reaches the pull request is evidence nobody reads. The renderer carries a validated artifact to the comment body, and `vcs-pr` posts it:
+
+```bash
+# 1. artifact → markdown comment body
+node .agent/skills/agent-review-benchmark/scripts/render-pr-comment.js \
+  --input <guided-review.json> --output <comment.md>
+
+# 2. post it to the pull request (user gate — the comment is public)
+node .agent/skills/vcs-pr/scripts/index.js comment \
+  --pr-number <N> --body-file <comment.md> --gate user
+```
+
+The renderer is pure and total: it never touches the network, never reads the workspace, never invents content, and always produces the same bytes for the same artifact. A finding with no follow-ups contributes no follow-up section rather than a placeholder that reads like content.
+
 ## Benchmark
 
 1. Create a versioned dataset of cases and blocking assertions. Record candidate identity, passed/total assertions, cost in integer microunits, duration in milliseconds, and evidence refs.

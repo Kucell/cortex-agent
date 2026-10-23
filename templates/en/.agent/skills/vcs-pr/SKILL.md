@@ -50,6 +50,39 @@ node .agent/skills/vcs-pr/scripts/index.js list \
   [--state open|merged|closed|all] --gate agent
 ```
 
+### Review surface
+
+```bash
+# read what the pull request changed
+node .agent/skills/vcs-pr/scripts/index.js diff --pr-number 5 --gate agent
+
+# read what has already been said about it
+node .agent/skills/vcs-pr/scripts/index.js comments --pr-number 5 --gate agent
+node .agent/skills/vcs-pr/scripts/index.js reviews --pr-number 5 --gate agent
+
+# write a finding back (user gate — the comment is public)
+node .agent/skills/vcs-pr/scripts/index.js comment \
+  --pr-number 5 --body-file <comment.md> --gate user
+
+node .agent/skills/vcs-pr/scripts/index.js review \
+  --pr-number 5 --body-file <comment.md> \
+  [--event APPROVE|REQUEST_CHANGES|COMMENT] \
+  [--comments-file <inline-comments.json>] --gate user
+```
+
+`diff` returns the raw unified patch. `comment` and `review` require `--gate user` because they publish to a pull request other people read; `diff` / `comments` / `reviews` are read-only and accept any allowed gate.
+
+A backend that does not implement one of these operations reports `capability_unavailable` — it never returns an empty list to stand in for data it never fetched.
+
+To publish a guided review, render the artifact first:
+
+```bash
+node .agent/skills/agent-review-benchmark/scripts/render-pr-comment.js \
+  --input <guided-review.json> --output <comment.md>
+node .agent/skills/vcs-pr/scripts/index.js comment \
+  --pr-number 5 --body-file <comment.md> --gate user
+```
+
 PR 创建后,vcs-pr 自动:
 1. 调 `secrets get --ref <cfg.token_ref> --no-mask --gate user` 取 token(只 vcs-pr 自己拿,**不**透传 agent)
 2. 调对应 backend 的 `createPR()` — token 注入 `Authorization` header
@@ -142,7 +175,8 @@ default:
 
 - **零依赖**:纯 stdlib + 3 backend 各 ~80 行
 - **不接触 token**:orchestrator 拿 token 后只进 HTTP header,stdout 不输出值(redact.js 二道防护)
-- **写 gate**:`create / update / merge` 必须 `--gate user`;`status / delivery-status / list` 可用只读 gate
+- **写 gate**:`create / update / merge / comment / review` 必须 `--gate user`;`status / delivery-status / list / diff / comments / reviews` 可用只读 gate
+- **能力显式**:backend 未实现某操作时报 `capability_unavailable`,不以空列表冒充「没有数据」
 - **可审计**:每条 PR 事件写 `runs/<id>.json#events[]`(Phase 1 基础设施复用)
 - **可分发**:L1 双语 template;init/upgrade 自动落用户项目
 
