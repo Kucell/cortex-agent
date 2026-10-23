@@ -339,6 +339,23 @@ const l1Ctx = options.project
   ? { ...ctx, cwd: languageProject, options: { ...options, project: "" } }
   : ctx;
 
+// Help must be a zero-write operation (issue #15 contract).
+//
+// `init` scaffolds `.agent/`, the root entry files and the cross-tool anchor;
+// `track` / `untrack` rewrite the Git tracking configuration and the local
+// exclude list. Asking for usage must never do any of that: without this
+// guard `init --help` silently scaffolds the project and `track --help`
+// silently reconfigures it — the same defect `upgrade --help` had until it
+// got a guard of its own.
+//
+// The three commands share one guard so a fourth mutating command cannot
+// reintroduce the defect by forgetting to repeat the check.
+const ZERO_WRITE_HELP_COMMANDS = new Set(["init", "track", "untrack"]);
+if (ZERO_WRITE_HELP_COMMANDS.has(command) && (args.includes("--help") || args.includes("-h"))) {
+  args.includes("--json") ? cliHelp(ctx) : printHelp();
+  return;
+}
+
 // ─── session (P-001) ─────────────────────────────────────────────────────────
 // Thin facade that delegates every `cortex-agent session <subcommand>` call to
 // the canonical Runtime Continuity v2 script at
