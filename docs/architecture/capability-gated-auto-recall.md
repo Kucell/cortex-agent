@@ -3,7 +3,7 @@
 > **目的**: 为知识召回引入 host-capability 门控的自动 sub-agent 召回与 metadata-only 预检,在无能力宿主上保持显式 CLI fallback,并把召回证据统一接入既有 trajectory 回放体系。
 > **状态**: P-001 shipped (2026-09-09, M-032 MS-001)
 > **版本**: v1.0
-> **关联**: [P-001 提案](../../.agent/plans/proposals/projects/team-knowledge-recall/proposals/P-001-auto-recall-sub-agent-proposal.md) · [M-032 MS-001](../../.agent/missions/M-032/milestones/MS-001.md) · [dsh-host-adapter.md](./dsh-host-adapter.md)
+> **关联**: [P-001 提案](../../.agent/plans/proposals/projects/team-knowledge-recall/proposals/P-001-auto-recall-sub-agent-proposal.md) · [M-032 MS-001](../../.agent/missions/archive/M-032-20260909/milestones/MS-001.md) · [dsh-host-adapter.md](./dsh-host-adapter.md)
 > **位置**: `templates/_shared/.agent/skills/knowledge-retrieval/` · `templates/_shared/.agent/sub-agents/cortex-recall.md` · `lib/runtime-adapters/capability-contract.js`
 
 ---

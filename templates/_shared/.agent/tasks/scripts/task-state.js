@@ -2,6 +2,24 @@
 
 const path = require("path");
 
+// A task record file is named after the task it holds: `T-<id>.json`.
+//
+// The name IS the identity — the renderer, the parser and the truth-source
+// auditor must agree on which files are records. Restating the rule in each
+// consumer is how a stray file (index.json, sample.json) silently becomes a
+// task, so the rule lives here and is exported.
+const TASK_FILE_RE = /^T-[A-Za-z0-9][A-Za-z0-9._-]*\.json$/;
+
+// List the task record files of a tasks directory, sorted by name.
+// Returns [] when the directory does not exist — a project without task
+// records is a valid state, not an error.
+function listTaskRecordFiles(tasksDir) {
+  const fs = require("fs");
+  let names = [];
+  try { names = fs.readdirSync(tasksDir); } catch (_) { names = []; }
+  return names.filter((name) => TASK_FILE_RE.test(name)).sort();
+}
+
 function validationStatusFromText(value) {
   const matches = [...String(value || "").matchAll(/\b(NOT_RUN|PARTIAL|PASS|FAIL)\b/gi)];
   return matches.length ? matches[matches.length - 1][1].toUpperCase() : "";
@@ -365,10 +383,7 @@ function readStructuredTasks(options = {}) {
   const tasksDir = path.join(root, ".agent", "tasks");
   const missionsDir = path.join(root, ".agent", "missions");
   const out = [];
-  let names = [];
-  try { names = fs.readdirSync(tasksDir); } catch (_) { names = []; }
-  for (const name of names) {
-    if (!/^T-[A-Za-z0-9][A-Za-z0-9._-]*\.json$/.test(name)) continue;
+  for (const name of listTaskRecordFiles(tasksDir)) {
     const record = readJsonSafe(path.join(tasksDir, name));
     if (!record || !record.task_id) continue;
     const projected = projectTaskRecord(record);
@@ -488,5 +503,7 @@ module.exports = {
   countActiveTasksStructured,
   validationStatusFromGates,
   STAGE_PROGRESS,
+  TASK_FILE_RE,
+  listTaskRecordFiles,
 };
 

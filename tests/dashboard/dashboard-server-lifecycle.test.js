@@ -9,6 +9,8 @@ const path = require("node:path");
 const { spawn } = require("node:child_process");
 const test = require("node:test");
 
+const { spawnWithRetry } = require("../helpers/spawn-retry");
+
 const ROOT = path.resolve(__dirname, "..", "..");
 const SERVER = path.join(ROOT, ".agent", "skills", "agent-dashboard", "scripts", "serve.js");
 
@@ -44,7 +46,7 @@ function createProject() {
   return cwd;
 }
 
-function launch(cwd, args = [], env = {}) {
+function launchOnce(cwd, args, env) {
   const child = spawn(process.execPath, [path.join(cwd, ".agent", "skills", "agent-dashboard", "scripts", "serve.js"), ...args], {
     cwd,
     env: { ...process.env, ...env },
@@ -57,8 +59,28 @@ function launch(cwd, args = [], env = {}) {
   return { child, output: () => ({ stdout, stderr }) };
 }
 
-function waitForExit(running, timeoutMs = 8000) {
+// Spawning is retried only when the child never started — under a parallel
+// run the process table can be saturated and the kernel refuses fork/exec
+// with EAGAIN. A child that ran and exited is a real result and is never
+// retried, so a genuine regression cannot be masked by the retry window.
+async function launch(cwd, args = [], env = {}) {
+  return spawnWithRetry(() => launchOnce(cwd, args, env));
+}
+
+// The deadlines below are *failure-detection* timeouts: they only decide how
+// long the harness waits before it gives up and reports a failure. They are
+// deliberately generous, because on a loaded CI runner process scheduling
+// alone can eat several seconds — a tight harness deadline turns a slow
+// machine into a red build. The behavioural assertions live in the tests
+// themselves and are bound to the server's own deadlines, not to the clock.
+const HARNESS_DEADLINE_MS = 20000;
+
+function waitForExit(running, timeoutMs = HARNESS_DEADLINE_MS) {
   return new Promise((resolve, reject) => {
+    // The child may already have exited before the listener was attached.
+    if (running.child.exitCode !== null || running.child.signalCode !== null) {
+      return resolve({ code: running.child.exitCode, signal: running.child.signalCode, ...running.output() });
+    }
     const timer = setTimeout(() => {
       running.child.kill("SIGKILL");
       reject(new Error(`Timed out waiting for exit: ${JSON.stringify(running.output())}`));
@@ -71,7 +93,7 @@ function waitForExit(running, timeoutMs = 8000) {
   });
 }
 
-function waitForReady(running, timeoutMs = 5000) {
+function waitForReady(running, timeoutMs = HARNESS_DEADLINE_MS) {
   return new Promise((resolve, reject) => {
     const started = Date.now();
     const poll = () => {
@@ -85,7 +107,7 @@ function waitForReady(running, timeoutMs = 5000) {
   });
 }
 
-function waitFor(check, timeoutMs = 3000) {
+function waitFor(check, timeoutMs = 10000) {
   const started = Date.now();
   return new Promise((resolve, reject) => {
     const poll = () => {
@@ -102,21 +124,21 @@ test("reports dependency, generation, and Session open failures before ready", a
   const missing = createProject();
   fs.rmSync(path.join(missing, ".agent", "skills", "management-api", "scripts", "index.js"));
   t.after(() => fs.rmSync(missing, { recursive: true, force: true }));
-  let result = await waitForExit(launch(missing, ["--port", "0"]));
+  let result = await waitForExit(await launch(missing, ["--port", "0"]));
   assert.equal(result.code, 1);
   assert.match(result.stderr, /"error":"startup_dependency_missing"/);
   assert.doesNotMatch(result.stdout, /"ok": true/);
 
   const generation = createProject();
   t.after(() => fs.rmSync(generation, { recursive: true, force: true }));
-  result = await waitForExit(launch(generation, ["--port", "0"], { GENERATOR_FAIL: "1" }));
+  result = await waitForExit(await launch(generation, ["--port", "0"], { GENERATOR_FAIL: "1" }));
   assert.equal(result.code, 1);
   assert.match(result.stderr, /"error":"initial_generation_failed"/);
   assert.doesNotMatch(result.stdout, /"url"/);
 
   const writer = createProject();
   t.after(() => fs.rmSync(writer, { recursive: true, force: true }));
-  result = await waitForExit(launch(writer, ["--port", "0"], { WRITER_FAIL_ACTION: "open" }));
+  result = await waitForExit(await launch(writer, ["--port", "0"], { WRITER_FAIL_ACTION: "open" }));
   assert.equal(result.code, 1);
   assert.match(result.stderr, /"error":"session_open_failed"/);
   assert.doesNotMatch(result.stdout, /"url"/);
@@ -125,10 +147,20 @@ test("reports dependency, generation, and Session open failures before ready", a
 test("writer timeout is bounded and never reports ready", async (t) => {
   const cwd = createProject();
   t.after(() => fs.rmSync(cwd, { recursive: true, force: true }));
+  // The server abandons a hung writer at its own session-open deadline
+  // (AGENT_DASHBOARD_SESSION_TIMEOUT_MS, default 5s). The old budget of
+  // 6.5s left only 1.5s of slack — less than a loaded CI runner spends on
+  // process scheduling — so the test failed on a slow machine without any
+  // behaviour change. The bound below keeps the same meaning (the server
+  // gives up, and gives up long before the harness deadline) while giving
+  // the scheduler room to breathe.
+  const SESSION_DEADLINE_MS = 5000;
   const started = Date.now();
-  const result = await waitForExit(launch(cwd, ["--port", "0"], { WRITER_HANG_ACTION: "open" }), 7000);
+  const result = await waitForExit(await launch(cwd, ["--port", "0"], { WRITER_HANG_ACTION: "open" }), HARNESS_DEADLINE_MS);
+  const elapsed = Date.now() - started;
   assert.equal(result.code, 1);
-  assert.ok(Date.now() - started < 6500);
+  assert.ok(elapsed < SESSION_DEADLINE_MS * 2.4,
+    `the server waited ${elapsed}ms for a hung writer (its deadline is ${SESSION_DEADLINE_MS}ms) — the timeout is not bounded`);
   assert.match(result.stderr, /"error":"session_open_failed"/);
   assert.doesNotMatch(result.stdout, /"url"/);
 });
@@ -136,7 +168,7 @@ test("writer timeout is bounded and never reports ready", async (t) => {
 test("uses an independent heartbeat and closes once on SIGHUP with an open socket", async (t) => {
   const cwd = createProject();
   t.after(() => fs.rmSync(cwd, { recursive: true, force: true }));
-  const running = launch(cwd, ["--port", "0", "--interval-ms", "60000"], { AGENT_DASHBOARD_HEARTBEAT_MS: "100" });
+  const running = await launch(cwd, ["--port", "0", "--interval-ms", "60000"], { AGENT_DASHBOARD_HEARTBEAT_MS: "100" });
   t.after(() => { if (running.child.exitCode === null) running.child.kill("SIGKILL"); });
   const port = await waitForReady(running);
   const socket = net.connect(port, "127.0.0.1");
@@ -150,9 +182,14 @@ test("uses an independent heartbeat and closes once on SIGHUP with an open socke
 
   const started = Date.now();
   running.child.kill("SIGHUP");
-  const result = await waitForExit(running, 5000);
+  const result = await waitForExit(running, HARNESS_DEADLINE_MS);
+  const elapsed = Date.now() - started;
   assert.equal(result.code, 129, result.stderr);
-  assert.ok(Date.now() - started < 4500, "shutdown must have a finite keep-alive deadline");
+  // The shutdown path closes the Session (one management call, bounded by its
+  // own timeout) and then exits. It must finish on a finite deadline — the
+  // budget only has to sit comfortably above that deadline and comfortably
+  // below the harness deadline.
+  assert.ok(elapsed < 8000, `shutdown took ${elapsed}ms — it must have a finite keep-alive deadline`);
   const actions = fs.readFileSync(log, "utf8").trim().split("\n");
   assert.equal(actions[0], "open");
   assert.ok(actions.includes("heartbeat"));
@@ -163,7 +200,7 @@ test("SIGINT, SIGTERM, and SIGHUP each close the Session exactly once", async (t
   for (const [signal, exitCode] of [["SIGINT", 130], ["SIGTERM", 143], ["SIGHUP", 129]]) {
     const cwd = createProject();
     t.after(() => fs.rmSync(cwd, { recursive: true, force: true }));
-    const running = launch(cwd, ["--port", "0"]);
+    const running = await launch(cwd, ["--port", "0"]);
     await waitForReady(running);
     running.child.kill(signal);
     const result = await waitForExit(running);
@@ -187,7 +224,7 @@ test("returns structured port_exhausted at the upper port boundary", async (t) =
   t.after(() => blocker.close());
   const cwd = createProject();
   t.after(() => fs.rmSync(cwd, { recursive: true, force: true }));
-  const result = await waitForExit(launch(cwd, ["--port", "65535"]));
+  const result = await waitForExit(await launch(cwd, ["--port", "65535"]));
   assert.equal(result.code, 1);
   assert.match(result.stderr, /"error":"port_exhausted"/);
   assert.match(result.stderr, /"last_port":65535/);

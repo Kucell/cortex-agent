@@ -69,6 +69,61 @@ workflows:
     # 文档型工作流：fetch + rebase 同步主干，见 workflows/sync-master.md
     note: "无默认 sub-agent 流水线；由主会话按工作流逐步执行 git 命令"
 
+# 模型注册表：coordinator 路由决策依据
+# coordinator 在 DISPATCH 阶段读取此表，选择满足 required_capabilities 的最优模型
+model_registry:
+
+  models:
+    claude-sonnet:
+      aliases: ["claude", "claude-sonnet", "claude-sonnet-4-6"]
+      capabilities:
+        - code_generation
+        - code_review
+        - planning
+        - architecture
+        - documentation
+        - research
+        - complex_reasoning
+      context_window: 200000
+      cost_tier: standard
+
+    claude-haiku:
+      aliases: ["haiku", "claude-haiku", "claude-haiku-4-5"]
+      capabilities:
+        - code_generation
+        - documentation
+        - simple_tasks
+      context_window: 200000
+      cost_tier: economy
+
+    codex:
+      aliases: ["codex", "openai-codex"]
+      capabilities:
+        - code_generation
+        - test_writing
+        - refactoring
+      context_window: 128000
+      cost_tier: standard
+
+  # capability → preferred models（按优先级排序）
+  capability_routing:
+    code_generation:     ["claude-sonnet", "codex", "claude-haiku"]
+    code_review:         ["claude-sonnet"]
+    planning:            ["claude-sonnet"]
+    architecture:        ["claude-sonnet"]
+    documentation:       ["claude-haiku", "claude-sonnet"]
+    research:            ["claude-sonnet"]
+    test_writing:        ["codex", "claude-sonnet"]
+    refactoring:         ["claude-sonnet", "codex"]
+    complex_reasoning:   ["claude-sonnet"]
+    simple_tasks:        ["claude-haiku", "claude-sonnet"]
+
+  selection_rules:
+    - "取 capability_routing 列表中第一个可用模型"
+    - "能力相同时优先选择 cost_tier 较低的模型"
+    - "上下文预算 > 128000 时排除 context_window < 150000 的模型"
+    - "coordinator 在 coordination_report.json 中记录模型选择原因"
+
 # 长时会话与上下文续接（可选委托 session-manager）
 session_continuity:
   sub_agent: session-manager

@@ -93,7 +93,7 @@ function showHelp() {
   console.log(`Usage: node scripts/test-runner.cjs [options]
 
 Options:
-  --serial                Run tests serially in a single node process
+  --serial                Run one test file at a time in separate child processes
   --parallel              Run tests in parallel workers (default)
   -w, --workers N         Number of workers (default: cpu.length, max 8)
   -m, --module NAME       Run only tests/commands/NAME[.test.js|/**/*.test.js]
@@ -174,19 +174,33 @@ function filterFiles(files, opts) {
 
 // ---- Worker -------------------------------------------------------------
 
-function runOne(file, timeoutSec, perTestTimeoutMs, idleTimeoutSec) {
+// A runner that is itself started from inside a test file inherits
+// NODE_TEST_CONTEXT. A child process that sees it runs as a test *child*: it
+// prints no TAP output and exits 0 even when the test fails. The runner
+// would then read that as a green result it never saw — a silent false
+// green. The variable must not reach any child.
+function childEnv() {
+  const env = { ...process.env };
+  delete env.NODE_TEST_CONTEXT;
+  return env;
+}
+
+function runAttempt(file, timeoutSec, perTestTimeoutMs, idleTimeoutSec, spawnProcess) {
   return new Promise((resolve) => {
     const start = Date.now();
     const rel = toRel(file);
     // Build child argv. Node 24+ supports --test-timeout for per-test
     // granularity (independent of the file-level timeout we set below).
-    const childArgv = ['--test', file];
+    const childArgv = ['--test'];
     if (perTestTimeoutMs > 0) childArgv.push(`--test-timeout=${perTestTimeoutMs}`);
-    const child = spawn(process.execPath, childArgv, {
+    childArgv.push(file);
+    const child = spawnProcess(process.execPath, childArgv, {
       cwd: ROOT,
       stdio: ['ignore', 'pipe', 'pipe'],
-      env: process.env,
+      env: childEnv(),
     });
+    let started = false;
+    child.once('spawn', () => { started = true; });
     let stdout = '';
     let stderr = '';
     child.stdout.on('data', d => { stdout += d.toString(); lastActivity = Date.now(); });
@@ -234,6 +248,7 @@ function runOne(file, timeoutSec, perTestTimeoutMs, idleTimeoutSec) {
     });
     child.on('error', (err) => {
       clearTimeout(timer);
+      if (idleTimer) clearInterval(idleTimer);
       resolve({
         file,
         rel,
@@ -244,9 +259,35 @@ function runOne(file, timeoutSec, perTestTimeoutMs, idleTimeoutSec) {
         duration: Date.now() - start,
         stdout,
         stderr: stderr + `\n[SPAWN ERROR: ${err.message}]`,
+        spawnError: { code: err.code, message: err.message },
+        // Never infer spawn failure from test output, exit status, or a signal.
+        retryableSpawnFailure: !started && !child.pid && !killed &&
+          new Set(['EAGAIN', 'ENOMEM', 'EMFILE', 'ENFILE']).has(err.code),
       });
     });
   });
+}
+
+// Only a failed OS spawn can be retried: the test process never ran.
+// Each worker awaits every attempt and its bounded backoff. There is no
+// file-level rerun or claim that a retry owns the machine exclusively.
+async function runOne(file, timeoutSec, perTestTimeoutMs, idleTimeoutSec, spawnProcess = spawn) {
+  const attempts = [];
+  const start = Date.now();
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const result = await runAttempt(file, timeoutSec, perTestTimeoutMs, idleTimeoutSec, spawnProcess);
+    attempts.push(result);
+    if (!result.retryableSpawnFailure || attempt === 2) break;
+    await new Promise(resolve => setTimeout(resolve, 100 * (attempt + 1)));
+  }
+  const result = attempts[attempts.length - 1];
+  return {
+    ...result,
+    duration: Date.now() - start,
+    attempts,
+    retried: attempts.length > 1,
+    firstFailure: attempts.length > 1 ? attempts[0] : null,
+  };
 }
 
 // ---- Runners ------------------------------------------------------------
@@ -254,23 +295,18 @@ function runOne(file, timeoutSec, perTestTimeoutMs, idleTimeoutSec) {
 async function runParallel(files, workers, timeoutSec, quiet, perTestTimeoutMs, idleTimeoutSec) {
   const queue = files.slice();
   const results = [];
-  let inflight = 0;
   let completed = 0;
   const total = files.length;
-
   async function worker() {
     while (queue.length) {
       const file = queue.shift();
       if (!file) return;
-      inflight += 1;
       const r = await runOne(file, timeoutSec, perTestTimeoutMs, idleTimeoutSec);
-      inflight -= 1;
       completed += 1;
       results.push(r);
-      if (!quiet) printResult(r, completed, total);
-    if (r.killed && r.killReason) {
-      console.error(`  ⏱ kill-reason: ${r.killReason}`);
-    }
+      // Quiet hides routine passes, never failed attempts or recovered spawns.
+      if (!quiet || r.retried || !r.ok) printResult(r, completed, total);
+      if (r.killed && r.killReason) console.error(`  ⏱ kill-reason: ${r.killReason}`);
     }
   }
   const w = Math.max(1, Math.min(workers, files.length || 1));
@@ -278,47 +314,9 @@ async function runParallel(files, workers, timeoutSec, quiet, perTestTimeoutMs, 
   return results;
 }
 
-function runSerial(files, timeoutSec) {
-  return new Promise((resolve) => {
-    const start = Date.now();
-    const child = spawn(process.execPath, ['--test', ...files], {
-      cwd: ROOT,
-      stdio: 'inherit',
-      env: process.env,
-    });
-    const timer = setTimeout(() => {
-      try { child.kill('SIGKILL'); } catch (_) {}
-      console.error(`\n[TIMEOUT after ${timeoutSec}s — process killed]`);
-      resolve([{
-        file: '<serial>',
-        rel: '<serial>',
-        ok: false,
-        code: -1,
-        signal: 'SIGKILL',
-        killed: true,
-        duration: Date.now() - start,
-        stdout: '',
-        stderr: '',
-      }]);
-    }, timeoutSec * 1000);
-    child.on('close', (code) => {
-      clearTimeout(timer);
-      resolve([{
-        file: '<serial>',
-        rel: '<serial>',
-        ok: code === 0,
-        code: code || 0,
-        signal: null,
-        killed: false,
-        duration: Date.now() - start,
-        stdout: '',
-        stderr: '',
-      }]);
-    });
-  });
+function runSerial(files, timeoutSec, quiet = false, perTestTimeoutMs = 0, idleTimeoutSec = 0) {
+  return runParallel(files, 1, timeoutSec, quiet, perTestTimeoutMs, idleTimeoutSec);
 }
-
-// ---- Output -------------------------------------------------------------
 
 const COLOR = {
   reset: '\x1b[0m',
@@ -338,22 +336,34 @@ function printResult(r, idx, total) {
   const tag = r.killed
     ? colorize('⏱ TIMEOUT', 'yellow', useColor)
     : r.ok
-      ? colorize('✓', 'green', useColor)
+      ? (r.retried ? colorize('✓↺', 'yellow', useColor) : colorize('✓', 'green', useColor))
       : colorize('✗', 'red', useColor);
   const where = r.signal
     ? `signal=${r.signal}`
     : `exit=${r.code}`;
   const idxStr = total ? `[${String(idx).padStart(String(total).length)}/${total}]` : '';
   console.log(`${tag} ${idxStr} ${r.rel}  (${r.duration}ms, ${where})`);
-  if (!r.ok && (r.stderr || r.stdout)) {
-    const text = (r.stderr || r.stdout);
-    const lines = text.split('\n').filter(l => l.trim().length > 0);
-    const tail = lines.slice(-25).join('\n');
-    if (tail) {
-      const dim = colorize('', 'dim', useColor);
-      console.log(dim + '    ' + tail.split('\n').join('\n    ') + COLOR.reset);
+  if (r.retried) {
+    console.log(`    ↺ 启动资源错误重试${r.ok ? '成功' : '失败'} (${r.attempts.length} attempts)`);
+  }
+  if (r.retried || !r.ok) {
+    for (const [index, attempt] of (r.attempts || [r]).entries()) {
+      console.log(`    attempt ${index + 1}: exit=${attempt.code} signal=${attempt.signal || '-'} spawn=${attempt.spawnError?.code || '-'}`);
+      // Keep both streams and all attempts; a later success must not hide failure evidence.
+      if (attempt.stdout) console.log(attempt.stdout);
+      if (attempt.stderr) console.error(attempt.stderr);
     }
   }
+}
+
+function summarizeResults(results) {
+  return {
+    pass: results.filter(r => r.ok).length,
+    fail: results.filter(r => !r.ok).length,
+    timeouts: results.filter(r => r.killed).length,
+    retryPassed: results.filter(r => r.retried && r.ok).length,
+    retryFailed: results.filter(r => r.retried && !r.ok).length,
+  };
 }
 
 // ---- Main ---------------------------------------------------------------
@@ -446,6 +456,13 @@ function restoreGuardedArtifacts(snapshot) {
 
 const AGENT_DIR = path.join(ROOT, '.agent');
 
+// Operating-system metadata. macOS Finder rewrites `.DS_Store` inside any
+// directory a human or a GUI tool touched, and Windows Explorer writes
+// `Thumbs.db`. Neither is governance state, neither is produced by the test
+// suite, and both would otherwise surface as NON-HERMETIC drift on a
+// developer's machine while CI (Linux) never sees them.
+const OS_METADATA_FILES = new Set(['.DS_Store', 'Thumbs.db', 'desktop.ini']);
+
 function listFilesRecursive(dir, base, acc) {
   let entries;
   try {
@@ -455,6 +472,7 @@ function listFilesRecursive(dir, base, acc) {
   }
   for (const entry of entries) {
     if (entry.name === '.git') continue;
+    if (OS_METADATA_FILES.has(entry.name)) continue;
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) listFilesRecursive(full, base, acc);
     else acc.push(path.relative(base, full));
@@ -503,7 +521,7 @@ async function main() {
 
   const cpuCount = os.cpus().length;
   const defaultWorkers = Math.min(8, Math.max(2, cpuCount));
-  const workers = opts.workers || defaultWorkers;
+  const workers = opts.serial ? 1 : Math.min(files.length, opts.workers || defaultWorkers);
   const useColor = process.stdout.isTTY;
 
   console.log(colorize(
@@ -531,12 +549,8 @@ async function main() {
   const t0 = Date.now();
   const artifactSnapshot = snapshotGuardedArtifacts();
   const agentTreeSnapshot = snapshotAgentTree();
-  let results;
-  if (opts.serial || files.length === 1) {
-    results = await runSerial(files, opts.timeoutSec * Math.max(1, files.length));
-  } else {
-    results = await runParallel(files, workers, opts.timeoutSec, opts.quiet, opts.perTestTimeoutMs, opts.idleTimeoutSec);
-  }
+  const results = await runParallel(files, workers, opts.timeoutSec, opts.quiet,
+    opts.perTestTimeoutMs, opts.idleTimeoutSec);
   if (globalTimer) clearTimeout(globalTimer);
   const total = Date.now() - t0;
 
@@ -585,14 +599,14 @@ async function main() {
       'yellow', useColor,
     ));
   }
-  const pass = results.filter(r => r.ok).length;
-  const fail = results.length - pass;
-  const timeouts = results.filter(r => r.killed).length;
+  const { pass, fail, timeouts, retryPassed, retryFailed } = summarizeResults(results);
 
   console.log('');
   console.log(colorize(
     `[test-runner] ${pass}/${results.length} passed in ${total}ms` +
     (timeouts ? ` (${timeouts} TIMEOUT)` : '') +
+    (retryPassed ? ` (${retryPassed} 启动重试成功)` : '') +
+    (retryFailed ? ` (${retryFailed} 启动重试失败)` : '') +
     (fail ? `, ${fail} FAILED` : ''),
     fail === 0 ? 'green' : 'red', useColor,
   ));
@@ -626,10 +640,27 @@ async function main() {
   }
 }
 
-main().catch(err => {
-  console.error('[test-runner] fatal:', err && err.stack || err);
-  process.exit(2);
-});
+// The runner is a script first and a module second: requiring it must not
+// start a run, otherwise the unit test for the bounded spawn-retry behaviour
+// could not drive `runParallel` against fixtures.
+if (require.main === module) {
+  main().catch(err => {
+    console.error('[test-runner] fatal:', err && err.stack || err);
+    process.exit(2);
+  });
+}
+
+module.exports = {
+  filterFiles,
+  listTestFiles,
+  parseArgs,
+  printResult,
+  runOne,
+  runParallel,
+  runSerial,
+  summarizeResults,
+  toRel,
+};
 
 // ---- Signal handling: kill all spawned children on Ctrl-C / SIGTERM ----------
 //

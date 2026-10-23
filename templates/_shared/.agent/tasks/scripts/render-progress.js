@@ -25,7 +25,7 @@ const path = require("node:path");
 
 // The projection lives in task-state.js so the view, the management-api
 // projection and every other consumer read the truth source exactly one way.
-const { projectTaskRecord, projectMissionRecord, STAGE_PROGRESS } = require("./task-state.js");
+const { projectTaskRecord, projectMissionRecord, STAGE_PROGRESS, listTaskRecordFiles } = require("./task-state.js");
 
 const AGENT_REL = ".agent";
 const PROGRESS_REL = path.join(AGENT_REL, "plans", "task-progress.md");
@@ -33,7 +33,6 @@ const TASKS_REL = path.join(AGENT_REL, "tasks");
 const MISSIONS_REL = path.join(AGENT_REL, "missions");
 const ARCHIVE_REL = path.join(AGENT_REL, "plans", "task-progress-archive");
 
-const TASK_FILE_RE = /^(T-[A-Za-z0-9][A-Za-z0-9._-]*)\.json$/;
 const MISSION_FILE_RE = /^(M-[A-Za-z0-9][A-Za-z0-9._-]*)\.json$/;
 
 const MANUAL_SECTIONS = Object.freeze([
@@ -51,11 +50,8 @@ function escapeCell(text) {
 }
 
 function listTaskRecords(tasksDir) {
-  let names = [];
-  try { names = fs.readdirSync(tasksDir); } catch (_) { return []; }
   const out = [];
-  for (const name of names) {
-    if (!name.match(TASK_FILE_RE)) continue;
+  for (const name of listTaskRecordFiles(tasksDir)) {
     const data = readJson(path.join(tasksDir, name));
     if (data && data.task_id) out.push(data);
   }
@@ -242,6 +238,17 @@ function renderView({ source, tasks, missions, archives, now }) {
 
 // ─── Entry points ───────────────────────────────────────────────────────────
 
+// The render timestamp records when the view was produced, not what it says.
+// The gate asserts that the view is a faithful projection of the truth
+// source; the date line is metadata about the rendering, not a projection.
+// Comparing it would make the gate expire every midnight — the truth source
+// unchanged, the view still faithful, yet the date line no longer matching.
+const TIMESTAMP_RE = /^> \*\*最后更新时间\*\*: .*$/m;
+
+function stripRenderTimestamp(text) {
+  return String(text || "").replace(TIMESTAMP_RE, "");
+}
+
 function buildView(projectRoot, now) {
   const progressFile = path.join(projectRoot, PROGRESS_REL);
   const source = fs.existsSync(progressFile) ? fs.readFileSync(progressFile, "utf8") : "";
@@ -290,7 +297,7 @@ function main(argv) {
       }
       return;
     }
-    const drifted = current.trim() !== view.trim();
+    const drifted = stripRenderTimestamp(current).trim() !== stripRenderTimestamp(view).trim();
     if (asJson) {
       process.stdout.write(JSON.stringify({
         action: "render-progress --check",
@@ -336,6 +343,7 @@ module.exports = {
   listTaskRecords,
   listMissionRecords,
   listArchives,
+  stripRenderTimestamp,
   STAGE_PROGRESS,
   PROGRESS_REL,
   TASKS_REL,

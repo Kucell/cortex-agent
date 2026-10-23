@@ -16,7 +16,11 @@ function write(file, content) {
   fs.writeFileSync(file, content);
 }
 
-function waitForPort(child, timeoutMs = 5000) {
+// Failure-detection deadline only: it decides how long the harness waits
+// before reporting "the server never came up". A loaded CI runner can spend
+// seconds on process scheduling, so this must not be tight enough to turn a
+// slow machine into a red build.
+function waitForPort(child, timeoutMs = 20000) {
   return new Promise((resolve, reject) => {
     let output = "";
     const timer = setTimeout(() => reject(new Error(`Timed out waiting for dashboard server: ${output}`)), timeoutMs);

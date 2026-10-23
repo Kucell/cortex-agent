@@ -95,6 +95,15 @@ jobs:
       - name: Template parity check
         run: pnpm check:parity
 
+      - name: L1 distribution integrity check
+        # The L1 template tree is what every downstream project receives.
+        # Without this gate a skill can ship in a state that is silently
+        # broken downstream: no SKILL.md (undiscoverable), a missing
+        # implementation file (unusable), or a manifest link pointing at a
+        # path L1 does not distribute (404). See
+        # docs/architecture/harness-review-and-runtime-evidence-design.md P-003.
+        run: pnpm check:l1-distribution
+
       - name: Run full test suite
         # test:ci runs the runner in strict hermetic mode: the suite must not
         # write a single byte into .agent/. In CI nothing else can write there
@@ -109,6 +118,39 @@ jobs:
             exit 1
           fi
           pnpm test:ci
+
+      - name: Agent review benchmark (real regression dataset)
+        # The dataset is the gate, and it has to be able to fail in both
+        # directions:
+        #   reference — every blocking assertion must hold (10000 bp), so a
+        #              regression in the governance bootstrap surface fails CI;
+        #   noop     — a candidate that does nothing must score materially
+        #              lower (< 5000 bp), so the dataset is proven to detect a
+        #              regression instead of merely confirming that the code
+        #              under test still runs.
+        # A dataset that only ever sees a perfect candidate would pass just as
+        # well against a broken build.
+        run: |
+          pnpm benchmark:agent-review
+          pnpm benchmark:agent-review:noop
+
+      - name: Runtime evidence dataset (real API-layer verification)
+        # The runtime-evidence contract (verification-summary.json) had no
+        # producer at all: nothing could turn results.api.status from
+        # "not_run" into "pass"/"fail". This dataset is that producer, and it
+        # has to fail in both directions:
+        #   reference — every blocking assertion must hold (10000 bp), so a
+        #              regression in the API layer fails CI;
+        #   noop     — a candidate that does nothing must score materially
+        #              lower (< 5000 bp), so the dataset is proven to detect a
+        #              regression instead of merely confirming that the code
+        #              under test still runs.
+        # It must stay after `Run full test suite`: it writes into
+        # .agent/metrics/, and the strict-hermetic gate forbids any write
+        # there while the suite is running.
+        run: |
+          pnpm verify:runtime-evidence
+          pnpm verify:runtime-evidence:noop
 
       - name: Upload test evidence
         if: always()

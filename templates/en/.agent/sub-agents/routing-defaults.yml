@@ -69,6 +69,61 @@ workflows:
     # Documented workflow: fetch + rebase; see workflows/sync-master.md
     note: "No default sub-agent pipeline; main session runs git steps"
 
+# Model registry: the basis for the coordinator's routing decision
+# The coordinator reads this table at DISPATCH time and picks the best model that satisfies required_capabilities
+model_registry:
+
+  models:
+    claude-sonnet:
+      aliases: ["claude", "claude-sonnet", "claude-sonnet-4-6"]
+      capabilities:
+        - code_generation
+        - code_review
+        - planning
+        - architecture
+        - documentation
+        - research
+        - complex_reasoning
+      context_window: 200000
+      cost_tier: standard
+
+    claude-haiku:
+      aliases: ["haiku", "claude-haiku", "claude-haiku-4-5"]
+      capabilities:
+        - code_generation
+        - documentation
+        - simple_tasks
+      context_window: 200000
+      cost_tier: economy
+
+    codex:
+      aliases: ["codex", "openai-codex"]
+      capabilities:
+        - code_generation
+        - test_writing
+        - refactoring
+      context_window: 128000
+      cost_tier: standard
+
+  # capability -> preferred models (ordered by priority)
+  capability_routing:
+    code_generation:     ["claude-sonnet", "codex", "claude-haiku"]
+    code_review:         ["claude-sonnet"]
+    planning:            ["claude-sonnet"]
+    architecture:        ["claude-sonnet"]
+    documentation:       ["claude-haiku", "claude-sonnet"]
+    research:            ["claude-sonnet"]
+    test_writing:        ["codex", "claude-sonnet"]
+    refactoring:         ["claude-sonnet", "codex"]
+    complex_reasoning:   ["claude-sonnet"]
+    simple_tasks:        ["claude-haiku", "claude-sonnet"]
+
+  selection_rules:
+    - "Take the first available model in the capability_routing list"
+    - "When capabilities are equal, prefer the model with the lower cost_tier"
+    - "When the context budget is > 128000, exclude models with context_window < 150000"
+    - "The coordinator records the model selection reason in coordination_report.json"
+
 # Long sessions / context handoff (optional session-manager)
 session_continuity:
   sub_agent: session-manager

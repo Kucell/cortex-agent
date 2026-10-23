@@ -72,6 +72,23 @@ const spanCases = [
   ["even backslashes do not escape opener", "\\\\`[example](missing.md)`", false],
 ];
 
+function assertLintChildSucceeded(result) {
+  const diagnostic = JSON.stringify({
+    status: result.status,
+    signal: result.signal,
+    error: result.error && {
+      code: result.error.code, errno: result.error.errno,
+      syscall: result.error.syscall, message: result.error.message,
+    },
+    timeoutMs: 10000,
+    stdoutBytes: Buffer.byteLength(result.stdout || ""),
+    stderrBytes: Buffer.byteLength(result.stderr || ""),
+    stdout: result.stdout,
+    stderr: result.stderr,
+  });
+  assert.equal(result.status, 0, diagnostic);
+}
+
 function lintMarkdown(t, source, markdown) {
   const fixture = fs.mkdtempSync(path.join(os.tmpdir(), "knowledge-span-"));
   t.after(() => fs.rmSync(fixture, { recursive: true, force: true }));
@@ -83,7 +100,7 @@ function lintMarkdown(t, source, markdown) {
     cwd: fixture, encoding: "utf8", timeout: 10000,
     env: { ...process.env, CORTEX_AGENT_CLI: path.join(root, "bin/cli.js") },
   });
-  assert.equal(result.status, 0, result.stderr);
+  assertLintChildSucceeded(result);
   return JSON.parse(fs.readFileSync(path.join(fixture, ".agent/metrics/knowledge-health.json"), "utf8"));
 }
 
@@ -124,7 +141,7 @@ for (const [variant, source] of sources) {
       cwd: fixture, encoding: "utf8", timeout: 10000,
       env: { ...process.env, CORTEX_AGENT_CLI: path.join(root, "bin/cli.js") },
     });
-    assert.equal(result.status, 0, result.stderr);
+    assertLintChildSucceeded(result);
     const report = JSON.parse(fs.readFileSync(path.join(fixture, ".agent/metrics/knowledge-health.json"), "utf8"));
     assert.deepEqual(report.findings.broken_links.map((item) => item.target).sort(),
       ["missing-after-fence.md", "missing-relative.md", absent, invalid].sort());
