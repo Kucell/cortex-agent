@@ -77,23 +77,90 @@ Two further findings from the same review were fixed in the same round:
 | `b80d5ae8` | docs(pr): 补 MS-002 受管调用者证明的 PR 说明 | M-044 / MS-002 |
 | `d630b0dd` | fix(governed): 让受管调用者的反例在 Linux 与 macOS 上同样成立 | M-044 / MS-002 |
 | `bd4c006c` | fix(governed): 封堵受管调用者的中继路径并让身份审计 fail-closed | M-044 / MS-002 |
+| `c49e7c9e` | docs(pr): 补 MS-002 中继路径修复与归因更正的说明 | M-044 / MS-002 |
+| `d44ec284` | fix(governed): 让受管调用者的身份审计在两个平台上都精确且 fail-closed | M-044 / MS-002 |
 
 ## What is in the diff
 
 | File | Role |
 |---|---|
 | `lib/governed/managed-caller-signing.js` | HMAC response authentication; MAC covers the **direction-bound kind**, request id, seq, operation, request payload digest and body |
-| `lib/governed/managed-caller-identity.js` | OS-level facts: process start token (microsecond on macOS, boot-id qualified on Linux), IPC socket address, socket holder set, command digest |
-| `lib/governed/managed-caller-session.js` | Session lifecycle, handshake, request/response, direction-bound inbound authentication, read-only identity, holder and continuity audits **on the request path** |
-| `lib/governed/managed-caller-supervisor.js` | Supervisor: non-detached spawn, secret pipe, batch scope, child-side endpoint |
-| `tests/governed/managed-caller-*.test.js` | 51 tests across session, signing and identity facts |
+| `lib/governed/managed-caller-identity.js` | OS-level facts: process start token (microsecond on macOS, boot-id qualified on Linux), IPC socket **endpoint** (inode on Linux, address pair on macOS), socket holder set, command digest |
+| `lib/governed/managed-caller-session.js` | Session lifecycle, handshake, request/response, direction-bound inbound authentication, read-only identity, holder and continuity audits **before dispatch and after the round trip** |
+| `lib/governed/managed-caller-supervisor.js` | Supervisor: non-detached spawn, secret pipe, batch scope, child-side endpoint; the trust-critical `stdio`/`detached` keys are not overridable |
+| `tests/governed/managed-caller-*.test.js` | 57 tests across session, signing and identity facts |
 | `tests/governed/fixtures/m044-ms002-*.js` | Executor fixture (incl. the deliberate handle-transfer and relay cases), grandchild fixture, relay-attacker fixture |
+
+## What the second independent review found, and this round's fixes
+
+The **second** independent review (against `bd4c006c`, by a validator who did not implement
+the change) returned **PASS on all four criteria** — VC-044-003, VC-044-004, VC-044-005 and
+VC-044-018 — after reproducing the relay attack with three independent attack chains on both
+macOS and Linux. It also recorded one P1 and several P2 observations, all of which are fixed
+in `d44ec284`.
+
+### The CI failure was a real defect, not a flaky test
+
+`Full Test Suite` failed on the Linux runner with `channel_handle_transferred` on a clean
+channel. The cause was in the identity audit, not in the test: `lsof -U` means different
+things on the two platforms. macOS prints an address pair (`local ->peer`), while on Linux the
+`0x...` column is only a **hash of the socket's inode** and collides with unrelated sockets on
+a busy machine. Matching on that hash made the audit report a transferred handle for a clean
+channel.
+
+The socket is now identified by the socket **object** itself: on Linux the kernel inode from
+`/proc/<pid>/fd/3`, on macOS the address pair. Measured: both ends of a connection share one
+inode, and a descendant that inherited the descriptor shares it too — so the transfer is still
+detected, and the false positive is gone.
+
+### P1 — the audit ran after the payload had gone out
+
+`request()` wrote the request frame onto the channel and *then* ran the identity audit. A
+refusal therefore reported "refused to dispatch" while the sensitive payload had already been
+written to the channel, where a holder of the transferred handle could read it. The audit now
+runs **before** the frame is written, and a second audit runs after the round trip to cover a
+transfer that happens while the request is in flight. A test asserts that a refused request
+produces **no** request frame on the channel.
+
+### P2 — the identity slot and the fact source were replaceable
+
+`childIdentity` was exposed through a read-only accessor, but the slot behind it was a plain
+writable property. Writing it made the recorded start token match whatever the caller put
+there, which defeated the pid-reuse check the continuity audit compares against. The slot is
+now a closure variable, and the fact readers are bound at construction time, so neither can be
+replaced from outside the session. The degraded-environment tests were rewritten to simulate
+the degradation at its **source** (the fact reader returns the degraded fact) instead of
+overwriting the identity derived from it.
+
+### P2 — `spawnOptions` could detach the supervised child
+
+The caller's spawn options were spread last, so they could replace `detached: true` and the
+`stdio` layout — the two properties the trust primitive depends on. They are now applied last
+and are not overridable. A test asserts the child is **not** in its own process group even when
+the caller asks for `detached: true`; the test was confirmed to fail against the unfixed code.
+
+### P2 — a coarse start token silently degraded pid-reuse detection
+
+When the macOS helper could not be compiled, the start token silently fell back to
+`ps -o lstart=`, which resolves to whole seconds — so every process started in that second
+shared a token and a pid reuse between them was undetectable. The coarse token is now marked
+(`ps-coarse:`) and the continuity audit **fails closed** on it rather than reporting a pass for
+a comparison it cannot make.
+
+### The negative case was adjusted so it still proves something
+
+With the audit moved before dispatch, the relay fixture was blocked earlier and the inbound-MAC
+layer was never reached — the case would have passed for the wrong reason. The relay fixture now
+starts its accomplice **when the first request arrives**, so the handle is transferred while the
+request is in flight. The relayed inbound request really reaches the coordinator, where it has
+to be refused on authentication grounds.
 
 ## Validation
 
-- `node --test --test-timeout 30000 tests/governed/managed-caller-*.test.js` → **51 pass / 0 fail** on macOS
-  and **51 pass / 0 fail** on Linux (`node:22-bookworm` + `lsof`)
-- `node --test --test-timeout 30000 tests/governed/*.test.js` → **219 pass / 0 fail**
+- `node --test --test-timeout 30000 tests/governed/managed-caller-*.test.js` → **57 pass / 0 fail** on macOS
+  and **57 pass / 0 fail** on Linux (`node:22-bookworm` + `lsof`)
+- `node scripts/test-runner.cjs --scope governed` → **15/15 files passed**
+- `node scripts/test-runner.cjs --max-time 600 … --strict-hermetic` → **479/479 passed**
 - No fixture process leaks after the run (`ps … | grep m044-ms002` is empty), including the
   grandchild that deliberately holds the inherited descriptor
 - `node scripts/check-l3-boundary.js` → 0 violations; `node scripts/check-template-parity.js` → 3/3 match
@@ -125,7 +192,10 @@ VC-044-003 / 004 / 005 are **implemented and self-tested, but not marked PASS**.
 requires an independent validator who did not implement the change to review the source diff,
 the credential and process-identity chain and the negative matrix, with the sign-off bound to
 this repository's source SHA. The **first** review returned FAIL; the defects it found are fixed
-in `bd4c006c`, and a **second** independent review is in progress against SHA `bd4c006c`.
+in `bd4c006c`. The **second** review, against SHA `bd4c006c`, returned **PASS on all four
+criteria** and recorded one P1 and several P2 observations, which are fixed in `d44ec284`. A
+**third** review is required against `d44ec284`, because this round changed the socket-identity
+model and the audit ordering.
 
 MS-001's threat-model exclusion adjudication (`D-M044-MS001-THREAT-MODEL-ADJUDICATION-OPEN`)
 is still open, and MS-003 does not start before it is settled. The SamHMI-side product security
