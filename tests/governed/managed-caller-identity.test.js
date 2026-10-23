@@ -39,9 +39,16 @@ describe("governed/managed-caller-identity - process facts", () => {
 
 describe("governed/managed-caller-identity - socket facts", () => {
   test("an unknown socket address has no holders", () => {
-    assert.deepEqual(readSocketHolders("0x0000000000000000"), []);
+    // An address that no live socket can have. The all-zero address is NOT a
+    // safe sample: on Linux it is a real unnamed-socket address, and a busy
+    // machine has plenty of those.
+    assert.deepEqual(readSocketHolders("0xdeadbeefdeadbeef"), []);
     assert.deepEqual(readSocketHolders(""), []);
     assert.deepEqual(readSocketHolders(null), []);
+  });
+
+  test("socket addresses are compared case-insensitively", () => {
+    assert.deepEqual(readSocketHolders("0xDEADBEEFDEADBEEF"), []);
   });
 
   test("an invalid pid has no IPC socket address", () => {

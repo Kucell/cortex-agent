@@ -180,9 +180,23 @@ if (mode === "transfer") {
   // The grandchild holds the inherited IPC handle, not its own `ipc` stdio,
   // so it cannot report back over a Node channel. Its forged responses
   // arrive on the coordinator's channel directly, which is the point.
+  // Its stdout carries the count of forgeries it actually delivered, which
+  // the coordinator's test uses to prove the attack really happened.
+  let grandchildForgeries = 0;
+  grandchild.stdout.on("data", (chunk) => {
+    for (const line of chunk.toString().split("\n")) {
+      if (!line.includes("grandchildForged")) continue;
+      grandchildForgeries += 1;
+      send({ type: "transfer-report", requestId: "transfer", body: { grandchildForgeries } });
+    }
+  });
   grandchild.stderr.on("data", () => {});
   grandchild.on("exit", () => {
-    send({ type: "transfer-report", requestId: "transfer", body: { grandchildExited: true } });
+    send({
+      type: "transfer-report",
+      requestId: "transfer",
+      body: { grandchildExited: true, grandchildForgeries },
+    });
   });
 
   setTimeout(() => {

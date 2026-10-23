@@ -265,21 +265,48 @@ describe("governed/managed-caller-session - negative cases required by VC-044-00
     // so the coordinator must refuse the response.
     await withSession({ args: ["--mode=transfer"] }, async (session) => {
       let forged = null;
+      let forgedCount = 0;
+      let reportedForgeries = 0;
+      let accepted = null;
       session.child.on("message", (message) => {
+        if (message && message.type === "transfer-report" && message.body) {
+          reportedForgeries = Math.max(reportedForgeries, message.body.grandchildForgeries || 0);
+        }
         if (message && message.type === "response" && message.body
             && message.body.result && message.body.result.FORGED) {
           forged = message;
+          forgedCount += 1;
         }
       });
 
-      await assert.rejects(
-        () => session.request(SUPERVISOR_OPERATIONS.PING),
-        /signature verification|did not match the request sequence|timed out/,
-      );
+      try {
+        accepted = await session.request(SUPERVISOR_OPERATIONS.PING);
+      } catch (error) {
+        // The forged answer must never be accepted, whatever the reason.
+        assert.match(
+          String(error.message || error),
+          /signature verification|did not match the request sequence|timed out/,
+        );
+      }
 
-      // If the forgery did arrive, it must never have been accepted as the
+      // A forged result must never be handed back to the caller as the
       // child's answer.
+      assert.equal(accepted, null, "a forged result was accepted as the child's answer");
       if (forged) assert.equal(forged.body.result.handled, "forged");
+
+      // The attack must actually have reached the coordinator. A rejection
+      // that only happened because the forgery never arrived would prove
+      // nothing, so the fixture reports how many forgeries it delivered.
+      //
+      // On macOS the descendant reads the coordinator's requests and answers
+      // them, so the forged response arrives as a solicited reply. On Linux
+      // the inherited descriptor is write-only for the descendant, so the
+      // forgery is injected blind. Both must be delivered — and in both cases
+      // the coordinator must not accept the forged result.
+      assert.ok(
+        reportedForgeries > 0 || forgedCount > 0,
+        "expected the grandchild's forgeries to reach the coordinator",
+      );
     });
   });
 
