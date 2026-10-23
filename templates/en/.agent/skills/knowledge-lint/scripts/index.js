@@ -78,25 +78,112 @@ function extractHeadings(content) {
 }
 
 function shouldCheckLink(rawLink) {
-  if (!rawLink) return false;
-  if (rawLink.includes('{') || rawLink.includes('}')) return false;
-  if (rawLink.startsWith('http://')) return false;
-  if (rawLink.startsWith('https://')) return false;
-  if (rawLink.startsWith('mailto:')) return false;
-  if (rawLink.startsWith('app://')) return false;
-  if (rawLink.startsWith('plugin://')) return false;
-  return true;
+  if (!rawLink || /[{}]/.test(rawLink)) return false;
+  // URI schemes are not repository paths (RFC 3986); file: is reported separately.
+  return !/^[a-z][a-z0-9+.-]*:/i.test(rawLink) && !rawLink.startsWith('//');
+}
+
+function isEscaped(text, index) {
+  let slashes = 0;
+  while (index > 0 && text[--index] === '\\') slashes++;
+  return slashes % 2 === 1;
+}
+
+function maskMarkdownCode(content) {
+  let fence = null;
+  const prose = content.split('\n').map((line) => {
+    const marker = line.match(/^ {0,3}(`{3,}|~{3,})(.*)$/);
+    if (fence) {
+      if (marker && marker[1][0] === fence[0] &&
+          marker[1].length >= fence.length && !marker[2].trim()) fence = null;
+      return '';
+    }
+    if (marker && !(marker[1][0] === '`' && marker[2].includes('`'))) {
+      fence = marker[1];
+      return '';
+    }
+    return line;
+  }).join('\n');
+  // Blocks take precedence over inline spans. In particular, an unmatched
+  // tick in a paragraph must not consume links in the following heading/list.
+  const blocks = [];
+  let block = [];
+  const flush = () => { if (block.length) blocks.push(block.join('\n')); block = []; };
+  for (const line of prose.split('\n')) {
+    const heading = /^ {0,3}#{1,6}(?:[ \t]|$)/.test(line);
+    const separator = /^ {0,3}(?:(?:\*[ \t]*){3,}|(?:_[ \t]*){3,}|(?:-[ \t]*){3,}|=+[ \t]*|-+[ \t]*)$/.test(line);
+    const listMarker = /^ {0,3}(?:[-+*]|\d{1,9}[.)])[ \t]+/;
+    // Ordered lists can interrupt a paragraph only when starting at 1.
+    const list = listMarker.test(line) && (!block.length || listMarker.test(block[0]) ||
+      /^ {0,3}(?:[-+*]|1[.)])[ \t]+/.test(line));
+    const quote = /^ {0,3}>/.test(line);
+    const previousQuote = block.length && /^ {0,3}>/.test(block[block.length - 1]);
+    if (!line.trim() || heading || separator || list || (quote && !previousQuote)) flush();
+    block.push(line);
+    if (!line.trim() || heading || separator) flush();
+  }
+  flush();
+  return blocks.map(maskInlineCode).join('\n');
+}
+
+function maskInlineCode(prose) {
+  // Only equal-length backtick runs delimit a span; unmatched runs are prose.
+  const runs = [...prose.matchAll(/`+/g)];
+  const masked = prose.split('');
+  for (let i = 0; i < runs.length; i++) {
+    if (isEscaped(prose, runs[i].index)) continue;
+    let end = i + 1;
+    while (end < runs.length && runs[end][0].length !== runs[i][0].length) end++;
+    if (end === runs.length) continue;
+    masked.fill(' ', runs[i].index, runs[end].index + runs[end][0].length);
+    i = end;
+  }
+  return masked.join('');
+}
+
+function hasLinkClose(suffix) {
+  // CommonMark titles can contain escaped delimiters and line endings, but
+  // not blank lines. Match only the suffix so following paragraphs don't matter.
+  const close = suffix.match(/^\s*(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|\((?:\\.|[^()\\])*\))?\s*\)/);
+  return Boolean(close && !/\r?\n[ \t]*\r?\n/.test(close[0]));
 }
 
 function extractMarkdownLinks(content) {
+  const text = maskMarkdownCode(content);
   const links = [];
-  const pattern = /\[[^\]]+\]\(([^)]+)\)/g;
+  const opener = /\[(?:\\.|[^\]\\])*\]\(\s*/g;
   let match;
-
-  while ((match = pattern.exec(content))) {
-    links.push(match[1].trim());
+  while ((match = opener.exec(text))) {
+    if (isEscaped(text, match.index)) continue;
+    let index = opener.lastIndex;
+    const angle = text[index] === '<';
+    if (angle) index++;
+    let target = '';
+    let depth = 0;
+    let closed = false;
+    for (; index < text.length; index++) {
+      const ch = text[index];
+      if (ch === '\\' && /[\\()[\]<>]/.test(text[index + 1] || '')) {
+        target += text[++index];
+      } else if (angle ? ch === '>' : ch === ')' && depth === 0) {
+        closed = true;
+        break;
+      } else if (!angle && /\s/.test(ch) && depth === 0) {
+        closed = true;
+        break;
+      } else {
+        if (!angle && ch === '(') depth++;
+        if (!angle && ch === ')') depth--;
+        target += ch;
+      }
+    }
+    // Validate the outer close and optional Markdown title before accepting.
+    const suffix = text.slice(index + (angle ? 1 : 0));
+    if (closed && hasLinkClose(suffix)) {
+      links.push(target);
+      opener.lastIndex = index + 1;
+    }
   }
-
   return links;
 }
 
@@ -118,6 +205,7 @@ function resolveTargetFile(sourceFile, filePart) {
 function collectBrokenLinks(markdownFiles) {
   const brokenLinks = [];
   const brokenAnchors = [];
+  const unverifiedLinks = [];
   const headingCache = new Map();
 
   for (const sourceFile of markdownFiles) {
@@ -125,6 +213,15 @@ function collectBrokenLinks(markdownFiles) {
     const links = extractMarkdownLinks(content);
 
     for (const rawLink of links) {
+      if (/^file:/i.test(rawLink)) {
+        // This scanner does not validate host-local URI availability. Report
+        // that limit explicitly; it is not a requirement to re-audit past business acceptance.
+        unverifiedLinks.push({
+          source: path.relative(root, sourceFile), target: rawLink,
+          status: 'unverified', reason: 'host_local_uri_not_checked',
+        });
+        continue;
+      }
       if (!shouldCheckLink(rawLink)) continue;
 
       const { filePart, anchor } = splitLink(rawLink);
@@ -159,7 +256,7 @@ function collectBrokenLinks(markdownFiles) {
     }
   }
 
-  return { brokenLinks, brokenAnchors };
+  return { brokenLinks, brokenAnchors, unverifiedLinks };
 }
 
 function collectMissingReadmes() {
@@ -360,6 +457,17 @@ function collectArchitectureDocMismatches() {
 // 新增 experimental (POC/试运行但未 ship) 与 reference (文档化但未 ship, 仅做知识参考)。
 // 注: experimental 与 reference 区别于 stable (已 ship + 主路径使用) 与 draft (草稿/编写中)。
 const OKF_STATUS_VALUES = new Set(['stable', 'draft', 'deprecated', 'experimental', 'reference']);
+// references/runtime-adapters/_schema.md defines deployment status, not OKF lifecycle.
+const RUNTIME_ADAPTER_STATUS_VALUES = new Set(['shipped', 'reference', 'pending']);
+
+function statusSchemaFor(filepath, fm) {
+  const adapterDir = path.join(root, '.agent', 'references', 'runtime-adapters');
+  const adapterDocument = path.dirname(filepath) === adapterDir &&
+    typeof fm.agent === 'string' && fm.agent === path.basename(filepath, '.md');
+  return adapterDocument
+    ? { values: RUNTIME_ADAPTER_STATUS_VALUES, label: 'runtime-adapter' }
+    : { values: OKF_STATUS_VALUES, label: 'OKF V0.2' };
+}
 
 // 简单 frontmatter 解析:仅识别 key-value / inline-list / block-list
 // 不依赖 yaml 包(零依赖)
@@ -417,12 +525,13 @@ function collectFrontmatterViolations() {
       }
 
       // R-LINT-008: status 非法值 (warning)
-      if (fm.status !== undefined && !OKF_STATUS_VALUES.has(fm.status)) {
+      const statusSchema = statusSchemaFor(filepath, fm);
+      if (fm.status !== undefined && !statusSchema.values.has(fm.status)) {
         violations.push({
           rule_id: 'R-LINT-008',
           severity: 'warning',
           file: rel,
-          message: `status "${fm.status}" 不是 OKF V0.2 枚举 (stable / draft / deprecated / experimental / reference)`,
+          message: `status "${fm.status}" 不是 ${statusSchema.label} 枚举 (${[...statusSchema.values].join(' / ')})`,
         });
       }
     }
@@ -433,6 +542,7 @@ function collectFrontmatterViolations() {
 function computeHealthScore(summary) {
   const penalty =
     summary.broken_links * 12 +
+    (summary.unverified_links || 0) * 12 + // Same penalty: unresolved evidence is not acceptance
     summary.broken_anchors * 6 +
     summary.missing_readmes * 8 +
     summary.plan_issues * 10 +
@@ -486,7 +596,7 @@ function runFrontmatterValidator() {
 
 function run() {
   const markdownFiles = internalDocRoots.flatMap((dir) => listMarkdownFiles(dir));
-  const { brokenLinks, brokenAnchors } = collectBrokenLinks(markdownFiles);
+  const { brokenLinks, brokenAnchors, unverifiedLinks } = collectBrokenLinks(markdownFiles);
   const missingReadmes = collectMissingReadmes();
   const planIssues = collectPlanIssues();
   const architectureDocMismatches = collectArchitectureDocMismatches();
@@ -497,6 +607,7 @@ function run() {
   const summary = {
     markdown_files_scanned: markdownFiles.length,
     broken_links: brokenLinks.length,
+    unverified_links: unverifiedLinks.length,
     broken_anchors: brokenAnchors.length,
     missing_readmes: missingReadmes.length,
     plan_issues: planIssues.length,
@@ -513,6 +624,7 @@ function run() {
     summary,
     findings: {
       broken_links: brokenLinks,
+      unverified_links: unverifiedLinks,
       broken_anchors: brokenAnchors,
       missing_readmes: missingReadmes,
       plan_issues: planIssues,
@@ -528,6 +640,7 @@ function run() {
   console.log('--- 📚 Knowledge Lint ---');
   console.log(`Scanned markdown files: ${summary.markdown_files_scanned}`);
   console.log(`Broken links: ${summary.broken_links}`);
+  console.log(`Unverified local evidence: ${summary.unverified_links}`);
   console.log(`Broken anchors: ${summary.broken_anchors}`);
   console.log(`Missing READMEs: ${summary.missing_readmes}`);
   console.log(`Plan issues: ${summary.plan_issues}`);
@@ -538,4 +651,5 @@ function run() {
   console.log(`Output: ${path.relative(root, outputPath)}`);
 }
 
-run();
+if (require.main === module) run();
+module.exports = { extractMarkdownLinks, collectBrokenLinks, computeHealthScore, collectFrontmatterViolations };

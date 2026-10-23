@@ -10,6 +10,7 @@ description: VCS Pull Request 创建 / 状态 / 合并 — 通过 secret://<ref>
 ## When to Use
 
 - Phase 1 session-triage 开启的 mission 干完一轮验证后 → `vcs-pr create --head feat/foo --base main --title "..."`
+- PR Ready promotion / 标签补全 / reviewer 调整 → `vcs-pr update --pr-number N --ready --reviewers @x --labels a,b,c`
 - 想看 PR 现在 merged/closed 没 → `vcs-pr status --pr-number 5`
 - 显式 user gate 合并 PR → `vcs-pr merge --pr-number 5 --gate user`
 - 列已开 PR → `vcs-pr list --state open`
@@ -22,10 +23,23 @@ node .agent/skills/vcs-pr/scripts/index.js create \
   --head feat/foo --base main \
   --title "feat: ..." \
   [--body-file .agent/pr-bodies/foo.md | --body-from-run R-session-001] \
+  [--labels "area/swe,mission/M-XXX"] \
+  --run-id R-session-001 --gate user
+
+node .agent/skills/vcs-pr/scripts/index.js update \
+  --backend gitlab \
+  --pr-number 5 \
+  [--title "..."] [--body-file .agent/pr-bodies/foo.md] \
+  [--reviewers "@alice,@bob"] [--labels "area/swe,mission/M-XXX"] \
+  [--add-labels "milestone/MS-001"] [--remove-labels "stale/old"] \
+  [--ready | --close] [--remove-source-branch] [--squash] \
   --run-id R-session-001 --gate user
 
 node .agent/skills/vcs-pr/scripts/index.js status \
   --pr-number 5 [--backend gitea] --gate agent
+
+node .agent/skills/vcs-pr/scripts/index.js delivery-status \
+  --pr-number 5 --gate agent
 
 node .agent/skills/vcs-pr/scripts/index.js merge \
   --pr-number 5 [--commit-message "..."] --gate user
@@ -34,11 +48,60 @@ node .agent/skills/vcs-pr/scripts/index.js list \
   [--state open|merged|closed|all] --gate agent
 ```
 
+### Review surface
+
+```bash
+# read what the pull request changed
+node .agent/skills/vcs-pr/scripts/index.js diff --pr-number 5 --gate agent
+
+# read what has already been said about it
+node .agent/skills/vcs-pr/scripts/index.js comments --pr-number 5 --gate agent
+node .agent/skills/vcs-pr/scripts/index.js reviews --pr-number 5 --gate agent
+
+# write a finding back (user gate — the comment is public)
+node .agent/skills/vcs-pr/scripts/index.js comment \
+  --pr-number 5 --body-file <comment.md> --gate user
+
+node .agent/skills/vcs-pr/scripts/index.js review \
+  --pr-number 5 --body-file <comment.md> \
+  [--event APPROVE|REQUEST_CHANGES|COMMENT] \
+  [--comments-file <inline-comments.json>] --gate user
+```
+
+`diff` returns the raw unified patch. `comment` and `review` require `--gate user` because they publish to a pull request other people read; `diff` / `comments` / `reviews` are read-only and accept any allowed gate.
+
+A backend that does not implement one of these operations reports `capability_unavailable` — it never returns an empty list to stand in for data it never fetched.
+
+To publish a guided review, render the artifact first:
+
+```bash
+node .agent/skills/agent-review-benchmark/scripts/render-pr-comment.js \
+  --input <guided-review.json> --output <comment.md>
+node .agent/skills/vcs-pr/scripts/index.js comment \
+  --pr-number 5 --body-file <comment.md> --gate user
+```
+
 PR 创建后,vcs-pr 自动:
 1. 调 `secrets get --ref <cfg.token_ref> --no-mask --gate user` 取 token(只 vcs-pr 自己拿,**不**透传 agent)
 2. 调对应 backend 的 `createPR()` — token 注入 `Authorization` header
-3. 写 `runs/<run-id>.json#events[]` 一条 `vcs_pr_opened` event(pr_number / url / head / base)
-4. 输出 JSON `{ok: true, action: "create", number, url, ...}`,**不含** token
+3. 写 `runs/<run-id>.json#events[]` 一条 `vcs_pr_opened` event(pr_number / url / head / base / labels)
+4. 输出 JSON `{ok: true, action: "create", number, url, ..., labels: [...]}`,**不含** token
+
+### run 关联是 fail-closed 的(2026-10-13 起)
+
+省略 `--run-id` 时,vcs-pr 只在能**证明**有活跃 run 的情况下自动关联:
+run 的 `status` 必须是 `running` 或 `queued`,且 `updated_at` / `started_at` 在
+24 小时内。找不到就返回 `run_id: null` 并**跳过**事件写入,绝不猜测。
+
+设计原因:旧实现兜底返回"mtime 最新的任意 run",在只含终态或陈旧 run 的目录里
+会把 `vcs_pr_opened` 写到无关 run 上,并覆盖其 `last_event` / `updated_at`。
+`active` / `in_progress` / `started` 这类语义暧昧的状态也不参与关联 —— 它们通常
+表示等待人类或已搁置的工作。
+
+**所以:正式交付的 PR 请显式传 `--run-id`。** 输出里 `run_id: null` 表示事件
+没有落档,需要追溯时手动补写,不要为了填这个字段去猜一个 run。
+
+`update` 操作写一条 `vcs_pr_updated` event（含 pr_number / reviewers / add_labels / remove_labels / ready 状态）。GitLab PUT MR API 的 labels 是 add/remove 语义，`--labels` 默认映射 add_labels；set 语义需要 GET-then-PUT，留 v1.3。
 
 ## Configuration
 
@@ -59,6 +122,9 @@ default:
 
 默认 body 模板(vcs-pr `defaultBody` 函数):
 ```
+## 受管创建
+- 创建入口：vcs-pr
+
 ## 提交范围
 - branch: <head> → <base>
 - repo: <org>/<repo>
@@ -67,11 +133,23 @@ default:
 ## 相关功能
 - (填写)
 
+## 模块 MCP 服务化
+- (填写服务化说明；不适用时说明理由)
+
+## 兼容性与边界
+- (填写)
+
 ## 验证结果
 - (填写)
 
 ## 已知事项
 - (无)
+
+## 风险与回滚
+- (填写)
+
+## 组件分支吸收与清理
+- 不适用
 ```
 
 `--body-file` / `--body-from-run` 覆盖。
@@ -95,7 +173,8 @@ default:
 
 - **零依赖**:纯 stdlib + 3 backend 各 ~80 行
 - **不接触 token**:orchestrator 拿 token 后只进 HTTP header,stdout 不输出值(redact.js 二道防护)
-- **写 gate**:`merge` 必须 `--gate user`;`create / status / list` 任意 gate
+- **写 gate**:`create / update / merge / comment / review` 必须 `--gate user`;`status / delivery-status / list / diff / comments / reviews` 可用只读 gate
+- **能力显式**:backend 未实现某操作时报 `capability_unavailable`,不以空列表冒充「没有数据」
 - **可审计**:每条 PR 事件写 `runs/<id>.json#events[]`(Phase 1 基础设施复用)
 - **可分发**:L1 双语 template;init/upgrade 自动落用户项目
 
@@ -104,7 +183,8 @@ default:
 - ❌ 不读 token 给 agent
 - ❌ 不主动创建 PR(必须 host 显式调用)
 - ❌ 不做 auto-merge 默认 — merge 必须 user gate
-- ❌ 不做 review / assign / label(留 v1.1)
+- ❌ 不做 set-labels 语义(GitLab PUT 只支持 add/remove;set 需要 GET-then-PUT,留 v1.3)
+- ❌ 不做 gitea/github backend labels(留 v1.3;v1.2 仅 GitLab)
 - ❌ 不替代项目级 `.agent/workflows/pull-request.md` 工作流(workflow orchestration 在该层,本 skill 是底层)
 
 ## Relation

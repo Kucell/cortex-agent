@@ -1074,19 +1074,15 @@ function resolveDecision() {
     resource_ref: next.gate.resource_ref,
     updated_at: timestamp,
   }, (entry, current) => entry.decision_id === current.decision_id);
-  // Release any matching waitpoints
-  const released = releaseMatchingWaitpoints(decisionId, resolvedBy, rationale, timestamp);
+  // Resolving a Decision records the user's choice only. The owning workflow
+  // must separately validate and release or cancel its Waitpoint.
   printJson({
     ok: true,
     action: "decisions resolve",
     path: rel(file),
     decision: next,
-    changed_paths: [
-      rel(file),
-      rel(path.join(agentRoot, "decisions", "index.json")),
-      ...released.paths,
-    ],
-    changed_resources: [`decision:${decisionId}`, ...released.resources],
+    changed_paths: [rel(file), rel(path.join(agentRoot, "decisions", "index.json"))],
+    changed_resources: [`decision:${decisionId}`],
   });
 }
 
@@ -1397,41 +1393,6 @@ function releaseWaitpoint() {
     changed_paths: [rel(file), rel(path.join(agentRoot, "waitpoints", "index.json"))],
     changed_resources: [`waitpoint:${waitpointId}`],
   });
-}
-
-function releaseMatchingWaitpoints(decisionId, resolvedBy, rationale, timestamp) {
-  const dir = path.join(agentRoot, "waitpoints");
-  const changedPaths = [];
-  const changedResources = [];
-  for (const { file, data } of listJsonObjects(dir)) {
-    if (data.decision_id !== decisionId) continue;
-    if (!["pending", "blocked"].includes(data.status)) continue;
-    const next = {
-      ...data,
-      status: "released",
-      released_by: resolvedBy,
-      released_at: timestamp,
-      release_note: rationale || `Auto-released by decision ${decisionId}.`,
-      evidence_refs: Array.isArray(data.evidence_refs) && data.evidence_refs.length > 0 ? data.evidence_refs : [`decision:${decisionId}`],
-      updated_at: timestamp,
-    };
-    writeJson(file, next);
-    changedPaths.push(rel(file));
-    changedResources.push(`waitpoint:${data.waitpoint_id}`);
-    upsertIndexEntry(
-      "waitpoints",
-      "waitpoints",
-      waitpointIndexEntry(next, file),
-      (entry, current) => entry.waitpoint_id === current.waitpoint_id,
-    );
-  }
-  if (changedPaths.length > 0) {
-    changedPaths.push(rel(path.join(agentRoot, "waitpoints", "index.json")));
-  }
-  return {
-    paths: [...new Set(changedPaths)],
-    resources: [...new Set(changedResources)],
-  };
 }
 
 function upsertIndexEntry(dir, key, entry, match) {
