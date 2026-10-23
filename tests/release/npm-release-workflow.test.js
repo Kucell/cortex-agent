@@ -9,11 +9,12 @@ const root = path.resolve(__dirname, "../..");
 const workflow = fs.readFileSync(path.join(root, ".github/workflows/npm-release.yml"), "utf8");
 const docs = fs.readFileSync(path.join(root, "docs/releasing.md"), "utf8");
 
-test("npm release stays manual-compatible and adds opt-in governed comment trigger", () => {
+test("npm release publishes only from a governed owner dispatch", () => {
   assert.match(workflow, /workflow_dispatch:/);
-  assert.match(workflow, /issue_comment:/);
-  assert.match(workflow, /CORTEX_AUTO_RELEASE_ENABLED/);
+  assert.doesNotMatch(workflow, /issue_comment:/);
+  assert.doesNotMatch(workflow, /CORTEX_AUTO_RELEASE_ENABLED/);
   assert.match(workflow, /verify-approved-release\.cjs/);
+  assert.match(workflow, /verify-owner-dispatch\.cjs/);
   assert.doesNotMatch(workflow, /\npush:\s*\n/);
   assert.match(workflow, /id-token:\s*write/);
   assert.match(workflow, /contents:\s*write/);
@@ -42,17 +43,17 @@ test("npm release workflow validates before any release write", () => {
   assert.ok(publish > push);
 });
 
-test("npm release workflow exposes just one publish checkbox and keeps read-only dry run default", () => {
-  assert.match(workflow, /workflow_dispatch:/);
-  assert.match(workflow, /publish:\s*\n\s*description:/);
-  assert.match(workflow, /default:\s*false/);
-  for (const hidden of ["release_pr:", "expected_sha:", "decision_id:", "waitpoint_id:", "release_type:", "dist_tag:"]) {
-    assert.ok(!workflow.includes(hidden), "unnecessary human input " + hidden);
+test("npm release workflow requires the governed release inputs and keeps read-only dry run default", () => {
+  assert.ok(workflow.includes("workflow_dispatch:"));
+  assert.ok(workflow.includes("publish:"));
+  assert.ok(workflow.includes("default: false"));
+  for (const required of ["release_pr:", "expected_sha:", "decision_id:", "waitpoint_id:", "release_type:", "dist_tag:"]) {
+    assert.ok(workflow.includes(required), "missing governed input " + required);
   }
-  assert.match(workflow, /RELEASE_TYPE: current/);
-  assert.match(workflow, /DIST_TAG: latest/);
-  assert.match(workflow, /github\.event_name == 'workflow_dispatch' && !inputs\.publish/);
-  assert.match(workflow, /github\.event_name == 'issue_comment' \\|\\| inputs\.publish/);
+  assert.ok(workflow.includes("RELEASE_TYPE: current"));
+  assert.ok(workflow.includes("DIST_TAG: latest"));
+  assert.ok(workflow.includes("if: ${{ !inputs.publish }}"));
+  assert.ok(workflow.includes("if: ${{ inputs.publish }}"));
 });
 
 
@@ -69,6 +70,13 @@ test("release documentation names the exact npm Trusted Publisher workflow", () 
   assert.match(docs, /Repository: `cortex-agent`/);
   assert.match(docs, /release_type=current/);
   assert.match(docs, /Never force-push `main`/);
+});
+
+test("release documentation names the dispatched trigger and drops the comment command", () => {
+  assert.ok(docs.includes("gh workflow run npm-release.yml"));
+  assert.ok(docs.includes("decision_id=D-release-..."));
+  assert.ok(docs.includes("waitpoint_id=WP-release-..."));
+  assert.ok(!docs.includes("/cortex-release publish"));
 });
 
 test("automatic read-only preflight cannot trigger npm publication", () => {
@@ -101,13 +109,13 @@ test("v1.15.4 publication and preflight run real reconcile CLI subprocess regres
   }
 });
 
-test("one-click owner manual dispatch and automatic comment path both have three strict auth checks", () => {
+test("owner dispatch runs the owner identity and the canonical governance check at all three effect boundaries", () => {
   const checkSteps = [
     "Verify exact-head Cortex release authorization",
     "Revalidate Cortex authorization before Git tag write",
     "Revalidate Cortex authorization at npm effect boundary"
   ];
-  const checkedGate = "if: ${{ github.event_name == 'issue_comment' || inputs.publish }}";
+  const checkedGate = "if: ${{ inputs.publish }}";
   for (const name of checkSteps) {
     const stepStart=workflow.indexOf("- name: "+name);
     assert.ok(stepStart>0, "missing gate "+name);
@@ -116,10 +124,53 @@ test("one-click owner manual dispatch and automatic comment path both have three
     assert.ok(block.includes(checkedGate), "unprotected gate "+name);
     assert.ok(block.includes("node scripts/release/verify-owner-dispatch.cjs"), "owner gate missing "+name);
     assert.ok(block.includes("node scripts/release/verify-approved-release.cjs"), "canonical gate missing "+name);
+    assert.ok(
+      block.includes("CORTEX_GOVERNANCE_READ_TOKEN: ${{ secrets.CORTEX_GOVERNANCE_READ_TOKEN }}"),
+      "private governance credential missing "+name
+    );
   }
   assert.match(workflow, /id-token: write/);
-  assert.match(workflow, /GITHUB_EVENT_NAME/);
   assert.match(workflow, /npm-owner-dispatch-audit\.json/);
+});
+
+test("workflow dispatch inputs satisfy the canonical governance gate contract", () => {
+  const { resolveReleaseTrigger } = require("../../scripts/release/verify-approved-release.cjs");
+  const declared = workflow
+    .slice(workflow.indexOf("  workflow_dispatch:"), workflow.indexOf("permissions:"))
+    .split("\n")
+    .map(line => /^ {6}([a-z_]+):$/.exec(line))
+    .filter(Boolean)
+    .map(match => match[1]);
+  assert.deepEqual(declared.sort(), [
+    "decision_id", "dist_tag", "expected_sha", "publish", "release_pr", "release_type", "waitpoint_id"
+  ]);
+
+  const sha = "b".repeat(40);
+  const inputs = {
+    publish: "true",
+    release_type: "current",
+    dist_tag: "latest",
+    release_pr: "113",
+    expected_sha: sha,
+    decision_id: "D-release-1",
+    waitpoint_id: "WP-release-1"
+  };
+  const event = { sender: { login: "Kucell" }, repository: { full_name: "Kucell/cortex-agent" }, inputs };
+  const command = resolveReleaseTrigger(event, "workflow_dispatch", "Kucell", sha, "1.15.6");
+  assert.equal(command.decision, "D-release-1");
+  assert.equal(command.waitpoint, "WP-release-1");
+  assert.equal(command.prNumber, 113);
+
+  for (const key of Object.keys(inputs)) {
+    const missing = { ...inputs };
+    delete missing[key];
+    const incomplete = { sender: { login: "Kucell" }, repository: { full_name: "Kucell/cortex-agent" }, inputs: missing };
+    assert.throws(
+      () => resolveReleaseTrigger(incomplete, "workflow_dispatch", "Kucell", sha, "1.15.6"),
+      /RELEASE_GATE_BLOCKED/,
+      "omitting " + key + " must fail closed"
+    );
+  }
 });
 
 const { verifyOwnerDispatch } = require("../../scripts/release/verify-owner-dispatch.cjs");
@@ -175,9 +226,9 @@ test("owner dispatch refuses missing token, denied GitHub, network errors, and m
     await assert.rejects(()=>verifyOwnerDispatch({...base,...changes}),/OWNER_DISPATCH_RELEASE_BLOCKED/);
   }
 });
-test("one-click has no silent schedule or push publishing trigger",()=>{
+test("owner dispatch has no silent schedule, push or comment publishing trigger",()=>{
   assert.doesNotMatch(workflow,/^\s*schedule:/m);
   assert.doesNotMatch(workflow,/^\s*push:/m);
-  assert.match(workflow,/github.actor == github.repository_owner/);
+  assert.doesNotMatch(workflow,/^\s*issue_comment:/m);
   assert.match(workflow,/npm-owner-dispatch-audit.json/);
 });
