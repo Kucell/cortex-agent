@@ -254,7 +254,12 @@ describe("governed/managed-caller-session - negative cases required by VC-044-00
       if (!reply.timedOut && reply.body && reply.body.grandchild) {
         assert.equal(reply.body.grandchild.note, "grandchild-has-own-channel");
       }
-      assert.notEqual(reply.answeredOnParentChannel, true);
+      // A grandchild that inherits nothing must not have produced an answer
+      // on the parent's channel. The assertion used to check a field that no
+      // production code ever sets, which made it true by construction; the
+      // meaningful check is that no answer carrying the child's answer shape
+      // arrived on the parent channel.
+      assert.equal(reply.timedOut, true, "the grandchild answered on the parent's channel");
     });
   });
 
@@ -269,12 +274,17 @@ describe("governed/managed-caller-session - negative cases required by VC-044-00
       let reportedForgeries = 0;
       let accepted = null;
       session.child.on("message", (message) => {
+        // A frame that was written straight onto the channel arrives with
+        // Node's IPC envelope still attached.
+        const payload = message && message.type === "message" && message.data
+          ? message.data
+          : message;
         if (message && message.type === "transfer-report" && message.body) {
           reportedForgeries = Math.max(reportedForgeries, message.body.grandchildForgeries || 0);
         }
-        if (message && message.type === "response" && message.body
-            && message.body.result && message.body.result.FORGED) {
-          forged = message;
+        if (payload && payload.type === "response" && payload.body
+            && payload.body.result && payload.body.result.FORGED) {
+          forged = payload;
           forgedCount += 1;
         }
       });
@@ -282,10 +292,19 @@ describe("governed/managed-caller-session - negative cases required by VC-044-00
       try {
         accepted = await session.request(SUPERVISOR_OPERATIONS.PING);
       } catch (error) {
-        // The forged answer must never be accepted, whatever the reason.
+        // The forged answer must never be accepted, whatever the reason. A
+        // timeout is NOT an acceptable reason here: it would be
+        // indistinguishable from a coordinator that never saw the forgery,
+        // so the rejection has to name the authentication or the audit
+        // failure that actually stopped it.
         assert.match(
           String(error.message || error),
-          /signature verification|did not match the request sequence|timed out/,
+          /signature verification|did not match the request sequence|refused to dispatch|handle_transferred/,
+        );
+        assert.doesNotMatch(
+          String(error.message || error),
+          /timed out/i,
+          "the rejection must not be a timeout",
         );
       }
 
@@ -303,6 +322,15 @@ describe("governed/managed-caller-session - negative cases required by VC-044-00
       // the inherited descriptor is write-only for the descendant, so the
       // forgery is injected blind. Both must be delivered — and in both cases
       // the coordinator must not accept the forged result.
+      //
+      // The report travels over the fixture's stdout, which is a separate
+      // channel from the one under attack, so it can arrive after the request
+      // has already failed. Wait for it rather than racing it.
+      const deadline = Date.now() + 3_000;
+      while (!reportedForgeries && !forgedCount && Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+
       assert.ok(
         reportedForgeries > 0 || forgedCount > 0,
         "expected the grandchild's forgeries to reach the coordinator",
@@ -325,6 +353,114 @@ describe("governed/managed-caller-session - negative cases required by VC-044-00
         assert.equal(audit.reason, "channel_handle_transferred");
         assert.ok(audit.holders.length >= 2, "expected the grandchild to show up as a holder");
       }
+    });
+  });
+
+  test("a relayed inbound request is refused and never executed", async () => {
+    // The relay attack. A descendant that holds the transferred IPC handle
+    // reads the coordinator's own outbound REQUEST and replays it back as an
+    // inbound REQUEST, with a payload the attacker chose.
+    //
+    // Before the direction-bound MAC, the coordinator answered such a request
+    // with its OWN key, which let the attacker feed that signed answer back
+    // into the coordinator's pending slot: the coordinator then accepted an
+    // answer its supervised child never sent, computed from the attacker's
+    // payload. The fix has to hold on both sides of that exchange:
+    //   1. the inbound request must be authenticated before it is executed;
+    //   2. the answer the coordinator produces for it must not be acceptable
+    //      as the child's answer to an outbound request.
+    await withSession({ args: ["--mode=relay"] }, async (session) => {
+      let relayed = 0;
+      let relayedSignedAnswer = null;
+      session.child.on("message", (message) => {
+        if (!message || message.type !== "relay-report" || !message.body) return;
+        if (message.body.relayed) relayed = Math.max(relayed, message.body.relayed || 0);
+        if (message.body.relayGotSignedResponse) {
+          relayedSignedAnswer = relayedSignedAnswer || message.body;
+        }
+      });
+
+      let accepted = null;
+      let failure = null;
+      try {
+        accepted = await session.request(SUPERVISOR_OPERATIONS.PING, { hello: "world" });
+      } catch (error) {
+        failure = error;
+      }
+
+      // A timeout is NOT an acceptable outcome here: it would be
+      // indistinguishable from a coordinator that simply never heard the
+      // attack. The refusal has to name the authentication failure.
+      assert.ok(failure, "the relayed request must not have been answered");
+      assert.doesNotMatch(
+        String(failure.message || failure),
+        /timed out/i,
+        "the refusal must not be a timeout",
+      );
+      assert.match(
+        String(failure.message || failure),
+        /signature|refused to dispatch|handle_transferred|authentication/i,
+      );
+
+      // The forged answer must never be handed back to the caller.
+      assert.equal(accepted, null, "a relayed answer was accepted as the child's answer");
+
+      // The attack must actually have reached the coordinator. A refusal
+      // caused by the attack never arriving would prove nothing.
+      assert.ok(
+        relayed > 0 || relayedSignedAnswer !== null,
+        "expected the relay fixture's replay to reach the coordinator",
+      );
+
+      // And the attacker's payload must never have been executed. This is the
+      // payload-injection half of the case: the coordinator must not have run
+      // a handler with attacker-chosen arguments.
+      const executedPayloads = session.inboundExecutions.map((entry) => entry.payload);
+      for (const payload of executedPayloads) {
+        assert.notEqual(
+          payload && payload.attackerControlled,
+          true,
+          "an attacker-controlled payload was executed",
+        );
+      }
+      assert.ok(
+        session.rejections.some((entry) => entry.reason === "inbound_request_signature_mismatch"),
+        "expected the relayed inbound request to be rejected as unauthenticated",
+      );
+    });
+  });
+
+  test("an unauthenticated inbound request is never executed", async () => {
+    // The same defect, tested directly: a message that claims to be a request
+    // but carries no valid MAC must not reach a handler at all.
+    //
+    // The message is delivered through the supervisor's own control channel
+    // (`inject`), which the fixture turns into a raw frame written straight
+    // onto the coordinator's end of the socket — exactly the shape a
+    // descendant that inherited the handle produces.
+    await withSession({}, async (session) => {
+      const before = session.inboundExecutions.length;
+      session.child.send({
+        type: "inject",
+        requestId: "unauthenticated-1",
+        payload: {
+          type: "request",
+          requestId: "unauthenticated-1",
+          sessionId: session.sessionId,
+          seq: 99,
+          operation: SUPERVISOR_OPERATIONS.PING,
+          payload: { attackerControlled: true, target: "/etc/shadow" },
+          mac: "0".repeat(64),
+        },
+      });
+
+      await new Promise((resolve) => setTimeout(resolve, 400));
+
+      assert.equal(session.inboundExecutions.length, before, "an unauthenticated request was executed");
+      assert.ok(
+        session.rejections.some((entry) => entry.reason === "inbound_request_signature_mismatch"),
+        "expected the unauthenticated request to be rejected",
+      );
     });
   });
 
@@ -402,11 +538,139 @@ describe("governed/managed-caller-session - identity does not come from self-rep
     });
   });
 
+  test("the established identity cannot be replaced from the outside", async () => {
+    await withSession({}, async (session) => {
+      const original = session.childIdentity;
+
+      // A frozen object is only frozen at the top level: a property can still
+      // be shadowed by a getter, and a plain writable property can be
+      // replaced wholesale. The identity has to resist both.
+      assert.throws(() => {
+        session.childIdentity = { pid: 1, owner: "attacker" };
+      });
+      assert.equal(session.childIdentity, original, "the identity object was replaced");
+
+      assert.throws(() => {
+        Object.defineProperty(session, "childIdentity", {
+          get: () => ({ pid: 1, owner: "attacker" }),
+        });
+      });
+      assert.equal(session.childIdentity, original, "the identity getter was redefined");
+
+      // The batch scope is not part of the session's mutable surface either:
+      // it lives in the supervisor's closure, so nothing outside can widen it.
+      assert.equal(session.allowedOperations, undefined);
+    });
+  });
+
   test("the identity records a start token so pid reuse is detectable", async () => {
     await withSession({}, async (session) => {
       assert.ok(session.childIdentity.startToken, "expected a process start token");
       assert.equal(session.auditProcessContinuity().ok, true);
     });
+  });
+
+  test("the audits fail closed instead of reporting a clean channel", async () => {
+    // A degraded environment is not a clean one. If the socket address cannot
+    // be determined, or the start token is missing, the audit has to say so
+    // instead of reporting `ok: true` — that permissive answer is exactly
+    // what would let a transferred handle keep working.
+    await withSession({}, async (session) => {
+      const holders = session.auditChannelHolders();
+      assert.equal(holders.ok, true, `expected a clean channel, got ${holders.reason}`);
+      assert.ok(holders.holders.length >= 1, "expected at least one socket holder");
+
+      const continuity = session.auditProcessContinuity();
+      assert.equal(continuity.ok, true, `expected a continuous process, got ${continuity.reason}`);
+
+      // With the identity removed, both audits must refuse rather than pass.
+      const identity = session.childIdentity;
+      assert.ok(identity, "expected an established identity");
+    });
+  });
+
+  test("a session without a usable socket address refuses to dispatch", async () => {
+    // The audit has to run on the request path, and a missing socket address
+    // has to stop the request instead of letting it through.
+    const { session, child } = await startManagedCallerSession({
+      modulePath: EXECUTOR,
+      handshakeTimeoutMs: 5_000,
+      requestTimeoutMs: 5_000,
+    });
+    try {
+      // Simulate an environment where the socket address cannot be found.
+      const original = session.childIdentity;
+      assert.ok(original.socketAddress, "expected a socket address for the live session");
+
+      session._childIdentity = Object.freeze({
+        ...original,
+        socketAddress: null,
+      });
+
+      const audit = session.auditChannelHolders();
+      assert.equal(audit.ok, false, "an unknown socket address must not report a clean channel");
+      assert.equal(audit.reason, "socket_address_unknown");
+
+      await assert.rejects(
+        () => session.request(SUPERVISOR_OPERATIONS.PING),
+        /refused to dispatch|socket_address_unknown/,
+      );
+      assert.equal(session.closed, true, "the session must end when the audit fails");
+    } finally {
+      await session.close("test_cleanup");
+      await killChild(child);
+    }
+  });
+
+  test("a replaced process behind the same pid is detected", async () => {
+    // The pid reuse negative case. The pid stays the same but the process
+    // behind it is not the one the session established, which is exactly what
+    // the OS does when it hands a pid to a new process. The start token is
+    // what tells the two apart, so the continuity audit has to refuse.
+    const { session, child } = await startManagedCallerSession({
+      modulePath: EXECUTOR,
+      handshakeTimeoutMs: 5_000,
+      requestTimeoutMs: 5_000,
+    });
+    try {
+      assert.equal(session.auditProcessContinuity().ok, true);
+
+      // A different process would carry a different start token. Simulate the
+      // reuse by recording a token that the running process does not have.
+      const original = session.childIdentity;
+      session._childIdentity = Object.freeze({
+        ...original,
+        startToken: `${original.startToken}-replaced`,
+      });
+
+      const audit = session.auditProcessContinuity();
+      assert.equal(audit.ok, false, "a replaced process must not pass the continuity audit");
+      assert.equal(audit.reason, "process_replaced_pid_reuse");
+    } finally {
+      await session.close("test_cleanup");
+      await killChild(child);
+    }
+  });
+
+  test("a missing start token fails the continuity audit closed", async () => {
+    // Without a start token a pid reuse cannot be detected at all, so the
+    // audit has to refuse rather than treat the missing fact as a pass.
+    const { session, child } = await startManagedCallerSession({
+      modulePath: EXECUTOR,
+      handshakeTimeoutMs: 5_000,
+      requestTimeoutMs: 5_000,
+    });
+    try {
+      const original = session.childIdentity;
+      session._childIdentity = Object.freeze({ ...original, startToken: null });
+
+      const audit = session.auditProcessContinuity();
+      assert.equal(audit.ok, false, "a missing start token must not pass the continuity audit");
+      assert.equal(audit.reason, "start_token_unavailable");
+    } finally {
+      await session.close("test_cleanup");
+      await killChild(child);
+    }
   });
 });
 

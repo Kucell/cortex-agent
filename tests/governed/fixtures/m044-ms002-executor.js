@@ -18,6 +18,8 @@
 //   --mode=no-response   answer the handshake but never answer requests
 //   --mode=bad-mac       answer with a MAC that was not computed with the secret
 //   --mode=transfer      hand the IPC handle to a grandchild, which forges a reply
+//   --mode=relay         hand the IPC handle to a grandchild, which replays the
+//                        coordinator's own request back as an inbound request
 //   --mode=exit-early    exit before the handshake completes
 //   --mode=proxy         forward one inbound request back to the coordinator
 
@@ -27,7 +29,10 @@ const {
   CHANNEL_MESSAGE,
   SIGNED_MESSAGE_KIND,
 } = require("../../../lib/governed/managed-caller-session");
-const { signResponse } = require("../../../lib/governed/managed-caller-signing");
+const {
+  signResponse,
+  digestPayload,
+} = require("../../../lib/governed/managed-caller-signing");
 const {
   createExecutorEndpoint,
   readSessionSecret,
@@ -39,6 +44,44 @@ const mode = modeArg ? modeArg.slice("--mode=".length) : "echo";
 const pending = new Map();
 let seq = 0;
 let secret = null;
+// The descendant that holds the transferred IPC handle. It is created in the
+// `relay` mode below; the message handler refers to it directly.
+let relayGrandchild = null;
+
+/**
+ * Write a frame straight onto the IPC socket.
+ *
+ * The coordinator's end of the socket is fd 3 in this process. Writing a raw
+ * frame onto it produces exactly what a descendant that inherited the handle
+ * produces: Node's IPC envelope, envelope and all.
+ *
+ * @param {object} payload The message body to deliver.
+ */
+function injectRawFrame(payload) {
+  const frame = `${JSON.stringify({ type: "message", data: payload })}\n`;
+
+  // The IPC socket is fd 3 in this process. Two ways to write to it, and the
+  // platforms differ: `fs.writeSync` rejects a socket with EINVAL on Linux,
+  // while `net.Socket({fd})` cannot be used here because adopting the
+  // descriptor takes it away from the channel that is already bound to it.
+  // The write is attempted both ways so the case holds on either platform.
+  try {
+    const fs = require("node:fs");
+    fs.writeSync(3, frame);
+    return;
+  } catch (_) {
+    // Fall through to the socket route.
+  }
+
+  try {
+    const net = require("node:net");
+    const socket = new net.Socket({ fd: 3 });
+    socket.on("error", () => {});
+    socket.write(frame);
+  } catch (_) {
+    // Best effort: a failure here only means the injection did not happen.
+  }
+}
 
 function send(message) {
   if (process.connected) process.send(message);
@@ -59,6 +102,23 @@ let ready = false;
 
 function handleMessage(message) {
   if (!message || typeof message !== "object") return;
+
+  // A frame that was written straight onto the shared handle arrives with
+  // Node's IPC envelope still attached. Unwrap it first, so the payload is
+  // routed on its own terms.
+  if (message.type === CHANNEL_MESSAGE.NODE_IPC_FRAME && message.data
+      && typeof message.data === "object") {
+    message = message.data;
+  }
+
+  if (message.type === "inject") {
+    // Write a raw frame straight onto the IPC socket, the way a descendant
+    // that inherited the handle does. The coordinator has to unwrap Node's
+    // IPC envelope before it can route the payload, and then refuse the
+    // payload because it carries no valid MAC.
+    injectRawFrame(message.payload);
+    return;
+  }
 
   if (message.type === CHANNEL_MESSAGE.HELLO) {
     if (mode === "no-handshake") return;
@@ -84,21 +144,52 @@ function handleMessage(message) {
   if (message.type === CHANNEL_MESSAGE.REQUEST) {
     seq += 1;
     pending.set(message.requestId, message);
-    if (mode === "echo" || mode === "bad-seq" || mode === "no-response" || mode === "bad-mac") {
+    if (mode === "relay") {
+      // In the relay case the executor is a conduit: whatever arrives on the
+      // shared handle is passed up to the coordinator verbatim, which is what
+      // a real compromised executor could do.
+      // Hand the request to the descendant that holds the transferred handle,
+      // so it can replay it as an inbound request. The descendant has no
+      // session secret, which is the whole point of the case. The hand-off
+      // happens FIRST, so the descendant's replay and forgery are already on
+      // the wire by the time the coordinator sees the relayed request. That
+      // ordering makes the case deterministic instead of a race between the
+      // coordinator's answer and the attacker's.
+      if (relayGrandchild) {
+        try {
+          relayGrandchild.stdin.write(`${JSON.stringify(message)}\n`);
+        } catch (_) {
+          // Best effort.
+        }
+      }
+      send(message);
+      return;
+    }
+    if (mode === "echo" || mode === "bad-seq" || mode === "no-response" || mode === "bad-mac"
+        || mode === "transfer") {
       if (mode === "no-response") return;
       const replySeq = mode === "bad-seq" ? message.seq + 999 : message.seq;
       const body = { seq: replySeq, result: { handled: message.operation, seq } };
       const mac = mode === "bad-mac" || !secret
         ? crypto.randomBytes(32).toString("hex")
         : signResponse(secret, {
-          kind: SIGNED_MESSAGE_KIND.REQUEST,
+          kind: SIGNED_MESSAGE_KIND.REQUEST_OUT_RESPONSE,
           requestId: message.requestId,
           seq: message.seq,
           operation: message.operation,
+          payloadDigest: digestPayload(message.payload),
           body,
         });
       respond(message.requestId, body, { seq: replySeq, mac });
     }
+  }
+
+  if (mode === "relay" && message.type === CHANNEL_MESSAGE.RESPONSE) {
+    // A frame the descendant wrote onto the shared handle. The conduit passes
+    // it up to the coordinator, which has to refuse it: the descendant holds
+    // the transferable channel but not the session secret, so it cannot
+    // produce a valid MAC.
+    send(message);
   }
 }
 
@@ -197,6 +288,62 @@ if (mode === "transfer") {
       requestId: "transfer",
       body: { grandchildExited: true, grandchildForgeries },
     });
+  });
+
+  setTimeout(() => {
+    killGrandchild();
+    process.exit(0);
+  }, 8_000);
+}
+
+if (mode === "relay") {
+  // The relay negative case. The grandchild holds the transferred handle and
+  // replays the coordinator's own REQUEST back as an inbound request, with a
+  // payload the attacker chose. A coordinator that answers inbound requests
+  // without authenticating them signs that answer with its OWN key, which
+  // lets the attacker feed the coordinator a response it never received from
+  // the child it supervises.
+  const { spawn } = require("node:child_process");
+  const path = require("node:path");
+  const grandchild = spawn(process.execPath, [path.join(__dirname, "m044-ms002-relay.js")], {
+    // stdin carries the request to replay, stdout is unused, stderr carries
+    // the report, and fd 3 is the transferred IPC handle.
+    stdio: ["pipe", "pipe", "pipe", 3],
+  });
+  relayGrandchild = grandchild;
+
+  const killGrandchild = () => {
+    try {
+      grandchild.kill();
+    } catch (_) {
+      // Already gone.
+    }
+  };
+  process.on("exit", killGrandchild);
+  process.on("SIGTERM", () => {
+    killGrandchild();
+    process.exit(0);
+  });
+  process.on("SIGINT", () => {
+    killGrandchild();
+    process.exit(0);
+  });
+
+  grandchild.stderr.on("data", (chunk) => {
+    const text = chunk.toString();
+    for (const line of text.split("\n")) {
+      const match = line.match(/\{.*\}/);
+      if (!match) continue;
+      try {
+        send({ type: "relay-report", requestId: "relay", body: JSON.parse(match[0]) });
+      } catch (_) {
+        // Best effort.
+      }
+    }
+  });
+  grandchild.stderr.on("data", () => {});
+  grandchild.on("exit", () => {
+    send({ type: "relay-report", requestId: "relay", body: { relayExited: true } });
   });
 
   setTimeout(() => {

@@ -2,6 +2,7 @@
 
 const { test, describe } = require("node:test");
 const assert = require("node:assert/strict");
+const { spawn } = require("node:child_process");
 
 const {
   collectProcessFacts,
@@ -23,6 +24,48 @@ describe("governed/managed-caller-identity - process facts", () => {
     assert.equal(readProcessStartToken(0), null);
     assert.equal(readProcessStartToken(-1), null);
     assert.equal(readProcessStartToken(999_999_999), null);
+  });
+
+  test("the start token distinguishes processes started at different times", async () => {
+    // The token exists for one reason: to detect that the process behind a pid
+    // is no longer the one that was started. That means a LATER process has to
+    // carry a different token than an earlier one.
+    //
+    // The exact resolution is a platform property: macOS reads the
+    // microsecond start time out of `proc_bsdinfo`, Linux reads the kernel's
+    // start tick. A resolution too coarse to separate processes started in the
+    // same tick would still separate two processes that are not.
+    const first = spawn(process.execPath, ["-e", "setTimeout(() => {}, 1500)"], { stdio: "ignore" });
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      const firstToken = readProcessStartToken(first.pid);
+      assert.ok(firstToken, "expected a start token for the first process");
+
+      await new Promise((resolve) => setTimeout(resolve, 1_200));
+      const second = spawn(process.execPath, ["-e", "setTimeout(() => {}, 1500)"], { stdio: "ignore" });
+      try {
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        const secondToken = readProcessStartToken(second.pid);
+        assert.ok(secondToken, "expected a start token for the second process");
+        assert.notEqual(
+          secondToken,
+          firstToken,
+          "a process started later must not share the earlier process's token",
+        );
+      } finally {
+        try {
+          second.kill("SIGKILL");
+        } catch (_) {
+          // Already gone.
+        }
+      }
+    } finally {
+      try {
+        first.kill("SIGKILL");
+      } catch (_) {
+        // Already gone.
+      }
+    }
   });
 
   test("the command digest is present and changes with the command line", () => {

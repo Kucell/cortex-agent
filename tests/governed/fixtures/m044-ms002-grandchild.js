@@ -55,9 +55,20 @@ function send(message) {
  * @param {net.Socket} channel The adopted channel.
  */
 function writeToChannel(payload, channel) {
+  const frame = `${JSON.stringify({ type: "message", data: payload })}\n`;
+  // `fs.writeSync` rejects a socket with EINVAL on Linux, while `net.Socket`
+  // works on both platforms — but only when the descriptor is genuinely
+  // inherited. Both routes are attempted so the case holds on either
+  // platform.
+  try {
+    fs.writeSync(3, frame);
+    return true;
+  } catch (_) {
+    // Fall through to the socket route.
+  }
   if (!channel || channel.destroyed) return false;
   try {
-    channel.write(`${JSON.stringify({ type: "message", data: payload })}\n`);
+    channel.write(frame);
     return true;
   } catch (_) {
     return false;
