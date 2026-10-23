@@ -751,11 +751,48 @@ describe("governed/managed-caller-session - identity does not come from self-rep
       session._childIdentity = { pid: 1, owner: "attacker" };
       assert.equal(session.childIdentity, original, "the identity was replaced");
 
-      // The writer that does exist is not reachable in a way that can be
-      // pointed somewhere else.
+      // There must be NO write handle on the instance at all. An earlier
+      // revision exposed the writer as `session._setChildIdentity`: it was
+      // non-configurable and non-writable, so it could not be replaced or
+      // redefined -- and it was still CALLABLE, so calling it bypassed the
+      // pid-reuse check exactly as the writable slot it replaced did.
+      //
+      // Asserting only that the property cannot be REDEFINED misses that
+      // attack. The assertion has to be that there is nothing to call.
+      assert.equal(
+        Object.getOwnPropertyNames(session).includes("_setChildIdentity"),
+        false,
+        "the identity writer must not exist on the instance",
+      );
+      assert.equal(typeof session._setChildIdentity, "undefined");
+
+      // Same for the fact readers: a reader on the instance could be
+      // swapped for one that reports clean facts.
+      for (const name of ["_collectFacts", "_readHolders", "_tokenIsPrecise"]) {
+        assert.equal(
+          Object.getOwnPropertyNames(session).includes(name),
+          false,
+          `${name} must not exist on the instance`,
+        );
+        assert.equal(typeof session[name], "undefined");
+      }
+
+      // And the private fields are invisible to property enumeration.
+      const descriptors = Object.getOwnPropertyDescriptors(session);
+      for (const name of Object.keys(descriptors)) {
+        assert.doesNotMatch(name, /^#/, `private field ${name} is visible`);
+      }
+
+      // Defining a same-named property creates a NEW property that nothing
+      // reads, so it is harmless -- what matters is that it is not a handle
+      // to the real identity. The read-only accessor itself must still resist
+      // redefinition and assignment.
+      session._setChildIdentity = () => {};
+      assert.equal(session.childIdentity, original, "the identity was replaced");
+
       assert.throws(() => {
-        Object.defineProperty(session, "_setChildIdentity", {
-          value: () => {},
+        Object.defineProperty(session, "childIdentity", {
+          get: () => ({ pid: 1, owner: "attacker" }),
         });
       }, /Cannot redefine property/);
     });
@@ -802,6 +839,73 @@ describe("governed/managed-caller-session - identity does not come from self-rep
       const audit = session.auditProcessContinuity();
       assert.equal(audit.ok, false, "a replaced process must not pass the continuity audit");
       assert.equal(audit.reason, "process_replaced_pid_reuse");
+    } finally {
+      await session.close("test_cleanup");
+      await killChild(child);
+    }
+  });
+
+  test("the recorded identity cannot be rewritten to defeat the pid-reuse check", async () => {
+    // The bypass, modelled the way an attacker would model it: change the
+    // ONE fact that a pid reuse actually changes -- the start token -- and
+    // leave every other fact real. If the recorded identity can be rewritten
+    // to carry the replacement's token, the continuity audit compares the
+    // replacement against ITSELF and reports a clean channel.
+    //
+    // An earlier revision failed this: the identity writer was exposed on the
+    // instance, so this exact attack succeeded while the audit looked
+    // perfectly well-formed.
+    const realFacts = require("../../lib/governed/managed-caller-identity");
+    let replaced = false;
+    const { session, child } = await startManagedCallerSession({
+      modulePath: EXECUTOR,
+      handshakeTimeoutMs: 5_000,
+      requestTimeoutMs: 5_000,
+      factSource: {
+        ...realFacts,
+        collectProcessFacts: () => ({
+          pid: process.pid,
+          startToken: replaced
+            ? "linux:the-process-that-replaced-it"
+            : "linux:the-process-that-was-established",
+          commandDigest: null,
+          socketAddress: null,
+          socketEndpoint: null,
+          holders: [],
+        }),
+      },
+    });
+    try {
+      // The pid is now held by a different process.
+      replaced = true;
+
+      const audit = session.auditProcessContinuity();
+      assert.equal(audit.ok, false, "a replaced process must not pass the continuity audit");
+      assert.equal(audit.reason, "process_replaced_pid_reuse");
+
+      // Now try to make the audit compare the replacement against itself.
+      // Every route to the recorded identity has to be closed.
+      const attackerToken = "linux:the-process-that-replaced-it";
+
+      session._childIdentity = Object.freeze({
+        ...session.childIdentity,
+        startToken: attackerToken,
+      });
+      assert.throws(() => {
+        session._setChildIdentity(Object.freeze({
+          ...session.childIdentity,
+          startToken: attackerToken,
+        }));
+      });
+
+      // The recorded identity must still be the one established at handshake
+      // time, so the audit still refuses.
+      assert.equal(
+        session.childIdentity.startToken,
+        "linux:the-process-that-was-established",
+        "the recorded start token was rewritten",
+      );
+      assert.equal(session.auditProcessContinuity().ok, false);
     } finally {
       await session.close("test_cleanup");
       await killChild(child);

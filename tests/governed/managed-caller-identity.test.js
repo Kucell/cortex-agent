@@ -3,6 +3,7 @@
 const { test, describe } = require("node:test");
 const assert = require("node:assert/strict");
 const { spawn } = require("node:child_process");
+const fs = require("node:fs");
 
 const {
   collectProcessFacts,
@@ -132,6 +133,66 @@ describe("governed/managed-caller-identity - socket facts", () => {
         // Already gone.
       }
     }
+  });
+
+  test("a socket with a path is still matched by its inode on Linux", () => {
+    // `lsof -U` prints the socket's PATH in the NAME column, between the
+    // inode and the trailing `type=` marker. A pattern anchored on `type=`
+    // therefore skipped every path-bound socket, and the holder set came back
+    // EMPTY for one — a fail-open direction. The IPC channel is anonymous
+    // and unaffected, but the gap has to be closed rather than left to the
+    // next caller.
+    if (process.platform !== "linux") return;
+
+    const net = require("node:net");
+    const path = require("node:path");
+    const os = require("node:os");
+
+    const socketPath = path.join(
+      os.tmpdir(),
+      `m044-inode-gap-${process.pid}-${Date.now()}.sock`,
+    );
+    const server = net.createServer();
+
+    return new Promise((resolve, reject) => {
+      server.on("error", reject);
+      server.listen(socketPath, () => {
+        try {
+          // The endpoint of the current process is not this socket, so read
+          // the inode of the named socket directly and look it up.
+          const { spawnSync } = require("node:child_process");
+          const listing = spawnSync("lsof", ["-U"], { encoding: "utf8" }).stdout;
+          const line = String(listing).split("\n").find((entry) => (
+            entry.includes(socketPath) && /unix/i.test(entry)
+          ));
+          assert.ok(line, "expected lsof to list the named socket");
+
+          const parts = line.trim().split(/\s+/);
+          const sizeIndex = parts.indexOf("0t0");
+          assert.ok(sizeIndex >= 0, "expected a 0t0 column");
+          const inode = Number.parseInt(parts[sizeIndex + 1], 10);
+          assert.ok(Number.isInteger(inode), "expected a numeric inode column");
+
+          const holders = readSocketHolders({ inode });
+          assert.ok(
+            holders.includes(process.pid),
+            `expected the holder to be found, got ${JSON.stringify(holders)}`,
+          );
+        } catch (error) {
+          reject(error);
+          return;
+        } finally {
+          server.close(() => {
+            try {
+              fs.unlinkSync(socketPath);
+            } catch (_) {
+              // Already gone.
+            }
+            resolve();
+          });
+        }
+      });
+    });
   });
 });
 

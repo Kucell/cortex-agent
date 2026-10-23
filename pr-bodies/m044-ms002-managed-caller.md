@@ -109,9 +109,21 @@ a busy machine. Matching on that hash made the audit report a transferred handle
 channel.
 
 The socket is now identified by the socket **object** itself: on Linux the kernel inode from
-`/proc/<pid>/fd/3`, on macOS the address pair. Measured: both ends of a connection share one
-inode, and a descendant that inherited the descriptor shares it too — so the transfer is still
-detected, and the false positive is gone.
+`/proc/<pid>/fd/3`, on macOS the address pair.
+
+Measured on Linux: the two ends of a connection are two distinct socket objects with two
+distinct inodes (e.g. child `1866278` / parent `1866277`), so the inode does **not** identify a
+connection — it identifies **one end of it**. That is exactly what the audit needs: a descendant
+that inherited the descriptor holds the **same** socket object, and therefore the same inode, and
+it shows up as an extra holder. The transfer is still detected, and the false positive is gone.
+
+One correction to the earlier explanation in this PR: the `0x...` column on Linux is **not** a
+hash of the inode. The two ends of a connection carry *different* `0x` values despite having
+different inodes, and the same `0x` value on a socketpair's two ends despite their inodes
+differing — so the column is not a function of the inode at all. The inode is used because it is
+precise and agrees with a direct `/proc` read of the holder set, not because the `0x` column was
+shown to collide. The exact trigger of the CI failure is therefore not fully explained; the
+defect it exposed — matching a socket by a value that does not identify it — is fixed either way.
 
 ### P1 — the audit ran after the payload had gone out
 
