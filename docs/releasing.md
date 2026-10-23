@@ -6,45 +6,62 @@ Workflow:
 
 `.github/workflows/npm-release.yml`
 
-The existing workflow supports manual `workflow_dispatch` **and** a strictly gated owner-command trigger (`issue_comment`). Merging to `main` only starts automatic read-only preflight; it never publishes by itself.
+The workflow publishes only from an explicit owner `workflow_dispatch` that carries the canonical private Decision/Waitpoint authorization as inputs. Merging to `main` only starts automatic read-only preflight; it never publishes by itself.
 
-## One-click GitHub Owner release (proposed streamlined mode)
+npm Trusted Publishing rejects OIDC tokens minted for `issue_comment` runs (`pull_request_target` is rejected as well), so a pull-request comment can no longer carry the publication itself. The human intent is still recorded by the canonical private governance records; the publish is always the dispatched run.
 
-For the single-maintainer `Kucell/cortex-agent` release path, the product
-may use **GitHub-native owner dispatch as the explicit release authorization**.
-It is an alternative authorization surface, **not a fabricated Cortex
-Decision/Waitpoint**, and must be accepted by the separate project's governance
-policy before the code is merged and used.
+## Owner dispatch release (governed)
+
+Publication has a single path: the repository owner runs `npm-release.yml` from
+`main` and supplies the canonical private governance authorization for that
+exact commit. The owner identity check and the Decision/Waitpoint gate both
+run; neither replaces the other.
 
 1. Finish and merge version metadata changes to `main` as usual.
-2. Go to **Actions → npm Release → Run workflow** and select `main`.
-3. Leave **Publish the prepared current version** unchecked to run the complete
-   read-only release preflight; check it to deliberately release the committed
-   version to npm `latest` and create the matching GitHub Tag and Release.
-   There are **no PR number, SHA, Decision ID or Waitpoint ID form inputs**.
+2. Create the live release Decision and the owner-released Waitpoint for the
+   exact current `main` through the authoritative `/release` owner.
+3. Go to **Actions → npm Release → Run workflow**, select `main`, and provide:
+
+   | Input | Value |
+   | --- | --- |
+   | `publish` | `true` to release, `false` for a read-only dry run |
+   | `release_type` | `current` |
+   | `dist_tag` | `latest` |
+   | `release_pr` | the merged release-preparation PR number |
+   | `expected_sha` | the exact current `main` commit SHA |
+   | `decision_id` | the live release Decision ID |
+   | `waitpoint_id` | the released Waitpoint ID |
+
+   The equivalent command line is:
+
+   ```bash
+   gh workflow run npm-release.yml --repo Kucell/cortex-agent --ref main \
+     -f publish=true -f release_type=current -f dist_tag=latest \
+     -f release_pr=<PR> -f expected_sha=<mainSHA> \
+     -f decision_id=D-release-... -f waitpoint_id=WP-release-...
+   ```
+
 4. GitHub Actions verifies the trusted event actor is the repository owner
    (`Kucell`), confirms checkout is exact remote `main`, reads package
    name/version from the checked-out commit, runs frozen install, architecture
    guard, product+CLI tests and npm package validation, and checks tag/registry
-   conflicts. It repeats exact-main+actor authorization before Git tagging
-   and before npm publishing.
+   conflicts. It repeats the owner and Decision/Waitpoint authorization before
+   Git tagging and before npm publishing.
 5. The only publish credential remains npm Trusted Publishing OIDC in
    `npm-release.yml`. The workflow saves an owner-dispatch receipt with
    repository, actor, version, exact commit and GitHub Actions run ID alongside
    release evidence. It never embeds a PAT or npm token in that artifact.
    Canonical governance may subsequently ingest this GitHub-native evidence;
    it must not mislabel it as a resolved Decision or released Waitpoint.
-6. Direct GitHub-native publication is owner-only. Other projects and the
-   existing optional owner-comment automation retain the strict separate
-   governance Decision + Waitpoint approval verifier. The repo variable
-   `CORTEX_AUTO_RELEASE_ENABLED=false` still disables comment automation,
-   but does **not** prevent an explicit owner click on Run workflow.
+6. Direct GitHub-native publication is owner-only, and the canonical private
+   Decision + released Waitpoint bound to the exact commit are mandatory in
+   every dispatch. The repo variable `CORTEX_AUTO_RELEASE_ENABLED=false` must
+   stay `false`; the read-only preflight fails closed when it is not.
 
 **Safety note:** Selecting "Publish" is the deliberate public release action.
 If the commit or version changes, the job stops and must be started again.
 A GitHub Actions success alone from an unchecked run is a dry-run, not
-evidence of npm publication. This change is a governance policy alteration,
-not merely a form redesign.
+evidence of npm publication.
 
 ## Single-maintainer exception — v1.15.6 only
 
@@ -76,18 +93,17 @@ override of CI or governance approvals:
 The existing independent-review path remains the default when selected option
 is `approve`. **Do not falsify an APPROVED GitHub Review to activate this mode.**
 
-## Approval-driven release automation (opt-in)
+## Approval-driven release
 
 - **Automatic preflight:** `.github/workflows/npm-release-preflight.yml` runs after version-file changes land on `main`. This workflow has read-only permissions, runs architecture/contract tests and `npm pack --dry-run`, and never publishes.
-- **Publish trigger:** After release-preparation PR merges, the project owner posts the exact command below as a new comment **on the merged release-preparation PR**. The existing trusted workflow `npm-release.yml` then runs without clicking Actions / Run workflow.
-- **Activation prerequisite:** configure repository variable `CORTEX_AUTO_RELEASE_ENABLED=true` **only after** configuring a read-only credential in secret `CORTEX_GOVERNANCE_READ_TOKEN` capable of reading the private `Kucell/cortex-agent-agent` Decision/Waitpoint files. Prefer a short-lived GitHub App installation token; do not use npm tokens or put credentials in versioned files.
+- **Publish trigger:** the owner dispatches `npm-release.yml` from `main` with `publish=true` and the governance inputs listed above. Publication always runs under the `workflow_dispatch` event, because npm Trusted Publishing rejects OIDC tokens minted for `issue_comment` runs.
+- **Credential prerequisite:** configure a read-only credential in secret `CORTEX_GOVERNANCE_READ_TOKEN` capable of reading the private `Kucell/cortex-agent-agent` Decision/Waitpoint files. Prefer a short-lived GitHub App installation token; do not use npm tokens or put credentials in versioned files.
 - The release gate must verify the exact main commit, actual merged release-preparation PR (matching main or an ancestor in the explicitly approved v1.15.6 single-maintainer mode), accepted file scope, private interactive-user-approved Decision and owner-released Waitpoint for the exact main, and current package version. An ordinary approval requires a distinct write-authorized reviewer; the explicit v1.15.6 `approve-single-maintainer` mode waives only this reviewer identity requirement. Active `CHANGES_REQUESTED` is never waived.
-- **Command format:** `/cortex-release publish v1.15.6 decision=D-release-... waitpoint=WP-release-...`. Substitute the actual IDs created by the authoritative `/release` owner after the exact-commit dry-run / approval process.
+- **Input format:** `release_pr` is the merged release-preparation PR number, `expected_sha` is the exact current `main` SHA, and `decision_id` / `waitpoint_id` are the IDs created by the authoritative `/release` owner after the exact-commit dry-run / approval process. Do not confuse a GitHub PR comment with the authoritative Cortex Decision/Waitpoint itself.
 - Failure to verify anything (including unavailable private governance credential) blocks publication; no fallback to simulated approvals or `--force`.
-- Publisher remains `npm-release.yml` with npm Trusted Publishing/OIDC. Automatic approvals use `release_type=current`, `dist_tag=latest` and the existing validations/retry logic. **Manual dispatch remains available for validation and governed publication; `publish=true` is no longer an authorization bypass.** Both manual publish and owner-comment publish require the same live private Decision + released Waitpoint, independent write-authorized review, and exact-head verification.
-- PR #48 (CLI hotfix) and PR #51 (v1.15.4 release-preparation metadata) require independent Review and merge in that order before an automatic approval comment can succeed. Do not confuse a GitHub PR comment with the authoritative Cortex Decision/Waitpoint itself.
+- Publisher remains `npm-release.yml` with npm Trusted Publishing/OIDC. Publication uses `release_type=current`, `dist_tag=latest` and the existing validations/retry logic. **Manual dispatch is the only publication path; `publish=true` is not an authorization bypass.** It requires the same live private Decision + released Waitpoint, independent write-authorized review, and exact-head verification.
 
-**Important:** A pull request that adds this automation cannot activate the trigger until it is separately reviewed and merged. The automatic publish path is disabled by default. Do not enable it without verified private-governance read access and a live review/approval process.
+**Important:** A pull request that adds this automation cannot activate the trigger until it is separately reviewed and merged. The publish path is owner-dispatched and fail-closed; do not weaken the gate without a separately reviewed policy.
 
 
 ## Security model
@@ -134,20 +150,17 @@ Inputs:
 ### `release_type`
 
 - `current` — publish the version already present in `package.json`.
-- `patch` — bump the repository version before publishing.
-- `minor` — bump the repository version before publishing.
-- `major` — bump the repository version before publishing.
 
-Use `current` when the repository already contains the intended release version.
+The release-preparation PR must already carry the intended version, so `current`
+is the only accepted value; the workflow never bumps the version during a
+governed publication.
 
 ### `dist_tag`
 
-Default: `latest`.
+- `latest` — the only accepted value.
 
-Examples:
-
-- stable: `latest`
-- prerelease: `next`
+Prerelease publishing is not part of the governed path and requires a separate
+reviewed policy.
 
 ### `publish`
 
@@ -155,7 +168,7 @@ Default: `false`.
 
 When `false`, the workflow performs validation and release planning only. It does not change Git, npm, tags, or GitHub Releases.
 
-When `true`, the workflow publishes only **after the Cortex release gate passes** for the exact current main commit. On manual `workflow_dispatch`, provide `release_pr` (merged metadata PR), `expected_sha` (current main SHA), `decision_id` and `waitpoint_id` (live canonical private governance records). Only the owner may publish, with `release_type=current` and `dist_tag=latest`. `publish=false` remains a safe dry-run and does not require Decision/Waitpoint inputs; it does not release anything. Configure `CORTEX_GOVERNANCE_READ_TOKEN` for both publication methods.
+When `true`, the workflow publishes only **after the Cortex release gate passes** for the exact current main commit. On manual `workflow_dispatch`, provide `release_pr` (merged metadata PR), `expected_sha` (current main SHA), `decision_id` and `waitpoint_id` (live canonical private governance records). Only the owner may publish, with `release_type=current` and `dist_tag=latest`. `publish=false` remains a safe dry-run and does not require Decision/Waitpoint inputs; it does not release anything. Configure `CORTEX_GOVERNANCE_READ_TOKEN` for the publication path.
 
 Do **not** use manual `publish=true` to avoid an unmet review or governance requirement. If the private-governance read token is absent, all publication attempts fail closed.
 
@@ -165,6 +178,8 @@ Do **not** use manual `publish=true` to avoid an unmet review or governance requ
 workflow_dispatch
   ↓
 main-branch guard
+  ↓
+owner identity + Decision/Waitpoint authorization
   ↓
 Node/npm/pnpm setup
   ↓
@@ -201,23 +216,29 @@ The release workflow is deliberately resumable.
 
 ### Version commit/tag pushed, npm publish failed
 
-Re-run from the updated `main` with:
+Re-dispatch from the updated `main` with the same governed inputs:
 
 - `release_type=current`
-- the same `dist_tag`
+- `dist_tag=latest`
 - `publish=true`
+- the same `release_pr`, `decision_id` and `waitpoint_id`
+- `expected_sha` = the current `main` SHA
 
 The existing tag is accepted only when it points to the current `HEAD`.
 
 ### npm package already published, GitHub Release failed
 
-Re-run with `release_type=current` and `publish=true`.
+Re-dispatch with `release_type=current`, `dist_tag=latest`, `publish=true` and
+the same governed inputs.
 
 The workflow detects that the exact npm version already exists, skips duplicate `npm publish`, and continues to GitHub Release creation.
 
 ### Main changed during validation
 
-The push is expected to fail rather than force-update `main`. Re-run the release from the new `main`.
+The push is expected to fail rather than force-update `main`. Re-dispatch from
+the new `main` with `expected_sha` set to the new commit. The Decision and
+Waitpoint must be bound to that new `main` commit, so a stale pair fails
+closed instead of publishing a different candidate.
 
 ## Release invariants
 

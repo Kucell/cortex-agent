@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- 下一个版本的条目写在这里 -->
 
+### Fixed
+
+- **发布触发路径对齐 npm 可信发布约束**：npm 自 2026-10-02 起拒绝由 `issue_comment` 事件触发的可信发布（Trusted Publishing / OIDC）令牌，原评论触发路径会在 `npm publish` 阶段报 404 而非授权失败。发布收敛为唯一的 owner `workflow_dispatch`，由 dispatch 携带 `release_pr` / `expected_sha` / `decision_id` / `waitpoint_id` 四项治理输入；owner 身份门禁与权威 Decision / Waitpoint 门禁在打标签前、打标签后、发布前三处生效边界同时执行，门禁强度不降级。
+
 ## [1.15.6] - 2026-10-23
 
 > **Patch**：任务状态真源归一收口（旧版数据可升级、未迁移看得见、CLI 机器可读契约统一），L1 分发面完整性门禁补齐，模板拷贝卫生与 `--help` 零写入契约修复。
