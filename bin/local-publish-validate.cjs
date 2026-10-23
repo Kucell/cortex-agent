@@ -47,6 +47,14 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { execSync, spawnSync } = require('node:child_process');
 
+const versionCarriers = require('../lib/release/version-carriers');
+
+// A local bump is not a publication, so the changelog section it writes is a
+// placeholder: the version must be documented for the release consistency
+// gate to pass, but the notes still have to be written before publishing.
+const CHANGELOG_PLACEHOLDER =
+  '> **本地自举**：由 `cortex-agent local-publish-validate --bump` 生成的本地版本条目，发布前请补齐变更说明。';
+
 // ─── CLI args ────────────────────────────────────────────────────────────────
 function parseArgs(argv) {
   const opts = {
@@ -235,9 +243,20 @@ function main() {
     const newVersion = bumpVersion(version, opts.bump);
     console.log(`🔼 Bump: ${version} → ${newVersion}  (${opts.bump})`);
     if (!opts.dryRun) {
-      const pkgPath = path.join(cwd, 'package.json');
-      const updated = { ...pkg, version: newVersion };
-      fs.writeFileSync(pkgPath, JSON.stringify(updated, null, 2) + '\n');
+      // Every version carrier has to move together. Rewriting package.json
+      // alone leaves the lockfile, the Claude plugin manifest, the
+      // marketplace manifest and the changelog on the old version — a tree the
+      // repository's own release consistency gate rejects
+      // (tests/release/release-version-consistency.test.js).
+      const sync = versionCarriers.syncVersion(cwd, newVersion);
+      console.log(`   版本载体已同步 (${sync.changed.length}): ${sync.changed.join(', ') || '(无变化)'}`);
+      if (sync.missing.length > 0) {
+        console.log(`   版本载体缺失 (${sync.missing.length}): ${sync.missing.join(', ')}`);
+      }
+      const changelog = versionCarriers.ensureChangelogEntry(cwd, newVersion, CHANGELOG_PLACEHOLDER);
+      if (changelog.created) {
+        console.log(`   已写入 CHANGELOG.md 条目: ## [${newVersion}]（占位说明，发布前请补齐变更说明）`);
+      }
     }
     version = newVersion;
   } else {
