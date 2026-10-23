@@ -16,6 +16,7 @@ const test = require("node:test");
 
 const root = path.resolve(__dirname, "../..");
 const carriers = require(path.join(root, "lib/release/version-carriers"));
+const { buildAnchor } = require(path.join(root, "lib/anchor/anchor.js"));
 const { ALLOWED } = require(path.join(root, "scripts/release/verify-approved-release.cjs"));
 
 function fixtureRoot() {
@@ -50,6 +51,12 @@ function fixtureRoot() {
     ) + "\n",
   );
   fs.writeFileSync(path.join(dir, "CHANGELOG.md"), "# Changelog\n\n## [Unreleased]\n\n## [0.9.0] - 2026-01-01\n");
+  const anchorDir = path.join(dir, "docs", "cortex-agent");
+  fs.mkdirSync(anchorDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(anchorDir, "anchor.md"),
+    buildAnchor({ projectDir: dir, version: "1.0.0" }).body,
+  );
   return dir;
 }
 
@@ -63,6 +70,7 @@ test("syncVersion stamps every carrier and reports exactly what moved", () => {
     [
       ".claude-plugin/marketplace.json",
       ".claude-plugin/plugin.json",
+      "docs/cortex-agent/anchor.md",
       "package-lock.json",
       "package.json",
     ].sort(),
@@ -81,6 +89,9 @@ test("syncVersion stamps every carrier and reports exactly what moved", () => {
   assert.equal(market.plugins.find((p) => p.name === "cortex-agent").version, "2.0.0");
   // A plugin entry that is not this package must not be rewritten.
   assert.equal(market.plugins.find((p) => p.name === "other-plugin").version, "9.9.9");
+  // The anchor is re-rendered from the template, not patched in place.
+  const anchor = fs.readFileSync(path.join(dir, "docs/cortex-agent/anchor.md"), "utf8");
+  assert.equal(anchor, buildAnchor({ projectDir: dir, version: "2.0.0" }).body);
 });
 
 test("syncVersion is idempotent — a second run changes nothing", () => {
