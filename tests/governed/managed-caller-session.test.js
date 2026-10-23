@@ -204,18 +204,18 @@ describe("governed/managed-caller-session - handshake and request path", () => {
   });
 
   test("an operation outside the batch scope is refused", async () => {
-    await withSession({ args: ["--mode=proxy"], allowedOperations: [SUPERVISOR_OPERATIONS.PING] }, async (session) => {
+    await withSession({ args: ["--mode=proxy"], allowedOperations: [SUPERVISOR_OPERATIONS.PING] }, async (session, child) => {
       // The child makes the request itself, so the refusal must come from the
       // supervisor's batch-scope check rather than from client-side validation.
       const outcome = await new Promise((resolve, reject) => {
         const timer = setTimeout(() => reject(new Error("proxy timed out")), 5_000);
-        session.child.on("message", (message) => {
+        child.on("message", (message) => {
           if (message && message.type === "proxy-result") {
             clearTimeout(timer);
             resolve(message);
           }
         });
-        session.child.send({ type: "proxy", requestId: "p1", operation: "definitely-not-in-batch" });
+        child.send({ type: "proxy", requestId: "p1", operation: "definitely-not-in-batch" });
       });
 
       assert.equal(outcome.ok, false);
@@ -233,7 +233,7 @@ describe("governed/managed-caller-session - negative cases required by VC-044-00
   });
 
   test("a same-account bystander cannot discover the channel through the filesystem", async () => {
-    await withSession({}, async (session) => {
+    await withSession({}, async (session, child) => {
       // The channel is an anonymous socket: it has no directory entry, so a
       // bystander scanning /tmp or the socket directory finds nothing.
       const tmpEntries = fs.readdirSync(os.tmpdir()).filter((n) => n.startsWith(".s."));
@@ -242,7 +242,7 @@ describe("governed/managed-caller-session - negative cases required by VC-044-00
       // And it is not a named unix socket path either.
       let lsofOutput = "";
       try {
-        lsofOutput = execFileSync("lsof", ["-p", String(session.child.pid)], { encoding: "utf8" });
+        lsofOutput = execFileSync("lsof", ["-p", String(child.pid)], { encoding: "utf8" });
       } catch (_) {
         // lsof unavailable in this environment; the directory scan above is
         // the portable half of the assertion.
@@ -261,18 +261,18 @@ describe("governed/managed-caller-session - negative cases required by VC-044-00
   });
 
   test("a grandchild that inherits nothing cannot answer on the parent's channel", async () => {
-    await withSession({ args: ["--mode=inherit"] }, async (session) => {
+    await withSession({ args: ["--mode=inherit"] }, async (session, child) => {
       // The fixture spawns a grandchild with the ordinary default stdio, so it
       // gets its own socket. It must not be able to answer our request.
       const reply = await new Promise((resolve) => {
         const timer = setTimeout(() => resolve({ timedOut: true }), 2_500);
-        session.child.on("message", (message) => {
+        child.on("message", (message) => {
           if (message && message.requestId === "probe") {
             clearTimeout(timer);
             resolve({ timedOut: false, body: message.body });
           }
         });
-        session.child.send({ type: "request", requestId: "probe", seq: 1, operation: "probe" });
+        child.send({ type: "request", requestId: "probe", seq: 1, operation: "probe" });
       });
 
       if (!reply.timedOut && reply.body && reply.body.grandchild) {
@@ -292,12 +292,12 @@ describe("governed/managed-caller-session - negative cases required by VC-044-00
     // fd to a grandchild, which then answers with a forged result. The
     // grandchild holds the transferable channel but not the session secret,
     // so the coordinator must refuse the response.
-    await withSession({ args: ["--mode=transfer"] }, async (session) => {
+    await withSession({ args: ["--mode=transfer"] }, async (session, child) => {
       let forged = null;
       let forgedCount = 0;
       let reportedForgeries = 0;
       let accepted = null;
-      session.child.on("message", (message) => {
+      child.on("message", (message) => {
         // A frame that was written straight onto the channel arrives with
         // Node's IPC envelope still attached.
         const payload = message && message.type === "message" && message.data
@@ -393,10 +393,10 @@ describe("governed/managed-caller-session - negative cases required by VC-044-00
     //   1. the inbound request must be authenticated before it is executed;
     //   2. the answer the coordinator produces for it must not be acceptable
     //      as the child's answer to an outbound request.
-    await withSession({ args: ["--mode=relay"] }, async (session) => {
+    await withSession({ args: ["--mode=relay"] }, async (session, child) => {
       let relayed = 0;
       let relayedSignedAnswer = null;
-      session.child.on("message", (message) => {
+      child.on("message", (message) => {
         if (!message || message.type !== "relay-report" || !message.body) return;
         if (message.body.relayed) relayed = Math.max(relayed, message.body.relayed || 0);
         if (message.body.relayGotSignedResponse) {
@@ -462,9 +462,9 @@ describe("governed/managed-caller-session - negative cases required by VC-044-00
     // (`inject`), which the fixture turns into a raw frame written straight
     // onto the coordinator's end of the socket — exactly the shape a
     // descendant that inherited the handle produces.
-    await withSession({}, async (session) => {
+    await withSession({}, async (session, child) => {
       const before = session.inboundExecutions.length;
-      session.child.send({
+      child.send({
         type: "inject",
         requestId: "unauthenticated-1",
         payload: {
@@ -498,8 +498,8 @@ describe("governed/managed-caller-session - negative cases required by VC-044-00
   });
 
   test("the child process handle identifies exactly one process", async () => {
-    await withSession({}, async (session) => {
-      const pid = session.child.pid;
+    await withSession({}, async (session, child) => {
+      const pid = child.pid;
       assert.equal(session.childIdentity.pid, pid);
 
       // A second, independent process must not be able to claim this session.
@@ -580,23 +580,23 @@ describe("governed/managed-caller-session - negative cases required by VC-044-00
 
 describe("governed/managed-caller-session - identity does not come from self-report", () => {
   test("self-reported actor, owner, pid and path cannot establish identity", async () => {
-    await withSession({}, async (session) => {
+    await withSession({}, async (session, child) => {
       // These are the fields the current lease CLI trusts. The managed caller
       // session must ignore them entirely: the established identity comes
       // from the process handle and the channel, nothing else.
       const before = { ...session.childIdentity };
       assert.equal(before.actor, undefined);
-      assert.equal(before.pid, session.child.pid);
+      assert.equal(before.pid, child.pid);
     });
   });
 
   test("the established identity object is frozen", async () => {
-    await withSession({}, async (session) => {
+    await withSession({}, async (session, child) => {
       assert.throws(() => {
         "use strict";
         session.childIdentity.pid = 1;
       });
-      assert.equal(session.childIdentity.pid, session.child.pid);
+      assert.equal(session.childIdentity.pid, child.pid);
     });
   });
 
@@ -622,6 +622,58 @@ describe("governed/managed-caller-session - identity does not come from self-rep
       // The batch scope is not part of the session's mutable surface either:
       // it lives in the supervisor's closure, so nothing outside can widen it.
       assert.equal(session.allowedOperations, undefined);
+    });
+  });
+
+  test("session credentials and child handle are not exposed as writable slots", async () => {
+    await withSession({}, async (session) => {
+      assert.equal(Object.hasOwn(session, "secret"), false);
+      assert.equal(Object.hasOwn(session, "child"), false);
+      assert.equal(session.secret, undefined);
+      assert.equal(session.child, undefined);
+      assert.equal(session.pending, undefined);
+      assert.equal(session.listeners, undefined);
+      assert.equal(Object.isExtensible(session), false);
+      assert.throws(() => { session.secret = "forged"; }, TypeError);
+      assert.throws(() => { session.child = { pid: 1 }; }, TypeError);
+      assert.throws(() => { session.state = "closed"; }, TypeError);
+      assert.throws(() => { session.pending = new Map(); }, TypeError);
+      assert.throws(() => Object.defineProperty(session, "secret", { value: "forged" }), TypeError);
+      assert.throws(() => Object.setPrototypeOf(session, {}), TypeError);
+    });
+  });
+
+  test("a second inbound handler cannot bypass the batch permission check", async () => {
+    await withSession({ allowedOperations: [SUPERVISOR_OPERATIONS.PING] }, async (session) => {
+      assert.throws(
+        () => session.onRequest(() => ({ unauthorized: true })),
+        /request handler is already registered/,
+      );
+    });
+  });
+
+  test("prototype audit pollution cannot bypass a changed process start token", async () => {
+    const realFacts = require("../../lib/governed/managed-caller-identity");
+    let replaced = false;
+    await withSession({
+      factSource: {
+        ...realFacts,
+        collectProcessFacts: (child) => ({
+          ...realFacts.collectProcessFacts(child),
+          startToken: replaced ? "linux:replaced" : "linux:established",
+        }),
+      },
+    }, async (session) => {
+      replaced = true;
+      assert.equal(session.auditProcessContinuity().reason, "process_replaced_pid_reuse");
+      assert.throws(() => {
+        ManagedCallerSession.prototype.auditProcessContinuity = () => ({ ok: true });
+      }, TypeError);
+      await assert.rejects(
+        () => session.request(SUPERVISOR_OPERATIONS.PING),
+        /process_replaced_pid_reuse/,
+      );
+      assert.equal(session.closed, true);
     });
   });
 
@@ -715,8 +767,8 @@ describe("governed/managed-caller-session - identity does not come from self-rep
     });
     try {
       const written = [];
-      const originalSend = session.child.send.bind(session.child);
-      session.child.send = (message, ...rest) => {
+      const originalSend = child.send.bind(child);
+      child.send = (message, ...rest) => {
         written.push(message);
         return originalSend(message, ...rest);
       };
@@ -748,7 +800,7 @@ describe("governed/managed-caller-session - identity does not come from self-rep
       const original = session.childIdentity;
 
       // Writing the old slot name must not change what the session reports.
-      session._childIdentity = { pid: 1, owner: "attacker" };
+      assert.throws(() => { session._childIdentity = { pid: 1, owner: "attacker" }; }, TypeError);
       assert.equal(session.childIdentity, original, "the identity was replaced");
 
       // There must be NO write handle on the instance at all. An earlier
@@ -783,11 +835,8 @@ describe("governed/managed-caller-session - identity does not come from self-rep
         assert.doesNotMatch(name, /^#/, `private field ${name} is visible`);
       }
 
-      // Defining a same-named property creates a NEW property that nothing
-      // reads, so it is harmless -- what matters is that it is not a handle
-      // to the real identity. The read-only accessor itself must still resist
-      // redefinition and assignment.
-      session._setChildIdentity = () => {};
+      // An old writer name cannot be added to the sealed instance either.
+      assert.throws(() => { session._setChildIdentity = () => {}; }, TypeError);
       assert.equal(session.childIdentity, original, "the identity was replaced");
 
       assert.throws(() => {
@@ -887,10 +936,12 @@ describe("governed/managed-caller-session - identity does not come from self-rep
       // Every route to the recorded identity has to be closed.
       const attackerToken = "linux:the-process-that-replaced-it";
 
-      session._childIdentity = Object.freeze({
-        ...session.childIdentity,
-        startToken: attackerToken,
-      });
+      assert.throws(() => {
+        session._childIdentity = Object.freeze({
+          ...session.childIdentity,
+          startToken: attackerToken,
+        });
+      }, TypeError);
       assert.throws(() => {
         session._setChildIdentity(Object.freeze({
           ...session.childIdentity,

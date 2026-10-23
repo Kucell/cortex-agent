@@ -197,6 +197,12 @@ describe("governed/managed-caller-identity - socket facts", () => {
 });
 
 describe("governed/managed-caller-identity - fact collection", () => {
+  test("production fact readers cannot be replaced through module exports", () => {
+    const facts = require("../../lib/governed/managed-caller-identity");
+    assert.equal(Object.isFrozen(facts), true);
+    assert.throws(() => { facts.collectProcessFacts = () => null; }, TypeError);
+  });
+
   test("collecting facts for a missing child yields empty values, not a throw", () => {
     const facts = collectProcessFacts(null);
     assert.equal(facts.pid, 0);
