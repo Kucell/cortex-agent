@@ -1349,13 +1349,19 @@ test("MS-003 the anchor domain refuses a directory owned by another account", { 
     // directory. A directory owned by somebody else gives that owner a
     // second writer: it can delete and replace a journal entry without any
     // permission bit being set for it.
+    //
+    // The owner is a condition of its own: it may always rewrite the ACL of
+    // the object it owns, so it is a second writer that no ACE describes.
+    // It is therefore reported as ERR_ANCHOR_OWNERSHIP rather than being
+    // collapsed into the writer-set error, which describes a different
+    // failure (an ACE granting write to somebody else).
     const realUid = process.getuid;
     process.getuid = () => (realUid() + 1);
     try {
       assert.throws(() => ProtectedPermitStore.open(f.file, {
         expectedDecisionId: "D-test-init", minimumEpoch: 1, anchorDir: f.anchorDir, clock: f.clock,
         anchorMode: anchorModule.ANCHOR_MODE.strict,
-      }), { code: "ERR_ANCHOR_WRITER_SET" });
+      }), { code: "ERR_ANCHOR_OWNERSHIP" });
     } finally {
       process.getuid = realUid;
     }
@@ -1371,6 +1377,13 @@ test("MS-003 the anchor domain refuses a witness owned by another account", { sk
     // say. A witness owned by another identity is therefore a second writer
     // that can rewrite the witness in place, so the witnesses themselves
     // have to belong to the service identity.
+    //
+    // The witness and the anchor directory are written by the same service
+    // process, so they share an owner. Faking the declared identity makes
+    // the directory owner differ as well, and the directory-level owner
+    // check is the one that fires first. The refusal is therefore reported
+    // as ERR_ANCHOR_OWNERSHIP; the ACE-level second writer stays covered by
+    // the authorization adapter's own test.
     const entry = fs.readdirSync(f.anchorDir).find((name) => name.startsWith("protected-anchor-entry-"));
     assert.ok(entry, "the anchor domain must contain a journal entry");
     const realUid = process.getuid;
@@ -1379,7 +1392,7 @@ test("MS-003 the anchor domain refuses a witness owned by another account", { sk
       assert.throws(() => ProtectedPermitStore.open(f.file, {
         expectedDecisionId: "D-test-init", minimumEpoch: 1, anchorDir: f.anchorDir, clock: f.clock,
         anchorMode: anchorModule.ANCHOR_MODE.strict,
-      }), { code: "ERR_ANCHOR_WRITER_SET" });
+      }), { code: "ERR_ANCHOR_OWNERSHIP" });
     } finally {
       process.getuid = realUid;
     }
