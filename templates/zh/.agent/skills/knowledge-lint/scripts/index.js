@@ -218,28 +218,6 @@ function collectMissingReadmes() {
     .map((relativePath) => ({ path: relativePath }));
 }
 
-// T-TS-003 / MS-3: the structured truth source is authoritative for the
-// active-task count. The markdown regex stays a fallback for projects that
-// have not run `migrate-task-state` yet.
-function countActiveTasksFromTruthSource() {
-  try {
-    const taskState = require(path.join(root, '.agent', 'tasks', 'scripts', 'task-state.js'));
-    const count = taskState.countActiveTasksStructured({ projectRoot: root });
-    return count === null || count === undefined ? null : count;
-  } catch (_) {
-    return null;
-  }
-}
-
-// The active-tasks heading must appear exactly once in the whole file.
-// A duplicated section is the drift signature this project has hit before:
-// writers append a second active-tasks block and readers silently pick
-// the wrong one.
-function countActiveSectionHeadings(content) {
-  const matches = content.match(/^##\s+.*(?:当前活跃任务|Active Tasks).*$/gm);
-  return matches ? matches.length : 0;
-}
-
 function countActiveTasks(taskProgressContent) {
   // T-TS-003 / MS-3: prefer the structured truth source. Fall back to the
   // markdown table when the project has no task records (not migrated yet).
@@ -264,6 +242,28 @@ function countActiveTasks(taskProgressContent) {
     .filter((line) => !/任务 ID|优先级|描述|进度|Task ID|Priority|Description|Progress/.test(line))
     .filter((line) => line.trim() !== '|')
     .length;
+}
+
+// T-TS-003 / MS-3: the structured truth source is authoritative for the
+// active-task count. The markdown regex stays a fallback for projects that
+// have not run `migrate-task-state` yet.
+function countActiveTasksFromTruthSource() {
+  try {
+    const taskState = require(path.join(root, '.agent', 'tasks', 'scripts', 'task-state.js'));
+    const count = taskState.countActiveTasksStructured({ projectRoot: root });
+    return count === null || count === undefined ? null : count;
+  } catch (_) {
+    return null;
+  }
+}
+
+// The active-tasks heading must appear exactly once in the whole file.
+// A duplicated section is the drift signature this project has hit before:
+// writers append a second "## 🔥 当前活跃任务" block and readers silently
+// pick the wrong one.
+function countActiveSectionHeadings(content) {
+  const matches = content.match(/^##\s+.*(?:当前活跃任务|Active Tasks).*$/gm);
+  return matches ? matches.length : 0;
 }
 
 function collectPlanIssues() {
@@ -406,7 +406,10 @@ function collectArchitectureDocMismatches() {
 
 // ===== Frontmatter OKF V0.2 checks (M-018 MS-001 F-003) =====
 
-const OKF_STATUS_VALUES = new Set(['stable', 'draft', 'deprecated']);
+// OKF V0.2 + post-V0.2 扩展。V0.2 原始枚举为 stable/draft/deprecated；
+// 新增 experimental (POC/试运行但未 ship) 与 reference (文档化但未 ship, 仅做知识参考)。
+// 注: experimental 与 reference 区别于 stable (已 ship + 主路径使用) 与 draft (草稿/编写中)。
+const OKF_STATUS_VALUES = new Set(['stable', 'draft', 'deprecated', 'experimental', 'reference']);
 
 // 简单 frontmatter 解析:仅识别 key-value / inline-list / block-list
 // 不依赖 yaml 包(零依赖)
@@ -469,7 +472,7 @@ function collectFrontmatterViolations() {
           rule_id: 'R-LINT-008',
           severity: 'warning',
           file: rel,
-          message: `status "${fm.status}" 不是 OKF V0.2 枚举 (stable / draft / deprecated)`,
+          message: `status "${fm.status}" 不是 OKF V0.2 枚举 (stable / draft / deprecated / experimental / reference)`,
         });
       }
     }

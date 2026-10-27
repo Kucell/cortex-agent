@@ -3,7 +3,20 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const MATCH = /^\/cortex-release publish v(\d+\.\d+\.\d+) decision=(D-[A-Za-z0-9._-]+) waitpoint=(WP-[A-Za-z0-9._-]+)$/;
-const ALLOWED = new Set(["package.json","package-lock.json","pnpm-lock.yaml",".claude-plugin/plugin.json",".claude-plugin/marketplace.json","CHANGELOG.md","tests/release/release-version-consistency.test.js"]);
+// The allowlist is derived from the version-carrier registry so a carrier
+// cannot join the release flow without also being permitted in the
+// release-preparation PR. Beyond the carriers themselves, a release PR needs
+// the changelog and the consistency test that guards the carrier versions.
+const { carrierFiles } = require(path.join(__dirname, "..", "..", "lib", "release", "version-carriers"));
+const ALLOWED = new Set([...carrierFiles(), "pnpm-lock.yaml", "CHANGELOG.md", "tests/release/release-version-consistency.test.js"]);
+// The single-maintainer exception is bound to one exact release version. The
+// binding lives in a single constant because it used to be hardcoded twice —
+// once in the command check and once in the Decision-rationale pattern — and
+// the two must name the same version or the waiver becomes unusable.
+const SINGLE_MAINTAINER_EXCEPTION_VERSION = "1.15.6";
+const SINGLE_MAINTAINER_EXCEPTION_VERSION_RE = new RegExp(
+  SINGLE_MAINTAINER_EXCEPTION_VERSION.replace(/\./g, "\\."),
+);
 function must(ok, reason) { if (!ok) throw new Error("RELEASE_GATE_BLOCKED: " + reason); }
 function parseCommand(body) {
   const m = String(body || "").trim().match(MATCH);
@@ -39,7 +52,7 @@ function validateGovernance(decision, waitpoint, sha, now=new Date()) {
       decision.options.includes("approve-single-maintainer") &&
       typeof decision.rationale === "string" &&
       /single-maintainer/i.test(decision.rationale) &&
-      /1\.15\.4/.test(decision.rationale)
+      SINGLE_MAINTAINER_EXCEPTION_VERSION_RE.test(decision.rationale)
     )) &&
     decision.resolved_by === "interactive-user" && decision.workflow_gate === "user" &&
     decision.resolved_at && Number.isFinite(Date.parse(decision.resolved_at)) &&
@@ -133,7 +146,8 @@ async function verifyApproval({event,eventName="issue_comment",actor="Kucell",re
   validateGovernance(decision,waitpoint,mainSha,now);
   const waiver = decision.selected_option === "approve-single-maintainer";
   if (waiver) {
-    must(command.version === "1.15.4", "single-maintainer exception limited to v1.15.4");
+    must(command.version === SINGLE_MAINTAINER_EXCEPTION_VERSION,
+      "single-maintainer exception limited to v" + SINGLE_MAINTAINER_EXCEPTION_VERSION);
     // A reviewed metadata PR can precede later main commits. The actual release
     // approval still binds to the newest exact main SHA (not the stale PR SHA).
     const comparison = await getJson(api+"/compare/"+
@@ -160,4 +174,4 @@ async function main() {
   console.log("Governed release gate verified exact HEAD "+result.sha+" from merged PR #"+result.pr);
 }
 if (require.main === module) main().catch(e=>{console.error(e.message);process.exitCode=1;});
-module.exports = {parseCommand,hasIndependentApproval,validateGovernance,resolveReleaseTrigger,verifyApproval};
+module.exports = {parseCommand,hasIndependentApproval,validateGovernance,resolveReleaseTrigger,verifyApproval,ALLOWED,SINGLE_MAINTAINER_EXCEPTION_VERSION};

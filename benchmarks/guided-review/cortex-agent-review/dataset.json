@@ -1,0 +1,257 @@
+{
+  "dataset_id": "cortex-agent-review",
+  "dataset_version": "1",
+  "description": "Real review cases for the Cortex Agent reviewer-backend contract. Every case reproduces a defect class that actually occurred in this repository's history and asserts the finding set mechanically — no LLM judge, no network. The candidate is a reviewer backend: it is given a raw findings document and has to produce a guided-review artifact that conforms to the published schema, keeps the findings that deserve to be kept, and drops the ones that do not.",
+  "cases": [
+    {
+      "case_id": "test-runner-false-green",
+      "weight": 3,
+      "description": "`scripts/test-runner.cjs` shipped two defects that a review has to catch: the runner handed NODE_TEST_CONTEXT to its child processes, and `node --test` then produced no TAP output and exited 0 even when the test failed (a false green in CI); and the retry diagnostic announced a successful exclusive re-run even when the re-run had failed too. The case also pins the contract: a finding outside the reviewed changeset, a finding with an unknown risk level and a finding missing `intent` must all be dropped rather than reported.",
+      "fixture": {
+        "files": {
+          "scripts/test-runner.cjs": "# Reduced snapshot of the historical scripts/test-runner.cjs.\nconst { spawnSync } = require(\"node:child_process\");\n\nfunction childEnv(extra) {\n  return { ...process.env, ...extra };\n}\n\nfunction runFile(file) {\n  return spawnSync(process.execPath, [\"--test\", file], { env: childEnv() });\n}\n",
+          "review-input.json": {
+            "artifact_id": "GR-test-runner-false-green",
+            "task_id": "T-H30",
+            "run_id": "R-review-runner-regression",
+            "session_id": "S-review-runner-regression",
+            "workspace_ids": ["WS-cortex-agent"],
+            "base_revision": "6b2c0f10",
+            "head_revision": "63e53de7",
+            "generated_at": "2026-10-22T00:00:00.000Z",
+            "changed_files": ["scripts/test-runner.cjs"],
+            "findings": [
+              {
+                "group_id": "F-001",
+                "title": "NODE_TEST_CONTEXT 泄漏给子进程导致失败被伪装成通过",
+                "intent": "让子进程的失败真实反映到父进程退出码",
+                "files": ["scripts/test-runner.cjs"],
+                "summary": "runner 从测试上下文启动时把 NODE_TEST_CONTEXT 传给子进程，node --test 因此不输出 TAP 且失败也退出 0，runner 会把没看到的结果当绿灯。",
+                "impact": "CI 全绿但断言从未执行，回归可以静默合入。",
+                "risk": "high",
+                "category": "test",
+                "validation_refs": ["VC-review-runner-01"],
+                "follow_ups": ["在 childEnv 中剥离 NODE_TEST_CONTEXT"]
+              },
+              {
+                "group_id": "F-002",
+                "title": "独占重跑失败时仍提示重跑通过",
+                "intent": "让重试诊断如实反映结果",
+                "files": ["scripts/test-runner.cjs"],
+                "summary": "重试也失败时输出仍写着独占重跑通过，把真失败报成通过。",
+                "impact": "假红排查方向被误导，真实失败被吞掉。",
+                "risk": "medium",
+                "category": "quality",
+                "validation_refs": [],
+                "follow_ups": ["重跑失败时改写提示文案"]
+              },
+              {
+                "group_id": "F-003",
+                "title": "重试退避在同步路径上使用阻塞等待",
+                "intent": "避免同步路径占用事件循环",
+                "files": ["scripts/test-runner.cjs"],
+                "summary": "同步退避改用 Atomics.wait，比 sleep 更可控。",
+                "impact": "同步路径不会长时间占用事件循环。",
+                "risk": "low",
+                "category": "performance",
+                "validation_refs": [],
+                "follow_ups": []
+              },
+              {
+                "group_id": "F-004",
+                "title": "审查了本次改动之外的文件",
+                "intent": "越界审查",
+                "files": ["lib/commands/init.js"],
+                "summary": "该文件不在本次 changeset 内，不应出现在审查结论里。",
+                "impact": "审查范围被污染，结论无法归因到本次改动。",
+                "risk": "low",
+                "category": "quality",
+                "validation_refs": [],
+                "follow_ups": []
+              },
+              {
+                "group_id": "F-005",
+                "title": "风险等级用了契约之外的值",
+                "intent": "表达风险等级",
+                "files": ["scripts/test-runner.cjs"],
+                "summary": "风险等级写成 blocker，而契约只接受 low/medium/high/critical。",
+                "impact": "风险统计失真，artifact 不符合已发布 schema。",
+                "risk": "blocker",
+                "category": "quality",
+                "validation_refs": [],
+                "follow_ups": []
+              },
+              {
+                "group_id": "F-006",
+                "title": "缺少意图说明的 finding",
+                "intent": "",
+                "files": ["scripts/test-runner.cjs"],
+                "summary": "没有写明这条 finding 想解决什么问题。",
+                "impact": "无法判断该 finding 是否真的指向本次改动。",
+                "risk": "low",
+                "category": "quality",
+                "validation_refs": [],
+                "follow_ups": []
+              }
+            ]
+          }
+        }
+      },
+      "candidates": {
+        "reference": {
+          "command": ["node", "${cortex}/templates/_shared/.agent/skills/agent-review-benchmark/scripts/reviewer-backend.js", "--backend", "builtin", "--input", "review-input.json", "--output", "guided-review.json"]
+        },
+        "noop": {
+          "command": ["node", "-e", "process.exit(0)"]
+        },
+        "lenient": {
+          "command": ["node", "${cortex}/benchmarks/guided-review/cortex-agent-review/candidates/lenient-backend.cjs", "--input", "review-input.json", "--output", "guided-review.json"]
+        }
+      },
+      "assertions": [
+        {
+          "id": "false-green-detected",
+          "kind": "finding_present",
+          "file": "scripts/test-runner.cjs",
+          "risk": "high",
+          "category": "test",
+          "title_contains": "NODE_TEST_CONTEXT"
+        },
+        {
+          "id": "retry-message-detected",
+          "kind": "finding_present",
+          "file": "scripts/test-runner.cjs",
+          "risk": "medium",
+          "category": "quality",
+          "title_contains": "独占重跑"
+        },
+        {
+          "id": "low-risk-finding-kept",
+          "kind": "finding_present",
+          "file": "scripts/test-runner.cjs",
+          "risk": "low",
+          "category": "performance"
+        },
+        {
+          "id": "artifact-conforms-to-schema",
+          "kind": "artifact_schema_valid"
+        },
+        {
+          "id": "out-of-changeset-dropped",
+          "kind": "finding_absent",
+          "group_id": "F-004"
+        },
+        {
+          "id": "unknown-risk-dropped",
+          "kind": "finding_absent",
+          "group_id": "F-005"
+        },
+        {
+          "id": "missing-intent-dropped",
+          "kind": "finding_absent",
+          "group_id": "F-006"
+        }
+      ]
+    },
+    {
+      "case_id": "runtime-evidence-dead-links",
+      "weight": 2,
+      "description": "`.agent/skills/runtime-evidence/SKILL.md` linked to `docs/reliability/verification-templates.md` and to a workflow path. The L1 templates do not publish `docs/`, so both links are dead for every project that receives the template — the defect survived one round of distribution repair and came back on the next sync. The case also pins the file-existence check: a finding that cites a file which is not present in the workspace must be dropped, not reported.",
+      "fixture": {
+        "files": {
+          ".agent/skills/runtime-evidence/SKILL.md": "---\nname: runtime-evidence\ndescription: 采集运行时验证证据。\n---\n\n# Runtime Evidence\n\n模板说明见 [验证模板](../../../docs/reliability/verification-templates.md)。\n\n执行流程见 [验证工作流](../../../workflows/runtime-evidence.md)。\n",
+          "review-input.json": {
+            "artifact_id": "GR-runtime-evidence-dead-links",
+            "task_id": "T-H30",
+            "run_id": "R-review-dead-links",
+            "session_id": "S-review-dead-links",
+            "workspace_ids": ["WS-cortex-agent"],
+            "base_revision": "f3866b5",
+            "head_revision": "f3866b5",
+            "generated_at": "2026-10-22T00:00:00.000Z",
+            "changed_files": [
+              ".agent/skills/runtime-evidence/SKILL.md",
+              ".agent/skills/runtime-evidence/references/verification-templates.md"
+            ],
+            "findings": [
+              {
+                "group_id": "F-101",
+                "title": "SKILL.md 指向未分发的 docs/ 路径",
+                "intent": "让分发后的引用可达",
+                "files": [".agent/skills/runtime-evidence/SKILL.md"],
+                "summary": "L1 模板不发布 docs/，指向 ../../../docs/reliability/verification-templates.md 的链接在下游必然 404。",
+                "impact": "下游项目按链接取不到验证模板，运行时证据流程无法照着走。",
+                "risk": "medium",
+                "category": "docs",
+                "validation_refs": ["VC-review-dead-link-01"],
+                "follow_ups": ["改成纯文本说明，不引用未分发路径"]
+              },
+              {
+                "group_id": "F-102",
+                "title": "SKILL.md 指向未分发的 workflows/ 路径",
+                "intent": "让分发后的引用可达",
+                "files": [".agent/skills/runtime-evidence/SKILL.md"],
+                "summary": "L1 模板不发布 workflows/，指向 ../../../workflows/runtime-evidence.md 的链接在下游必然 404。",
+                "impact": "下游项目找不到对应的验证工作流。",
+                "risk": "medium",
+                "category": "docs",
+                "validation_refs": [],
+                "follow_ups": ["改成纯文本说明，不引用未分发路径"]
+              },
+              {
+                "group_id": "F-103",
+                "title": "引用了工作区里不存在的文件",
+                "intent": "定位验证模板",
+                "files": [".agent/skills/runtime-evidence/references/verification-templates.md"],
+                "summary": "该路径在本次检出的工作区中并不存在。",
+                "impact": "结论指向一个不存在的文件，读者无法核对。",
+                "risk": "low",
+                "category": "docs",
+                "validation_refs": [],
+                "follow_ups": []
+              }
+            ]
+          }
+        }
+      },
+      "candidates": {
+        "reference": {
+          "command": ["node", "${cortex}/templates/_shared/.agent/skills/agent-review-benchmark/scripts/reviewer-backend.js", "--backend", "builtin", "--input", "review-input.json", "--output", "guided-review.json"]
+        },
+        "noop": {
+          "command": ["node", "-e", "process.exit(0)"]
+        },
+        "lenient": {
+          "command": ["node", "${cortex}/benchmarks/guided-review/cortex-agent-review/candidates/lenient-backend.cjs", "--input", "review-input.json", "--output", "guided-review.json"]
+        }
+      },
+      "assertions": [
+        {
+          "id": "dead-doc-link-detected",
+          "kind": "finding_present",
+          "file": ".agent/skills/runtime-evidence/SKILL.md",
+          "risk": "medium",
+          "category": "docs",
+          "title_contains": "docs/"
+        },
+        {
+          "id": "dead-workflow-link-detected",
+          "kind": "finding_present",
+          "file": ".agent/skills/runtime-evidence/SKILL.md",
+          "risk": "medium",
+          "category": "docs",
+          "title_contains": "workflows/"
+        },
+        {
+          "id": "artifact-conforms-to-schema",
+          "kind": "artifact_schema_valid"
+        },
+        {
+          "id": "missing-file-dropped",
+          "kind": "finding_absent",
+          "group_id": "F-103"
+        }
+      ]
+    }
+  ]
+}
