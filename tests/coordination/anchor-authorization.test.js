@@ -14,6 +14,7 @@
 // the host allows it.
 
 const assert = require("node:assert/strict");
+const childProcess = require("node:child_process");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
@@ -21,6 +22,128 @@ const test = require("node:test");
 
 const authz = require("../../lib/coordination/anchor-authorization");
 const anchor = require("../../lib/coordination/protected-anchor");
+
+// The Windows snapshot reader shells out to PowerShell. The tests below
+// replace execFileSync with a recording stub so that the ARGUMENT SHAPE of
+// that call can be asserted on a host that is not Windows. The stub mimics
+// the two properties of the real call that the defect depended on:
+//
+//   1. `input` is written to the child's STDIN, and it is only delivered
+//      when stdio[0] is "pipe" (with "ignore" the child's stdin is /dev/null,
+//      so the payload is dropped).
+//   2. a non-zero exit status makes execFileSync throw, which is how the
+//      product's catch block turns a failed read into `null`.
+//
+// The stub therefore reproduces the real failure mode: a script whose LAST
+// command takes no positional parameters fails as soon as anything is
+// appended to the command line, and a script that reads the payload from
+// STDIN only sees it when stdin is piped.
+function installPowerShellStub(handler) {
+  const real = childProcess.execFileSync;
+  const calls = [];
+  childProcess.execFileSync = function stubbed(file, args, options) {
+    if (typeof file === "string" && /powershell/i.test(file)) {
+      const argv = (Array.isArray(args) ? args : []).map(String);
+      const stdio = (options && options.stdio) || ["pipe", "pipe", "pipe"];
+      const record = { argv, stdio, stdin: null };
+      calls.push(record);
+      // Deliver the payload on STDIN, but only when stdin is a pipe.
+      if (options && Object.prototype.hasOwnProperty.call(options, "input")
+          && stdio[0] === "pipe") {
+        record.stdin = String(options.input);
+      }
+      const outcome = handler(record);
+      if (outcome && outcome.status !== 0) {
+        const error = new Error("Command failed: powershell.exe " + argv.join(" "));
+        error.status = outcome.status;
+        error.stdout = outcome.stdout || "";
+        error.stderr = outcome.stderr || "";
+        throw error;
+      }
+      return outcome ? outcome.stdout : "";
+    }
+    return real.apply(childProcess, arguments);
+  };
+  // The module binds execFileSync at load time
+  // (`const { execFileSync } = require("node:child_process")`), so patching
+  // the child_process object after the module was loaded has no effect on it.
+  // The module is therefore re-required with the stub in place, and the
+  // cache entry is restored afterwards so the other tests keep the real
+  // implementation.
+  const modulePath = require.resolve("../../lib/coordination/anchor-authorization");
+  const cached = require.cache[modulePath];
+  delete require.cache[modulePath];
+  const stubbed = require(modulePath);
+  return {
+    calls,
+    module: stubbed,
+    restore() {
+      childProcess.execFileSync = real;
+      delete require.cache[modulePath];
+      if (cached) require.cache[modulePath] = cached;
+    },
+  };
+}
+
+// The PowerShell script the product ships reads the paths from STDIN. This
+// stub reproduces the real semantics closely enough to catch the defect the
+// live measurement found: `powershell.exe -Command <script> <args...>`
+// APPENDS the trailing arguments to the LAST command of the script, so a
+// script ending in `ConvertTo-Json ... -Compress` fails with
+// "A positional parameter cannot be found that accepts argument 'D:'".
+// A script that reads STDIN works as long as stdin is piped.
+function emulatePowerShell(record) {
+  const script = record.argv[3] || "";
+  const trailing = record.argv.slice(4);
+  const readsStdin = script.indexOf("[Console]::In.ReadToEnd()") !== -1;
+  const lastCommand = script.slice(script.lastIndexOf(";") + 1).trim();
+  const lastCommandTakesNoPositional = /ConvertTo-Json/.test(lastCommand);
+
+  if (trailing.length > 0) {
+    if (lastCommandTakesNoPositional) {
+      return {
+        status: 1,
+        stdout: "",
+        stderr: "ConvertTo-Json : A positional parameter cannot be found that accepts argument '"
+          + trailing[0] + "'.",
+      };
+    }
+    if (readsStdin) {
+      return { status: 0, stdout: JSON.stringify(trailing) };
+    }
+    return { status: 0, stdout: "" };
+  }
+
+  if (!readsStdin) return { status: 0, stdout: "" };
+  if (record.stdin === null) {
+    return {
+      status: 1,
+      stdout: "",
+      stderr: "Get-Acl : Cannot validate argument on parameter 'LiteralPath'. The argument is null or empty.",
+    };
+  }
+  let paths;
+  try { paths = JSON.parse(record.stdin); }
+  catch (e) { return { status: 1, stdout: "", stderr: "ConvertFrom-Json : " + e.message }; }
+  if (!Array.isArray(paths)) paths = [paths];
+  const list = paths.map((p) => ({
+    Path: p,
+    Owner: OWNER_BY_PATH[p] || "S-1-5-18",
+    CurrentSid: "S-1-5-21-1000-1001",
+    Groups: [],
+    Access: [{ Sid: "S-1-5-18", Type: "Allow", Rights: "FullControl" }],
+  }));
+  return { status: 0, stdout: JSON.stringify(list.length === 1 ? list[0] : list) };
+}
+
+// The owner each stubbed path reports. Two DIFFERENT paths with two
+// DIFFERENT owners is what makes the "the paths really arrived" assertion
+// meaningful: a call that lost its arguments can only ever return the same
+// owner for both.
+const OWNER_BY_PATH = {
+  "D:\\anchor-one": "S-1-5-80-1111-2222-3333-4444-5555",
+  "D:\\anchor-two": "S-1-5-32-544",
+};
 
 function tempDir(prefix) {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
@@ -703,5 +826,132 @@ test("MS-003 a group list that is not a Set fails closed with the registered cod
   } finally {
     Object.defineProperty(process, "platform", { value: realPlatform, configurable: true });
     fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// The Windows DACL read: the paths have to REACH the PowerShell script.
+//
+// A live measurement on the Windows host (M-044 MS-003, 2026-10-27) found
+// that windowsAclSnapshot() and windowsAclSnapshotBatch() returned null on
+// EVERY path on Windows. The cause was the argument shape of the call:
+//
+//     powershell.exe -NoProfile -NonInteractive -Command <script> - <paths...>
+//
+// `-Command` APPENDS the trailing arguments to the LAST command of the
+// script. The script ended in
+//
+//     $result | ConvertTo-Json -Depth 5 -Compress
+//
+// so it became
+//
+//     $result | ConvertTo-Json -Depth 5 -Compress - D:\path
+//
+// and ConvertTo-Json has no positional parameter that accepts "D:\path":
+//
+//     ConvertTo-Json : A positional parameter cannot be found that accepts
+//     argument 'D:'.
+//
+// -> exit code 1 -> execFileSync throws -> the catch block returns null.
+//
+// The consequence was not a narrow one: the writer set, the owner and the
+// ancestor chain all come from the DACL snapshot, so on the TARGET platform
+// every one of those judgements was stuck at the fail-closed "unknown"
+// branch and could not be proven at all.
+//
+// The fix passes the paths on STDIN. The tests below pin the argument shape
+// so the defect cannot come back unnoticed, and they pin the CONTENT so a
+// call that loses or mangles its paths cannot pass either.
+// ─────────────────────────────────────────────────────────────────────────────
+
+test("MS-003 the Windows DACL read delivers its paths to the snapshot script", () => {
+  // The single-path read. Before the fix this returned null on Windows for
+  // every path; the owner below is what a readable DACL actually yields.
+  const stub = installPowerShellStub(emulatePowerShell);
+  try {
+    const snapshot = stub.module.windowsAclSnapshot("D:\\anchor-one");
+    assert.notEqual(snapshot, null,
+      "the DACL snapshot must not be null: a null means the authorization model is unknown");
+    assert.equal(snapshot.Owner, "S-1-5-80-1111-2222-3333-4444-5555");
+    assert.equal(snapshot.Path, "D:\\anchor-one");
+
+    assert.equal(stub.calls.length, 1);
+    const call = stub.calls[0];
+    // The paths must NOT be trailing command-line arguments: that is the
+    // carrier that made ConvertTo-Json fail on every path.
+    assert.deepEqual(call.argv.slice(4), [],
+      "the snapshot call must not append the paths to the command line");
+    // The paths must arrive on STDIN, and STDIN must be piped or the payload
+    // is discarded before the script ever sees it.
+    assert.equal(call.stdio[0], "pipe",
+      "stdin must be piped, otherwise the path payload is dropped");
+    assert.deepEqual(JSON.parse(call.stdin), ["D:\\anchor-one"]);
+  } finally {
+    stub.restore();
+  }
+});
+
+test("MS-003 the Windows batch DACL read keeps each path paired with its own owner", () => {
+  // The regression case for the exact defect: TWO DIFFERENT paths with TWO
+  // DIFFERENT owners. A call that loses its arguments can only produce one
+  // owner for both, so this assertion cannot be satisfied by a broken call.
+  const stub = installPowerShellStub(emulatePowerShell);
+  try {
+    const paths = ["D:\\anchor-one", "D:\\anchor-two"];
+    const batch = stub.module.windowsAclSnapshotBatch(paths);
+    assert.notEqual(batch, null,
+      "the DACL snapshot batch must not be null: a null means the authorization model is unknown");
+    assert.equal(batch.size, 2);
+    assert.equal(batch.get("D:\\anchor-one").Owner, "S-1-5-80-1111-2222-3333-4444-5555");
+    assert.equal(batch.get("D:\\anchor-two").Owner, "S-1-5-32-544");
+    // Each path must be present under its OWN key, so the map is not merely
+    // right in size but right in content.
+    assert.deepEqual(Array.from(batch.keys()).sort(), paths.slice().sort());
+
+    assert.equal(stub.calls.length, 1);
+    const call = stub.calls[0];
+    assert.deepEqual(call.argv.slice(4), [],
+      "the batch snapshot call must not append the paths to the command line");
+    assert.equal(call.stdio[0], "pipe",
+      "stdin must be piped, otherwise the path payload is dropped");
+    assert.deepEqual(JSON.parse(call.stdin), paths);
+  } finally {
+    stub.restore();
+  }
+});
+
+test("MS-003 the Windows DACL read would fail if the paths went back on the command line", () => {
+  // This test states the failure mode explicitly, so the fix cannot be
+  // reverted to the command-line form by a later reader who believes it is
+  // equivalent. The stub reproduces PowerShell's real behaviour: trailing
+  // arguments are appended to the LAST command of the script, and the last
+  // command here is a ConvertTo-Json that accepts no positional argument.
+  const stub = installPowerShellStub(emulatePowerShell);
+  try {
+    const argv = ["-NoProfile", "-NonInteractive", "-Command",
+      "$result | ConvertTo-Json -Depth 5 -Compress", "-", "D:\\anchor-one"];
+    const outcome = emulatePowerShell({ argv, stdio: ["pipe", "pipe", "pipe"], stdin: null });
+    assert.equal(outcome.status, 1,
+      "the command-line form must be shown to fail, otherwise this test proves nothing");
+    assert.match(outcome.stderr, /positional parameter cannot be found/);
+  } finally {
+    stub.restore();
+  }
+});
+
+test("MS-003 the Windows writer set is derived from the delivered DACL snapshot", () => {
+  // The judgement that was unreachable on Windows: the writer set of a path
+  // whose DACL grants write to exactly one service virtual account.
+  const stub = installPowerShellStub(emulatePowerShell);
+  try {
+    const writers = stub.module.windowsWritableIdentities("D:\\anchor-one");
+    assert.notEqual(writers, null,
+      "the writer set must be enumerable; null is the unknown that failed closed");
+    assert.ok(writers instanceof Set);
+    // The owner is always a writer, and the stub's DACL grants FullControl to
+    // SYSTEM, so the set carries the owner and the ACE identity.
+    assert.ok(writers.has("sid:S-1-5-80-1111-2222-3333-4444-5555"));
+  } finally {
+    stub.restore();
   }
 });
