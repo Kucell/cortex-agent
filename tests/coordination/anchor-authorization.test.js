@@ -143,6 +143,15 @@ function emulatePowerShell(record) {
 const OWNER_BY_PATH = {
   "D:\\anchor-one": "S-1-5-80-1111-2222-3333-4444-5555",
   "D:\\anchor-two": "S-1-5-32-544",
+  // A path with a space and a path with a double quote in it. The command
+  // line carrier could not have carried either of these: PowerShell joins
+  // the trailing arguments with SPACES before the script is parsed, so a
+  // path with a space arrives as two separate words, and a path with a
+  // double quote is broken the same way. STDIN has no such carrier -- the
+  // JSON payload reaches the script verbatim -- so these paths are the
+  // reason the fix is not merely a different spelling of the same thing.
+  "C:\\Program Files\\SamHMI\\anchor": "S-1-5-80-1111-2222-3333-4444-5555",
+  "D:\\anchor-\"quoted\"": "S-1-5-32-544",
 };
 
 function tempDir(prefix) {
@@ -915,6 +924,34 @@ test("MS-003 the Windows batch DACL read keeps each path paired with its own own
     assert.equal(call.stdio[0], "pipe",
       "stdin must be piped, otherwise the path payload is dropped");
     assert.deepEqual(JSON.parse(call.stdin), paths);
+  } finally {
+    stub.restore();
+  }
+});
+
+test("MS-003 the Windows DACL read carries a path with a space and a path with a quote", () => {
+  // The two paths that the command-line carrier could not have delivered.
+  // If the fix ever goes back to passing the paths as trailing arguments,
+  // these two arrive as two words each and the snapshot cannot be read --
+  // and on Windows that means the whole authorization model is unknown,
+  // which is the failure this whole change exists to remove.
+  const stub = installPowerShellStub(emulatePowerShell);
+  try {
+    const paths = ["C:\\Program Files\\SamHMI\\anchor", "D:\\anchor-\"quoted\""];
+    const batch = stub.module.windowsAclSnapshotBatch(paths);
+    assert.notEqual(batch, null,
+      "a path with a space or a quote must still yield a readable snapshot");
+    assert.equal(batch.size, 2);
+    assert.equal(batch.get("C:\\Program Files\\SamHMI\\anchor").Owner,
+      "S-1-5-80-1111-2222-3333-4444-5555");
+    assert.equal(batch.get("D:\\anchor-\"quoted\"").Owner, "S-1-5-32-544");
+
+    // The payload on STDIN must be the JSON array of the paths, byte for
+    // byte -- a shell-quoted form would have mangled at least one of them.
+    const call = stub.calls[0];
+    assert.deepEqual(JSON.parse(call.stdin), paths);
+    assert.deepEqual(call.argv.slice(4), [],
+      "the paths must not travel on the command line");
   } finally {
     stub.restore();
   }
