@@ -105,6 +105,35 @@ function lintMarkdown(t, source, markdown) {
 }
 
 for (const [variant, source] of sources) {
+  test(`knowledge-lint ${variant}: local availability never verifies evidence`, (t) => {
+    const fixture = fs.mkdtempSync(path.join(os.tmpdir(), "knowledge-evidence-"));
+    t.after(() => fs.rmSync(fixture, { recursive: true, force: true }));
+    fs.mkdirSync(path.join(fixture, "docs"));
+    const file = path.join(fixture, "docs/available.md");
+    fs.writeFileSync(file, "# Real anchor\n");
+    const uri = pathToFileURL(file).href;
+    fs.writeFileSync(path.join(fixture, "docs/probe.md"),
+      `[valid](${uri}#real-anchor)\n[bad anchor](${uri}#missing-anchor)\n` +
+      "`[code](file:///not-a-link.md)`\n[remote](custom:opaque)\n[network](//example.invalid/a)\n");
+    const result = spawnSync(process.execPath, [source], { cwd: fixture, encoding: "utf8", timeout: 10000 });
+    assertLintChildSucceeded(result);
+    const report = JSON.parse(fs.readFileSync(path.join(fixture, ".agent/metrics/knowledge-health.json")));
+    assert.deepEqual(report.findings.broken_links, []);
+    assert.equal(report.findings.broken_anchors.length, 1);
+    assert.equal(report.findings.broken_anchors[0].target, uri + "#missing-anchor");
+    assert.deepEqual(report.findings.unverified_links.map((x) => x.target),
+      [uri + "#real-anchor", uri + "#missing-anchor"]);
+    assert.ok(report.findings.unverified_links.every((x) => x.status === "unverified"));
+    // Upstream export contract: requiring the standalone module does not run it.
+    const lint = require(source);
+    const clean = { broken_links: 0, broken_anchors: 0, missing_readmes: 0,
+      plan_issues: 0, architecture_doc_mismatches: 0, frontmatter_violations: 0,
+      required_field_violations: 0, memory_integrity_issues: 0, unverified_links: 0 };
+    assert.equal(lint.computeHealthScore(clean), 100);
+    assert.equal(lint.computeHealthScore({ ...clean, unverified_links: 1 }), 88);
+    assert.equal(lint.computeHealthScore({ ...clean, broken_links: 1 }), 88);
+    assert.equal(lint.computeHealthScore({ ...clean, broken_links: 1, unverified_links: 1 }), 76);
+  });
   for (const [name, markdown, broken] of spanCases) {
     test(`knowledge-lint ${variant}: ${name}`, (t) => {
       const report = lintMarkdown(t, source, markdown);
@@ -145,6 +174,9 @@ for (const [variant, source] of sources) {
     const report = JSON.parse(fs.readFileSync(path.join(fixture, ".agent/metrics/knowledge-health.json"), "utf8"));
     assert.deepEqual(report.findings.broken_links.map((item) => item.target).sort(),
       ["missing-after-fence.md", "missing-relative.md", absent, invalid].sort());
+    assert.deepEqual(report.findings.unverified_links.map((item) => item.target).sort(),
+      [present + "#existing-anchor", absent, invalid].sort());
+    assert.ok(report.findings.unverified_links.every((item) => item.status === "unverified"));
     assert.equal(report.findings.broken_anchors.length, 1);
     assert.equal(report.findings.broken_anchors[0].target, "existing file.md#absent-anchor");
   });

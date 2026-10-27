@@ -52,5 +52,6 @@
 - [Grok Build Research](./grok-build-research.md)
 - [Harness Optimization Design](./harness-optimization-design.md)
 - [Harness Review and Runtime Evidence Design](./harness-review-and-runtime-evidence-design.md)
+- [Review Capability Gap vs PR-Agent / Qodo](./review-capability-gap-vs-pr-agent.md)
 - [Host Adapter](./host-adapter/)
 - [MCP Bridge](./mcp-bridge.md)

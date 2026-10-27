@@ -80,14 +80,9 @@ function extractHeadings(content) {
 }
 
 function shouldCheckLink(rawLink) {
-  if (!rawLink) return false;
-  if (rawLink.includes('{') || rawLink.includes('}')) return false;
-  if (rawLink.startsWith('http://')) return false;
-  if (rawLink.startsWith('https://')) return false;
-  if (rawLink.startsWith('mailto:')) return false;
-  if (rawLink.startsWith('app://')) return false;
-  if (rawLink.startsWith('plugin://')) return false;
-  return true;
+  if (!rawLink || /[{}]/.test(rawLink)) return false;
+  if (/^file:/i.test(rawLink)) return true;
+  return !/^[a-z][a-z0-9+.-]*:/i.test(rawLink) && !rawLink.startsWith('//');
 }
 
 // Standalone distribution exception: embed the tracked dashboard vendor verbatim.
@@ -168,6 +163,7 @@ function resolveTargetFile(sourceFile, filePart) {
 function collectBrokenLinks(markdownFiles) {
   const brokenLinks = [];
   const brokenAnchors = [];
+  const unverifiedLinks = [];
   const headingCache = new Map();
 
   for (const sourceFile of markdownFiles) {
@@ -175,6 +171,14 @@ function collectBrokenLinks(markdownFiles) {
     const links = extractMarkdownLinks(content);
 
     for (const rawLink of links) {
+      if (/^file:/i.test(rawLink)) {
+        // Link availability is not provenance or acceptance. Even an existing
+        // host-local target remains unverified evidence and keeps its penalty.
+        unverifiedLinks.push({
+          source: path.relative(root, sourceFile), target: rawLink,
+          status: 'unverified', reason: 'host_local_evidence_not_verified',
+        });
+      }
       if (!shouldCheckLink(rawLink)) continue;
 
       const { filePart, anchor } = splitLink(rawLink);
@@ -209,7 +213,7 @@ function collectBrokenLinks(markdownFiles) {
     }
   }
 
-  return { brokenLinks, brokenAnchors };
+  return { brokenLinks, brokenAnchors, unverifiedLinks };
 }
 
 function collectMissingReadmes() {
@@ -410,6 +414,17 @@ function collectArchitectureDocMismatches() {
 // 新增 experimental (POC/试运行但未 ship) 与 reference (文档化但未 ship, 仅做知识参考)。
 // 注: experimental 与 reference 区别于 stable (已 ship + 主路径使用) 与 draft (草稿/编写中)。
 const OKF_STATUS_VALUES = new Set(['stable', 'draft', 'deprecated', 'experimental', 'reference']);
+// references/runtime-adapters/_schema.md defines deployment status, not OKF lifecycle.
+const RUNTIME_ADAPTER_STATUS_VALUES = new Set(['shipped', 'reference', 'pending']);
+
+function statusSchemaFor(filepath, fm) {
+  const adapterDir = path.join(root, '.agent', 'references', 'runtime-adapters');
+  const adapterDocument = path.dirname(filepath) === adapterDir &&
+    typeof fm.agent === 'string' && fm.agent === path.basename(filepath, '.md');
+  return adapterDocument
+    ? { values: RUNTIME_ADAPTER_STATUS_VALUES, label: 'runtime-adapter' }
+    : { values: OKF_STATUS_VALUES, label: 'OKF V0.2' };
+}
 
 // 简单 frontmatter 解析:仅识别 key-value / inline-list / block-list
 // 不依赖 yaml 包(零依赖)
@@ -467,12 +482,13 @@ function collectFrontmatterViolations() {
       }
 
       // R-LINT-008: status 非法值 (warning)
-      if (fm.status !== undefined && !OKF_STATUS_VALUES.has(fm.status)) {
+      const statusSchema = statusSchemaFor(filepath, fm);
+      if (fm.status !== undefined && !statusSchema.values.has(fm.status)) {
         violations.push({
           rule_id: 'R-LINT-008',
           severity: 'warning',
           file: rel,
-          message: `status "${fm.status}" 不是 OKF V0.2 枚举 (stable / draft / deprecated / experimental / reference)`,
+          message: `status "${fm.status}" 不是 ${statusSchema.label} 枚举 (${[...statusSchema.values].join(' / ')})`,
         });
       }
     }
@@ -483,6 +499,7 @@ function collectFrontmatterViolations() {
 function computeHealthScore(summary) {
   const penalty =
     summary.broken_links * 12 +
+    (summary.unverified_links || 0) * 12 + // Same penalty: unresolved evidence is not acceptance
     summary.broken_anchors * 6 +
     summary.missing_readmes * 8 +
     summary.plan_issues * 10 +
@@ -536,7 +553,7 @@ function runFrontmatterValidator() {
 
 function run() {
   const markdownFiles = internalDocRoots.flatMap((dir) => listMarkdownFiles(dir));
-  const { brokenLinks, brokenAnchors } = collectBrokenLinks(markdownFiles);
+  const { brokenLinks, brokenAnchors, unverifiedLinks } = collectBrokenLinks(markdownFiles);
   const missingReadmes = collectMissingReadmes();
   const planIssues = collectPlanIssues();
   const architectureDocMismatches = collectArchitectureDocMismatches();
@@ -547,6 +564,7 @@ function run() {
   const summary = {
     markdown_files_scanned: markdownFiles.length,
     broken_links: brokenLinks.length,
+    unverified_links: unverifiedLinks.length,
     broken_anchors: brokenAnchors.length,
     missing_readmes: missingReadmes.length,
     plan_issues: planIssues.length,
@@ -563,6 +581,7 @@ function run() {
     summary,
     findings: {
       broken_links: brokenLinks,
+      unverified_links: unverifiedLinks,
       broken_anchors: brokenAnchors,
       missing_readmes: missingReadmes,
       plan_issues: planIssues,
@@ -578,6 +597,7 @@ function run() {
   console.log('--- 📚 Knowledge Lint ---');
   console.log(`Scanned markdown files: ${summary.markdown_files_scanned}`);
   console.log(`Broken links: ${summary.broken_links}`);
+  console.log(`Unverified local evidence: ${summary.unverified_links}`);
   console.log(`Broken anchors: ${summary.broken_anchors}`);
   console.log(`Missing READMEs: ${summary.missing_readmes}`);
   console.log(`Plan issues: ${summary.plan_issues}`);
@@ -588,4 +608,5 @@ function run() {
   console.log(`Output: ${path.relative(root, outputPath)}`);
 }
 
-run();
+if (require.main === module) run();
+module.exports = { extractMarkdownLinks, collectBrokenLinks, computeHealthScore, collectFrontmatterViolations };

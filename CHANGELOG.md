@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **跨工具锚点不再陈旧**：`docs/cortex-agent/anchor.md` 此前停在 v1.13.0，且没有任何机制会更新它——文件里写的「重跑 `cortex-agent export-anchor` 即可刷新」并不成立（该命令在文件已存在时只输出到 stdout）。现在锚点被纳入版本载体注册表：版本 bump 会用锚点模板重新渲染它，发包 PR 白名单随之自动放行该路径，发布一致性门禁会拒绝与生成器输出不一致的副本；同时 `export-anchor` 新增 `--write` 显式刷新，默认仍是只读导出。
 - **发布触发路径对齐 npm 可信发布约束**：npm 自 2026-10-02 起拒绝由 `issue_comment` 事件触发的可信发布（Trusted Publishing / OIDC）令牌，原评论触发路径会在 `npm publish` 阶段报 404 而非授权失败。发布收敛为唯一的 owner `workflow_dispatch`，由 dispatch 携带 `release_pr` / `expected_sha` / `decision_id` / `waitpoint_id` 四项治理输入；owner 身份门禁与权威 Decision / Waitpoint 门禁在打标签前、打标签后、发布前三处生效边界同时执行，门禁强度不降级。
 
 ## [1.15.6] - 2026-10-23

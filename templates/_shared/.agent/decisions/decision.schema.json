@@ -73,7 +73,12 @@
       "pattern": "^D-[A-Za-z0-9][A-Za-z0-9._-]*$"
     },
     "created_at": { "type": "string", "format": "date-time" },
-    "updated_at": { "type": "string", "format": "date-time" }
+    "updated_at": { "type": "string", "format": "date-time" },
+    "workflow_gate": {
+      "type": "string",
+      "enum": ["mission","agent","user","requester"],
+      "description": "Caller-supplied workflow provenance label only; not authenticated identity, ownership, approval, or permission to execute."
+    }
   },
   "allOf": [
     {

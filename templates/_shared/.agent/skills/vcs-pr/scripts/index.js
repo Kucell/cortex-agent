@@ -19,7 +19,7 @@ const { spawnSync } = require("child_process");
 const AGENT_ROOT = path.join(process.cwd(), ".agent");
 
 const BACKENDS = new Set(["gitea", "github", "gitlab"]);
-const GATE_USER_ONLY = new Set(["create", "update", "merge"]);
+const GATE_USER_ONLY = new Set(["create", "update", "merge", "comment", "review"]);
 
 function flag(name, argv) {
   const i = argv.indexOf(name);
@@ -264,8 +264,12 @@ function loadBody(opts) {
 async function main() {
   const argv = process.argv.slice(2);
   const [command] = argv;
-  if (!command || !["create", "update", "status", "delivery-status", "pipeline-jobs", "job-trace", "merge", "list"].includes(command)) {
-    fail("unknown_command", "Usage: vcs-pr create|update|status|delivery-status|pipeline-jobs|job-trace|merge|list [...opts]");
+  const COMMANDS = [
+    "create", "update", "status", "delivery-status", "pipeline-jobs", "job-trace",
+    "merge", "list", "diff", "comments", "reviews", "comment", "review",
+  ];
+  if (!command || !COMMANDS.includes(command)) {
+    fail("unknown_command", `Usage: vcs-pr ${COMMANDS.join("|")} [...opts]`);
   }
   const cfg = loadConfig();
   if (!cfg || !cfg.backend) {
@@ -439,6 +443,122 @@ async function main() {
     emit({ ok: true, action: "list", count: result.length, items: result });
     return;
   }
+
+  // ─── review surface ───────────────────────────────────────────────────────
+  //
+  // The commands below close the loop that `create`/`merge` left open: read
+  // the diff, read what has been said, write a finding back.
+  //
+  // Read commands degrade gracefully — a backend that does not implement one
+  // reports `capability_unavailable` instead of pretending the data is
+  // empty.  Write commands (`comment`, `review`) are gated at `--gate user`
+  // above, because they publish to a pull request that other people read.
+
+  if (command === "diff") {
+    if (typeof backend.getDiff !== "function") {
+      fail("capability_unavailable", `${cfg.backend} backend does not support diff.`);
+    }
+    const result = await backend.getDiff({ ...optsBase, pr_number: Number(flag("--pr-number", argv)) });
+    emit({ ok: true, action: "diff", ...result });
+    return;
+  }
+  if (command === "comments") {
+    if (typeof backend.listComments !== "function") {
+      fail("capability_unavailable", `${cfg.backend} backend does not support comments.`);
+    }
+    const result = await backend.listComments({ ...optsBase, pr_number: Number(flag("--pr-number", argv)) });
+    emit({ ok: true, action: "comments", count: result.length, items: result });
+    return;
+  }
+  if (command === "reviews") {
+    if (typeof backend.listReviews !== "function") {
+      fail("capability_unavailable", `${cfg.backend} backend does not support reviews.`);
+    }
+    const result = await backend.listReviews({ ...optsBase, pr_number: Number(flag("--pr-number", argv)) });
+    emit({ ok: true, action: "reviews", count: result.length, items: result });
+    return;
+  }
+  if (command === "comment") {
+    if (typeof backend.createComment !== "function") {
+      fail("capability_unavailable", `${cfg.backend} backend does not support comment.`);
+    }
+    const body = readReviewBody(argv);
+    const result = await backend.createComment({
+      ...optsBase,
+      pr_number: Number(flag("--pr-number", argv)),
+      body,
+    });
+    if (runId) {
+      appendRunEvent(runId, {
+        type: "vcs_pr_comment",
+        backend: cfg.backend,
+        pr_number: Number(flag("--pr-number", argv)),
+        comment_id: result.id,
+      });
+    }
+    emit({ ok: true, action: "comment", ...result });
+    return;
+  }
+  if (command === "review") {
+    if (typeof backend.submitReview !== "function") {
+      fail("capability_unavailable", `${cfg.backend} backend does not support review.`);
+    }
+    const body = readReviewBody(argv);
+    const event = (flag("--event", argv) || "COMMENT").toUpperCase();
+    if (!["APPROVE", "REQUEST_CHANGES", "COMMENT"].includes(event)) {
+      fail("invalid_review_event", "--event must be one of: APPROVE, REQUEST_CHANGES, COMMENT.");
+    }
+    const commentsFile = flag("--comments-file", argv);
+    let comments = null;
+    if (commentsFile) {
+      const raw = fs.readFileSync(
+        path.isAbsolute(commentsFile) ? commentsFile : path.join(process.cwd(), commentsFile),
+        "utf8"
+      );
+      try {
+        comments = JSON.parse(raw);
+      } catch (err) {
+        fail("invalid_comments_json", err.message);
+      }
+      if (!Array.isArray(comments)) {
+        fail("invalid_comments_json", "--comments-file must contain a JSON array of review comments.");
+      }
+    }
+    const result = await backend.submitReview({
+      ...optsBase,
+      pr_number: Number(flag("--pr-number", argv)),
+      body,
+      event,
+      comments,
+    });
+    if (runId) {
+      appendRunEvent(runId, {
+        type: "vcs_pr_review",
+        backend: cfg.backend,
+        pr_number: Number(flag("--pr-number", argv)),
+        review_id: result.id,
+        review_state: result.state,
+      });
+    }
+    emit({ ok: true, action: "review", ...result });
+    return;
+  }
+}
+
+// Review bodies are long.  Reading them from a file keeps the command line
+// free of multi-kilobyte payloads and keeps the body out of process listings.
+// `--body` is still accepted for short one-liners.
+function readReviewBody(argv) {
+  const bodyFile = flag("--body-file", argv);
+  if (bodyFile) {
+    const target = path.isAbsolute(bodyFile) ? bodyFile : path.join(process.cwd(), bodyFile);
+    if (!fs.existsSync(target)) fail("body_file_not_found", target);
+    return fs.readFileSync(target, "utf8");
+  }
+  const inline = flag("--body", argv);
+  if (inline && inline.trim()) return inline;
+  fail("missing_review_body", "Provide --body-file <path> or --body <text>.");
+  return null;
 }
 
 if (require.main === module) {
