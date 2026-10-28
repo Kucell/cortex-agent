@@ -957,3 +957,141 @@ test("a snapshot that does not exist is still the normal terminal state", () => 
     f.cleanup();
   }
 });
+
+test("a reconnect in a TERMINAL snapshot state reuses the pin without advancing it", () => {
+  // Round-3 finding N3: the snapshot reaches "consumed" or is cleaned up
+  // ("absent"), and both are the normal end of its life -- the design
+  // admits a reconnect there. But the advanceability check demanded a
+  // move to "registered", which from a terminal state is a BACKWARD move
+  // the state machine forbids. The two judgements contradicted each other
+  // and the reconnect route was unusable after the terminal state.
+  const f = fixture();
+  try {
+    const key = keyPair();
+    const identity = batchIdentityFor(key);
+    bootstrap.createSnapshot({
+      snapshotDir: f.snapshotDir,
+      batchIdentity: identity,
+      nowMs: 1_000_000,
+    });
+    cross.registerOnTarget({
+      pinStore: f.store,
+      batchIdentity: identity,
+      publicKeyPem: key.publicKeyPem,
+      bootstrap: { snapshotDir: f.snapshotDir },
+      targetHasProcess: false,
+      targetHasPriorRun: false,
+      nowMs: 1_000_001,
+      write: atomicCreate(path.join(f.dir, "pin.marker")),
+    });
+    // The snapshot reaches its terminal state.
+    bootstrap.advanceSnapshot({
+      snapshotDir: f.snapshotDir,
+      nextState: "consumed",
+      nowMs: 1_000_002,
+    });
+    assert.equal(
+      bootstrap.readSnapshot(f.snapshotDir).snapshot_state,
+      "consumed",
+    );
+
+    // The reconnect is admitted, and the pin is reused rather than
+    // rewritten.
+    const again = cross.registerOnTarget({
+      pinStore: f.store,
+      batchIdentity: identity,
+      publicKeyPem: key.publicKeyPem,
+      bootstrap: { snapshotDir: f.snapshotDir },
+      targetHasProcess: false,
+      targetHasPriorRun: false,
+      nowMs: 1_000_003,
+      write: atomicCreate(path.join(f.dir, "pin.marker")),
+    });
+    assert.equal(again.reused, true);
+    assert.equal(f.store.listPins().length, 1);
+    // The snapshot was NOT advanced backwards.
+    assert.equal(
+      bootstrap.readSnapshot(f.snapshotDir).snapshot_state,
+      "consumed",
+    );
+  } finally {
+    f.cleanup();
+  }
+});
+
+test("a reconnect after the snapshot was cleaned up is admitted", () => {
+  // The other terminal state: the cleanup finished and the snapshot is
+  // gone. The design's crash-point table says "after cleanup -> absent ->
+  // reconnect allowed".
+  const f = fixture();
+  try {
+    const key = keyPair();
+    const identity = batchIdentityFor(key);
+    bootstrap.createSnapshot({
+      snapshotDir: f.snapshotDir,
+      batchIdentity: identity,
+      nowMs: 1_000_000,
+    });
+    cross.registerOnTarget({
+      pinStore: f.store,
+      batchIdentity: identity,
+      publicKeyPem: key.publicKeyPem,
+      bootstrap: { snapshotDir: f.snapshotDir },
+      targetHasProcess: false,
+      targetHasPriorRun: false,
+      nowMs: 1_000_001,
+      write: atomicCreate(path.join(f.dir, "pin.marker")),
+    });
+    bootstrap.cleanupSnapshot({ snapshotDir: f.snapshotDir });
+    assert.equal(bootstrap.readSnapshot(f.snapshotDir), null);
+
+    const again = cross.registerOnTarget({
+      pinStore: f.store,
+      batchIdentity: identity,
+      publicKeyPem: key.publicKeyPem,
+      bootstrap: { snapshotDir: f.snapshotDir },
+      targetHasProcess: false,
+      targetHasPriorRun: false,
+      nowMs: 1_000_002,
+      write: atomicCreate(path.join(f.dir, "pin.marker")),
+    });
+    assert.equal(again.reused, true);
+    assert.equal(f.store.listPins().length, 1);
+  } finally {
+    f.cleanup();
+  }
+});
+
+test("a reconnect WITHOUT a snapshot directory is still refused as a competitor", () => {
+  // The negative control for the two cases above: the terminal-state
+  // admission must not weaken the rule that a same-batch arrival with no
+  // snapshot is a competitor, not a reconnect.
+  const f = fixture();
+  try {
+    const key = keyPair();
+    const identity = batchIdentityFor(key);
+    cross.registerOnTarget({
+      pinStore: f.store,
+      batchIdentity: identity,
+      publicKeyPem: key.publicKeyPem,
+      targetHasProcess: false,
+      targetHasPriorRun: false,
+      nowMs: 1_000_000,
+      write: atomicCreate(path.join(f.dir, "pin.marker")),
+    });
+    assert.equal(
+      codeOf(() => cross.registerOnTarget({
+        pinStore: f.store,
+        batchIdentity: identity,
+        publicKeyPem: key.publicKeyPem,
+        targetHasProcess: false,
+        targetHasPriorRun: false,
+        nowMs: 1_000_001,
+        write: atomicCreate(path.join(f.dir, "pin.marker")),
+      })),
+      "ERR_PIN_NOT_EXCLUSIVE",
+    );
+  } finally {
+    f.cleanup();
+  }
+});
