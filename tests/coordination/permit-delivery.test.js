@@ -632,7 +632,7 @@ test("an impossible clock reading cannot make an expired permit verify", () => {
   assert.equal(verified.ok, true);
 });
 
-test("the skew allowance is bounded and applies to both judgements", () => {
+test("the skew allowance is bounded and applies to the issued-at judgement only", () => {
   // The allowance exists to absorb the clock offset between two machines.
   // It is BOUNDED, because an allowance wide enough to cover any clock
   // offset would make the issued-at judgement vacuous -- a clock could
@@ -650,14 +650,20 @@ test("the skew allowance is bounded and applies to both judgements", () => {
   assert.equal(delivery.MAX_SKEW_TOLERANCE_MS, 5 * 60 * 1000);
 
   // At the bound it is still usable: a clock that sits exactly the bound
-  // behind the issue instant verifies.
+  // behind the issue instant verifies. The permit used here is granted a
+  // window LONGER than the bound, because the allowance is clipped to the
+  // permit's own window -- a bound-sized offset is only admissible for a
+  // permit whose window is at least that wide. (The clipped case is
+  // exercised separately below, on a short permit.)
+  const widePermit = samplePermit({ deadline: 1_700_000_000_000 + delivery.MAX_SKEW_TOLERANCE_MS });
+  const wideSigned = sign(widePermit, keyPair, 1_700_000_000_000);
   const atBound = delivery.verifyPermitSignature({
-    message: signed.message,
-    signature: signed.signature,
+    message: wideSigned.message,
+    signature: wideSigned.signature,
     publicKeyPem: keyPair.publicKeyPem,
     expectedFingerprint: keyPair.fingerprint,
     revokedFingerprints: NOTHING_REVOKED,
-    nowMs: issuedAt - delivery.MAX_SKEW_TOLERANCE_MS,
+    nowMs: wideSigned.message.issued_at_ms - delivery.MAX_SKEW_TOLERANCE_MS,
     skewToleranceMs: delivery.MAX_SKEW_TOLERANCE_MS,
   });
   assert.equal(atBound.ok, true);
@@ -665,22 +671,25 @@ test("the skew allowance is bounded and applies to both judgements", () => {
   // One millisecond past the bound is refused.
   assert.equal(
     codeOf(() => delivery.verifyPermitSignature({
-      message: signed.message,
-      signature: signed.signature,
+      message: wideSigned.message,
+      signature: wideSigned.signature,
       publicKeyPem: keyPair.publicKeyPem,
       expectedFingerprint: keyPair.fingerprint,
       revokedFingerprints: NOTHING_REVOKED,
-      nowMs: issuedAt - delivery.MAX_SKEW_TOLERANCE_MS,
+      nowMs: wideSigned.message.issued_at_ms - delivery.MAX_SKEW_TOLERANCE_MS,
       skewToleranceMs: delivery.MAX_SKEW_TOLERANCE_MS + 1,
     })),
     "ERR_PERMIT_INPUT_INVALID",
     "an allowance past the bound must be refused",
   );
 
-  // The same bound applies to the EXPIRY judgement: the design says the
-  // allowance is applied to the issued-at and the expires-at judgements
-  // SEPARATELY, and it does not change the signed deadline_ms -- the
-  // comparison is what moves.
+  // The allowance does NOT reach the EXPIRY judgement. The effective window
+  // is exactly the window the signer granted: the design's R2-B8 P2 says
+  // that any allowance for time in transit must be counted in at issuance
+  // (a shorter TTL) and must NOT be added on the verification side. A
+  // verifier cannot tell time-in-transit from clock-offset -- both are just
+  // "the local clock reads earlier than the signer did" -- so that
+  // prohibition reaches the clock-skew allowance too.
   const expiredByOne = permit.deadline + 1;
   assert.equal(
     codeOf(() => delivery.verifyPermitSignature({
@@ -692,8 +701,8 @@ test("the skew allowance is bounded and applies to both judgements", () => {
       nowMs: expiredByOne,
       skewToleranceMs: 1,
     })),
-    null,
-    "the allowance reaches the expiry judgement as well as the issued-at one",
+    "ERR_PERMIT_DEADLINE_EXPIRED",
+    "the allowance must not extend the validity window on the verification side",
   );
   assert.equal(
     codeOf(() => delivery.verifyPermitSignature({
@@ -706,6 +715,97 @@ test("the skew allowance is bounded and applies to both judgements", () => {
     })),
     "ERR_PERMIT_DEADLINE_EXPIRED",
     "without an allowance a permit one millisecond past its deadline is refused",
+  );
+
+  // A short permit makes the difference concrete: a permit that was
+  // granted a one-second window must not live for five minutes because the
+  // deployment configured an allowance to tolerate clock drift.
+  const shortPermit = samplePermit({ deadline: 1_700_000_001_000 });
+  const shortSigned = sign(shortPermit, keyPair);
+  // The short permit is still a WORKING permit inside its own window. The
+  // allowance must not be turned into a way to refuse short permits
+  // outright: the MS-003 store bounds ttlMs from below only, so a
+  // one-second permit is a real one and it has to verify while it is live.
+  assert.equal(
+    delivery.verifyPermitSignature({
+      message: shortSigned.message,
+      signature: shortSigned.signature,
+      publicKeyPem: keyPair.publicKeyPem,
+      expectedFingerprint: keyPair.fingerprint,
+      revokedFingerprints: NOTHING_REVOKED,
+      nowMs: shortSigned.message.issued_at_ms,
+      skewToleranceMs: delivery.MAX_SKEW_TOLERANCE_MS,
+    }).ok,
+    true,
+    "a one-second permit must still verify inside its own window",
+  );
+  assert.equal(
+    codeOf(() => delivery.verifyPermitSignature({
+      message: shortSigned.message,
+      signature: shortSigned.signature,
+      publicKeyPem: keyPair.publicKeyPem,
+      expectedFingerprint: keyPair.fingerprint,
+      revokedFingerprints: NOTHING_REVOKED,
+      nowMs: shortPermit.deadline + 1,
+      skewToleranceMs: delivery.MAX_SKEW_TOLERANCE_MS,
+    })),
+    "ERR_PERMIT_DEADLINE_EXPIRED",
+    "a one-second permit must not be extended by the maximum allowance",
+  );
+
+  // The allowance is CLIPPED to the permit's own window, so on a short
+  // permit the offset it can absorb is the window itself and no more. A
+  // clock behind the issue instant by more than the window is refused: the
+  // allowance must not COVER the whole window, or the issued-at judgement
+  // would be vacuous for that permit.
+  assert.equal(
+    codeOf(() => delivery.verifyPermitSignature({
+      message: shortSigned.message,
+      signature: shortSigned.signature,
+      publicKeyPem: keyPair.publicKeyPem,
+      expectedFingerprint: keyPair.fingerprint,
+      revokedFingerprints: NOTHING_REVOKED,
+      nowMs: shortSigned.message.issued_at_ms - 1001,
+      skewToleranceMs: delivery.MAX_SKEW_TOLERANCE_MS,
+    })),
+    "ERR_PERMIT_INPUT_INVALID",
+    "the allowance must not cover a short permit's whole validity window",
+  );
+  // One millisecond inside the window is still admissible: clipping must
+  // not turn a short permit into one that only verifies at exactly its own
+  // issue instant.
+  assert.equal(
+    delivery.verifyPermitSignature({
+      message: shortSigned.message,
+      signature: shortSigned.signature,
+      publicKeyPem: keyPair.publicKeyPem,
+      expectedFingerprint: keyPair.fingerprint,
+      revokedFingerprints: NOTHING_REVOKED,
+      nowMs: shortSigned.message.issued_at_ms - 1000,
+      skewToleranceMs: delivery.MAX_SKEW_TOLERANCE_MS,
+    }).ok,
+    true,
+    "a short permit still admits a clock offset up to its own window",
+  );
+
+  // An inverted window describes no interval at all: the permit claims to
+  // have been issued after it expires. No instant satisfies both "not
+  // before it was issued" and "not after it expires", so it is refused on
+  // its own terms -- independently of the allowance, which is a separate
+  // input and must not be what decides this.
+  const invertedPermit = samplePermit({ deadline: 1_700_000_000_000 });
+  const invertedSigned = sign(invertedPermit, keyPair, 1_700_000_000_001);
+  assert.equal(
+    codeOf(() => delivery.verifyPermitSignature({
+      message: invertedSigned.message,
+      signature: invertedSigned.signature,
+      publicKeyPem: keyPair.publicKeyPem,
+      expectedFingerprint: keyPair.fingerprint,
+      revokedFingerprints: NOTHING_REVOKED,
+      nowMs: 1_700_000_000_001,
+    })),
+    "ERR_PERMIT_INPUT_INVALID",
+    "a permit issued after its own deadline is refused",
   );
 
   // A negative allowance is refused: the design says the allowance may not
