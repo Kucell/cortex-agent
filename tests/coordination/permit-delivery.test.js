@@ -23,11 +23,18 @@
 
 const assert = require("node:assert/strict");
 const crypto = require("node:crypto");
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
 const test = require("node:test");
 
 const delivery = require("../../lib/coordination/permit-delivery");
 const { CoordinationError } = require("../../lib/coordination/errors");
-const { CONSUME_BINDING_FIELDS } = require("../../lib/coordination/protected-permit-store");
+const {
+  CONSUME_BINDING_FIELDS,
+  ProtectedPermitStore,
+} = require("../../lib/coordination/protected-permit-store");
+const anchorModule = require("../../lib/coordination/protected-anchor");
 
 function samplePermit(overrides) {
   return {
@@ -83,6 +90,22 @@ test("the signed message covers every field consume() binds", () => {
   }
   for (const name of delivery.ADDITIONAL_SIGNED_FIELDS) {
     assert.ok(covered.has(name), "the additional field " + name + " is not covered by the signature");
+  }
+});
+
+test("the exported binding fields are the store's live set, not a local copy", () => {
+  // The export has to answer the question that is being asked RIGHT NOW.
+  // A snapshot taken when the module was loaded would answer the question
+  // that was true at load time, and a consume() that gained a field since
+  // then would be invisible to it -- silently, because the snapshot would
+  // still agree with itself.
+  const exported = delivery.consumeBindingFields().map((entry) => entry.storage);
+  assert.deepEqual(exported, CONSUME_BINDING_FIELDS.slice());
+  // Every live field has a signed spelling, and every exported entry names
+  // one -- otherwise the export would hand a caller a field the signature
+  // cannot cover.
+  for (const entry of delivery.consumeBindingFields()) {
+    assert.ok(entry.signed, "the live field " + entry.storage + " has no signed counterpart");
   }
 });
 
@@ -193,6 +216,100 @@ test("the signed deadline is the permit's own deadline, byte for byte", () => {
     nowMs: permit.deadline - 1,
   });
   assert.equal(verified.deadline, permit.deadline);
+});
+
+test("a signed deadline that differs from the stored deadline is refused", () => {
+  // The signature alone does not prove the deadline is the permit's own: a
+  // signer that computed its own deadline could sign a self-consistent
+  // message whose deadline_ms is not the real one. The verifier compares
+  // the two when it is given the stored value, so that is a refused input
+  // rather than a discipline the caller has to remember.
+  const keyPair = delivery.createBatchKeyPair();
+  const permit = samplePermit({ deadline: 1_700_000_000_000 });
+  const signed = sign(permit, keyPair);
+  assert.equal(
+    codeOf(() => delivery.verifyPermitSignature({
+      message: signed.message,
+      signature: signed.signature,
+      publicKeyPem: keyPair.publicKeyPem,
+      expectedDeadlineMs: permit.deadline,
+    })),
+    null,
+  );
+  // One millisecond off is still off.
+  assert.equal(
+    codeOf(() => delivery.verifyPermitSignature({
+      message: signed.message,
+      signature: signed.signature,
+      publicKeyPem: keyPair.publicKeyPem,
+      expectedDeadlineMs: permit.deadline + 1,
+    })),
+    "ERR_PERMIT_DEADLINE_MISMATCH",
+  );
+});
+
+test("the signed deadline is the deadline a real store produced, short lease included", () => {
+  // The read-back chain has to be the real one: reserve() produces the
+  // permit, the signer reads it back, and the signed value is that number.
+  // A hand-built permit object would not exercise the chain -- it would
+  // only show that the signer copies whatever it is handed.
+  if (Number(process.versions.node.split(".")[0]) < 24) return;
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "m044-ms004-s1-"));
+  const file = path.join(dir, "authority.sqlite");
+  const anchorDir = path.join(path.dirname(dir), `${path.basename(dir)}-anchor`);
+  fs.mkdirSync(anchorDir, { recursive: true });
+  let now = 1_000_000;
+  const clock = () => now;
+  const store = ProtectedPermitStore.initialize(file, {
+    decisionId: "D-test-ms004-s1",
+    clock,
+    anchorDir,
+    anchorMode: anchorModule.ANCHOR_MODE.permissive,
+  });
+  try {
+    const lease = store.acquire({
+      owner: "coordinator", sessionId: "session-1", hostId: "host-1",
+      workerId: "worker-1", runId: "run-1", generation: "gen-1",
+      desktopKey: "desktop-1", ownedAppId: "app-1",
+      idempotencyKey: "lease-key-1", ttlMs: 60_000,
+    });
+    // Let the lease run almost to its end. The permit is bounded by the
+    // lease expiry, so once the lease has 10ms left a 50ms permit budget is
+    // cut short -- which is exactly where a self-computed deadline and the
+    // store's deadline come apart.
+    now += 59_990;
+    const reserved = store.reserve({
+      ...lease,
+      idempotencyKey: "permit-key-1", operation: "uia.invoke",
+      targetDigest: "a".repeat(64), paramsDigest: "b".repeat(64),
+      // A short lease: the permit is bounded by the lease expiry, so the
+      // deadline is nowhere near issued_at_ms + ttl.
+      ttlMs: 50,
+    });
+    const keyPair = delivery.createBatchKeyPair();
+    const signed = delivery.buildSignedPermit({
+      privateKeyRef: keyPair.privateKeyRef,
+      permit: reserved,
+      issuedAtMs: clock(),
+    });
+    // The signed deadline is the store's own number, bit for bit.
+    assert.equal(signed.message.deadline_ms, reserved.deadline);
+    // The number a signer would have computed for itself is a different one.
+    assert.notEqual(signed.message.deadline_ms, clock() + 50);
+    assert.ok(reserved.deadline < clock() + 50, "the permit must be bounded by the lease expiry");
+    // And the verifier accepts it against the stored value.
+    const verified = delivery.verifyPermitSignature({
+      message: signed.message,
+      signature: signed.signature,
+      publicKeyPem: keyPair.publicKeyPem,
+      expectedDeadlineMs: reserved.deadline,
+    });
+    assert.equal(verified.deadline, reserved.deadline);
+  } finally {
+    store.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+    fs.rmSync(anchorDir, { recursive: true, force: true });
+  }
 });
 
 test("an expired permit is refused", () => {
@@ -429,6 +546,39 @@ test("a revocation list signed by a key that is not pinned is refused", () => {
   );
 });
 
+test("a revocation list cannot claim a pinned signer while being signed by another key", () => {
+  // The signer identity has to be DERIVED from the key that verifies the
+  // signature, not read from the fingerprint the list claims for itself.
+  // The claimed fingerprint is a string inside the signed payload -- it
+  // proves nothing about who signed. If the pin check ran against the
+  // claim, a key that is not pinned at all could sign a list that names a
+  // pinned key, and the list would be accepted.
+  const pinned = delivery.createBatchKeyPair();
+  const rogue = delivery.createBatchKeyPair();
+  const state = delivery.createRevocationState();
+  const message = {
+    revocation_sequence: 1,
+    revoked_fingerprints: [],
+    issued_at_ms: 1_700_000_000_000,
+    prev_revocation_sequence: 0,
+    batch_public_key_fingerprint: pinned.fingerprint,
+  };
+  const bytes = delivery.canonicalBytes(message);
+  const signature = rogue.privateKeyRef.sign(bytes).toString("base64");
+  assert.equal(
+    codeOf(() => delivery.applyRevocationList({
+      state,
+      list: { ...message, signature },
+      publicKeyPem: rogue.publicKeyPem,
+      pinnedFingerprints: new Set([pinned.fingerprint]),
+    })),
+    "ERR_REVOCATION_SIGNER_INVALID",
+  );
+  // Nothing advanced: a refused list leaves the chain exactly where it was.
+  assert.equal(state.appliedRevocationSequence, 0);
+  assert.equal(state.revokedFingerprints.size, 0);
+});
+
 // ── Private key reachability ───────────────────────────────────────────────
 
 test("the private key is not reachable through any export path", () => {
@@ -485,6 +635,67 @@ test("the read-only check reports the preconditions without reserving anything",
     assert.equal(verdict.exclusive, false);
     assert.deepEqual(verdict.reasons, [reason]);
   }
+});
+
+test("an undecided clause blocks the route rather than counting as satisfied", () => {
+  // "Undecidable is not the same as absent" (design document section
+  // 2.2.2). The naive spelling -- !existingPin && !targetHasProcess --
+  // reports a clause that was never decided as satisfied, because !undefined
+  // is true, and the route then goes on as if the target were known to be
+  // idle. Every clause that was not actually decided blocks the route and
+  // says which clause blocked it.
+  const verdict = delivery.assertPinExclusive({});
+  assert.equal(verdict.exclusive, false);
+  assert.deepEqual(verdict.reasons, [
+    "existing-pin-undecidable",
+    "target-has-process-undecidable",
+    "target-has-prior-run-undecidable",
+  ]);
+
+  // One undecided clause is enough -- the others being decided does not
+  // rescue the route.
+  assert.equal(
+    delivery.assertPinExclusive({ existingPin: null, targetHasPriorRun: false }).exclusive,
+    false,
+  );
+  assert.deepEqual(
+    delivery.assertPinExclusive({ existingPin: null, targetHasPriorRun: false }).reasons,
+    ["target-has-process-undecidable"],
+  );
+  assert.equal(
+    delivery.assertPinExclusive({ targetHasProcess: false, targetHasPriorRun: false }).exclusive,
+    false,
+  );
+
+  // All three decided gives the exclusive verdict.
+  assert.equal(
+    delivery.assertPinExclusive({
+      existingPin: null,
+      targetHasProcess: false,
+      targetHasPriorRun: false,
+    }).exclusive,
+    true,
+  );
+});
+
+test("the atomic registration refuses an undecided precondition", () => {
+  // The guarantee has to refuse what the check refuses. If the check
+  // reported an undecided clause as exclusive, the registration would
+  // write a pin on the strength of a fact nobody established.
+  let entered = 0;
+  assert.equal(
+    codeOf(() => delivery.registerPinExclusively({
+      criticalSection: (fn) => { entered += 1; return fn(); },
+      registration: {
+        existingPin: null,
+        targetHasProcess: undefined,
+        targetHasPriorRun: false,
+        write: () => ({ written: true }),
+      },
+    })),
+    "ERR_PIN_NOT_EXCLUSIVE",
+  );
+  assert.equal(entered, 1);
 });
 
 test("the atomic registration refuses a non-exclusive precondition inside the critical section", () => {
