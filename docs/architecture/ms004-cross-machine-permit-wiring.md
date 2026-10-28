@@ -160,6 +160,42 @@ crossMachine.verifyWithPinnedKey({
 
 接线方**必须**为重连路径提供 `bootstrap.snapshotDir`，否则重连会被拒。
 
+### 3.8 快照「不可读」与快照「不存在」是两种事实
+
+快照文件**不存在**是正常终态（没有可重连的东西，路线可以继续）。
+快照文件**存在但读不出来**（`EACCES` / `EPERM` / 同账号普通进程 chmod 000
+或删除等）是**不可判定**，按**不满足**处理，**停止整条路线**
+（设计 §2.2.2「不可判定不等于通过」）。
+
+实现上的对应关系：
+
+- `readSnapshot()` 区分 `ENOENT`（返回 `null`，即「无快照」）与其他读失败
+  （抛 `ERR_BOOTSTRAP_STATE_INVALID`）；
+- `classifySnapshot()` 把读失败表达为 `classification="undecidable"`、
+  `reconnectAllowed=false`，**不是** `"absent"`；
+- 登记路径因此以 `ERR_BOOTSTRAP_UNVERIFIABLE` 拒绝，**且拒绝发生在写入 pin 之前**。
+
+**为什么这一条是硬要求**：若「读不出来」被当作「无快照」，闸门会放行，
+**别的批次**的公钥会被写进 pin 集合，并因此获得签发许可的能力——
+这正是「公钥钉住」要防的授权绕过。触发条件只需要同账号普通进程删一个
+0600 文件，而设计把这类进程列为明确的攻击者。
+
+### 3.9 快照推进的可判定性必须先于 pin 写入
+
+「写 pin」与「推进快照状态」是**同一次受保护临界区内的两半**，
+设计要求二者**不得**分裂为两次独立动作——否则复验通过后、推进前的崩溃会留下
+「`created` + pin 在」的**不可判定**状态。
+
+因此登记路径在**写 pin 之前**先判定快照**可推进**（`assertSnapshotAdvanceable()`）：
+
+1. 快照**可读**（读不出来 → `ERR_BOOTSTRAP_UNVERIFIABLE`，停止）；
+2. 快照状态**允许**前进到 `registered`（倒退 → `ERR_BOOTSTRAP_STATE_INVALID`）；
+3. 回执摘要与目标状态**一致**（同状态但回执不同 → `ERR_BOOTSTRAP_STATE_INVALID`）；
+4. `registered` 状态必须**带**回执摘要。
+
+任一条不满足，路线在**写入任何 pin 之前**停止，域中不会留下
+「`created` + pin 在」的残留状态。
+
 ## 4. 时钟偏差裕量（`skewToleranceMs`）—— 接线方必须知道的三件事
 
 ### 4.1 裕量必须来自显式配置，并被记录

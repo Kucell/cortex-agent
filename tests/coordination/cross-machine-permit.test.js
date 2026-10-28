@@ -815,3 +815,145 @@ test("a domain that was never poisoned still authorises", () => {
     f.cleanup();
   }
 });
+
+// The round-2 independent review findings N1 and N2.
+
+test("an UNREADABLE snapshot does NOT admit a different batch", () => {
+  // Round-2 blocking item N1: readSnapshot() used to return null for every
+  // read failure, so a snapshot that could not be read was classified as
+  // "absent" -- and "absent" allowed the route. A same-account ordinary
+  // process could then delete or chmod one 0600 file and land its own
+  // public key in the pin set, where it could authorise permits.
+  const f = fixture();
+  try {
+    const key = keyPair();
+    const identity = batchIdentityFor(key);
+    bootstrap.createSnapshot({
+      snapshotDir: f.snapshotDir,
+      batchIdentity: identity,
+      nowMs: 1_000_000,
+    });
+    cross.registerOnTarget({
+      pinStore: f.store,
+      batchIdentity: identity,
+      publicKeyPem: key.publicKeyPem,
+      bootstrap: { snapshotDir: f.snapshotDir },
+      targetHasProcess: false,
+      targetHasPriorRun: false,
+      nowMs: 1_000_001,
+      write: atomicCreate(path.join(f.dir, "pin.marker")),
+    });
+    assert.equal(f.store.listPins().length, 1);
+
+    const snapshotPath = path.join(f.snapshotDir, "bootstrap-snapshot.json");
+    fs.chmodSync(snapshotPath, 0o000);
+    try {
+      // The classification is "undecidable", not "absent".
+      const verdict = bootstrap.classifySnapshot({
+        snapshotDir: f.snapshotDir,
+        batchIdentity: identity,
+        canVerifyPinOwnership: () => "ours",
+      });
+      assert.equal(verdict.classification, "undecidable");
+      assert.equal(verdict.reconnectAllowed, false);
+
+      // A different batch is refused, and its key does NOT land in the pin
+      // set.
+      const attacker = keyPair();
+      assert.equal(
+        codeOf(() => cross.registerOnTarget({
+          pinStore: f.store,
+          batchIdentity: batchIdentityFor(attacker, { instance_id: "inst-ATTACK" }),
+          publicKeyPem: attacker.publicKeyPem,
+          bootstrap: { snapshotDir: f.snapshotDir },
+          targetHasProcess: false,
+          targetHasPriorRun: false,
+          nowMs: 1_000_002,
+          write: atomicCreate(path.join(f.dir, "pin.marker")),
+        })),
+        "ERR_BOOTSTRAP_UNVERIFIABLE",
+      );
+      assert.equal(f.store.listPins().length, 1);
+      assert.equal(
+        f.store.listPins().some((pin) => pin.fingerprint === attacker.fingerprint),
+        false,
+      );
+    } finally {
+      fs.chmodSync(snapshotPath, 0o600);
+    }
+  } finally {
+    f.cleanup();
+  }
+});
+
+test("a snapshot that cannot be advanced stops the route BEFORE the pin is written", () => {
+  // Round-2 finding N2: the pin write and the snapshot advance are two
+  // halves of one protected critical section. If the advance was only
+  // attempted after the pin was written and it failed, the domain was
+  // left in the "created + pin present" undecidable state -- with the
+  // pin already on disk.
+  const f = fixture();
+  try {
+    const key = keyPair();
+    const identity = batchIdentityFor(key);
+    bootstrap.createSnapshot({
+      snapshotDir: f.snapshotDir,
+      batchIdentity: identity,
+      nowMs: 1_000_000,
+    });
+    const snapshotPath = path.join(f.snapshotDir, "bootstrap-snapshot.json");
+    fs.chmodSync(snapshotPath, 0o000);
+    try {
+      assert.equal(
+        codeOf(() => cross.registerOnTarget({
+          pinStore: f.store,
+          batchIdentity: identity,
+          publicKeyPem: key.publicKeyPem,
+          bootstrap: { snapshotDir: f.snapshotDir },
+          targetHasProcess: false,
+          targetHasPriorRun: false,
+          nowMs: 1_000_001,
+          write: atomicCreate(path.join(f.dir, "pin.marker")),
+        })),
+        "ERR_BOOTSTRAP_UNVERIFIABLE",
+      );
+      // Nothing was written.
+      assert.equal(f.store.listPins().length, 0);
+    } finally {
+      fs.chmodSync(snapshotPath, 0o600);
+    }
+  } finally {
+    f.cleanup();
+  }
+});
+
+test("a snapshot that does not exist is still the normal terminal state", () => {
+  // The negative control for the two cases above: the refusal must not
+  // turn "there is no snapshot" into a refusal as well. A first
+  // registration has no snapshot yet, and it must still work.
+  const f = fixture();
+  try {
+    const key = keyPair();
+    const identity = batchIdentityFor(key);
+    const verdict = bootstrap.classifySnapshot({
+      snapshotDir: f.snapshotDir,
+      batchIdentity: identity,
+      canVerifyPinOwnership: () => "none",
+    });
+    assert.equal(verdict.classification, "absent");
+    assert.equal(verdict.reconnectAllowed, true);
+
+    cross.registerOnTarget({
+      pinStore: f.store,
+      batchIdentity: identity,
+      publicKeyPem: key.publicKeyPem,
+      targetHasProcess: false,
+      targetHasPriorRun: false,
+      nowMs: 1_000_000,
+      write: atomicCreate(path.join(f.dir, "pin.marker")),
+    });
+    assert.equal(f.store.listPins().length, 1);
+  } finally {
+    f.cleanup();
+  }
+});
