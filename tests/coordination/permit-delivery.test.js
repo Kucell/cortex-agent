@@ -632,6 +632,105 @@ test("an impossible clock reading cannot make an expired permit verify", () => {
   assert.equal(verified.ok, true);
 });
 
+test("the skew allowance is bounded and applies to both judgements", () => {
+  // The allowance exists to absorb the clock offset between two machines.
+  // It is BOUNDED, because an allowance wide enough to cover any clock
+  // offset would make the issued-at judgement vacuous -- a clock could
+  // then sit behind the issue instant by any amount and still be
+  // accepted. That is the same fail-open shape as the revoked set, the
+  // expected fingerprint and the impossible clock, reached through a
+  // different door.
+  const keyPair = delivery.createBatchKeyPair();
+  const permit = samplePermit({ deadline: 1_700_000_000_000 });
+  const signed = sign(permit, keyPair);
+  const issuedAt = signed.message.issued_at_ms;
+
+  // The bound is exported so that the step 2/3 wiring can configure against
+  // the same number instead of a second, drifting one.
+  assert.equal(delivery.MAX_SKEW_TOLERANCE_MS, 5 * 60 * 1000);
+
+  // At the bound it is still usable: a clock that sits exactly the bound
+  // behind the issue instant verifies.
+  const atBound = delivery.verifyPermitSignature({
+    message: signed.message,
+    signature: signed.signature,
+    publicKeyPem: keyPair.publicKeyPem,
+    expectedFingerprint: keyPair.fingerprint,
+    revokedFingerprints: NOTHING_REVOKED,
+    nowMs: issuedAt - delivery.MAX_SKEW_TOLERANCE_MS,
+    skewToleranceMs: delivery.MAX_SKEW_TOLERANCE_MS,
+  });
+  assert.equal(atBound.ok, true);
+
+  // One millisecond past the bound is refused.
+  assert.equal(
+    codeOf(() => delivery.verifyPermitSignature({
+      message: signed.message,
+      signature: signed.signature,
+      publicKeyPem: keyPair.publicKeyPem,
+      expectedFingerprint: keyPair.fingerprint,
+      revokedFingerprints: NOTHING_REVOKED,
+      nowMs: issuedAt - delivery.MAX_SKEW_TOLERANCE_MS,
+      skewToleranceMs: delivery.MAX_SKEW_TOLERANCE_MS + 1,
+    })),
+    "ERR_PERMIT_INPUT_INVALID",
+    "an allowance past the bound must be refused",
+  );
+
+  // The same bound applies to the EXPIRY judgement: the design says the
+  // allowance is applied to the issued-at and the expires-at judgements
+  // SEPARATELY, and it does not change the signed deadline_ms -- the
+  // comparison is what moves.
+  const expiredByOne = permit.deadline + 1;
+  assert.equal(
+    codeOf(() => delivery.verifyPermitSignature({
+      message: signed.message,
+      signature: signed.signature,
+      publicKeyPem: keyPair.publicKeyPem,
+      expectedFingerprint: keyPair.fingerprint,
+      revokedFingerprints: NOTHING_REVOKED,
+      nowMs: expiredByOne,
+      skewToleranceMs: 1,
+    })),
+    null,
+    "the allowance reaches the expiry judgement as well as the issued-at one",
+  );
+  assert.equal(
+    codeOf(() => delivery.verifyPermitSignature({
+      message: signed.message,
+      signature: signed.signature,
+      publicKeyPem: keyPair.publicKeyPem,
+      expectedFingerprint: keyPair.fingerprint,
+      revokedFingerprints: NOTHING_REVOKED,
+      nowMs: expiredByOne,
+    })),
+    "ERR_PERMIT_DEADLINE_EXPIRED",
+    "without an allowance a permit one millisecond past its deadline is refused",
+  );
+
+  // A negative allowance is refused: the design says the allowance may not
+  // be negative, and a negative one would TIGHTEN the issued-at judgement
+  // while pretending to be an allowance.
+  assert.equal(
+    codeOf(() => delivery.verifyPermitSignature({
+      message: signed.message,
+      signature: signed.signature,
+      publicKeyPem: keyPair.publicKeyPem,
+      expectedFingerprint: keyPair.fingerprint,
+      revokedFingerprints: NOTHING_REVOKED,
+      nowMs: issuedAt,
+      skewToleranceMs: -1,
+    })),
+    "ERR_PERMIT_INPUT_INVALID",
+  );
+
+  // The allowance does NOT widen the signature: the signed field set has
+  // no skew field, so a signer cannot ask for a wider window (design 2.3.3:
+  // the allowance "does not take part in the signature", precisely so it
+  // cannot be amplified).
+  assert.ok(!Object.keys(signed.message).some((name) => /skew|tolerance/i.test(name)));
+});
+
 // ── Revocation list ────────────────────────────────────────────────────────
 
 function buildRevocationList(options) {
