@@ -249,7 +249,7 @@ function buildRevocationList(options) {
     batch_public_key_fingerprint: keyPair.fingerprint,
   };
   const bytes = delivery.canonicalBytes(message);
-  const signature = crypto.sign(null, bytes, keyPair.privateKeyRef).toString("base64");
+  const signature = keyPair.privateKeyRef.sign(bytes).toString("base64");
   return { ...message, signature };
 }
 
@@ -440,14 +440,10 @@ test("the private key is not reachable through any export path", () => {
 
 test("the export path is refused rather than producing key bytes", () => {
   const keyPair = delivery.createBatchKeyPair();
-  // Reading the property must not blow up: an audit tool or a debugger
-  // inspects the handle routinely, and the refusal belongs to the CALL,
-  // not to the read.
-  assert.equal(typeof keyPair.privateKeyRef.export, "function");
-  assert.equal(
-    codeOf(() => keyPair.privateKeyRef.export({ type: "pkcs8", format: "pem" })),
-    "ERR_PERMIT_PRIVATE_KEY_EXPOSED",
-  );
+  // The handle carries no export path at all: the KeyObject stays inside
+  // the module, so there is nothing on the handle to call.
+  assert.equal(typeof keyPair.privateKeyRef.export, "undefined");
+  assert.deepEqual(Object.keys(keyPair.privateKeyRef), ["sign"]);
 });
 
 test("the private key does not leak through inspect or JSON", () => {
