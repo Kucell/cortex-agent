@@ -464,6 +464,24 @@ function runSession(args) {
 // addition to the data layer. Pure addition — no changes to _base/ or
 // to the existing init() function.
 async function initModeGeneral() {
+  // --dry-run: print the plan and exit before any write
+  // Before this fix, `cortex-agent init --mode general --dry-run` still
+  // ran copyRecursive / overlay / writeVersionFile / writePublicAnchor /
+  // applyGitExclusion / linkGlobalConfig. cli.js only honoured --dry-run
+  // for upgrade + update. This block brings general init in line with
+  // the same zero-write contract as code init (lib/commands/init.js).
+  // We read --dry-run from process.argv because cli.js invokes
+  // initModeGeneral() with no arguments (see line ~551).
+  const argv = process.argv.slice(2);
+  if (argv.includes("--dry-run")) {
+    const langIdx = argv.indexOf("--lang");
+    const langEq = argv.find(function (a) { return typeof a === "string" && a.startsWith("--lang="); });
+    var lang = (langIdx !== -1 && argv[langIdx + 1] && !argv[langIdx + 1].startsWith("--") && argv[langIdx + 1]) || (langEq ? langEq.slice("--lang=".length) : null) || (process.env.LANG && process.env.LANG.startsWith("zh") ? "zh" : "en");
+    const { printInitDryRunPlan } = require("../lib/commands/init.js");
+    printInitDryRunPlan({ cwd: cwd, lang: lang, templateDir: "", options: { dryRun: true, global: false }, mode: "general" });
+    return;
+  }
+
   const { copyRecursive, overlayGeneralCapabilities } = require("../lib/setup/index.js");
   const { writeVersionFile } = require("../lib/commands/patches.js");
   const { writePublicAnchor } = require("../lib/commands/anchor.js");
@@ -598,9 +616,7 @@ async function initModeGeneral() {
   // continues to call lib/commands.js init() exactly as before.
   if (
     command === "init" &&
-    (options.mode === "general" ||
-      args.includes("--mode") ||
-      args.includes("-m"))
+    options.mode === "general"
   ) {
     if (options.mode && options.mode !== "general") {
       console.error(
@@ -613,7 +629,11 @@ async function initModeGeneral() {
     return;
   }
   switch (command) {
-    case "init":        await init(ctx); installStateGithooks({ cwd, lang }); break;
+    // Respect --dry-run: init() now short-circuits inside lib/commands/init.js
+    // when options.dryRun is set, but installStateGithooks would still copy
+    // state-githooks templates to disk, which violates the zero-write
+    // contract. Mirror the upgrade + update branches above.
+    case "init":        await init(ctx); if (!ctx.options.dryRun) installStateGithooks({ cwd, lang }); break;
     case "add":         await addPlatforms(ctx); break;
     case "remove":      await removePlatforms(ctx); break;
     case "list":        listPlatforms(ctx); break;
