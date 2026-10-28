@@ -1,5 +1,7 @@
 # cortex-agent init
 
+Usage: cortex-agent init [options]
+
 Initialize or refresh the Cortex Agent governance framework in a project
 (Code mode, default), or lay down the shared data layer (General mode).
 
