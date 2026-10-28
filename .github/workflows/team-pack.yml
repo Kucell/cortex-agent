@@ -2,6 +2,9 @@ name: Team Pack
 
 on:
   push:
+    # PRs cover development branches; retain main and tag coverage.
+    branches: [main]
+    tags: ["**"]
     paths:
       - "bin/cli.js"
       - "lib/commands.js"
@@ -17,6 +20,10 @@ on:
       - "lib/secret-scan.js"
       - "tests/team-pack/**"
       - ".github/workflows/team-pack.yml"
+
+concurrency:
+  group: team-pack-${{ github.workflow }}-${{ github.event_name }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   test:
