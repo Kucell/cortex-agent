@@ -130,6 +130,8 @@ test("a message that drops a binding field is refused", () => {
         message,
         signature: signed.signature,
         publicKeyPem: keyPair.publicKeyPem,
+        expectedFingerprint: keyPair.fingerprint,
+        nowMs: 1,
       })),
       "ERR_PERMIT_BINDING_UNCOVERED",
       "dropping " + storage + " must be refused",
@@ -147,6 +149,8 @@ test("the verifier rejects a message whose signed field was swapped", () => {
       message: tampered,
       signature: signed.signature,
       publicKeyPem: keyPair.publicKeyPem,
+      expectedFingerprint: keyPair.fingerprint,
+      nowMs: 1,
     })),
     "ERR_PERMIT_SIGNATURE_INVALID",
   );
@@ -161,6 +165,8 @@ test("a permit signed by another batch key does not verify", () => {
       message: signed.message,
       signature: signed.signature,
       publicKeyPem: other.publicKeyPem,
+      expectedFingerprint: other.fingerprint,
+      nowMs: 1,
     })),
     "ERR_PERMIT_SIGNATURE_INVALID",
   );
@@ -185,6 +191,7 @@ test("both sides produce byte-identical canonical bytes", () => {
     message: reordered,
     signature: signed.signature,
     publicKeyPem: keyPair.publicKeyPem,
+    expectedFingerprint: keyPair.fingerprint,
     nowMs: permit.deadline - 1,
   });
   assert.equal(verified.ok, true);
@@ -225,6 +232,7 @@ test("the signed deadline is the permit's own deadline, byte for byte", () => {
     message: signed.message,
     signature: signed.signature,
     publicKeyPem: keyPair.publicKeyPem,
+    expectedFingerprint: keyPair.fingerprint,
     nowMs: permit.deadline - 1,
   });
   assert.equal(verified.deadline, permit.deadline);
@@ -245,6 +253,8 @@ test("a signed deadline that differs from the stored deadline is refused", () =>
       message: signed.message,
       signature: signed.signature,
       publicKeyPem: keyPair.publicKeyPem,
+      expectedFingerprint: keyPair.fingerprint,
+      nowMs: 1,
       expectedDeadlineMs: permit.deadline,
     })),
     null,
@@ -256,6 +266,8 @@ test("a signed deadline that differs from the stored deadline is refused", () =>
       message: signed.message,
       signature: signed.signature,
       publicKeyPem: keyPair.publicKeyPem,
+      expectedFingerprint: keyPair.fingerprint,
+      nowMs: 1,
       expectedDeadlineMs: permit.deadline + 1,
     })),
     "ERR_PERMIT_DEADLINE_MISMATCH",
@@ -317,6 +329,8 @@ test("the signed deadline is the deadline a real store produced, short lease inc
       message: signed.message,
       signature: signed.signature,
       publicKeyPem: keyPair.publicKeyPem,
+      expectedFingerprint: keyPair.fingerprint,
+      nowMs: 1,
       expectedDeadlineMs: reserved.deadline,
     });
     assert.equal(verified.deadline, reserved.deadline);
@@ -337,6 +351,7 @@ test("an expired permit is refused", () => {
       message: signed.message,
       signature: signed.signature,
       publicKeyPem: keyPair.publicKeyPem,
+      expectedFingerprint: keyPair.fingerprint,
       nowMs: permit.deadline + 1,
     })),
     "ERR_PERMIT_DEADLINE_EXPIRED",
@@ -415,6 +430,119 @@ test("the revoked set is a mandatory input to the verification path", () => {
     nowMs: 1,
   });
   assert.equal(ok.ok, true);
+});
+
+// ── The optional-argument fail-open family ────────────────────────────────
+//
+// Four rounds of review found the same shape four times: a precondition
+// that the design states as mandatory was expressed as an OPTIONAL
+// argument, and a caller that left the argument out got the check SKIPPED
+// instead of REFUSED. A skipped check is fail-open, and the omitted
+// argument is the easiest thing in the world to forget.
+//
+//   B3  pinnedFingerprints   -- the revocation signer must be in the pin
+//   B4  revokedFingerprints  -- a revoked key must not authorize anything
+//   B5  expectedFingerprint  -- the signer must BE the pinned key
+//   M5  nowMs                -- an expired permit must not verify
+//
+// The tests below pin the closed shape for the last two, written so that a
+// future change cannot turn an argument back into an optional one without
+// one of them turning red.
+
+test("the expected fingerprint is a mandatory input to the verification path", () => {
+  // The verifier holds the pin, so the fingerprint of the authoritative key
+  // is a value it has. Without it the module cannot answer "is this the key
+  // we pinned", and a missing answer is not a yes.
+  const keyPair = delivery.createBatchKeyPair();
+  const signed = sign(samplePermit(), keyPair);
+
+  // A key that was never registered must not be able to authorize anything.
+  // This is the second disjunct of the design's negative case 1 ("a message
+  // signed by an old key -> refuse: the key is revoked OR NOT IN THE PIN").
+  const attacker = delivery.createBatchKeyPair();
+  const attackerSigned = delivery.buildSignedPermit({
+    privateKeyRef: attacker.privateKeyRef,
+    permit: samplePermit(),
+    issuedAtMs: 1,
+  });
+  assert.equal(
+    codeOf(() => delivery.verifyPermitSignature({
+      message: attackerSigned.message,
+      signature: attackerSigned.signature,
+      publicKeyPem: attacker.publicKeyPem,
+      nowMs: 1,
+      revokedFingerprints: NOTHING_REVOKED,
+    })),
+    "ERR_PERMIT_SIGNATURE_INVALID",
+    "an unregistered key must be refused when the expected fingerprint is omitted",
+  );
+
+  // Every shape of "no expectation was supplied" is refused. The guard is
+  // the comparison, not the truthiness of the argument: an empty string, a
+  // null, a zero and a false all used to slip past `if (expectedFingerprint)`.
+  for (const missing of [undefined, null, "", 0, false]) {
+    assert.equal(
+      codeOf(() => delivery.verifyPermitSignature({
+        message: signed.message,
+        signature: signed.signature,
+        publicKeyPem: keyPair.publicKeyPem,
+        expectedFingerprint: missing,
+        nowMs: 1,
+        revokedFingerprints: NOTHING_REVOKED,
+      })),
+      "ERR_PERMIT_SIGNATURE_INVALID",
+      "expectedFingerprint=" + JSON.stringify(missing) + " must not skip the identity check",
+    );
+  }
+
+  // The honest path still works: the pinned key's own permit verifies, and
+  // the reported fingerprint is the DERIVED one -- the key that actually
+  // signed, not a claim the caller made about it.
+  const verified = delivery.verifyPermitSignature({
+    message: signed.message,
+    signature: signed.signature,
+    publicKeyPem: keyPair.publicKeyPem,
+    expectedFingerprint: keyPair.fingerprint,
+    nowMs: 1,
+    revokedFingerprints: NOTHING_REVOKED,
+  });
+  assert.equal(verified.ok, true);
+  assert.equal(verified.fingerprint, keyPair.fingerprint);
+});
+
+test("the verifier clock is a mandatory input to the verification path", () => {
+  // The expiry verdict depends on the verifier's local clock (design 2.3.3).
+  // Without a clock there is no verdict at all, and a missing verdict is not
+  // "not expired" -- leaving the argument out used to let an EXPIRED permit
+  // through.
+  const keyPair = delivery.createBatchKeyPair();
+  const permit = samplePermit({ deadline: 1_700_000_000_000 });
+  const signed = sign(permit, keyPair);
+
+  assert.equal(
+    codeOf(() => delivery.verifyPermitSignature({
+      message: signed.message,
+      signature: signed.signature,
+      publicKeyPem: keyPair.publicKeyPem,
+      expectedFingerprint: keyPair.fingerprint,
+      revokedFingerprints: NOTHING_REVOKED,
+    })),
+    "ERR_PERMIT_INPUT_INVALID",
+    "an expired permit must not verify just because the clock was left out",
+  );
+
+  // With the clock supplied, the expired permit is refused on its merits.
+  assert.equal(
+    codeOf(() => delivery.verifyPermitSignature({
+      message: signed.message,
+      signature: signed.signature,
+      publicKeyPem: keyPair.publicKeyPem,
+      expectedFingerprint: keyPair.fingerprint,
+      revokedFingerprints: NOTHING_REVOKED,
+      nowMs: permit.deadline + 1,
+    })),
+    "ERR_PERMIT_DEADLINE_EXPIRED",
+  );
 });
 
 // ── Revocation list ────────────────────────────────────────────────────────
