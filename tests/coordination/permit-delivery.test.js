@@ -66,6 +66,14 @@ function sign(permit, keyPair, issuedAtMs) {
   });
 }
 
+// The verifier's clock. It has to be a PLAUSIBLE instant: the verifier
+// refuses a clock that is zero or below (a vacuous expiry verdict) and a
+// clock that precedes the signed issued_at_ms (a reading the verifier
+// could not have taken). The permit's own issue instant is the natural
+// choice -- it is inside the validity window of every permit these tests
+// build, and it is what a verifier with a synchronised clock would see.
+const VERIFIER_CLOCK_MS = 1_700_000_000_000 - 1000;
+
 function codeOf(fn) {
   try {
     fn();
@@ -131,7 +139,7 @@ test("a message that drops a binding field is refused", () => {
         signature: signed.signature,
         publicKeyPem: keyPair.publicKeyPem,
         expectedFingerprint: keyPair.fingerprint,
-        nowMs: 1,
+        nowMs: VERIFIER_CLOCK_MS,
       })),
       "ERR_PERMIT_BINDING_UNCOVERED",
       "dropping " + storage + " must be refused",
@@ -150,7 +158,7 @@ test("the verifier rejects a message whose signed field was swapped", () => {
       signature: signed.signature,
       publicKeyPem: keyPair.publicKeyPem,
       expectedFingerprint: keyPair.fingerprint,
-      nowMs: 1,
+      nowMs: VERIFIER_CLOCK_MS,
     })),
     "ERR_PERMIT_SIGNATURE_INVALID",
   );
@@ -166,7 +174,7 @@ test("a permit signed by another batch key does not verify", () => {
       signature: signed.signature,
       publicKeyPem: other.publicKeyPem,
       expectedFingerprint: other.fingerprint,
-      nowMs: 1,
+      nowMs: VERIFIER_CLOCK_MS,
     })),
     "ERR_PERMIT_SIGNATURE_INVALID",
   );
@@ -254,7 +262,7 @@ test("a signed deadline that differs from the stored deadline is refused", () =>
       signature: signed.signature,
       publicKeyPem: keyPair.publicKeyPem,
       expectedFingerprint: keyPair.fingerprint,
-      nowMs: 1,
+      nowMs: VERIFIER_CLOCK_MS,
       expectedDeadlineMs: permit.deadline,
     })),
     null,
@@ -267,7 +275,7 @@ test("a signed deadline that differs from the stored deadline is refused", () =>
       signature: signed.signature,
       publicKeyPem: keyPair.publicKeyPem,
       expectedFingerprint: keyPair.fingerprint,
-      nowMs: 1,
+      nowMs: VERIFIER_CLOCK_MS,
       expectedDeadlineMs: permit.deadline + 1,
     })),
     "ERR_PERMIT_DEADLINE_MISMATCH",
@@ -330,7 +338,10 @@ test("the signed deadline is the deadline a real store produced, short lease inc
       signature: signed.signature,
       publicKeyPem: keyPair.publicKeyPem,
       expectedFingerprint: keyPair.fingerprint,
-      nowMs: 1,
+      // The store runs on an injected clock, so the verifier is given the
+      // same reading -- the permit was signed at that instant, and a
+      // verifier clock behind the issue instant is refused.
+      nowMs: clock(),
       expectedDeadlineMs: reserved.deadline,
     });
     assert.equal(verified.deadline, reserved.deadline);
@@ -380,7 +391,7 @@ test("a revoked fingerprint cannot authorize a permit", () => {
       publicKeyPem: keyPair.publicKeyPem,
       expectedFingerprint: keyPair.fingerprint,
       revokedFingerprints: revoked,
-      nowMs: 1,
+      nowMs: VERIFIER_CLOCK_MS,
     })),
     "ERR_REVOCATION_SIGNER_INVALID",
   );
@@ -404,7 +415,7 @@ test("the revoked set is a mandatory input to the verification path", () => {
       publicKeyPem: keyPair.publicKeyPem,
       expectedFingerprint: keyPair.fingerprint,
       revokedFingerprints: revoked,
-      nowMs: 1,
+      nowMs: VERIFIER_CLOCK_MS,
     })),
     "ERR_REVOCATION_SIGNER_INVALID",
   );
@@ -416,7 +427,7 @@ test("the revoked set is a mandatory input to the verification path", () => {
       signature: signed.signature,
       publicKeyPem: keyPair.publicKeyPem,
       expectedFingerprint: keyPair.fingerprint,
-      nowMs: 1,
+      nowMs: VERIFIER_CLOCK_MS,
     })),
     "ERR_REVOCATION_SIGNER_INVALID",
   );
@@ -427,7 +438,7 @@ test("the revoked set is a mandatory input to the verification path", () => {
     publicKeyPem: keyPair.publicKeyPem,
     expectedFingerprint: keyPair.fingerprint,
     revokedFingerprints: new Set(),
-    nowMs: 1,
+    nowMs: VERIFIER_CLOCK_MS,
   });
   assert.equal(ok.ok, true);
 });
@@ -470,7 +481,7 @@ test("the expected fingerprint is a mandatory input to the verification path", (
       message: attackerSigned.message,
       signature: attackerSigned.signature,
       publicKeyPem: attacker.publicKeyPem,
-      nowMs: 1,
+      nowMs: VERIFIER_CLOCK_MS,
       revokedFingerprints: NOTHING_REVOKED,
     })),
     "ERR_PERMIT_SIGNATURE_INVALID",
@@ -487,7 +498,7 @@ test("the expected fingerprint is a mandatory input to the verification path", (
         signature: signed.signature,
         publicKeyPem: keyPair.publicKeyPem,
         expectedFingerprint: missing,
-        nowMs: 1,
+        nowMs: VERIFIER_CLOCK_MS,
         revokedFingerprints: NOTHING_REVOKED,
       })),
       "ERR_PERMIT_SIGNATURE_INVALID",
@@ -503,7 +514,7 @@ test("the expected fingerprint is a mandatory input to the verification path", (
     signature: signed.signature,
     publicKeyPem: keyPair.publicKeyPem,
     expectedFingerprint: keyPair.fingerprint,
-    nowMs: 1,
+    nowMs: VERIFIER_CLOCK_MS,
     revokedFingerprints: NOTHING_REVOKED,
   });
   assert.equal(verified.ok, true);
@@ -543,6 +554,82 @@ test("the verifier clock is a mandatory input to the verification path", () => {
     })),
     "ERR_PERMIT_DEADLINE_EXPIRED",
   );
+});
+
+test("an impossible clock reading cannot make an expired permit verify", () => {
+  // The expiry verdict is `now > deadline`. A clock reading that is not a
+  // real instant makes that comparison vacuous: `now > deadline` is false
+  // for every deadline once now is zero or below, so a permit that expired
+  // decades ago would verify. The protected permit store refuses a
+  // negative clock the same way (protected-permit-store.js:
+  // `!Number.isSafeInteger(now) || now < 0`); the epoch is refused here
+  // too, because no permit this module verifies can have a deadline at or
+  // below it.
+  const keyPair = delivery.createBatchKeyPair();
+  const permit = samplePermit({ deadline: 1_700_000_000_000 });
+  const signed = sign(permit, keyPair);
+
+  for (const impossible of [0, -1, -1000, -1_700_000_000_000, Number.MIN_SAFE_INTEGER]) {
+    assert.equal(
+      codeOf(() => delivery.verifyPermitSignature({
+        message: signed.message,
+        signature: signed.signature,
+        publicKeyPem: keyPair.publicKeyPem,
+        expectedFingerprint: keyPair.fingerprint,
+        revokedFingerprints: NOTHING_REVOKED,
+        nowMs: impossible,
+      })),
+      "ERR_PERMIT_INPUT_INVALID",
+      "nowMs=" + impossible + " is not a real instant and must be refused",
+    );
+  }
+
+  // A clock that PRECEDES the signed issue instant is equally impossible:
+  // the permit cannot have been issued by a signer that has not reached
+  // that moment yet. Without this judgement the whole clock check is
+  // vacuous for every permit ever issued.
+  assert.equal(
+    codeOf(() => delivery.verifyPermitSignature({
+      message: signed.message,
+      signature: signed.signature,
+      publicKeyPem: keyPair.publicKeyPem,
+      expectedFingerprint: keyPair.fingerprint,
+      revokedFingerprints: NOTHING_REVOKED,
+      nowMs: 1,
+    })),
+    "ERR_PERMIT_INPUT_INVALID",
+    "a clock behind the signed issue instant must be refused",
+  );
+
+  // The skew allowance is the one thing that may let the verifier's clock
+  // sit behind the issue instant -- the design applies it to the
+  // issued-at and the expires-at judgements separately (section 2.3.3).
+  // It may not be negative.
+  assert.equal(
+    codeOf(() => delivery.verifyPermitSignature({
+      message: signed.message,
+      signature: signed.signature,
+      publicKeyPem: keyPair.publicKeyPem,
+      expectedFingerprint: keyPair.fingerprint,
+      revokedFingerprints: NOTHING_REVOKED,
+      nowMs: permit.deadline - 1000,
+      skewToleranceMs: -1,
+    })),
+    "ERR_PERMIT_INPUT_INVALID",
+    "a negative skew allowance must be refused",
+  );
+
+  // And the honest path is unaffected: a real clock inside the validity
+  // window verifies.
+  const verified = delivery.verifyPermitSignature({
+    message: signed.message,
+    signature: signed.signature,
+    publicKeyPem: keyPair.publicKeyPem,
+    expectedFingerprint: keyPair.fingerprint,
+    revokedFingerprints: NOTHING_REVOKED,
+    nowMs: permit.deadline - 1000,
+  });
+  assert.equal(verified.ok, true);
 });
 
 // ── Revocation list ────────────────────────────────────────────────────────
