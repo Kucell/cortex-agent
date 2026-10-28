@@ -10,6 +10,7 @@ const {
   ProtectedPinStore,
   publicKeyFingerprint,
   sameBatchIdentity,
+  DOMAIN_MARKER_FILE,
 } = require("../../lib/coordination/protected-pin-store");
 const anchorModule = require("../../lib/coordination/protected-anchor");
 const delivery = require("../../lib/coordination/permit-delivery");
@@ -428,5 +429,95 @@ test("a declared service identity that is not the caller is refused", () => {
     );
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// The state-loss defences (review blocking item B1).
+//
+// The old readState() turned EVERY read failure into an empty domain. That
+// reset the applied revocation high-water mark and the revoked fingerprint
+// set to zero, so a revoked key became authorised again. The state file
+// being unreadable and the state file not existing are now different
+// facts, and only the second one is an empty domain.
+
+test("a domain that never held state reads as empty", () => {
+  const f = fixture();
+  try {
+    assert.equal(f.store.listPins().length, 0);
+    assert.equal(f.store.revocationState().appliedRevocationSequence, 0);
+    // No state was ever written, so no initialisation marker exists yet.
+    assert.equal(fs.existsSync(path.join(f.pinDir, DOMAIN_MARKER_FILE)), false);
+  } finally {
+    f.cleanup();
+  }
+});
+
+test("an unreadable state file is refused, not read as an empty domain", () => {
+  const f = fixture();
+  try {
+    const key = keyPair();
+    f.store.registerPin({
+      batchIdentity: batchIdentityFor(key),
+      publicKeyPem: key.publicKeyPem,
+      nowMs: 1_000,
+      write: atomicCreate(path.join(f.dir, "pin.marker")),
+    });
+    const statePath = path.join(f.pinDir, "pin-state.json");
+    fs.chmodSync(statePath, 0o000);
+    try {
+      assert.equal(codeOf(() => f.store.listPins()), "ERR_PIN_STATE_CORRUPT");
+      assert.equal(codeOf(() => f.store.revocationState()), "ERR_PIN_STATE_CORRUPT");
+    } finally {
+      fs.chmodSync(statePath, 0o600);
+    }
+  } finally {
+    f.cleanup();
+  }
+});
+
+test("a deleted state file is refused, and the revoked set does not reset to empty", () => {
+  const f = fixture();
+  try {
+    const key = keyPair();
+    f.store.registerPin({
+      batchIdentity: batchIdentityFor(key),
+      publicKeyPem: key.publicKeyPem,
+      nowMs: 1_000,
+      write: atomicCreate(path.join(f.dir, "pin.marker")),
+    });
+    f.store.commitRevocation({
+      sequence: 4,
+      revokedFingerprints: ["a".repeat(64)],
+    });
+    assert.equal(f.store.revocationState().revokedFingerprints.size, 1);
+    assert.equal(f.store.revocationState().appliedRevocationSequence, 4);
+
+    // The domain was initialised, so the marker is present.
+    assert.equal(fs.existsSync(path.join(f.pinDir, DOMAIN_MARKER_FILE)), true);
+    fs.unlinkSync(path.join(f.pinDir, "pin-state.json"));
+
+    // The loss is refused. The revocation state does not come back empty,
+    // so the revoked key is not authorised again.
+    assert.equal(codeOf(() => f.store.revocationState()), "ERR_PIN_STATE_CORRUPT");
+    assert.equal(codeOf(() => f.store.listPins()), "ERR_PIN_STATE_CORRUPT");
+  } finally {
+    f.cleanup();
+  }
+});
+
+test("the initialisation marker is written before the first state file", () => {
+  const f = fixture();
+  try {
+    const key = keyPair();
+    f.store.registerPin({
+      batchIdentity: batchIdentityFor(key),
+      publicKeyPem: key.publicKeyPem,
+      nowMs: 1_000,
+      write: atomicCreate(path.join(f.dir, "pin.marker")),
+    });
+    assert.equal(fs.existsSync(path.join(f.pinDir, DOMAIN_MARKER_FILE)), true);
+    assert.equal(fs.existsSync(path.join(f.pinDir, "pin-state.json")), true);
+  } finally {
+    f.cleanup();
   }
 });

@@ -615,3 +615,203 @@ test("a failed pull refuses the verification instead of using the last list", ()
     f.cleanup();
   }
 });
+
+// The three blocking items from the independent review, covered by the
+// product's own suite so that a future change cannot quietly reopen them.
+
+test("a pin from a DIFFERENT batch is refused with ERR_PIN_BATCH_MISMATCH", () => {
+  // Review blocking item B3: the batch comparison has to be reachable.
+  // While the exclusivity clauses were asked first, every existing pin was
+  // a plain ERR_PIN_NOT_EXCLUSIVE, so the specific "not your pin" refusal
+  // never happened and a reconnect could not be told apart from a takeover.
+  const f = fixture();
+  try {
+    const key = keyPair();
+    cross.registerOnTarget({
+      pinStore: f.store,
+      batchIdentity: batchIdentityFor(key),
+      publicKeyPem: key.publicKeyPem,
+      targetHasProcess: false,
+      targetHasPriorRun: false,
+      nowMs: 1_000_000,
+      write: atomicCreate(path.join(f.dir, "pin.marker")),
+    });
+
+    assert.equal(
+      codeOf(() => cross.registerOnTarget({
+        pinStore: f.store,
+        // The same fingerprint, a different instance: a different batch.
+        batchIdentity: batchIdentityFor(key, { instance_id: "other-instance" }),
+        publicKeyPem: key.publicKeyPem,
+        targetHasProcess: false,
+        targetHasPriorRun: false,
+        nowMs: 1_000_001,
+        write: atomicCreate(path.join(f.dir, "pin.marker")),
+      })),
+      "ERR_PIN_BATCH_MISMATCH",
+    );
+    // The original pin is untouched.
+    assert.equal(f.store.listPins().length, 1);
+  } finally {
+    f.cleanup();
+  }
+});
+
+test("the same batch triple WITHOUT a bootstrap snapshot is refused", () => {
+  // Review blocking item B3, second half: the identical triple alone does
+  // not make a reconnect. Two competitors of the same batch reach this
+  // point too, and the loser of that race must not be told it succeeded.
+  const f = fixture();
+  try {
+    const key = keyPair();
+    const identity = batchIdentityFor(key);
+    cross.registerOnTarget({
+      pinStore: f.store,
+      batchIdentity: identity,
+      publicKeyPem: key.publicKeyPem,
+      targetHasProcess: false,
+      targetHasPriorRun: false,
+      nowMs: 1_000_000,
+      write: atomicCreate(path.join(f.dir, "pin.marker")),
+    });
+    assert.equal(
+      codeOf(() => cross.registerOnTarget({
+        pinStore: f.store,
+        batchIdentity: identity,
+        publicKeyPem: key.publicKeyPem,
+        targetHasProcess: false,
+        targetHasPriorRun: false,
+        nowMs: 1_000_001,
+        write: atomicCreate(path.join(f.dir, "pin.marker")),
+      })),
+      "ERR_PIN_NOT_EXCLUSIVE",
+    );
+  } finally {
+    f.cleanup();
+  }
+});
+
+test("the same batch triple WITH a bootstrap snapshot reuses the pin", () => {
+  // The negative control for the case above: with the snapshot as the
+  // evidence the design asks for, the reconnect succeeds and the pin is
+  // reused rather than rewritten.
+  const f = fixture();
+  try {
+    const key = keyPair();
+    const identity = batchIdentityFor(key);
+    bootstrap.createSnapshot({
+      snapshotDir: f.snapshotDir,
+      batchIdentity: identity,
+      nowMs: 1_000_000,
+    });
+    // The first registration writes the pin and advances the snapshot to
+    // "registered" inside the same critical section.
+    cross.registerOnTarget({
+      pinStore: f.store,
+      batchIdentity: identity,
+      publicKeyPem: key.publicKeyPem,
+      bootstrap: { snapshotDir: f.snapshotDir },
+      targetHasProcess: false,
+      targetHasPriorRun: false,
+      nowMs: 1_000_002,
+      write: atomicCreate(path.join(f.dir, "pin.marker")),
+    });
+    // The snapshot is still on disk, in the "registered" state, and the
+    // target can independently verify that the pin is ours. That is the
+    // normal reconnect the design describes.
+    const verdict = bootstrap.classifySnapshot({
+      snapshotDir: f.snapshotDir,
+      batchIdentity: identity,
+      canVerifyPinOwnership: () => "ours",
+    });
+    assert.equal(verdict.classification, "normal-reconnect");
+    const again = cross.registerOnTarget({
+      pinStore: f.store,
+      batchIdentity: identity,
+      publicKeyPem: key.publicKeyPem,
+      bootstrap: { snapshotDir: f.snapshotDir },
+      targetHasProcess: false,
+      targetHasPriorRun: false,
+      nowMs: 1_000_003,
+      write: atomicCreate(path.join(f.dir, "pin.marker")),
+    });
+    assert.equal(again.reused, true);
+    assert.equal(f.store.listPins().length, 1);
+  } finally {
+    f.cleanup();
+  }
+});
+
+test("a clock-poisoned domain refuses the retrieval, the pull and the verification", () => {
+  // Review blocking item B2: the poisoning marker had no reader anywhere in
+  // the tree, so poisoning a domain changed nothing and the domain kept
+  // authorising.
+  const f = fixture();
+  try {
+    const key = keyPair();
+    const identity = batchIdentityFor(key);
+    cross.registerOnTarget({
+      pinStore: f.store,
+      batchIdentity: identity,
+      publicKeyPem: key.publicKeyPem,
+      targetHasProcess: false,
+      targetHasPriorRun: false,
+      nowMs: 1_000_000,
+      write: atomicCreate(path.join(f.dir, "pin.marker")),
+    });
+    f.store.setClockPoisoned(true);
+
+    assert.equal(
+      codeOf(() => cross.retrieveVerificationKey({ pinStore: f.store, fingerprint: identity.fingerprint })),
+      "ERR_CLOCK_INVALID",
+    );
+    assert.equal(
+      codeOf(() => cross.pullAndApplyRevocation({
+        pinStore: f.store,
+        pull: () => revocationList(key, { sequence: 1, fingerprints: ["a".repeat(64)] }),
+        nowMs: 1_000_001,
+      })),
+      "ERR_CLOCK_INVALID",
+    );
+    assert.equal(
+      codeOf(() => cross.verifyWithPinnedKey({
+        pinStore: f.store,
+        fingerprint: identity.fingerprint,
+        message: "m",
+        signature: "s",
+        expectedDeadlineMs: 1_700_000_000_000,
+        nowMs: 1_000_002,
+      })),
+      "ERR_CLOCK_INVALID",
+    );
+  } finally {
+    f.cleanup();
+  }
+});
+
+test("a domain that was never poisoned still authorises", () => {
+  // The negative control for the poisoning case: the poisoning check must
+  // not refuse a domain that is fine.
+  const f = fixture();
+  try {
+    const key = keyPair();
+    const identity = batchIdentityFor(key);
+    cross.registerOnTarget({
+      pinStore: f.store,
+      batchIdentity: identity,
+      publicKeyPem: key.publicKeyPem,
+      targetHasProcess: false,
+      targetHasPriorRun: false,
+      nowMs: 1_000_000,
+      write: atomicCreate(path.join(f.dir, "pin.marker")),
+    });
+    assert.equal(f.store.isClockPoisoned(), false);
+    const retrieved = cross.retrieveVerificationKey({
+      pinStore: f.store,
+      fingerprint: identity.fingerprint,
+    });
+    assert.equal(retrieved.fingerprint, identity.fingerprint);
+  } finally {
+    f.cleanup();
+  }
+});
