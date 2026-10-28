@@ -165,7 +165,10 @@ test("MS-003 an in-flight step blocks another reserve and consume", { skip: !sup
   try {
     const lease = f.store.acquire(leaseFields());
     const first = f.store.reserve(permitFields(lease));
-    const second = f.store.reserve(permitFields(lease, { idempotencyKey: "second-key" }));
+    // A DIFFERENT action on the same desktop. The same action under a second
+    // idempotency key is refused at reserve time now, so it cannot be used
+    // to reach the in-flight guard this test is about.
+    const second = f.store.reserve(permitFields(lease, { idempotencyKey: "second-key", targetDigest: DIGEST_B }));
     f.store.consume(consumeFields(first));
     assert.throws(() => f.store.reserve(permitFields(lease, { idempotencyKey: "third-key" })), { code: "ERR_ACTION_IN_FLIGHT" });
     assert.throws(() => f.store.consume(consumeFields(second)), { code: "ERR_ACTION_IN_FLIGHT" });
@@ -277,7 +280,9 @@ test("MS-003 managed recovery revokes an active draining lease before reopening 
   try {
     const lease = f.store.acquire(leaseFields());
     const failed = f.store.reserve(permitFields(lease));
-    const pending = f.store.reserve(permitFields(lease, { idempotencyKey: "pending-key" }));
+    // A DIFFERENT action: a pending permit for the SAME action can no longer
+    // be minted, because the action-level guard refuses it at reserve time.
+    const pending = f.store.reserve(permitFields(lease, { idempotencyKey: "pending-key", targetDigest: DIGEST_B }));
     f.store.consume(consumeFields(failed));
     f.store.finish({ ...consumeFields(failed), outcome: "failed" });
     assert.equal(f.store.snapshot().desktop.status, "draining");
@@ -302,6 +307,204 @@ test("MS-003 two processes cannot issue two permits for one idempotency key", { 
       reserveInProcess(f.file, f.anchorDir, fields, 1_000_001),
       reserveInProcess(f.file, f.anchorDir, fields, 1_000_001),
     ]);
+    assert.equal(a.ok, true);
+    assert.equal(b.ok, true);
+    assert.equal(a.permitId, b.permitId);
+    assert.equal(Object.keys(f.store.snapshot().permits).length, 1);
+  } finally { f.cleanup(); }
+});
+
+// ─── F-1: the same action must never be dispatched twice ──────────────────
+//
+// The in-flight guard used to count only the permits whose status was exactly
+// "consumed". A permit that had been minted but not consumed was invisible
+// to it, so several processes could mint permits for the same desktop under
+// different idempotency keys, and a permit for an action that had already run
+// could still be consumed afterwards. The same action therefore reached the
+// executor twice. The guard is now scoped to the action itself.
+
+test("MS-005 a second permit for the same action is refused even under a different idempotency key", { skip: !supportsSqlite }, () => {
+  const f = fixture();
+  try {
+    const lease = f.store.acquire(leaseFields());
+    const first = f.store.reserve(permitFields(lease, { idempotencyKey: "key-A" }));
+    // The same operation, the same target and the same parameters under a
+    // fresh idempotency key: the shape a "retry with a new key" takes.
+    assert.throws(() => f.store.reserve(permitFields(lease, { idempotencyKey: "key-B" })),
+      { code: "ERR_ACTION_IN_FLIGHT" });
+    assert.equal(Object.keys(f.store.snapshot().permits).length, 1);
+
+    // The first action runs and completes.
+    assert.equal(f.store.consume(consumeFields(first)).status, "consumed");
+    assert.equal(f.store.finish({ ...consumeFields(first), outcome: "finished" }).status, "finished");
+
+    // The action has already been dispatched, so it must not be dispatchable
+    // again -- not with a fresh key, and not with the original one either
+    // beyond the idempotent read-back.
+    assert.throws(() => f.store.reserve(permitFields(lease, { idempotencyKey: "key-C" })),
+      { code: "ERR_ACTION_ALREADY_DISPATCHED" });
+  } finally { f.cleanup(); }
+});
+
+test("MS-005 the same idempotency key still reads back the original permit after the action completed", { skip: !supportsSqlite }, () => {
+  const f = fixture();
+  try {
+    const lease = f.store.acquire(leaseFields());
+    const first = f.store.reserve(permitFields(lease, { idempotencyKey: "key-A" }));
+    f.store.consume(consumeFields(first));
+    f.store.finish({ ...consumeFields(first), outcome: "finished" });
+    // The retry of the SAME attempt reads the original record back. The
+    // action-level guard must not turn an idempotent retry into an error.
+    const retry = f.store.reserve(permitFields(lease, { idempotencyKey: "key-A" }));
+    assert.equal(retry.permitId, first.permitId);
+    assert.equal(retry.status, "finished");
+    assert.equal(Object.keys(f.store.snapshot().permits).length, 1);
+  } finally { f.cleanup(); }
+});
+
+test("MS-005 a different action on the same desktop is still dispatchable after the first one finished", { skip: !supportsSqlite }, () => {
+  const f = fixture();
+  try {
+    const lease = f.store.acquire(leaseFields());
+    const first = f.store.reserve(permitFields(lease, { idempotencyKey: "key-A" }));
+    f.store.consume(consumeFields(first));
+    f.store.finish({ ...consumeFields(first), outcome: "finished" });
+    // A different target is a different action: the guard is action-scoped,
+    // not desktop-scoped, and must not block legitimate follow-up work.
+    const second = f.store.reserve(permitFields(lease, { idempotencyKey: "key-B", targetDigest: DIGEST_B }));
+    assert.equal(second.status, "reserved");
+    assert.notEqual(second.permitId, first.permitId);
+  } finally { f.cleanup(); }
+});
+
+test("MS-005 a permit for an action that was revoked before it ran may be minted again", { skip: !supportsSqlite }, () => {
+  const f = fixture();
+  try {
+    const lease = f.store.acquire(leaseFields());
+    const first = f.store.reserve(permitFields(lease, { idempotencyKey: "key-A" }));
+    // The permit is revoked without ever being consumed, so the action was
+    // never dispatched. A revocation therefore does not forbid the action
+    // forever -- only a permit that actually reached the executor does.
+    f.store.revoke(lease);
+    assert.equal(f.store.snapshot().permits[first.permitId].status, "revoked");
+  } finally { f.cleanup(); }
+});
+
+test("MS-005 two processes reserving the same action under different idempotency keys mint one permit", { skip: !supportsSqlite }, async () => {
+  const f = fixture();
+  try {
+    const lease = f.store.acquire(leaseFields());
+    const [a, b] = await Promise.all([
+      reserveInProcess(f.file, f.anchorDir, permitFields(lease, { idempotencyKey: "key-A" }), 1_000_001),
+      reserveInProcess(f.file, f.anchorDir, permitFields(lease, { idempotencyKey: "key-B" }), 1_000_001),
+    ]);
+    const okCount = [a, b].filter((r) => r.ok === true).length;
+    assert.equal(okCount, 1, "exactly one process may obtain a permit for the action");
+    assert.equal(Object.keys(f.store.snapshot().permits).length, 1);
+    // The refused process must be refused with the action-level code, not
+    // with a generic failure.
+    const refused = [a, b].find((r) => r.ok !== true);
+    assert.equal(refused.code, "ERR_ACTION_IN_FLIGHT");
+  } finally { f.cleanup(); }
+});
+
+test("MS-005 many processes reserving the same action under different idempotency keys mint one permit", { skip: !supportsSqlite }, async () => {
+  const f = fixture();
+  try {
+    const lease = f.store.acquire(leaseFields());
+    const attempts = [];
+    for (let i = 0; i < 6; i += 1) {
+      attempts.push(reserveInProcess(
+        f.file, f.anchorDir, permitFields(lease, { idempotencyKey: "key-" + i }), 1_000_001,
+      ));
+    }
+    const settled = await Promise.all(attempts);
+    const okCount = settled.filter((r) => r.ok === true).length;
+    assert.equal(okCount, 1, "exactly one of the six processes may obtain a permit");
+    assert.equal(Object.keys(f.store.snapshot().permits).length, 1);
+  } finally { f.cleanup(); }
+});
+
+test("MS-005 consume refuses a second permit for an action that already ran, even if that permit was minted before the guard existed", { skip: !supportsSqlite }, () => {
+  // Defence in depth. The reserve() guard refuses the second permit before
+  // it is minted, so in a store that only ever saw this code path the second
+  // permit cannot exist. This case covers the guard inside consume() itself,
+  // for a store whose state already carries two permits for the same action
+  // -- a state that a pre-guard release could have produced.
+  //
+  // The state is forged directly in the database and the anchor witness is
+  // advanced to match it through the anchor API, so the store comes up and
+  // the consume() guard is what decides. The point of the test is the
+  // consume() guard, not the anchor contract.
+  const { DatabaseSync } = require("node:sqlite");
+  const f = fixture();
+  try {
+    const lease = f.store.acquire(leaseFields());
+    const first = f.store.reserve(permitFields(lease, { idempotencyKey: "key-A" }));
+    f.store.close();
+
+    // Forge the state a pre-guard store could hold: a second, still
+    // reserved permit for the very same action.
+    const db = new DatabaseSync(f.file);
+    let body;
+    let digestOfBody;
+    let sequence;
+    let storeId;
+    try {
+      const row = db.prepare("SELECT body, sha256 FROM protected_state WHERE id = 1").get();
+      const state = JSON.parse(row.body);
+      storeId = state.store_id;
+      state.permit_seq += 1;
+      const forged = {
+        ...state.permits[first.permitId],
+        permitId: "P-PERMIT-FORGED",
+        idempotencyKey: "key-B",
+        status: "reserved",
+        sequence: state.permit_seq,
+      };
+      state.permits[forged.permitId] = forged;
+      state.idempotency["key-B"] = forged.permitId;
+      state.anchor_sequence += 1;
+      sequence = state.anchor_sequence;
+      body = JSON.stringify(state);
+      digestOfBody = crypto.createHash("sha256").update(body).digest("hex");
+      db.prepare("UPDATE protected_state SET body = ?, sha256 = ? WHERE id = 1")
+        .run(body, digestOfBody);
+    } finally { db.close(); }
+
+    // Advance the anchor witness to the forged body so the store opens.
+    const anchorFile = anchorModule.journalFileFor(f.anchorDir);
+    anchorModule.appendEntry(anchorFile, { type: "intent", sequence, body_digest: digestOfBody, store_id: storeId, attempt: 1 });
+    anchorModule.appendEntry(anchorFile, { type: "commit", sequence, body_digest: digestOfBody, store_id: storeId, attempt: 1 });
+    anchorModule.appendHighWater(f.anchorDir, { sequence, body_digest: digestOfBody, store_id: storeId, attempt: 1 });
+
+    const reopened = ProtectedPermitStore.open(f.file, {
+      clock: f.clock, expectedDecisionId: "D-test-init", minimumEpoch: 1, anchorDir: f.anchorDir,
+    });
+    try {
+      // The forged permit names the same action, so it must not be
+      // consumable while the first one is still reserved.
+      const forged = reopened.snapshot().permits["P-PERMIT-FORGED"];
+      assert.ok(forged, "the forged permit must be present in the state");
+      assert.throws(() => reopened.consume(consumeFields(forged)), { code: "ERR_ACTION_IN_FLIGHT" });
+    } finally { reopened.close(); }
+  } finally {
+    fs.rmSync(f.dir, { recursive: true, force: true });
+    fs.rmSync(f.anchorDir, { recursive: true, force: true });
+  }
+});
+
+test("MS-005 the idempotency key still wins over the action guard across two processes", { skip: !supportsSqlite }, async () => {
+  const f = fixture();
+  try {
+    const lease = f.store.acquire(leaseFields());
+    const fields = permitFields(lease, { idempotencyKey: "key-A" });
+    const [a, b] = await Promise.all([
+      reserveInProcess(f.file, f.anchorDir, fields, 1_000_001),
+      reserveInProcess(f.file, f.anchorDir, fields, 1_000_001),
+    ]);
+    // The same attempt, retried: both processes must observe the same
+    // permit, and neither may be refused.
     assert.equal(a.ok, true);
     assert.equal(b.ok, true);
     assert.equal(a.permitId, b.permitId);
@@ -1263,7 +1466,7 @@ test("MS-003 the stable error code registry carries the protected store codes", 
     "ERR_ANCHOR_DECLARATION_MISSING", "ERR_ANCHOR_STORE_MISMATCH", "ERR_STATE_ROLLED_BACK",
     "ERR_STATE_AHEAD_OF_ANCHOR", "ERR_STATE_TAMPERED", "ERR_CRASH_WINDOW_RECOVERABLE",
     "ERR_UNSAFE_PATH", "ERR_AUDIT_WRITE_FAILED", "ERR_RECOVERY_AUDIT_REQUIRED",
-    "ERR_RECOVERY_NOT_APPLICABLE",
+    "ERR_RECOVERY_NOT_APPLICABLE", "ERR_ACTION_IN_FLIGHT", "ERR_ACTION_ALREADY_DISPATCHED",
   ];
   for (const key of wanted) {
     assert.ok(Object.prototype.hasOwnProperty.call(CODES, key), key + " is not registered");
