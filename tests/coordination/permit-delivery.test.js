@@ -579,6 +579,76 @@ test("a revocation list cannot claim a pinned signer while being signed by anoth
   assert.equal(state.revokedFingerprints.size, 0);
 });
 
+test("the mandatory pin precondition cannot be skipped by omitting it", () => {
+  // "The signer has to be in the pin" is a mandatory precondition, so the
+  // pin set has to be there. An absent pin set is a precondition that was
+  // never established, and an unestablished fact is handled as not
+  // satisfied. Skipping the check when the argument is missing would make
+  // the strongest precondition the easiest one to bypass: omitting an
+  // argument would be the same as pinning everything.
+  const rogue = delivery.createBatchKeyPair();
+  const state = delivery.createRevocationState();
+  const list = buildRevocationList({ keyPair: rogue, sequence: 1, fingerprints: [] });
+  // The pin set is omitted entirely.
+  assert.equal(
+    codeOf(() => delivery.applyRevocationList({
+      state,
+      list,
+      publicKeyPem: rogue.publicKeyPem,
+    })),
+    "ERR_REVOCATION_SIGNER_INVALID",
+  );
+  // And nothing advanced.
+  assert.equal(state.appliedRevocationSequence, 0);
+  assert.equal(state.revokedFingerprints.size, 0);
+  // An empty pin set refuses it too -- the difference is between "no key is
+  // pinned" and "the pin was never provided", and neither accepts.
+  assert.equal(
+    codeOf(() => delivery.applyRevocationList({
+      state,
+      list,
+      publicKeyPem: rogue.publicKeyPem,
+      pinnedFingerprints: new Set(),
+    })),
+    "ERR_REVOCATION_SIGNER_INVALID",
+  );
+  assert.equal(state.appliedRevocationSequence, 0);
+});
+
+test("the fingerprint identifies the key rather than the text that carries it", () => {
+  // A PEM is a text encoding, and the same key has several legal text
+  // encodings. Hashing the text gives one key several fingerprints, and a
+  // key pinned under one encoding is then refused when it arrives under
+  // another -- a false refusal of a correctly pinned key.
+  const keyPair = delivery.createBatchKeyPair();
+  const crlf = keyPair.publicKeyPem.replace(/\n/g, "\r\n");
+  const noTrailingNewline = keyPair.publicKeyPem.trimEnd();
+  // The CRLF and the trimmed forms are the same key.
+  const sameKey = crypto.createPublicKey(crlf).export({ type: "spki", format: "der" })
+    .equals(crypto.createPublicKey(keyPair.publicKeyPem).export({ type: "spki", format: "der" }));
+  assert.equal(sameKey, true);
+  // A list signed by the pinned key is accepted when the key arrives in a
+  // different text encoding.
+  const state = delivery.createRevocationState();
+  const list = buildRevocationList({ keyPair, sequence: 1, fingerprints: [] });
+  const result = delivery.applyRevocationList({
+    state,
+    list,
+    publicKeyPem: crlf,
+    pinnedFingerprints: new Set([keyPair.fingerprint]),
+  });
+  assert.equal(result.appliedRevocationSequence, 1);
+  // And the same for the trimmed form.
+  const state2 = delivery.createRevocationState();
+  const result2 = delivery.applyRevocationList({
+    state: state2,
+    list,
+    publicKeyPem: noTrailingNewline,
+    pinnedFingerprints: new Set([keyPair.fingerprint]),
+  });
+  assert.equal(result2.appliedRevocationSequence, 1);
+});
+
 // ── Private key reachability ───────────────────────────────────────────────
 
 test("the private key is not reachable through any export path", () => {
