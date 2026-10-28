@@ -76,6 +76,14 @@ function codeOf(fn) {
   return null;
 }
 
+// The local revoked set is a MANDATORY input to the verification path, so
+// every call site has to say what it is. An empty set says "nothing is
+// revoked"; omitting the argument says "the caller has no set at all",
+// which is refused. A test that is about some other property passes the
+// empty set explicitly, so it states that fact rather than depending on the
+// argument being optional.
+const NOTHING_REVOKED = new Set();
+
 test("the signed message covers every field consume() binds", () => {
   const keyPair = delivery.createBatchKeyPair();
   const signed = sign(samplePermit(), keyPair);
@@ -118,6 +126,7 @@ test("a message that drops a binding field is refused", () => {
     delete message[signedName];
     assert.equal(
       codeOf(() => delivery.verifyPermitSignature({
+          revokedFingerprints: NOTHING_REVOKED,
         message,
         signature: signed.signature,
         publicKeyPem: keyPair.publicKeyPem,
@@ -134,6 +143,7 @@ test("the verifier rejects a message whose signed field was swapped", () => {
   const tampered = { ...signed.message, lease_id: "P-LEASE-OTHER" };
   assert.equal(
     codeOf(() => delivery.verifyPermitSignature({
+        revokedFingerprints: NOTHING_REVOKED,
       message: tampered,
       signature: signed.signature,
       publicKeyPem: keyPair.publicKeyPem,
@@ -171,6 +181,7 @@ test("both sides produce byte-identical canonical bytes", () => {
   );
   assert.equal(delivery.canonicalBytes(signed.message).toString("base64"), signed.bytes);
   const verified = delivery.verifyPermitSignature({
+      revokedFingerprints: NOTHING_REVOKED,
     message: reordered,
     signature: signed.signature,
     publicKeyPem: keyPair.publicKeyPem,
@@ -210,6 +221,7 @@ test("the signed deadline is the permit's own deadline, byte for byte", () => {
   // number; the signed value is the permit's own.
   assert.notEqual(signed.message.deadline_ms, issuedAtMs + ttlMs);
   const verified = delivery.verifyPermitSignature({
+      revokedFingerprints: NOTHING_REVOKED,
     message: signed.message,
     signature: signed.signature,
     publicKeyPem: keyPair.publicKeyPem,
@@ -229,6 +241,7 @@ test("a signed deadline that differs from the stored deadline is refused", () =>
   const signed = sign(permit, keyPair);
   assert.equal(
     codeOf(() => delivery.verifyPermitSignature({
+        revokedFingerprints: NOTHING_REVOKED,
       message: signed.message,
       signature: signed.signature,
       publicKeyPem: keyPair.publicKeyPem,
@@ -239,6 +252,7 @@ test("a signed deadline that differs from the stored deadline is refused", () =>
   // One millisecond off is still off.
   assert.equal(
     codeOf(() => delivery.verifyPermitSignature({
+        revokedFingerprints: NOTHING_REVOKED,
       message: signed.message,
       signature: signed.signature,
       publicKeyPem: keyPair.publicKeyPem,
@@ -299,6 +313,7 @@ test("the signed deadline is the deadline a real store produced, short lease inc
     assert.ok(reserved.deadline < clock() + 50, "the permit must be bounded by the lease expiry");
     // And the verifier accepts it against the stored value.
     const verified = delivery.verifyPermitSignature({
+        revokedFingerprints: NOTHING_REVOKED,
       message: signed.message,
       signature: signed.signature,
       publicKeyPem: keyPair.publicKeyPem,
@@ -318,6 +333,7 @@ test("an expired permit is refused", () => {
   const signed = sign(permit, keyPair);
   assert.equal(
     codeOf(() => delivery.verifyPermitSignature({
+        revokedFingerprints: NOTHING_REVOKED,
       message: signed.message,
       signature: signed.signature,
       publicKeyPem: keyPair.publicKeyPem,
@@ -343,6 +359,7 @@ test("a revoked fingerprint cannot authorize a permit", () => {
   const revoked = new Set([keyPair.fingerprint]);
   assert.equal(
     codeOf(() => delivery.verifyPermitSignature({
+        revokedFingerprints: NOTHING_REVOKED,
       message: signed.message,
       signature: signed.signature,
       publicKeyPem: keyPair.publicKeyPem,
@@ -352,6 +369,52 @@ test("a revoked fingerprint cannot authorize a permit", () => {
     })),
     "ERR_REVOCATION_SIGNER_INVALID",
   );
+});
+
+test("the revoked set is a mandatory input to the verification path", () => {
+  // The revoked set is a STATE, not a hint: the caller holds the local
+  // revoked set, and the question "is this key revoked" cannot be answered
+  // without it. Making it optional would mean the strongest rule -- a
+  // revoked key authorizes nothing -- is the one rule that a forgotten
+  // argument turns off, and "no argument" and "an empty set" would mean
+  // opposite things while looking the same at the call site.
+  const keyPair = delivery.createBatchKeyPair();
+  const signed = sign(samplePermit(), keyPair);
+  const revoked = new Set([keyPair.fingerprint]);
+  // With the set, the revoked key is refused.
+  assert.equal(
+    codeOf(() => delivery.verifyPermitSignature({
+      message: signed.message,
+      signature: signed.signature,
+      publicKeyPem: keyPair.publicKeyPem,
+      expectedFingerprint: keyPair.fingerprint,
+      revokedFingerprints: revoked,
+      nowMs: 1,
+    })),
+    "ERR_REVOCATION_SIGNER_INVALID",
+  );
+  // With the set omitted, the SAME revoked key is refused too -- the
+  // omission is not a way to have the check skipped.
+  assert.equal(
+    codeOf(() => delivery.verifyPermitSignature({
+      message: signed.message,
+      signature: signed.signature,
+      publicKeyPem: keyPair.publicKeyPem,
+      expectedFingerprint: keyPair.fingerprint,
+      nowMs: 1,
+    })),
+    "ERR_REVOCATION_SIGNER_INVALID",
+  );
+  // An explicitly empty set says "nothing is revoked" and is accepted.
+  const ok = delivery.verifyPermitSignature({
+    message: signed.message,
+    signature: signed.signature,
+    publicKeyPem: keyPair.publicKeyPem,
+    expectedFingerprint: keyPair.fingerprint,
+    revokedFingerprints: new Set(),
+    nowMs: 1,
+  });
+  assert.equal(ok.ok, true);
 });
 
 // ── Revocation list ────────────────────────────────────────────────────────
