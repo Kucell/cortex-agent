@@ -46,6 +46,20 @@ crossMachine.registerOnTarget({
   targetHasPriorRun,
   write,
   nowMs,
+  // 登记动作携带的字段（设计 §2.2 字段表）。全部必填，缺一即拒绝。
+  // run_id / generation 是签名绑定值（原样透传，不是新造字段）；
+  // source_digest / deployment_digest / valid_from / valid_until 是本次
+  // 登记的记录。
+  sourceDigest,
+  deploymentDigest,
+  runId,
+  generation,
+  validFrom,
+  validUntil,
+  // bootstrap 快照目录。给了它，登记路径会在受保护临界区内**创建**快照
+  // （O_EXCL），再把状态推进到 "registered"；不给它就没有快照，
+  // 「崩溃残留 vs 正常重连」的区分也就无从谈起。
+  bootstrap: { snapshotDir: bootstrapSnapshotDir },
 });
 
 // 3. 验签侧：先拉撤销列表，再取钥验签。
@@ -64,6 +78,50 @@ crossMachine.verifyWithPinnedKey({
 **登记路径只有一个入口**：`registerOnTarget`。只读判定 `assertPinExclusive`
 **不得**用于登记路径——它不提供保证，在登记路径上用它会留下 TOCTOU 窗口，
 而这种误用**在代码审查中看起来完全正常**。
+
+### 2.0.1 登记动作携带的字段（设计 §2.2 字段表）
+
+`registerOnTarget` 必须携带设计 §2.2 字段表里的全部内容。字段分两类，
+**两者的义务不同**：
+
+| 字段 | 类别 | 说明 |
+| :--- | :--- | :--- |
+| `run_id` / `generation` | **签名绑定值** | 原样透传步骤 1 的绑定值。**不是**新造字段 |
+| `source_digest` / `deployment_digest` | **记录** | 两仓源码摘要与受保护部署快照摘要 |
+| `valid_from` / `valid_until` | **记录** | 本次登记的有效期窗口（毫秒时间戳） |
+
+**`run_id` / `generation` 的取值形态**：原样透传意味着**形态也不变**。
+许可存储的 `acquire()` / `reserve()` 用 `requireText` 校验 `generation`，
+签名层把它原样带进签名报文 —— 所以 `generation` 在上游是**字符串**
+（如 `"1"`）。登记动作必须能接受**这个形态**：直接把许可上的 `generation`
+原样交给 `registerOnTarget` 就应当被接受，而不是因为它是字符串就被拒。
+
+（早期实现把 `generation` 写成「必须是安全整数」，结果接线方照文档原样
+透传时被 `ERR_PERMIT_INPUT_INVALID` 拒绝 —— 被拒的是**正确的调用方式**。
+现在 `generation` 接受上游的文本形态；整数形态也接受，并归一为十进制文本，
+因此条目与快照记录的值始终是同一个 run 的同一个形态。）
+
+**携带 ≠ 判据。** 这六项都会被记进 pin 条目，但**都不参与批次身份比较**——
+批次身份仍是三元组 `(decision_id, instance_id, fingerprint)`。原因是设计
+§2.2.3 R3-B3 修订 (1) 的逐字段排除：用 `run_id` / `generation` 会误杀正常重连，
+有效期窗口续期后会变，而两个 digest 同批次与跨批次可能相同。
+
+因此：一次重连**可以**携带与首次登记不同的 `run_id` / 有效期，pin 仍然复用。
+若看到这些字段进了比较逻辑，那是回归。
+
+### 2.0.2 bootstrap 快照由登记路径创建
+
+快照的 `created` 初态**必须**由登记路径创建，不是由调用方预先建好再传给登记。
+设计 §2.2.3 把快照的创建交给「登记 pin 的那个唯一身份」，用 `O_EXCL` 保证唯一，
+并要求创建与 pin 写入在**同一个受保护临界区**内。
+
+顺序是：**独占性检查通过 → 创建快照 → 断言快照可推进 → 写 pin → 推进快照到
+`registered`**。快照先于 pin 创建，所以中断时留下的是「`created` 且无 pin」——
+目标侧能判定它（登记没落地，可以重试）。反过来会留下「有 pin 无快照」，
+那是设计所说的**不可判定**状态。
+
+接线方**不要**自己调 `createSnapshot` 再把快照目录交给登记：那会让快照的创建
+发生在临界区之外，且由「谁写的」与「谁登记的」分离——受保护身份保证就落空了。
 
 ### 2.0 验签必须在 `consume()` **之前**（时序契约，不可颠倒）
 

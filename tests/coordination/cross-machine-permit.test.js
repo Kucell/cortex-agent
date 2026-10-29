@@ -51,6 +51,26 @@ function codeOf(fn) {
   return null;
 }
 
+// The registration action carries the design's field table (section 2.2).
+// The registration path requires all six, so every registration in these
+// tests supplies them through this helper. run_id and generation are the
+// signed binding values; the other four are the registration's record.
+//
+// generation is a TEXT value here on purpose: that is the form the permit
+// store holds and the form the signature layer carries through unchanged.
+// The registration action passes that same value through -- it does not
+// re-type it -- so the tests use the upstream shape.
+function carried(overrides = {}) {
+  return Object.assign({
+    sourceDigest: "sha256:" + "a".repeat(64),
+    deploymentDigest: "sha256:" + "b".repeat(64),
+    runId: "R-1",
+    generation: "1",
+    validFrom: 1_000_000,
+    validUntil: 1_000_000 + 3_600_000,
+  }, overrides);
+}
+
 function atomicCreate(target) {
   return (entry, fingerprint) => {
     try {
@@ -99,6 +119,7 @@ test("the registration stops when an exclusivity clause cannot be decided", () =
   try {
     const key = keyPair();
     const result = codeOf(() => cross.registerOnTarget({
+      ...carried(),
       pinStore: f.store,
       batchIdentity: batchIdentityFor(key),
       publicKeyPem: key.publicKeyPem,
@@ -121,6 +142,7 @@ test("the registration stops when the target instance has a live process", () =>
     const key = keyPair();
     assert.equal(
       codeOf(() => cross.registerOnTarget({
+        ...carried(),
         pinStore: f.store,
         batchIdentity: batchIdentityFor(key),
         publicKeyPem: key.publicKeyPem,
@@ -144,10 +166,11 @@ test("the registration succeeds and the receipt advances the snapshot in the sam
       snapshotDir: f.snapshotDir,
       batchIdentity: batchIdentityFor(key),
       runId: "R-1",
-      generation: 1,
+      generation: "1",
       nowMs: 1_000_000,
     });
     const result = cross.registerOnTarget({
+      ...carried(),
       pinStore: f.store,
       batchIdentity: batchIdentityFor(key),
       publicKeyPem: key.publicKeyPem,
@@ -177,6 +200,8 @@ test("the snapshot state only moves forward", () => {
     bootstrap.createSnapshot({
       snapshotDir: f.snapshotDir,
       batchIdentity: batchIdentityFor(key),
+      runId: "R-1",
+      generation: "1",
       nowMs: 1_000_000,
     });
     bootstrap.advanceSnapshot({
@@ -217,6 +242,8 @@ test("a leftover registered snapshot the target can verify is a normal reconnect
     bootstrap.createSnapshot({
       snapshotDir: f.snapshotDir,
       batchIdentity: batchIdentityFor(key),
+      runId: "R-1",
+      generation: "1",
       nowMs: 1_000_000,
     });
     bootstrap.advanceSnapshot({
@@ -246,6 +273,8 @@ test("a leftover registered snapshot the target CANNOT verify stops the route", 
     bootstrap.createSnapshot({
       snapshotDir: f.snapshotDir,
       batchIdentity: batchIdentityFor(key),
+      runId: "R-1",
+      generation: "1",
       nowMs: 1_000_000,
     });
     bootstrap.advanceSnapshot({
@@ -281,6 +310,8 @@ test("a snapshot from a different batch stops the route and is not cleaned up", 
     bootstrap.createSnapshot({
       snapshotDir: f.snapshotDir,
       batchIdentity: batchIdentityFor(key),
+      runId: "R-1",
+      generation: "1",
       nowMs: 1_000_000,
     });
     const verdict = bootstrap.classifySnapshot({
@@ -310,6 +341,7 @@ test("the verification key comes from the pin and from nowhere else", () => {
       "ERR_REVOCATION_SIGNER_INVALID",
     );
     cross.registerOnTarget({
+      ...carried(),
       pinStore: f.store,
       batchIdentity: identity,
       publicKeyPem: key.publicKeyPem,
@@ -334,6 +366,7 @@ test("a revoked signing key may not authorize a permit", () => {
     const key = keyPair();
     const identity = batchIdentityFor(key);
     cross.registerOnTarget({
+      ...carried(),
       pinStore: f.store,
       batchIdentity: identity,
       publicKeyPem: key.publicKeyPem,
@@ -393,6 +426,7 @@ test("a revocation list signed by a pinned key is applied", () => {
     const key = keyPair();
     const identity = batchIdentityFor(key);
     cross.registerOnTarget({
+      ...carried(),
       pinStore: f.store,
       batchIdentity: identity,
       publicKeyPem: key.publicKeyPem,
@@ -426,6 +460,7 @@ test("a revocation list signed by a key that is NOT in the pin is refused", () =
     const stranger = keyPair();
     const identity = batchIdentityFor(key);
     cross.registerOnTarget({
+      ...carried(),
       pinStore: f.store,
       batchIdentity: identity,
       publicKeyPem: key.publicKeyPem,
@@ -464,6 +499,7 @@ test("a TRUNCATED revocation list is refused and does not advance the chain", ()
     const key = keyPair();
     const identity = batchIdentityFor(key);
     cross.registerOnTarget({
+      ...carried(),
       pinStore: f.store,
       batchIdentity: identity,
       publicKeyPem: key.publicKeyPem,
@@ -505,6 +541,7 @@ test("a revocation list with a broken chain is refused", () => {
     const key = keyPair();
     const identity = batchIdentityFor(key);
     cross.registerOnTarget({
+      ...carried(),
       pinStore: f.store,
       batchIdentity: identity,
       publicKeyPem: key.publicKeyPem,
@@ -541,6 +578,7 @@ test("a revocation list signed by an ALREADY REVOKED key is refused", () => {
     const key = keyPair();
     const identity = batchIdentityFor(key);
     cross.registerOnTarget({
+      ...carried(),
       pinStore: f.store,
       batchIdentity: identity,
       publicKeyPem: key.publicKeyPem,
@@ -586,6 +624,7 @@ test("a failed pull refuses the verification instead of using the last list", ()
     const key = keyPair();
     const identity = batchIdentityFor(key);
     cross.registerOnTarget({
+      ...carried(),
       pinStore: f.store,
       batchIdentity: identity,
       publicKeyPem: key.publicKeyPem,
@@ -628,6 +667,7 @@ test("a pin from a DIFFERENT batch is refused with ERR_PIN_BATCH_MISMATCH", () =
   try {
     const key = keyPair();
     cross.registerOnTarget({
+      ...carried(),
       pinStore: f.store,
       batchIdentity: batchIdentityFor(key),
       publicKeyPem: key.publicKeyPem,
@@ -639,6 +679,7 @@ test("a pin from a DIFFERENT batch is refused with ERR_PIN_BATCH_MISMATCH", () =
 
     assert.equal(
       codeOf(() => cross.registerOnTarget({
+        ...carried(),
         pinStore: f.store,
         // The same fingerprint, a different instance: a different batch.
         batchIdentity: batchIdentityFor(key, { instance_id: "other-instance" }),
@@ -666,6 +707,7 @@ test("the same batch triple WITHOUT a bootstrap snapshot is refused", () => {
     const key = keyPair();
     const identity = batchIdentityFor(key);
     cross.registerOnTarget({
+      ...carried(),
       pinStore: f.store,
       batchIdentity: identity,
       publicKeyPem: key.publicKeyPem,
@@ -676,6 +718,7 @@ test("the same batch triple WITHOUT a bootstrap snapshot is refused", () => {
     });
     assert.equal(
       codeOf(() => cross.registerOnTarget({
+        ...carried(),
         pinStore: f.store,
         batchIdentity: identity,
         publicKeyPem: key.publicKeyPem,
@@ -702,11 +745,14 @@ test("the same batch triple WITH a bootstrap snapshot reuses the pin", () => {
     bootstrap.createSnapshot({
       snapshotDir: f.snapshotDir,
       batchIdentity: identity,
+      runId: "R-1",
+      generation: "1",
       nowMs: 1_000_000,
     });
     // The first registration writes the pin and advances the snapshot to
     // "registered" inside the same critical section.
     cross.registerOnTarget({
+      ...carried(),
       pinStore: f.store,
       batchIdentity: identity,
       publicKeyPem: key.publicKeyPem,
@@ -726,6 +772,7 @@ test("the same batch triple WITH a bootstrap snapshot reuses the pin", () => {
     });
     assert.equal(verdict.classification, "normal-reconnect");
     const again = cross.registerOnTarget({
+      ...carried(),
       pinStore: f.store,
       batchIdentity: identity,
       publicKeyPem: key.publicKeyPem,
@@ -751,6 +798,7 @@ test("a clock-poisoned domain refuses the retrieval, the pull and the verificati
     const key = keyPair();
     const identity = batchIdentityFor(key);
     cross.registerOnTarget({
+      ...carried(),
       pinStore: f.store,
       batchIdentity: identity,
       publicKeyPem: key.publicKeyPem,
@@ -797,6 +845,7 @@ test("a domain that was never poisoned still authorises", () => {
     const key = keyPair();
     const identity = batchIdentityFor(key);
     cross.registerOnTarget({
+      ...carried(),
       pinStore: f.store,
       batchIdentity: identity,
       publicKeyPem: key.publicKeyPem,
@@ -831,9 +880,12 @@ test("an UNREADABLE snapshot does NOT admit a different batch", () => {
     bootstrap.createSnapshot({
       snapshotDir: f.snapshotDir,
       batchIdentity: identity,
+      runId: "R-1",
+      generation: "1",
       nowMs: 1_000_000,
     });
     cross.registerOnTarget({
+      ...carried(),
       pinStore: f.store,
       batchIdentity: identity,
       publicKeyPem: key.publicKeyPem,
@@ -862,6 +914,7 @@ test("an UNREADABLE snapshot does NOT admit a different batch", () => {
       const attacker = keyPair();
       assert.equal(
         codeOf(() => cross.registerOnTarget({
+          ...carried(),
           pinStore: f.store,
           batchIdentity: batchIdentityFor(attacker, { instance_id: "inst-ATTACK" }),
           publicKeyPem: attacker.publicKeyPem,
@@ -899,6 +952,8 @@ test("a snapshot that cannot be advanced stops the route BEFORE the pin is writt
     bootstrap.createSnapshot({
       snapshotDir: f.snapshotDir,
       batchIdentity: identity,
+      runId: "R-1",
+      generation: "1",
       nowMs: 1_000_000,
     });
     const snapshotPath = path.join(f.snapshotDir, "bootstrap-snapshot.json");
@@ -906,6 +961,7 @@ test("a snapshot that cannot be advanced stops the route BEFORE the pin is writt
     try {
       assert.equal(
         codeOf(() => cross.registerOnTarget({
+          ...carried(),
           pinStore: f.store,
           batchIdentity: identity,
           publicKeyPem: key.publicKeyPem,
@@ -944,6 +1000,7 @@ test("a snapshot that does not exist is still the normal terminal state", () => 
     assert.equal(verdict.reconnectAllowed, true);
 
     cross.registerOnTarget({
+      ...carried(),
       pinStore: f.store,
       batchIdentity: identity,
       publicKeyPem: key.publicKeyPem,
@@ -972,9 +1029,12 @@ test("a reconnect in a TERMINAL snapshot state reuses the pin without advancing 
     bootstrap.createSnapshot({
       snapshotDir: f.snapshotDir,
       batchIdentity: identity,
+      runId: "R-1",
+      generation: "1",
       nowMs: 1_000_000,
     });
     cross.registerOnTarget({
+      ...carried(),
       pinStore: f.store,
       batchIdentity: identity,
       publicKeyPem: key.publicKeyPem,
@@ -998,6 +1058,7 @@ test("a reconnect in a TERMINAL snapshot state reuses the pin without advancing 
     // The reconnect is admitted, and the pin is reused rather than
     // rewritten.
     const again = cross.registerOnTarget({
+      ...carried(),
       pinStore: f.store,
       batchIdentity: identity,
       publicKeyPem: key.publicKeyPem,
@@ -1030,9 +1091,12 @@ test("a reconnect after the snapshot was cleaned up is admitted", () => {
     bootstrap.createSnapshot({
       snapshotDir: f.snapshotDir,
       batchIdentity: identity,
+      runId: "R-1",
+      generation: "1",
       nowMs: 1_000_000,
     });
     cross.registerOnTarget({
+      ...carried(),
       pinStore: f.store,
       batchIdentity: identity,
       publicKeyPem: key.publicKeyPem,
@@ -1046,6 +1110,7 @@ test("a reconnect after the snapshot was cleaned up is admitted", () => {
     assert.equal(bootstrap.readSnapshot(f.snapshotDir), null);
 
     const again = cross.registerOnTarget({
+      ...carried(),
       pinStore: f.store,
       batchIdentity: identity,
       publicKeyPem: key.publicKeyPem,
@@ -1071,6 +1136,7 @@ test("a reconnect WITHOUT a snapshot directory is still refused as a competitor"
     const key = keyPair();
     const identity = batchIdentityFor(key);
     cross.registerOnTarget({
+      ...carried(),
       pinStore: f.store,
       batchIdentity: identity,
       publicKeyPem: key.publicKeyPem,
@@ -1081,6 +1147,7 @@ test("a reconnect WITHOUT a snapshot directory is still refused as a competitor"
     });
     assert.equal(
       codeOf(() => cross.registerOnTarget({
+        ...carried(),
         pinStore: f.store,
         batchIdentity: identity,
         publicKeyPem: key.publicKeyPem,
@@ -1091,6 +1158,359 @@ test("a reconnect WITHOUT a snapshot directory is still refused as a competitor"
       })),
       "ERR_PIN_NOT_EXCLUSIVE",
     );
+  } finally {
+    f.cleanup();
+  }
+});
+
+// ── The registration action's carried fields (design section 2.2) ─────
+
+test("the registration action carries the design's field table into the pin entry", () => {
+  // The design's section 2.2 field table says what the registration action
+  // carries. The pin entry is where that record lands, so the entry must
+  // carry all of it.
+  const f = fixture();
+  try {
+    const key = keyPair();
+    const identity = batchIdentityFor(key);
+    const result = cross.registerOnTarget({
+      ...carried(),
+      pinStore: f.store,
+      batchIdentity: identity,
+      publicKeyPem: key.publicKeyPem,
+      targetHasProcess: false,
+      targetHasPriorRun: false,
+      nowMs: 1_000_000,
+      write: atomicCreate(path.join(f.dir, "pin.marker")),
+    });
+
+    assert.equal(result.registered, true);
+    const pin = f.store.listPins()[0];
+    assert.equal(pin.source_digest, "sha256:" + "a".repeat(64));
+    assert.equal(pin.deployment_digest, "sha256:" + "b".repeat(64));
+    assert.equal(pin.run_id, "R-1");
+    assert.equal(pin.generation, "1");
+    assert.equal(pin.valid_from, 1_000_000);
+    assert.equal(pin.valid_until, 1_000_000 + 3_600_000);
+  } finally {
+    f.cleanup();
+  }
+});
+
+test("a registration that does not carry a field is refused", () => {
+  // The carried fields are required inputs, not optional annotations: a
+  // registration that cannot say what it carried cannot be audited later,
+  // so it is refused rather than recorded incompletely.
+  for (const missing of [
+    "sourceDigest",
+    "deploymentDigest",
+    "runId",
+    "generation",
+    "validFrom",
+    "validUntil",
+  ]) {
+    const f = fixture();
+    try {
+      const key = keyPair();
+      const options = Object.assign({}, carried(), {
+        pinStore: f.store,
+        batchIdentity: batchIdentityFor(key),
+        publicKeyPem: key.publicKeyPem,
+        targetHasProcess: false,
+        targetHasPriorRun: false,
+        nowMs: 1_000_000,
+        write: atomicCreate(path.join(f.dir, "pin.marker")),
+      });
+      delete options[missing];
+      assert.equal(
+        codeOf(() => cross.registerOnTarget(options)),
+        "ERR_PERMIT_INPUT_INVALID",
+        "missing " + missing + " must be refused",
+      );
+    } finally {
+      f.cleanup();
+    }
+  }
+});
+
+test("the carried fields do NOT take part in the batch identity comparison", () => {
+  // Carrying a field and comparing it are two different obligations. The
+  // design excludes all six from the batch identity (R3-B3 ruling 1): using
+  // run_id or generation would kill a legitimate reconnect, and the
+  // validity window changes on renewal. So a reconnect that carries
+  // DIFFERENT values for those fields is still the same batch and the pin
+  // is still reused.
+  const f = fixture();
+  try {
+    const key = keyPair();
+    const identity = batchIdentityFor(key);
+    cross.registerOnTarget({
+      ...carried(),
+      pinStore: f.store,
+      batchIdentity: identity,
+      publicKeyPem: key.publicKeyPem,
+      targetHasProcess: false,
+      targetHasPriorRun: false,
+      nowMs: 1_000_000,
+      write: atomicCreate(path.join(f.dir, "pin.marker")),
+      bootstrap: { snapshotDir: f.snapshotDir },
+    });
+    // A reconnect with a different run, a different generation and a
+    // different validity window. The triple is unchanged, so this is the
+    // same batch.
+    const again = cross.registerOnTarget({
+      ...carried({ runId: "R-2", generation: "9", validFrom: 5_000_000, validUntil: 6_000_000 }),
+      pinStore: f.store,
+      batchIdentity: identity,
+      publicKeyPem: key.publicKeyPem,
+      targetHasProcess: false,
+      targetHasPriorRun: false,
+      nowMs: 1_000_001,
+      write: atomicCreate(path.join(f.dir, "pin.marker")),
+      bootstrap: { snapshotDir: f.snapshotDir },
+    });
+
+    // The pin is reused, not rewritten. If the carried fields took part in
+    // the identity comparison, this arrival would have been refused as a
+    // different batch.
+    assert.equal(again.reused, true);
+    assert.equal(again.registered, false);
+  } finally {
+    f.cleanup();
+  }
+});
+
+test("the same batch triple with different carried fields is not a batch mismatch", () => {
+  // The negative control for the case above, stated on the comparison
+  // itself: a DIFFERENT triple is refused with ERR_PIN_BATCH_MISMATCH,
+  // while a different carried field is not.
+  const f = fixture();
+  try {
+    const key = keyPair();
+    const identity = batchIdentityFor(key);
+    cross.registerOnTarget({
+      ...carried(),
+      pinStore: f.store,
+      batchIdentity: identity,
+      publicKeyPem: key.publicKeyPem,
+      targetHasProcess: false,
+      targetHasPriorRun: false,
+      nowMs: 1_000_000,
+      write: atomicCreate(path.join(f.dir, "pin.marker")),
+    });
+    const other = batchIdentityFor(key, { decision_id: "D-other" });
+    assert.equal(
+      codeOf(() => cross.registerOnTarget({
+        ...carried({ runId: "R-2", generation: "9" }),
+        pinStore: f.store,
+        batchIdentity: other,
+        publicKeyPem: key.publicKeyPem,
+        targetHasProcess: false,
+        targetHasPriorRun: false,
+        nowMs: 1_000_001,
+        write: atomicCreate(path.join(f.dir, "pin.marker")),
+      })),
+      "ERR_PIN_BATCH_MISMATCH",
+    );
+  } finally {
+    f.cleanup();
+  }
+});
+
+// ── The snapshot's creation step lives in the product path ────────────
+
+test("the registration path CREATES the bootstrap snapshot", () => {
+  // The snapshot state machine starts at "created", and the design gives
+  // the creation to the same unique identity that registers the pin. If
+  // the product path did not create it, the "created" state would only be
+  // reachable by a caller reaching into the library directly -- and the
+  // whole residue-versus-reconnect distinction would have no reachable
+  // starting point in the product.
+  const f = fixture();
+  try {
+    const key = keyPair();
+    // No snapshot exists yet: the registration creates it.
+    assert.equal(bootstrap.readSnapshot(f.snapshotDir), null);
+
+    cross.registerOnTarget({
+      ...carried(),
+      pinStore: f.store,
+      batchIdentity: batchIdentityFor(key),
+      publicKeyPem: key.publicKeyPem,
+      targetHasProcess: false,
+      targetHasPriorRun: false,
+      nowMs: 1_000_000,
+      write: atomicCreate(path.join(f.dir, "pin.marker")),
+      bootstrap: { snapshotDir: f.snapshotDir },
+    });
+
+    // The snapshot exists and it advanced to "registered" with the receipt
+    // digest -- both inside the same protected critical section as the pin
+    // write.
+    const snapshot = bootstrap.readSnapshot(f.snapshotDir);
+    assert.notEqual(snapshot, null);
+    assert.equal(snapshot.snapshot_state, "registered");
+    assert.ok(snapshot.registration_receipt_digest);
+  } finally {
+    f.cleanup();
+  }
+});
+
+test("the snapshot the registration path creates records the run and the generation", () => {
+  // The snapshot's field table lists run_id and generation as written at
+  // creation time, with no optional marker. A snapshot that does not say
+  // which run it belongs to cannot be tied back to the run that signed the
+  // permit.
+  const f = fixture();
+  try {
+    const key = keyPair();
+    cross.registerOnTarget({
+      ...carried({ runId: "R-42", generation: "7" }),
+      pinStore: f.store,
+      batchIdentity: batchIdentityFor(key),
+      publicKeyPem: key.publicKeyPem,
+      targetHasProcess: false,
+      targetHasPriorRun: false,
+      nowMs: 1_000_000,
+      write: atomicCreate(path.join(f.dir, "pin.marker")),
+      bootstrap: { snapshotDir: f.snapshotDir },
+    });
+
+    const snapshot = bootstrap.readSnapshot(f.snapshotDir);
+    assert.equal(snapshot.run_id, "R-42");
+    assert.equal(snapshot.generation, "7");
+  } finally {
+    f.cleanup();
+  }
+});
+
+test("a snapshot without the run and the generation is refused when it is read", () => {
+  // The reader requires them. A snapshot that lacks them cannot be
+  // decided, and an undecidable fact is not satisfied (design section
+  // 2.2.2) -- so the route stops rather than proceeding on a snapshot
+  // that does not say which run it belongs to.
+  const f = fixture();
+  try {
+    const key = keyPair();
+    bootstrap.createSnapshot({
+      snapshotDir: f.snapshotDir,
+      batchIdentity: batchIdentityFor(key),
+      runId: "R-1",
+      generation: "1",
+      nowMs: 1_000_000,
+    });
+    // Strip the two fields behind the snapshot module's back, the way a
+    // same-account ordinary process could tamper with the file.
+    const file = path.join(f.snapshotDir, "bootstrap-snapshot.json");
+    const parsed = JSON.parse(fs.readFileSync(file, "utf8"));
+    delete parsed.run_id;
+    delete parsed.generation;
+    fs.writeFileSync(file, JSON.stringify(parsed), { mode: 0o600 });
+
+    const verdict = bootstrap.classifySnapshot({
+      snapshotDir: f.snapshotDir,
+      batchIdentity: batchIdentityFor(key),
+      canVerifyPinOwnership: () => "ours",
+    });
+    assert.equal(verdict.classification, "undecidable");
+    assert.equal(verdict.reconnectAllowed, false);
+  } finally {
+    f.cleanup();
+  }
+});
+
+test("creating a snapshot without the run or the generation is refused", () => {
+  // The creation refuses them for the same reason: a snapshot created
+  // without them could never be read back.
+  const f = fixture();
+  try {
+    const key = keyPair();
+    assert.equal(
+      codeOf(() => bootstrap.createSnapshot({
+        snapshotDir: f.snapshotDir,
+        batchIdentity: batchIdentityFor(key),
+        nowMs: 1_000_000,
+      })),
+      "ERR_PERMIT_INPUT_INVALID",
+    );
+    assert.equal(
+      codeOf(() => bootstrap.createSnapshot({
+        snapshotDir: f.snapshotDir,
+        batchIdentity: batchIdentityFor(key),
+        runId: "R-1",
+        nowMs: 1_000_000,
+      })),
+      "ERR_PERMIT_INPUT_INVALID",
+    );
+  } finally {
+    f.cleanup();
+  }
+});
+
+test("the registration ACCEPTS the generation in the form the signed binding layer produces", () => {
+  // The signed binding layer holds `generation` as a TEXT value: the
+  // permit store requires it with requireText, and the signature carries
+  // that value through unchanged. The registration action carries that
+  // same value through -- it is not a new field and it is not re-typed.
+  //
+  // This test exists because the first implementation required a safe
+  // integer here, and that rejected the very value the wiring is supposed
+  // to pass through: an integrator who reads the permit's generation and
+  // hands it to registerOnTarget verbatim got ERR_PERMIT_INPUT_INVALID.
+  // The requirement was wrong, not the caller.
+  const f = fixture();
+  try {
+    const key = keyPair();
+    const result = cross.registerOnTarget({
+      ...carried({ runId: "R-1", generation: "1" }),
+      pinStore: f.store,
+      batchIdentity: batchIdentityFor(key),
+      publicKeyPem: key.publicKeyPem,
+      targetHasProcess: false,
+      targetHasPriorRun: false,
+      nowMs: 1_000_000,
+      write: atomicCreate(path.join(f.dir, "pin.marker")),
+      bootstrap: { snapshotDir: f.snapshotDir },
+    });
+
+    assert.equal(result.registered, true);
+    const pin = f.store.listPins()[0];
+    // The entry records exactly what was carried.
+    assert.equal(pin.run_id, "R-1");
+    assert.equal(pin.generation, "1");
+    // And the snapshot records the same value, so the two agree on which
+    // run this registration was for.
+    const snapshot = bootstrap.readSnapshot(f.snapshotDir);
+    assert.equal(snapshot.run_id, "R-1");
+    assert.equal(snapshot.generation, "1");
+  } finally {
+    f.cleanup();
+  }
+});
+
+test("a generation that is neither text nor an integer is refused", () => {
+  // The accepted shape is the upstream one. A value that is not a text
+  // form of a generation is refused rather than coerced into something
+  // that looks like one.
+  const f = fixture();
+  try {
+    const key = keyPair();
+    for (const bad of [null, undefined, {}, 1.5, ""]) {
+      assert.equal(
+        codeOf(() => cross.registerOnTarget({
+          ...carried({ generation: bad }),
+          pinStore: f.store,
+          batchIdentity: batchIdentityFor(key),
+          publicKeyPem: key.publicKeyPem,
+          targetHasProcess: false,
+          targetHasPriorRun: false,
+          nowMs: 1_000_000,
+          write: atomicCreate(path.join(f.dir, "pin.marker")),
+          bootstrap: { snapshotDir: f.snapshotDir },
+        })),
+        "ERR_PERMIT_INPUT_INVALID",
+      );
+    }
   } finally {
     f.cleanup();
   }

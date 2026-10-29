@@ -11,9 +11,32 @@ const {
   publicKeyFingerprint,
   sameBatchIdentity,
   DOMAIN_MARKER_FILE,
+  BATCH_IDENTITY_FIELDS,
+  REGISTRATION_CARRIED_FIELDS,
 } = require("../../lib/coordination/protected-pin-store");
 const anchorModule = require("../../lib/coordination/protected-anchor");
 const delivery = require("../../lib/coordination/permit-delivery");
+
+test("the carried registration fields are NOT part of the batch identity", () => {
+  // The design (section 2.2.3, R3-B3 ruling 1) excludes every carried
+  // field from the identity comparison: run_id / generation would kill a
+  // legitimate reconnect, the validity window changes on renewal, and
+  // the two digests do not tell batches apart.
+  //
+  // This is asserted rather than left to a comment, because a later
+  // change that added run_id to the identity fields would otherwise
+  // compile and pass every test that re-registers the same values --
+  // and would silently start killing reconnects in production.
+  for (const field of REGISTRATION_CARRIED_FIELDS) {
+    assert.equal(
+      BATCH_IDENTITY_FIELDS.includes(field),
+      false,
+      field + " must not be part of the batch identity",
+    );
+  }
+  // And the identity is still exactly the design's triple.
+  assert.deepEqual(BATCH_IDENTITY_FIELDS, ["decision_id", "instance_id", "fingerprint"]);
+});
 
 function fixture(options = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "m044-ms004-pin-"));
@@ -58,6 +81,22 @@ function codeOf(fn) {
   return null;
 }
 
+// The registration action carries the design's field table (section 2.2).
+// The pin store requires all six of them, so every registration in these
+// tests supplies them through this helper. The values are arbitrary but
+// well-formed: the fields are a CARRIED obligation, not an identity
+// criterion, so nothing here depends on their particular contents.
+function carried(overrides = {}) {
+  return Object.assign({
+    sourceDigest: "sha256:" + "a".repeat(64),
+    deploymentDigest: "sha256:" + "b".repeat(64),
+    runId: "run-test-1",
+    generation: 7,
+    validFrom: 1_000_000,
+    validUntil: 1_000_000 + 3_600_000,
+  }, overrides);
+}
+
 // The pin is written through an atomic create-if-absent. The test double
 // writes a marker file with O_EXCL, which is the same primitive the real
 // registration path uses.
@@ -83,6 +122,7 @@ test("a pin registers once and is then reused by the same batch", () => {
     const target = path.join(f.dir, "pin.marker");
 
     const first = f.store.registerPin({
+      ...carried(),
       batchIdentity: identity,
       publicKeyPem: key.publicKeyPem,
       nowMs: 1_000_000,
@@ -94,6 +134,7 @@ test("a pin registers once and is then reused by the same batch", () => {
     // A reconnect of the SAME batch reuses the pin. It does not rewrite it
     // and it does not stop the route (design section 2.2.3).
     const again = f.store.registerPin({
+      ...carried(),
       batchIdentity: identity,
       publicKeyPem: key.publicKeyPem,
       nowMs: 1_000_001,
@@ -115,6 +156,7 @@ test("a pin from a DIFFERENT batch is refused and never overwritten", () => {
     const key = keyPair();
     const target = path.join(f.dir, "pin.marker");
     f.store.registerPin({
+      ...carried(),
       batchIdentity: batchIdentityFor(key),
       publicKeyPem: key.publicKeyPem,
       nowMs: 1_000_000,
@@ -124,6 +166,7 @@ test("a pin from a DIFFERENT batch is refused and never overwritten", () => {
     const otherIdentity = batchIdentityFor(key, { instance_id: "another-instance" });
     assert.equal(
       codeOf(() => f.store.registerPin({
+        ...carried(),
         batchIdentity: otherIdentity,
         publicKeyPem: key.publicKeyPem,
         nowMs: 1_000_002,
@@ -149,6 +192,7 @@ test("a concurrent registrant that loses the race does not overwrite the winner"
     const identity = batchIdentityFor(key);
 
     const first = f.store.registerPin({
+      ...carried(),
       batchIdentity: identity,
       publicKeyPem: key.publicKeyPem,
       nowMs: 1_000_000,
@@ -159,6 +203,7 @@ test("a concurrent registrant that loses the race does not overwrite the winner"
     // The marker exists now, so the create-if-absent write reports EEXIST.
     assert.equal(
       codeOf(() => f.store.registerPin({
+        ...carried(),
         batchIdentity: batchIdentityFor(key, { instance_id: "other" }),
         publicKeyPem: key.publicKeyPem,
         nowMs: 1_000_001,
@@ -182,6 +227,7 @@ test("the fingerprint is derived from the key, not taken from the caller", () =>
     const identity = batchIdentityFor(key, { fingerprint: "f".repeat(64) });
     assert.equal(
       codeOf(() => f.store.registerPin({
+        ...carried(),
         batchIdentity: identity,
         publicKeyPem: key.publicKeyPem,
         nowMs: 1_000_000,
@@ -249,6 +295,7 @@ test("a pin entry is never removed by a revocation", () => {
   try {
     const key = keyPair();
     f.store.registerPin({
+      ...carried(),
       batchIdentity: batchIdentityFor(key),
       publicKeyPem: key.publicKeyPem,
       nowMs: 1_000_000,
@@ -288,6 +335,7 @@ test("the verification path only trusts the keys in the pin", () => {
     const key = keyPair();
     assert.equal(f.store.publicKeyFor(key.fingerprint), null);
     f.store.registerPin({
+      ...carried(),
       batchIdentity: batchIdentityFor(key),
       publicKeyPem: key.publicKeyPem,
       nowMs: 1_000_000,
@@ -457,6 +505,7 @@ test("an unreadable state file is refused, not read as an empty domain", () => {
   try {
     const key = keyPair();
     f.store.registerPin({
+      ...carried(),
       batchIdentity: batchIdentityFor(key),
       publicKeyPem: key.publicKeyPem,
       nowMs: 1_000,
@@ -480,6 +529,7 @@ test("a deleted state file is refused, and the revoked set does not reset to emp
   try {
     const key = keyPair();
     f.store.registerPin({
+      ...carried(),
       batchIdentity: batchIdentityFor(key),
       publicKeyPem: key.publicKeyPem,
       nowMs: 1_000,
@@ -510,6 +560,7 @@ test("the initialisation marker is written before the first state file", () => {
   try {
     const key = keyPair();
     f.store.registerPin({
+      ...carried(),
       batchIdentity: batchIdentityFor(key),
       publicKeyPem: key.publicKeyPem,
       nowMs: 1_000,
