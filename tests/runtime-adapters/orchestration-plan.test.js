@@ -4,6 +4,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
+const { resolveTemplatePath } = require("../helpers/template-layers");
 
 const ROOT = path.resolve(__dirname, "..", "..");
 const contract = require("../../lib/runtime-adapters/orchestration-plan.js");
@@ -46,13 +47,13 @@ test("VC-036-002 contract module does not become a second runtime owner", () => 
 
 test("VC-036-003 and VC-036-004 preserve the L1 boundary in all workflow assets", () => {
   const workflows = [
-    ".agent/workflows/agent-orchestration.md",
-    "templates/_shared/.agent/workflows/agent-orchestration.md",
-    "templates/zh/.agent/workflows/agent-orchestration.md",
-    "templates/en/.agent/workflows/agent-orchestration.md",
+    path.join(ROOT, ".agent/workflows/agent-orchestration.md"),
+    path.join(ROOT, "templates/_shared/.agent/workflows/agent-orchestration.md"),
+    resolveTemplatePath("workflows/agent-orchestration.md", "zh"),
+    resolveTemplatePath("workflows/agent-orchestration.md", "en"),
   ];
-  for (const relative of workflows) {
-    const content = fs.readFileSync(path.join(ROOT, relative), "utf8");
+  for (const file of workflows) {
+    const content = fs.readFileSync(file, "utf8");
     assert.match(content, /OrchestrationPlan/);
     assert.match(content, /AttemptSettlement/);
     assert.match(content, /cross-process|跨进程/);

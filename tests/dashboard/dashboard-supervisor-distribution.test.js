@@ -4,8 +4,8 @@
  * Dashboard Supervisor — bilingual distribution + cross-project parity.
  *
  * Contract:
- *  - The supervisor skill is shipped to both shared template and both
- *    zh / en templates (bilingual parity)
+ *  - The supervisor skill reaches both zh / en distribution surfaces
+ *    through language overlays plus the shared template
  *  - Shared, zh, and en templates keep the same schema for
  *    dashboard-automation.json and supervisor-state
  *  - A fresh init produces a default-disabled config in both languages
@@ -22,6 +22,8 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const { execFileSync } = require("node:child_process");
+
+const { resolveTemplatePath } = require("../helpers/template-layers");
 
 const ROOT = path.resolve(__dirname, "..", "..");
 const SHARED = path.join(ROOT, "templates", "_shared", ".agent");
@@ -45,16 +47,16 @@ function checkBilingualParity() {
     "skills/dashboard-supervisor/SKILL.md",
   ];
   for (const rel of files) {
-    assert.ok(fs.existsSync(path.join(EN_TPL, rel)), `en missing: ${rel}`);
-    assert.ok(fs.existsSync(path.join(ZH_TPL, rel)), `zh missing: ${rel}`);
+    assert.ok(resolveTemplatePath(rel, "en"), `en missing: ${rel}`);
+    assert.ok(resolveTemplatePath(rel, "zh"), `zh missing: ${rel}`);
     const sharedContent = readText(rel);
     assert.strictEqual(
-      fs.readFileSync(path.join(EN_TPL, rel), "utf8"),
+      fs.readFileSync(resolveTemplatePath(rel, "en"), "utf8"),
       sharedContent,
       `en/${rel} out of sync with shared`,
     );
     assert.strictEqual(
-      fs.readFileSync(path.join(ZH_TPL, rel), "utf8"),
+      fs.readFileSync(resolveTemplatePath(rel, "zh"), "utf8"),
       sharedContent,
       `zh/${rel} out of sync with shared`,
     );
@@ -104,8 +106,8 @@ test("M-005: supervisor skill source stays in lockstep between inner .agent and 
   // location must update all of them.
   const inner = fs.readFileSync(path.join(INNER, "skills/dashboard-supervisor/scripts/supervisor.js"), "utf8");
   const shared = readText("skills/dashboard-supervisor/scripts/supervisor.js");
-  const en = fs.readFileSync(path.join(EN_TPL, "skills/dashboard-supervisor/scripts/supervisor.js"), "utf8");
-  const zh = fs.readFileSync(path.join(ZH_TPL, "skills/dashboard-supervisor/scripts/supervisor.js"), "utf8");
+  const en = fs.readFileSync(resolveTemplatePath("skills/dashboard-supervisor/scripts/supervisor.js", "en"), "utf8");
+  const zh = fs.readFileSync(resolveTemplatePath("skills/dashboard-supervisor/scripts/supervisor.js", "zh"), "utf8");
   assert.strictEqual(shared, inner, "shared template drifted from inner .agent");
   assert.strictEqual(en, inner, "en template drifted from inner .agent");
   assert.strictEqual(zh, inner, "zh template drifted from inner .agent");

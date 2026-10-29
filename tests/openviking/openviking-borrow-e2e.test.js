@@ -7,13 +7,10 @@ const { execFileSync } = require("node:child_process");
 const test = require("node:test");
 
 const { createAgentSandbox } = require("../helpers/agent-sandbox");
+const { resolveTemplatePath } = require("../helpers/template-layers");
 
 const REPO_ROOT = path.resolve(__dirname, "..", "..");
 const LANG = "zh";
-const VARS = {
-  zh: path.join(REPO_ROOT, "templates", "zh", ".agent"),
-  en: path.join(REPO_ROOT, "templates", "en", ".agent"),
-};
 // Scripts stay in the real repository (they resolve siblings through
 // `__dirname`); only `cwd` moves into the sandbox so that every state path
 // they derive from `process.cwd()` is written to the sandbox copy.
@@ -60,9 +57,11 @@ function fileExists(p) {
 }
 
 test("URI schema and map are present and well-formed", () => {
-  for (const v of [sandbox.agentRoot, VARS.zh, VARS.en]) {
-    const schema = path.join(v, "registry", "uri-map.schema.json");
-    const map = path.join(v, "registry", "uri-map.json");
+  for (const lang of [null, "zh", "en"]) {
+    const schema = lang ? resolveTemplatePath("registry/uri-map.schema.json", lang)
+      : path.join(sandbox.agentRoot, "registry", "uri-map.schema.json");
+    const map = lang ? resolveTemplatePath("registry/uri-map.json", lang)
+      : path.join(sandbox.agentRoot, "registry", "uri-map.json");
     assert.ok(fileExists(schema), `missing schema: ${schema}`);
     assert.ok(fileExists(map), `missing map: ${map}`);
     const parsed = loadJson(schema);
@@ -199,8 +198,8 @@ test("English and Chinese templates stay aligned (parity)", () => {
     ["skills/retrieval-trajectory/trajectory.schema.json", "skills/retrieval-trajectory/trajectory.schema.json"],
   ];
   for (const [zh, en] of pairs) {
-    const a = fs.readFileSync(path.join(VARS.zh, zh), "utf8");
-    const b = fs.readFileSync(path.join(VARS.en, en), "utf8");
+    const a = fs.readFileSync(resolveTemplatePath(zh, "zh"), "utf8");
+    const b = fs.readFileSync(resolveTemplatePath(en, "en"), "utf8");
     // Parity = structural; we don't require byte equality for prose.
     assert.ok(a.length > 100 && b.length > 100, `template ${zh}/${en} too small`);
     // Both must declare the same SKILL name

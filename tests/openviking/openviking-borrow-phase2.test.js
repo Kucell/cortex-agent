@@ -7,12 +7,9 @@ const { execFileSync } = require("node:child_process");
 const test = require("node:test");
 
 const { createAgentSandbox } = require("../helpers/agent-sandbox");
+const { resolveTemplatePath } = require("../helpers/template-layers");
 
 const REPO_ROOT = path.resolve(__dirname, "..", "..");
-const VARS = {
-  zh: path.join(REPO_ROOT, "templates", "zh", ".agent"),
-  en: path.join(REPO_ROOT, "templates", "en", ".agent"),
-};
 // The scripts stay in the real repository: they resolve state paths from
 // `process.cwd()` but siblings through `__dirname`, so only the working
 // directory moves into the sandbox. Everything they write lands there.
@@ -228,8 +225,8 @@ test("English and Chinese resource-ingest templates stay aligned", () => {
     ["skills/resource-ingest/scripts/ingest.js", "skills/resource-ingest/scripts/ingest.js"],
   ];
   for (const [zh, en] of pairs) {
-    const a = fs.readFileSync(path.join(VARS.zh, zh), "utf8");
-    const b = fs.readFileSync(path.join(VARS.en, en), "utf8");
+    const a = fs.readFileSync(resolveTemplatePath(zh, "zh"), "utf8");
+    const b = fs.readFileSync(resolveTemplatePath(en, "en"), "utf8");
     assert.ok(a.length > 100 && b.length > 100, `template ${zh} too small`);
     if (zh.endsWith("SKILL.md")) {
       const nameA = a.match(/^name:\s*(\S+)/m);

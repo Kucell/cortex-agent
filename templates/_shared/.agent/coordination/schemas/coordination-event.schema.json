@@ -49,7 +49,8 @@
         "task.completed", "task.failed", "task.blocked", "task.input_required",
         "task.cancel_requested", "task.cancelled", "task.takeover_requested",
         "task.taken_over", "task.stale", "ownership.acquired",
-        "ownership.released", "ownership.conflict", "artifact.ready"
+        "ownership.released", "ownership.rebound", "ownership.conflict",
+        "artifact.ready"
       ]
     },
     "previousState": {

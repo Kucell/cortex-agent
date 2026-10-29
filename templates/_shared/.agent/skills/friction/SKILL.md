@@ -97,8 +97,12 @@ node .agent/skills/friction/scripts/share-learnings.js --session <S-id> --title 
 
 - WITHOUT `--confirm`: refuses (exit 2) and creates NOTHING. A score
   recommendation NEVER auto-creates a draft.
-- WITH `--confirm`: writes `/tmp/exp-<session-id>-draft.md` and prints a diff
-  for human review. The draft is not committed, not upvoted, not promoted.
+- WITH `--confirm`: writes
+  `.agent/runtime-evidence/friction/drafts/exp-<session-id>-draft.md` and prints a
+  diff for human review. The draft is not committed, not upvoted, not promoted.
+  It lives under `.agent/` (not `/tmp`) because a draft awaiting human review
+  has value after the process exits — see
+  `.agent/rules/runtime-artifacts-location.md`.
 
 ## Assessment State Machine
 

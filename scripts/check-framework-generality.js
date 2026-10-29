@@ -78,6 +78,13 @@ const CONFIG_EXTENSIONS = Object.freeze([
 const SKIP_DIRS = Object.freeze([
   "node_modules", ".git", "dist", "coverage",
   "metrics", "runs", "locks", "registry", "activities", "artifacts",
+  // Task review scripts are execution records, not distributed assets. A
+  // review script legitimately names the mission and the project it reviews,
+  // and it never ships: the distributed surface is templates/_shared/.agent/,
+  // which carries no reviews/ directory. The sibling location
+  // .agent/missions/<M-xxx>/scripts/reviews/ is already outside every scan
+  // tree for the same reason.
+  "reviews",
 ]);
 
 // The trees that ship code or rules to managed projects, plus the framework's

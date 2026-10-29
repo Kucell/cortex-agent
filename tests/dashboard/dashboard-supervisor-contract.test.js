@@ -5,6 +5,7 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const test = require("node:test");
+const { resolveTemplatePath } = require("../helpers/template-layers");
 
 const ROOT = path.resolve(__dirname, "..", "..");
 const LOCAL_SKILL = path.join(ROOT, ".agent", "skills", "dashboard-supervisor");
@@ -213,8 +214,8 @@ test("shared schemas are byte-identical and language templates ship the supervis
     );
   }
   for (const language of ["en", "zh"]) {
-    assert.equal(fs.existsSync(path.join(ROOT, "templates", language, ".agent", "skills", "dashboard-supervisor")), true);
-    assert.equal(fs.existsSync(path.join(ROOT, "templates", language, ".agent", "config", "dashboard-automation.json")), true);
+    assert.ok(resolveTemplatePath("skills/dashboard-supervisor/SKILL.md", language));
+    assert.ok(resolveTemplatePath("config/dashboard-automation.json", language));
   }
 });
 

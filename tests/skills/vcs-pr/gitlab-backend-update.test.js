@@ -2,7 +2,7 @@
  * tests/skills/vcs-pr/gitlab-backend-update.test.js
  *
  * M-013 SP-007 / VC-013: Unit tests for gitlab backend updatePR() function.
- * Source: templates/en/.agent/skills/vcs-pr/scripts/backends/gitlab.js
+ * Source: the English template surface (language overlay over shared).
  *
  * Test strategy: monkey-patch https.request (which `send` uses) to route
  * to scripted responses. Each test provides the full scripted queue before
@@ -16,7 +16,8 @@ const https = require('node:https');
 const http = require('node:http');
 const { EventEmitter } = require('node:events');
 
-const gitlab = require('../../../templates/en/.agent/skills/vcs-pr/scripts/backends/gitlab');
+const { resolveTemplatePath } = require('../../helpers/template-layers');
+const gitlab = require(resolveTemplatePath('skills/vcs-pr/scripts/backends/gitlab.js', 'en'));
 
 // ─── HTTP mock helper ────────────────────────────────────────────────────────
 

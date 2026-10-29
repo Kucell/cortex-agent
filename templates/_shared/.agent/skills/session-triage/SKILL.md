@@ -23,7 +23,7 @@ them as typed events so a fresh agent / a future session can resume.
 ```bash
 node .agent/skills/session-triage/scripts/index.js triage \
   --threshold 3 \
-  --signal-file /tmp/session-signals.json  # optional, defaults to stdin
+  --signal-file .agent/runtime-evidence/session-triage/session-signals.json  # optional, defaults to stdin
 ```
 
 Reads a JSON `{ turns: N, text: "...", tool_failures: N, user_questions: N }`.

@@ -19,15 +19,18 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const { execFileSync } = require("node:child_process");
-const { describe, test } = require("node:test");
+const { after, describe, test } = require("node:test");
+const { resolveTemplatePath } = require("../helpers/template-layers");
 
-const SCRIPT = path.resolve(
-  __dirname,
-  "../../templates/en/.agent/skills/vcs-pr/scripts/index.js"
-);
+const SCRIPT = resolveTemplatePath("skills/vcs-pr/scripts/index.js", "en");
+const projects = [];
+after(() => {
+  for (const root of projects) fs.rmSync(root, { recursive: true, force: true });
+});
 
 function makeProject(runs) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-vcspr-run-"));
+  projects.push(root);
   const runsDir = path.join(root, ".agent", "runs");
   fs.mkdirSync(runsDir, { recursive: true });
   fs.mkdirSync(path.join(root, ".agent", "config"), { recursive: true });

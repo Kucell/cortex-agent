@@ -283,3 +283,39 @@ test("coordinator workflow gates are checked against the configured allowlist", 
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("a refused workflow gate names the gates the project does accept", () => {
+  // The allow-list is server-side state. A caller that supplies a gate the
+  // project does not hold is refused — and the refusal has to say what
+  // would be accepted, otherwise the caller can only guess.
+  const dir = runtimeDir();
+  const app = CoordinationApplicationService.open(dir, {
+    journal: { lock: false },
+    authorization: { workflowGates: ["M-006", "D-abc-123"] },
+  });
+  try {
+    app.submit(event({ eventId: "CE-create", sequence: 1 }));
+    app.submit(event({
+      eventId: "CE-assign", sequence: 2, eventType: "task.assigned",
+      previousState: STATES.CREATED, currentState: STATES.ASSIGNED,
+      targets: [{ actorId: "claude-1", kind: "agent" }],
+    }));
+    const cancellation = event({
+      eventId: "CE-cancel", sequence: 3, eventType: "task.cancel_requested",
+      previousState: STATES.ASSIGNED, currentState: STATES.CANCEL_REQUESTED,
+    });
+    assert.throws(() => app.submit(cancellation, {
+      actorId: "coordinator", kind: "coordinator",
+      sessionId: "session-coordinator", workflowGate: "agent",
+    }), (error) => {
+      assert.equal(error.key, "ERR_ACTOR_MISMATCH");
+      assert.equal(error.details.suppliedWorkflowGate, "agent");
+      assert.deepEqual(error.details.availableWorkflowGates, ["D-abc-123", "M-006"]);
+      assert.match(error.details.hint, /task gates/);
+      return true;
+    });
+  } finally {
+    app.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});

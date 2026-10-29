@@ -13,12 +13,13 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
+const { resolveTemplatePath } = require("../helpers/template-layers");
 
 const ROOT = path.resolve(__dirname, "..", "..");
 const CANONICAL_MGMT = path.join(ROOT, ".agent", "skills", "management-api", "scripts", "index.js");
 const SHARED_MGMT = path.join(ROOT, "templates", "_shared", ".agent", "skills", "management-api", "scripts", "index.js");
-const ZH_MGMT = path.join(ROOT, "templates", "zh", ".agent", "skills", "management-api", "scripts", "index.js");
-const EN_MGMT = path.join(ROOT, "templates", "en", ".agent", "skills", "management-api", "scripts", "index.js");
+const ZH_MGMT = resolveTemplatePath("skills/management-api/scripts/index.js", "zh");
+const EN_MGMT = resolveTemplatePath("skills/management-api/scripts/index.js", "en");
 const CANONICAL_SCHEMA = path.join(ROOT, ".agent", "runs", "run.schema.json");
 const BASE_SCHEMA = path.join(ROOT, "templates", "_base", ".agent", "runs", "run.schema.json");
 

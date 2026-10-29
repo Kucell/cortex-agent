@@ -7,6 +7,7 @@ const os = require("node:os");
 const path = require("node:path");
 const { spawnSync } = require("node:child_process");
 const test = require("node:test");
+const { resolveTemplatePath } = require("../helpers/template-layers");
 
 const ROOT = path.resolve(__dirname, "..", "..");
 const CLI = path.join(ROOT, "bin", "cli.js");
@@ -112,10 +113,10 @@ test("Phase 0 dispatch schemas are strict shared contracts", () => {
 
 test("localized docs and rules retain explicit manual-dispatch and Phase 0 safety boundaries", () => {
   const files = [
-    path.join(ROOT, "templates", "en", ".agent", "dispatch", "README.md"),
-    path.join(ROOT, "templates", "zh", ".agent", "dispatch", "README.md"),
-    path.join(ROOT, "templates", "en", ".agent", "rules", "ai-behavior.md"),
-    path.join(ROOT, "templates", "zh", ".agent", "rules", "ai-behavior.md"),
+    resolveTemplatePath("dispatch/README.md", "en"),
+    resolveTemplatePath("dispatch/README.md", "zh"),
+    resolveTemplatePath("rules/ai-behavior.md", "en"),
+    resolveTemplatePath("rules/ai-behavior.md", "zh"),
   ];
   for (const file of files) {
     const content = fs.readFileSync(file, "utf8");
