@@ -231,7 +231,7 @@ function countActiveTasks(taskProgressContent) {
   // The heading may be localized. Both the Chinese and the English title
   // match, and the LAST section wins (a later write is newer).
   const sections = taskProgressContent.match(
-    /^##\s+.*(?:当前活跃任务|Active Tasks).*$[\s\S]*?(?=^##\s|\n---|$)/gm,
+    /^##\s+.*(?:当前活跃任务|Active Tasks).*$[\s\S]*?(?=^##\s|\n---|(?![\s\S]))/gm,
   );
   if (!sections || !sections.length) return 0;
   const sectionMatch = sections[sections.length - 1].match(
@@ -242,7 +242,7 @@ function countActiveTasks(taskProgressContent) {
   return sectionMatch[1]
     .split('\n')
     .filter((line) => /^\|/.test(line))
-    .filter((line) => !line.includes(':---'))
+    .filter((line) => !/^\s*\|(?:\s*:?-+:?\s*\|)+\s*$/.test(line))
     .filter((line) => !/任务 ID|优先级|描述|进度|Task ID|Priority|Description|Progress/.test(line))
     .filter((line) => line.trim() !== '|')
     .length;
