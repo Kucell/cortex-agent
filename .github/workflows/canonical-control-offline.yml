@@ -179,11 +179,11 @@ jobs:
         with:
           script: |
             const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto'),assert=require('node:assert/strict');
-            const {owner,repo}=context.repo,head=process.env.SOURCE_HEAD,reviewed='9a98b41664cb930b44418fc25d1ca5fed63c6426';assert.match(head||'',/^[a-f0-9]{40}$/);
+            const {owner,repo}=context.repo,head=process.env.SOURCE_HEAD,reviewed='c5eae77e2be3450286061e3ccc123880eb65c2d9';assert.match(head||'',/^[a-f0-9]{40}$/);
             async function treeFor(sha){const {data:c}=await github.rest.git.getCommit({owner,repo,commit_sha:sha});assert.equal(c.sha,sha);const {data:t}=await github.rest.git.getTree({owner,repo,tree_sha:c.tree.sha,recursive:'true'});assert.equal(t.truncated,false);assert.equal(t.sha,c.tree.sha);return t;}
-            const tree=await treeFor(head),baseline=await treeFor(reviewed);assert.equal(baseline.sha,'2f2ad1deecdf01591ebf612e35183a45e4cb9a1e');
-            const proof={source_head:head,tree:tree.sha,reviewed_head:reviewed,expected_github_api_calls:267,sources:[]},root=fs.mkdtempSync(path.join(fs.realpathSync(process.env.RUNNER_TEMP),'cortex-feedback-'));
-            core.exportVariable('CORTEX_FEEDBACK_ROOT',root);core.info('Expected GitHub API requests: 267; any API failure fails closed; no alternate credentials or downloader');fs.chmodSync(root,0o700);for(const dir of ['source','fixtures'])fs.mkdirSync(path.join(root,dir),{mode:0o700});
+            const tree=await treeFor(head),baseline=await treeFor(reviewed);assert.equal(baseline.sha,'243c1d19745726684d38ac96ca907e5f812e40b6');
+            const proof={source_head:head,tree:tree.sha,reviewed_head:reviewed,expected_github_api_calls:271,sources:[]},root=fs.mkdtempSync(path.join(fs.realpathSync(process.env.RUNNER_TEMP),'cortex-feedback-'));
+            core.exportVariable('CORTEX_FEEDBACK_ROOT',root);core.info('Expected GitHub API requests: 271; any API failure fails closed; no alternate credentials or downloader');fs.chmodSync(root,0o700);for(const dir of ['source','fixtures'])fs.mkdirSync(path.join(root,dir),{mode:0o700});
             async function bytesFor(relative){
               assert.ok(typeof relative==='string'&&!path.isAbsolute(relative)&&!relative.split('/').some(x=>['','..','.git','node_modules'].includes(x)));assert.ok(!relative.split('/').includes('.agent')||relative.startsWith('templates/_shared/.agent/'));
               const entry=tree.tree.find(x=>x.path===relative),approved=baseline.tree.find(x=>x.path===relative);assert.ok(entry&&approved,'Missing '+relative);assert.equal(entry.type,'blob');assert.ok(['100644','100755'].includes(entry.mode));assert.equal(entry.mode,approved.mode);assert.equal(entry.sha,approved.sha,'Re-review changed feedback closure: '+relative);
@@ -191,8 +191,8 @@ jobs:
               const bytes=Buffer.from(file.content,'base64');assert.equal(bytes.length,file.size);assert.ok(bytes.length<=2097152);const blob=crypto.createHash('sha1').update('blob '+bytes.length+'\0').update(bytes).digest('hex');assert.equal(blob,entry.sha);return {bytes,blob};
             }
             const manifestPath='tests/dispatch/phase-zero-source-manifest.json',manifest=JSON.parse((await bytesFor(manifestPath)).bytes);
-            assert.equal(manifest.sources.length,255);assert.equal(new Set(manifest.sources).size,255);assert.equal(manifest.sources.filter(x=>x.endsWith('.js')).length,250);
-            const tests=['inbox','cli','multiprocess','redact','nudge'].map(x=>'tests/feedback/'+x+'.test.js'),files=[...new Set([...manifest.sources,'lib/feedback/nudge.js',...tests,manifestPath])];assert.equal(files.length,262);
+            assert.equal(manifest.sources.length,259);assert.equal(new Set(manifest.sources).size,259);assert.equal(manifest.sources.filter(x=>x.endsWith('.js')).length,254);
+            const tests=['inbox','cli','multiprocess','redact','nudge'].map(x=>'tests/feedback/'+x+'.test.js'),files=[...new Set([...manifest.sources,'lib/feedback/nudge.js',...tests,manifestPath])];assert.equal(files.length,266);
             for(const relative of files){const {bytes,blob}=await bytesFor(relative),file=path.join(root,'source',relative);assert.ok(file.startsWith(path.join(root,'source')+path.sep));fs.mkdirSync(path.dirname(file),{recursive:true});fs.writeFileSync(file,bytes,{flag:'wx',mode:0o444});proof.sources.push({path:relative,blob,sha256:crypto.createHash('sha256').update(bytes).digest('hex')});}
             fs.writeFileSync(path.join(root,'source-proof.json'),JSON.stringify(proof)+'\n',{flag:'wx',mode:0o444});core.info(JSON.stringify(proof));
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
@@ -296,9 +296,9 @@ jobs:
                   raise OSError(ctypes.get_errno(), 'seccomp containment unavailable')
           assert os.uname().machine=='x86_64';assert E.is_absolute() and E.resolve()==E and NODE.is_absolute()
           for name in ['home','tmp','cwd','audit']: (root/name).mkdir(mode=0o700)
-          proof=json.loads((E/'source-proof.json').read_text());before=snapshot(SOURCE);assert len(proof['sources'])==262 and sum(v[1]!='DIRECTORY' for v in before.values())==262
+          proof=json.loads((E/'source-proof.json').read_text());before=snapshot(SOURCE);assert len(proof['sources'])==266 and sum(v[1]!='DIRECTORY' for v in before.values())==266
           for item in proof['sources']:assert before[item['path']][1]==item['sha256']
-          report={'status':'NOT_RUN','source_head':proof['source_head'],'reviewed_head':proof['reviewed_head'],'source_tree':proof['tree'],'source_count':262,'boundary':'TRUSTED_SYNTHETIC_RUNNER_NO_KERNEL_FILE_CONFINEMENT'}
+          report={'status':'NOT_RUN','source_head':proof['source_head'],'reviewed_head':proof['reviewed_head'],'source_tree':proof['tree'],'source_count':266,'boundary':'TRUSTED_SYNTHETIC_RUNNER_NO_KERNEL_FILE_CONFINEMENT'}
           p=None
           try:
            loader=root/'cwd'/'feedback.test.cjs';loader.write_text('\n'.join('require('+json.dumps(str(SOURCE/'tests'/'feedback'/(name+'.test.js')))+');' for name in ['inbox','cli','multiprocess','redact','nudge'])+'\n')

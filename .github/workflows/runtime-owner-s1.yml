@@ -81,8 +81,8 @@ jobs:
           }
           const manifestPath = "tests/dispatch/phase-zero-source-manifest.json";
           const manifest = JSON.parse(bytesFor(manifestPath).bytes.toString("utf8"));
-          assert.equal(manifest.sources.length, 255);
-          assert.equal(new Set(manifest.sources).size, 255);
+          assert.equal(manifest.sources.length, 259);
+          assert.equal(new Set(manifest.sources).size, 259);
           const additions = [
             "lib/dispatch/execute.js",
             "lib/dispatch/strict-domain-entry.js",
@@ -93,7 +93,7 @@ jobs:
             "tests/governance/github-selection.test.js",
           ];
           const sources = [...new Set([...manifest.sources, ...additions, manifestPath])];
-          assert.equal(sources.length, 263);
+          assert.equal(sources.length, 267);
           const proof = { source_head: head, manifest_blob: tree.get(manifestPath).blob, blobs: {} };
           for (const relative of sources) {
             assert.ok(!relative.startsWith(".agent/") && !relative.includes("node_modules/"));
