@@ -5,11 +5,7 @@ on:
     paths:
       - "lib/commands/session.js"
       - "templates/_shared/.agent/skills/evolution-pipeline/scripts/evolve.js"
-      - "templates/en/.agent/skills/evolution-pipeline/scripts/evolve.js"
-      - "templates/zh/.agent/skills/evolution-pipeline/scripts/evolve.js"
       - "templates/_shared/.agent/skills/runtime-continuity/scripts/index.js"
-      - "templates/en/.agent/skills/runtime-continuity/scripts/index.js"
-      - "templates/zh/.agent/skills/runtime-continuity/scripts/index.js"
       - "tests/evolution/evolve-no-write.test.js"
       - "tests/evolution/archive-proposal.test.js"
       - ".github/workflows/evolution-template-preservation.yml"
@@ -26,7 +22,7 @@ jobs:
       fail-fast: false
       matrix:
         node: ["22", "24"]
-        language: ["_shared", "en", "zh"]
+        language: ["_shared"]
     env:
       SOURCE_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
       NODE_OPTIONS: ""
@@ -58,11 +54,7 @@ jobs:
             for (const relative of [
               "lib/commands/session.js",
               "templates/_shared/.agent/skills/evolution-pipeline/scripts/evolve.js",
-              "templates/en/.agent/skills/evolution-pipeline/scripts/evolve.js",
-              "templates/zh/.agent/skills/evolution-pipeline/scripts/evolve.js",
               "templates/_shared/.agent/skills/runtime-continuity/scripts/index.js",
-              "templates/en/.agent/skills/runtime-continuity/scripts/index.js",
-              "templates/zh/.agent/skills/runtime-continuity/scripts/index.js",
               "tests/evolution/evolve-no-write.test.js",
               "tests/evolution/archive-proposal.test.js",
             ]) {
@@ -71,8 +63,6 @@ jobs:
               assert.equal(entry.type, "blob");
               const executableTemplates = [
                 "templates/_shared/.agent/skills/evolution-pipeline/scripts/evolve.js",
-                "templates/en/.agent/skills/evolution-pipeline/scripts/evolve.js",
-                "templates/zh/.agent/skills/evolution-pipeline/scripts/evolve.js",
               ];
               assert.equal(entry.mode, executableTemplates.includes(relative) ? "100755" : "100644");
               const { data: file } = await github.rest.repos.getContent({
@@ -103,11 +93,7 @@ jobs:
         run: |
           node --check lib/commands/session.js
           node --check templates/_shared/.agent/skills/evolution-pipeline/scripts/evolve.js
-          node --check templates/en/.agent/skills/evolution-pipeline/scripts/evolve.js
-          node --check templates/zh/.agent/skills/evolution-pipeline/scripts/evolve.js
           node --check templates/_shared/.agent/skills/runtime-continuity/scripts/index.js
-          node --check templates/en/.agent/skills/runtime-continuity/scripts/index.js
-          node --check templates/zh/.agent/skills/runtime-continuity/scripts/index.js
           node --check tests/evolution/evolve-no-write.test.js
           node --check tests/evolution/archive-proposal.test.js
       - name: Run scoped no-write and archive-proposal fixtures

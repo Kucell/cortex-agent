@@ -50,8 +50,6 @@ jobs:
               "templates/_shared/.agent/decisions/decision.schema.json",
               "templates/_shared/.agent/waitpoints/waitpoint.schema.json",
               "templates/_shared/.agent/skills/management-api/scripts/index.js",
-              "templates/en/.agent/skills/management-api/scripts/index.js",
-              "templates/zh/.agent/skills/management-api/scripts/index.js",
               "templates/_shared/.agent/skills/management-api/scripts/normalize-token-usage.js",
               "templates/_shared/.agent/skills/management-api/scripts/query-activity.js",
               "templates/_shared/.agent/skills/management-api/scripts/query-dispatch-state.js",
@@ -83,8 +81,6 @@ jobs:
       - name: Check isolation syntax
         run: |
           node --check templates/_shared/.agent/skills/management-api/scripts/index.js
-          node --check templates/en/.agent/skills/management-api/scripts/index.js
-          node --check templates/zh/.agent/skills/management-api/scripts/index.js
           node --check tests/communication/decision-resolution-isolation.test.js
           node --check tests/communication/serializer-schema.test.js
       - name: Run fifteen Decision isolation cases
