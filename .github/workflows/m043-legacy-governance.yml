@@ -14,6 +14,10 @@ on:
       - ".github/workflows/m043-legacy-governance.yml"
   workflow_dispatch:
 
+concurrency:
+  group: m043-${{ github.workflow }}-${{ github.event_name }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   focused:
     runs-on: ubuntu-latest
