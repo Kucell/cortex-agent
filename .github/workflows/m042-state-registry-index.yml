@@ -18,6 +18,10 @@ on:
       - ".github/workflows/m042-state-registry-index.yml"
   workflow_dispatch:
 
+concurrency:
+  group: m042-${{ github.workflow }}-${{ github.event_name }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   focused:
     runs-on: ubuntu-latest
