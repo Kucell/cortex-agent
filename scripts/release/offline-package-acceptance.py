@@ -388,7 +388,7 @@ def main():
         invoke(project, home, [cli, "reconcile"])
         require(snapshot(root) == before, "read-only CLI changed project/HOME")
         continuity = installed / "templates/_shared/.agent/skills/runtime-continuity/scripts/index.js"
-        evolve = installed / evolve_paths[0]
+        evolve = installed / evolve_path
         private_marker = "SYNTHETIC_ARCHIVE_TEXT_MUST_NOT_ENTER_PROPOSAL"
         for opt_in in [False, True]:
             root, project, home = fixture("archive-opt-in" if opt_in else "archive-default")
