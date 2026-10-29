@@ -242,13 +242,14 @@ def main():
         # differs. evolve.js is language-neutral, so it exists once, under
         # _shared. A language overlay that reintroduces its own copy would
         # reintroduce the drift this layering removed.
-        evolve_paths = [
+        evolve_path = "templates/_shared/.agent/skills/evolution-pipeline/scripts/evolve.js"
+        evolve_overlays = [
             "templates/" + language + "/.agent/skills/evolution-pipeline/scripts/evolve.js"
-            for language in ["_shared", "en", "zh"]
+            for language in ["en", "zh"]
         ]
-        require(evolve_paths[0] in tree,
+        require(evolve_path in tree,
                 "final head must include the reviewed shared proposal implementation")
-        require(all(p not in tree for p in evolve_paths[1:]),
+        require(all(p not in tree for p in evolve_overlays),
                 "language overlay reintroduces the shared evolve implementation")
         for language in ["_shared", "en", "zh", "_base"]:
             require(not (source / ("templates/" + language +
@@ -304,7 +305,7 @@ def main():
             "lib/evolution/reasoning-handoff.js", "lib/next-action/index.js",
             "lib/next-action/canonical-task-source.js", "packages/protocol/src/evolution.js",
             ".claude-plugin/plugin.json", ".claude-plugin/marketplace.json",
-        ] + evolve_paths
+        ] + [evolve_path]
         for relative in required:
             require(relative in manifest, "required shipped file absent: " + relative)
         require(manifest["bin/cli.js"]["tar_mode"] & 0o111, "CLI tar member is not executable")
