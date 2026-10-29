@@ -4,10 +4,11 @@ const fs = require("fs");
 const path = require("path");
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const { resolveTemplatePath } = require("../helpers/template-layers");
 
 const root = path.resolve(__dirname, "../..");
 const sharedIndex = require(path.join(root, "templates/_shared/.agent/skills/secrets/scripts/index.js"));
-const englishIndex = require(path.join(root, "templates/en/.agent/skills/secrets/scripts/index.js"));
+const englishIndex = require(resolveTemplatePath("skills/secrets/scripts/index.js", "en"));
 
 for (const [name, skill] of [["shared", sharedIndex], ["english", englishIndex]]) {
   test(`${name} secrets template exposes Windows DPAPI without Git Bash`, () => {
@@ -26,7 +27,7 @@ for (const [name, skill] of [["shared", sharedIndex], ["english", englishIndex]]
 
 test("Windows DPAPI backend reads the payload from stdin", () => {
   for (const template of ["_shared", "en"]) {
-    const file = path.join(root, `templates/${template}/.agent/skills/secrets/scripts/backends/win-dpapi.ps1`);
+    const file = resolveTemplatePath("skills/secrets/scripts/backends/win-dpapi.ps1", template);
     const source = fs.readFileSync(file, "utf8");
     assert.match(source, /\[Console\]::In\.ReadToEnd\(\)/);
     assert.match(source, /ConvertFrom-SecureString/);

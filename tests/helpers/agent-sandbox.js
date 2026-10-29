@@ -28,7 +28,13 @@ const path = require("node:path");
 const { execFileSync } = require("node:child_process");
 
 const REPO_ROOT = path.resolve(__dirname, "..", "..");
-const AGENT_DIR = path.join(REPO_ROOT, ".agent");
+// `.agent` is a real directory in the main checkout but a *symlink* to the
+// shared governance repository inside a worktree. `fs.cpSync` copies a
+// symlink source as a symlink, so the sandbox would end up pointing back at
+// the real `.agent/` — the scripts under test would then read and write the
+// developer's governance tree instead of the sandbox. Resolve the link first
+// so the sandbox always holds a real copy of the governance contents.
+const AGENT_DIR = fs.realpathSync(path.join(REPO_ROOT, ".agent"));
 
 // Left out of the sandbox copy: VCS metadata, heavy runtime payloads and
 // symlinks that escape the repository. None of them are read by the scripts
@@ -52,6 +58,15 @@ function shouldSkip(src) {
   // through to the user's real home directory.
   try {
     if (fs.lstatSync(src).isSymbolicLink()) return true;
+  } catch {
+    return true;
+  }
+  // Unreadable files exist in the governance tree (mode 000, produced by a
+  // permission test). Copying them would abort the whole sandbox, so they are
+  // skipped rather than allowed to fail the suite that merely wanted a
+  // scratch `.agent/` copy.
+  try {
+    fs.accessSync(src, fs.constants.R_OK);
   } catch {
     return true;
   }

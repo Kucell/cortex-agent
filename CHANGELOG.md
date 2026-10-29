@@ -9,10 +9,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- 下一个版本的条目写在这里 -->
 
+## [1.15.7] - Unreleased
+
+> **Patch**：补上 LEASE 过期后 Task 无法续接的死锁修复，收紧该修复的授权边界，修正随之暴露的模板契约漂移与语言分发回归。
+> **版本线**：本版沿用 1.15.x 补丁线发布，与已发布的 1.15.6 同线，向后兼容。
+> **升级**：安装新版即生效；已有项目运行 `cortex-agent update` 同步模板，并迁移项目本地的协调事件 schema 事件类型白名单（只增不减，幂等）。
+
+### Added
+
+- **同 Owner 过期 LEASE 的 Task 续接**：新增 `ownership.rebound` 事件与 `cortex-agent task rebind-ownership` 命令。Task 停在 `WAITING_FOR_INPUT` 期间其 ownership 引用的 LEASE 过期后，`task.progress` 会被 `ERR_LEASE_CONFLICT` 拒绝——而这是把 Task 推回 `EXECUTING` 的唯一事件，同 Owner 重新 acquire 也不会更新 Task 上的引用，结果是没有受支持出路的死锁。rebind 是纯 bookkeeping 自转换：状态不变，只把 `ownership[]` 换成新 LEASE 引用；授权校验对 rebound 用**新引用**校验（旧引用正是要摆脱的），并强制同 scope 的 owner 不变、fencing token 严格递增、scope 不可被换掉，因此它是恢复路径而不是夺取路径。新引用从持久化 lease 状态读取，调用方无法伪造 fencing token。
+- **事件 schema 与运行时契约的一致性回归**：新增测试把随模板分发的 `coordination-event.schema.json` 事件类型白名单与运行时 `EVENT_TYPES` 双向绑定，运行时新增事件类型而漏改模板会直接测试失败。
+- **协调事件 schema 的显式迁移路径**：`cortex-agent update` 现在会把运行时已知的事件类型补进项目本地的 `coordination-event.schema.json` 白名单。升级是纯加法、不会重写项目已有文件，所以项目自己的副本会停留在旧白名单并开始拒绝合法事件；迁移只**新增**事件类型，不删除也不改写项目已有的条目，不触碰 schema 的其他部分，且重复执行不产生第二次变更。项目没有本地 schema、非协调事件 schema 或 JSON 损坏时，迁移报告跳过原因并原样保留文件。
+- **查询本项目接受的 workflow gate**：`cortex-agent task gates --project <path>` 列出服务端 allow-list 里的全部 gate。`task complete` / `cancel` / `takeover` 需要一个被允许的 `workflowGate`，而该 allow-list 由项目自己的 decisions、waitpoints 与 mission 注册表构成，调用方无法自行推断；这个只读命令把「可用值」变成可查的事实。
+
 ### Fixed
 
+- **分发模板的事件类型白名单漏项**：随模板分发的 `coordination-event.schema.json` 未包含 `ownership.rebound`，受管项目升级后会拿到一份拒绝该合法事件类型的 schema。已补齐并由上一条的回归测试长期绑定。
+- **rebind 可更换 scope、可接受伪造引用元数据**：原实现的授权循环按 scope 查找被替换的旧引用，scope 一旦不同就找不到旧引用，于是「同 scope、owner 不变、fencing 严格递增」三项检查全部落空——同 Owner 拿着另一份合法 lease 就能把 Task 从一个 scope 迁到另一个 scope。事件本身携带的 `scope` / `owner` 也只与 lease 的 `leaseId` 和 fencing token 核对，手写事件可以给真实 lease 配上伪造的 scope/owner，伪造元数据会进入 snapshot。现在 rebind 必须命中一条**已存在的同 scope 引用**，引用的 scope/owner 必须与持久化 lease 一致，两者都通过持久化记录判定，调用方无法伪造。
+- **rebind 单项恢复会丢弃任务其余 ownership 引用**：reducer 原先对 rebound 整体替换 `ownership[]`，只重绑一个 scope 时其余 scope 的过期引用一并消失，任务相当于被解除了对那些 scope 的约束，而它们本应继续阻止 progress 直到逐项恢复。现在 rebound 按 scope 替换对应项并保留其余引用；其余已过期 scope 仍然阻止 `task.progress`，必须逐项恢复。`--lease-id` 支持逗号分隔的多个 lease，一次即可恢复多个 scope。
+- **中文项目安装到的是英文 skill manifest**：模板分三层（`_shared` 语言无关主副本、`zh`/`en` 语言覆盖层），而安装是「先铺 `_shared`、再铺语言层」加上「不覆盖已存在文件」，于是**先到先得**：共享的英文副本先落地，中文覆盖层随后被当作重复而跳过，中文项目拿到的是英文 manifest。模板树里的中文覆盖层形同虚设。现在先在模板树上解析优先级（语言层覆盖共享层），再按解析结果安装，两条规则互不打架：语言层胜过共享层，项目已有文件仍胜过两者。
+- **parity 门禁放过只存在于单一语言的受保护产物**：`check-template-parity.js` 改成「在哪层比哪层」之后，只存在于某一语言层的受保护路径（governed-attempt-progress、watchdog-policy、projection-registry）会被判为通过，另一语言的用户拿不到这些产物。现在受保护路径必须**每个语言都能到达**——通过共享层，或通过该语言自己的覆盖层。
+- **dedup 门禁漏报部分相同的冗余**：三层中 shared 与 en 相同、zh 不同的情形下，en 相对 shared 仍是冗余副本，但原判定要求所有出现层完全一致而漏报。现在逐个语言层与 shared 比较。
+- **parity `--verbose` 漂移分支抛 ReferenceError**：诊断分支引用了未定义的 `sharedHash` / `zhHash` / `enHash`，在漂移时反而崩溃，无法诊断。已改为输出实际计算出的各层哈希。
+- **可移植路径门禁的漏报与误报**：占位符名单包含 `user`、`test`、`name`、`tmp` 等真实账号名，`/Users/test/work` 会被当成模板而放行；整行豁免让「同一行出现 portable 单词」或「行尾注释」使写死的路径合法；文档中的 fenced 代码块整体豁免，而它可能正是读者被要求执行的命令；Windows 路径的两种转义写法只有一种被识别；`path.resolve(__dirname, "/abs/path")` 因绝对参数会丢弃 `__dirname` 而被误判为可移植。门禁现在按**路径字面量**判定：先确认是绝对路径字面量，再判断用户段是否是真实账号名；Windows 两种分隔符写法都识别；`path.resolve` 的绝对第二参数按写死处理；路径由 `os.homedir()` / `__dirname` 赋值给变量后再 join 的，跨行追踪该变量，判定不再取决于 portable 拼写是否恰好在同一行。文档豁免改为**显式标注**（`For example`、反例表格、占位符），不再按整行或代码块豁免。
+- **可移植路径门禁把运行记录与代码快照当成待发布资产**：`runtime-evidence` 树下既有可复用的验证脚本，也有历次运行的记录（抓取的日志、提取出的项目快照、生成的夹具）。记录是一台机器某一天的状态快照，它携带的绝对路径正是它要记录的东西；把整个目录豁免会让真正可复用脚本里的写死路径失去检查。门禁现在区分两者：记录型子目录与嵌套仓库（保留审计快照）跳过，其余照常检查。
+- **`task rebind-ownership` 的帮助把 `--auth-context-json` 标成可选**：持有 ownership 引用的 Task 会被校验到持久化 lease，认证的 owner session 是该校验的一部分，因此这个参数是必需的而非可选。公开 builder 固定 producer 为 `kind: agent`，因为 rebind 是 owner 刷新自己的引用，而不是 coordinator 代 owner 行事。帮助文本已写明最低可用示例与「多 lease 用逗号分隔」。
+- **`task complete` 等受门禁事件被拒时信息不足**：拒绝只说明「需要 allowlisted workflowGate」，不给出该用哪个。错误详情现在带上调用方提交的值、项目接受的 gate 列表，以及查询命令。
+- **分发面跑的是旧实现**：治理仓（.agent/）里有 5 个实现文件在 L3 之后被更新过（knowledge-lint、management-api、runtime-continuity、vcs-pr 的 index 与 github backend），但分发面 `_shared` 里的副本没有同步——下游项目装到的是几个月前的旧代码。其中 `vcs-pr` 的旧副本连 `comment` / `review` / `diff` / `comments` / `reviews` 这些命令都不存在。另有 `agent-review-benchmark` 的 `render-pr-comment.js` 从未进入分发面，SKILL.md 里描述的「回写 PR 评论」链路在下游根本不存在。实现文件与 `agent-review-benchmark/SKILL.md` 已按 L3 为准同步。
+- **`decision.schema.json` / `waitpoint.schema.json` 分发副本缺 `workflow_gate`**：治理仓版本已声明 `workflow_gate` 字段，分发副本没有，受管项目升级后拿到的是旧 schema。而 `task complete` / `cancel` / `takeover` 的授权判定正依赖这个字段。两份 schema 已与治理仓对齐。
+- **`runtime-continuity status` 查询会改写运行态**：`status` 是只读查询入口，却在输出后无条件追加一条 `session_status_queried` 事件，每次读取都重写 `runs/<active-run>.json`——运行记录的 mtime 与 `last_event` 都会移动，审计轨迹把一次读取记成了动作。现在 `status` 默认不写任何东西；确实需要把这次读取记入审计时显式加 `--audit`。
+- **LEASE 续接链在跨他人持有后断开**：`recoveredFrom` 表示「直接承接上一条 lease」，所以同 Owner 在 scope 被他人持有并释放后重新 acquire 时它为 `null`——序列从审计上与该 Owner 更早的 lease 完全无关联，事后无法判断这次 acquire 承接自哪条链。新增 `continuityFrom` 记录该 Owner 自己在同一 scope 上的上一条 lease，血缘链始终可回溯；`recoveredFrom` 语义不变，takeover 语义不变。rebind 现在额外校验新 lease 与被替换 lease 同属一条血缘链（owner + scope 相同但血缘断裂的 lease 会被拒绝），旧版本持久化的 lease 因链不可判定而放行，保证升级不打断已有 Task 的恢复路径。
 - **跨工具锚点不再陈旧**：`docs/cortex-agent/anchor.md` 此前停在 v1.13.0，且没有任何机制会更新它——文件里写的「重跑 `cortex-agent export-anchor` 即可刷新」并不成立（该命令在文件已存在时只输出到 stdout）。现在锚点被纳入版本载体注册表：版本 bump 会用锚点模板重新渲染它，发包 PR 白名单随之自动放行该路径，发布一致性门禁会拒绝与生成器输出不一致的副本；同时 `export-anchor` 新增 `--write` 显式刷新，默认仍是只读导出。
 - **发布触发路径对齐 npm 可信发布约束**：npm 自 2026-10-02 起拒绝由 `issue_comment` 事件触发的可信发布（Trusted Publishing / OIDC）令牌，原评论触发路径会在 `npm publish` 阶段报 404 而非授权失败。发布收敛为唯一的 owner `workflow_dispatch`，由 dispatch 携带 `release_pr` / `expected_sha` / `decision_id` / `waitpoint_id` 四项治理输入；owner 身份门禁与权威 Decision / Waitpoint 门禁在打标签前、打标签后、发布前三处生效边界同时执行，门禁强度不降级。
+
+
+### Validation & Compatibility
+
+- 新增事件不改变既有状态机迁移规则与 CLI 既有签名；`ownership.rebound` 与 acquire/release 同为审计关键事件。
+- 回归覆盖：同 Owner 成功续接、错误 Owner/session/scope、非 successor 或倒退 fencing、重复提交、并发 revision 漂移，以及续接后普通 owner 事件的行为；跨 scope 重绑、伪造引用元数据、多 scope 单项重绑与逐项恢复；语言层覆盖生效、用户既有文件不被覆盖、重复安装幂等；受保护产物的双语言可达；路径门禁的各类漏报与误报；schema 迁移的幂等与只增不减。
+- **模板分发面**：模板分层重构后，zh 与 en 用户各自按语言拿到完整的 skill / rule / workflow；实现脚本统一在 `_shared`，语言层只保留确实按语言不同的正文。受影响的既有测试已按新分层语义更新。
+- **发布门禁**：单维护者发布例外仍绑定 v1.15.6，不能自动覆盖 1.15.7；1.15.7 的发布仍需按既有流程准备独立的 review 与对应 SHA 的 Decision/Waitpoint。本地安装验证不受此约束。
+- **LEASE 血缘链的升级兼容**：旧版本持久化的 lease 没有 `continuityFrom` 字段，加载时归一为 `null` 并记为「链不可判定」，而不是「链断裂」——rebind 对这类 lease 仍然放行，不会让升级前暂停的 Task 永久卡死。链断裂（owner 与 scope 相同但血缘不接续）仍然被拒绝。
+- **`runtime-continuity status` 的行为变化**：默认不再写 `runs/<active-run>.json`。依赖「每次 status 都留下审计事件」的调用方需要显式加 `--audit`。
 
 ## [1.15.6] - 2026-10-23
 

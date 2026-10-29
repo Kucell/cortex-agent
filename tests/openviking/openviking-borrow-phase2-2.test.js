@@ -7,6 +7,7 @@ const { execFileSync } = require("node:child_process");
 const test = require("node:test");
 
 const { createAgentSandbox } = require("../helpers/agent-sandbox");
+const { resolveTemplatePath } = require("../helpers/template-layers");
 
 const REPO_ROOT = path.resolve(__dirname, "..", "..");
 // The script stays in the real repository; only `cwd` moves into the sandbox,
@@ -198,9 +199,9 @@ test("--dead-letter reports dead tasks after max_retries", () => {
   assert.equal(dead.tasks[0].status, "dead");
 });
 
-test("SKILL.md files exist in both zh and en", () => {
-  const zh = fs.readFileSync(path.join(REPO_ROOT, "templates", "zh", ".agent", "skills", "evolution-pipeline", "SKILL.md"), "utf8");
-  const en = fs.readFileSync(path.join(REPO_ROOT, "templates", "en", ".agent", "skills", "evolution-pipeline", "SKILL.md"), "utf8");
+test("SKILL.md reaches both zh and en", () => {
+  const zh = fs.readFileSync(resolveTemplatePath("skills/evolution-pipeline/SKILL.md", "zh"), "utf8");
+  const en = fs.readFileSync(resolveTemplatePath("skills/evolution-pipeline/SKILL.md", "en"), "utf8");
   assert.ok(zh.includes("Self-Evolution Pipeline"));
   assert.ok(en.includes("Self-Evolution Pipeline"));
   assert.ok(zh.includes("入队") || zh.includes("enqueue"));

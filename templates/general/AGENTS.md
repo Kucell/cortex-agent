@@ -24,6 +24,10 @@ When you start a session in this project, load in this order:
 4. `.agent/general/skills/` — capability implementations backing the workflows
 5. `.agent/general/sub-agents/` — long-running sub-agents (e.g. `memory-curator`)
 6. `.agent/general/domains/` — scenario-specific configuration
+7. `.agent/rules/runtime-artifacts-location.md` — where runtime artifacts
+   (logs, run output, transcripts, scripts) may be written. Everything the
+   agent produces at runtime belongs under `.agent/`, never in `/tmp` or the
+   project root.
 
 ## Data layer (shared, 11 directories)
 

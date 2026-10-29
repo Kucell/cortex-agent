@@ -81,5 +81,18 @@ Experiences 记录的是 **commit-anchored 教训**（有 trigger + 防复发检
 
 - **Bootstrap First**: If this `/agent-update` promotes a new capability from a framework or capability provider into reusable templates, verify it in the provider's own `.agent/` first. Follow `.agent/rules/agent-scope.md` "新能力自举验证顺序".
 - **Evidence Required**: Record concrete self-use evidence: command, exit code, generated report/artifact path, or workflow dry-run result. Do not claim template or downstream-project readiness before provider-side `.agent` verification passes.
+- **L1 门禁栈**：分发面是每个受管项目都会收到的内容，因此用机械门禁守住。在宣布更新就绪前跑这些：
+  ```bash
+  pnpm check:parity                    # zh/en/_shared 三层镜像一致
+  pnpm check:l1-distribution           # 分发面完整（无缺文件/无漂移）
+  pnpm check:runtime-artifact-location # 产物落 .agent/，不落 /tmp
+  pnpm check:portable-paths            # 路径运行时推导，不写死某台机器
+  ```
+  `check:portable-paths` 是 `rules/portable-path-design.md` 的机械门禁：
+  cortex-agent 是通用框架，分发出去的代码必须能在**不是作者这台机器**的
+  环境里成立。凡是新增到分发面、或在分发面里改动的路径，都必须通过它。
+  需要 general 模式分发的规则，还要登记到 `lib/setup/index.js` 的
+  `GENERAL_CAPABILITY_PATHS`，且源文件必须存在于 `templates/_shared/.agent/`
+  （源缺失会被静默跳过）。
 - **Verify Links**: If it's a global update, confirm that the symlinks in the local project are effective.
 - **Submit Report**: Explain the adjustments made, confirm the synchronization status, and report whether an experience record was created.

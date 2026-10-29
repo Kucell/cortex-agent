@@ -20,9 +20,11 @@ const ROOT = path.resolve(__dirname, "..", "..");
 const CANONICAL_CONTEXT_BUDGET_SELECT = path.join(ROOT, ".agent", "skills", "context-budget", "scripts", "select.js");
 const SHARED_MANAGEMENT_INDEX = path.join(ROOT, "templates", "_shared", ".agent", "skills", "management-api", "scripts", "index.js");
 const SHARED_PROJECTION_REGISTRY = path.join(ROOT, "templates", "_shared", ".agent", "skills", "management-api", "scripts", "projection-registry.json");
-const EN_SELECT = path.join(ROOT, "templates", "en", ".agent", "skills", "context-budget", "scripts", "select.js");
-const ZH_SELECT = path.join(ROOT, "templates", "zh", ".agent", "skills", "context-budget", "scripts", "select.js");
-const EN_MGMT_SKILL = path.join(ROOT, "templates", "en", ".agent", "skills", "management-api", "SKILL.md");
+const SHARED_SELECT = path.join(ROOT, "templates", "_shared", ".agent", "skills", "context-budget", "scripts", "select.js");
+// The English SKILL.md is the shared base; the Chinese one overrides it in
+// the zh layer. A language layer only overrides — it never removes the file
+// from the base — so an English project receives the shared copy.
+const EN_MGMT_SKILL = path.join(ROOT, "templates", "_shared", ".agent", "skills", "management-api", "SKILL.md");
 const ZH_MGMT_SKILL = path.join(ROOT, "templates", "zh", ".agent", "skills", "management-api", "SKILL.md");
 const SHARED_JSON_SCHEMA = path.join(ROOT, "templates", "_shared", ".agent", "scripts", "json-schema.js");
 const LIVE_JSON_SCHEMA = path.join(ROOT, ".agent", "scripts", "json-schema.js");
@@ -41,12 +43,30 @@ test("the json-schema validator is byte-identical between the live copy and the 
   );
 });
 
-test("context-budget selector is byte-identical between canonical and both localized templates", () => {
+// The template tree has three layers and a file lives in exactly one of them
+// (see rules/template-layer-dedup.md). The selector is language-neutral, so
+// it ships from _shared. The test resolves the copy each layer actually
+// carries instead of assuming a particular placement.
+function readSelectFromLayer(layer) {
+  const candidates = [
+    path.join(ROOT, "templates", layer, ".agent", "skills", "context-budget", "scripts", "select.js"),
+  ];
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) return fs.readFileSync(candidate, "utf8");
+  }
+  return null;
+}
+
+test("context-budget selector is byte-identical between canonical and every layer that carries it", () => {
   const canonical = fs.readFileSync(CANONICAL_CONTEXT_BUDGET_SELECT, "utf8");
-  const en = fs.readFileSync(EN_SELECT, "utf8");
-  const zh = fs.readFileSync(ZH_SELECT, "utf8");
-  assert.equal(canonical, en, "EN template drifts from canonical select.js");
-  assert.equal(canonical, zh, "ZH template drifts from canonical select.js");
+  let found = 0;
+  for (const layer of ["_shared", "zh", "en"]) {
+    const content = readSelectFromLayer(layer);
+    if (content === null) continue;
+    found += 1;
+    assert.equal(canonical, content, `${layer} template drifts from canonical select.js`);
+  }
+  assert.ok(found > 0, "the selector must ship in at least one template layer");
 });
 
 test("shared management-api scripts expose the context-trajectories projection", () => {
@@ -72,8 +92,10 @@ test("localized templates stay available without requiring the Pi adapter at run
   // The Pi adapter is loaded only when a host actually requests it; templates
   // therefore must not import it. The selector is the only consumer of the
   // context-trajectory contract, and it loads via canonical require path.
-  const enSelect = fs.readFileSync(EN_SELECT, "utf8");
-  const zhSelect = fs.readFileSync(ZH_SELECT, "utf8");
+  const enSelect = readSelectFromLayer("en") || readSelectFromLayer("_shared");
+  const zhSelect = readSelectFromLayer("zh") || readSelectFromLayer("_shared");
+  assert.ok(enSelect, "the selector must ship for English projects");
+  assert.ok(zhSelect, "the selector must ship for Chinese projects");
   assert.ok(!enSelect.includes("pi-adapter"), "EN select.js should not import pi-adapter");
   assert.ok(!zhSelect.includes("pi-adapter"), "ZH select.js should not import pi-adapter");
   // The canonical lib path is reachable from both template locations.

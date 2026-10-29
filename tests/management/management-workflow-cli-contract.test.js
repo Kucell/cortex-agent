@@ -4,35 +4,33 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
+const { resolveTemplatePath, templateSurface } = require("../helpers/template-layers");
 
 const ROOT = path.resolve(__dirname, "..", "..");
-const ROOTS = [
-  path.join(ROOT, "templates", "zh", ".agent", "workflows"),
-  path.join(ROOT, "templates", "en", ".agent", "workflows"),
-];
-
-function markdownFiles(dir) {
-  return fs.readdirSync(dir).filter((name) => name.endsWith(".md")).map((name) => path.join(dir, name));
+function markdownFiles(lang) {
+  return [...templateSurface(lang)]
+    .filter(([name]) => path.posix.dirname(name) === "workflows" && name.endsWith(".md"))
+    .map(([, file]) => file);
 }
 
 test("standard workflows use public Management CLI commands", () => {
   const offenders = [];
-  for (const root of ROOTS) {
+  for (const lang of ["zh", "en"]) {
     let publicCalls = 0;
-    for (const file of markdownFiles(root)) {
+    for (const file of markdownFiles(lang)) {
       const source = fs.readFileSync(file, "utf8");
       if (source.includes(".agent/skills/management-api/scripts/index.js")) offenders.push(path.relative(ROOT, file));
       publicCalls += (source.match(/cortex-agent (?:query|runs|queues|sessions|decisions|inbox|waitpoints)\b/g) || []).length;
     }
-    assert.ok(publicCalls >= 10, `expected broad CLI migration in ${path.relative(ROOT, root)}, found ${publicCalls} calls`);
+    assert.ok(publicCalls >= 10, `expected broad CLI migration in ${lang} workflows, found ${publicCalls} calls`);
   }
   assert.deepEqual(offenders, []);
 });
 
 test("Management API skills teach CLI discovery and debug-only fallback", () => {
   for (const file of [
-    path.join(ROOT, "templates", "zh", ".agent", "skills", "management-api", "SKILL.md"),
-    path.join(ROOT, "templates", "en", ".agent", "skills", "management-api", "SKILL.md"),
+    resolveTemplatePath("skills/management-api/SKILL.md", "zh"),
+    resolveTemplatePath("skills/management-api/SKILL.md", "en"),
   ]) {
     const source = fs.readFileSync(file, "utf8");
     assert.match(source, /cortex-agent help --json/);
