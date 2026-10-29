@@ -167,7 +167,12 @@ function bumpVersion(current, type) {
 }
 
 function isDirty(cwd) {
-  const r = spawnSync('git', ['status', '--porcelain'], { cwd, encoding: 'utf8' });
+  // `--ignore-submodules=all` is required, not cosmetic: `.agent/` is a
+  // gitlink, and in a worktree it is commonly a symlink to the shared
+  // governance repository. Plain `git status` refuses to run in that shape
+  // ("expected submodule path '.agent' not to be a symbolic link") and exits
+  // non-zero, which this helper would misread as "the tree is dirty".
+  const r = spawnSync('git', ['status', '--porcelain', '--ignore-submodules=all'], { cwd, encoding: 'utf8' });
   return r.stdout.trim().length > 0;
 }
 
