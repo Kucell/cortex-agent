@@ -18,6 +18,20 @@ function makeTmpCwd() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'cortex-design-cli-'));
 }
 
+// The design catalog cache lives in the user's home directory by default.
+// Point it at a throwaway file for the whole suite so no test can rewrite
+// ~/.agent/cache/design-catalog-cache.json on the developer's machine.
+const CACHE_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'cortex-design-cache-'));
+const CACHE_PATH = path.join(CACHE_DIR, 'design-catalog-cache.json');
+const PREVIOUS_CACHE_ENV = process.env.CORTEX_AGENT_DESIGN_CACHE;
+
+test.before(() => { process.env.CORTEX_AGENT_DESIGN_CACHE = CACHE_PATH; });
+test.after(() => {
+  if (PREVIOUS_CACHE_ENV === undefined) delete process.env.CORTEX_AGENT_DESIGN_CACHE;
+  else process.env.CORTEX_AGENT_DESIGN_CACHE = PREVIOUS_CACHE_ENV;
+  fs.rmSync(CACHE_DIR, { recursive: true, force: true });
+});
+
 function captureStdout(fn) {
   const orig = process.stdout.write.bind(process.stdout);
   const buf = [];

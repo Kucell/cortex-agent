@@ -57,7 +57,7 @@ const runner = String.raw`
   }
 `;
 function fixture(t) {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-archive-proposal-"));
+  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "cortex-archive-proposal-")));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const evolve = path.join(root, ".agent/skills/evolution-pipeline/scripts/evolve.js");
   const continuity = path.join(root, ".agent/skills/runtime-continuity/scripts/index.js");

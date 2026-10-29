@@ -351,6 +351,11 @@ test("decision resolve reports only Decision-owned changes and leaves its Waitpo
   const beforeWaitpoint = fs.readFileSync(waitpointFile, "utf8");
   const beforeIndex = fs.readFileSync(waitpointIndex, "utf8");
 
+  const waitpointBefore = fs.readFileSync(
+    path.join(project, ".agent", "waitpoints", "WP-MULTI.json"),
+    "utf8",
+  );
+
   result = runCli(project, [
     "decisions", "resolve",
     "--decision-id", "D-MULTI",

@@ -6,12 +6,12 @@ const path = require("path");
 
 const root = process.cwd();
 const artifactsRoot = path.join(root, ".agent", "artifacts");
-const VALID_KINDS = new Set(["plan", "execution", "review", "handoff", "validation", "state", "note"]);
+const VALID_KINDS = new Set(["plan", "execution", "review", "handoff", "validation", "state", "note", "knowledge-graph"]);
 const VALID_STATUSES = new Set(["active", "paused", "completed", "failed", "handed_off"]);
 
 function usage() {
   console.log(`Usage:
-  node .agent/artifacts/scripts/artifact-bus.js append --task-id <task> --agent-id <agent> --kind plan|execution|review|handoff|validation|state|note [--mission-id <mission>] [--summary <text>] [--payload-json <json>] [--payload-file <path>] [--refs a,b] [--status active] [--next-action <text>]
+  node .agent/artifacts/scripts/artifact-bus.js append --task-id <task> --agent-id <agent> --kind plan|execution|review|handoff|validation|state|note|knowledge-graph [--mission-id <mission>] [--summary <text>] [--payload-json <json>] [--payload-file <path>] [--refs a,b] [--status active] [--next-action <text>]
   node .agent/artifacts/scripts/artifact-bus.js list --task-id <task>
   node .agent/artifacts/scripts/artifact-bus.js read --task-id <task> --seq <n>
   node .agent/artifacts/scripts/artifact-bus.js read --task-id <task> --artifact <file>

@@ -96,6 +96,39 @@ test("exportAnchor: default (markdown) → emits anchor body to stdout", () => {
   }
 });
 
+test("exportAnchor: --write refreshes the checked-in anchor, the default only prints", () => {
+  const root = mkRoot();
+  const anchorPath = path.join(root, "docs", "cortex-agent", "anchor.md");
+  fs.mkdirSync(path.dirname(anchorPath), { recursive: true });
+  fs.writeFileSync(anchorPath, "stale anchor body\n");
+
+  const plainOut = captureStdout();
+  const plainErr = captureStderr();
+  try {
+    exportAnchor({ args: ["export-anchor"], options: {}, cwd: root, lang: "en" });
+  } finally {
+    plainOut.restore();
+    plainErr.restore();
+  }
+  assert.equal(
+    fs.readFileSync(anchorPath, "utf8"),
+    "stale anchor body\n",
+    "the default export must not modify the checked-in anchor",
+  );
+
+  const writeOut = captureStdout();
+  const writeErr = captureStderr();
+  try {
+    exportAnchor({ args: ["export-anchor", "--write"], options: {}, cwd: root, lang: "en" });
+  } finally {
+    writeOut.restore();
+    writeErr.restore();
+  }
+  const refreshed = fs.readFileSync(anchorPath, "utf8");
+  assert.match(refreshed, /cortex-agent:anchor:v1/);
+  assert.notEqual(refreshed, "stale anchor body\n");
+});
+
 test("exportAnchor: --json → emits JSON to stdout (no markdown comments)", () => {
   const root = mkRoot();
   const ctx = {

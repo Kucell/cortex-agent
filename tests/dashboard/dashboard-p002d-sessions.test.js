@@ -2,13 +2,21 @@
 
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
+const os = require("node:os");
 const path = require("node:path");
 const { test } = require("node:test");
 const { execFileSync } = require("node:child_process");
 
 const ROOT = path.resolve(__dirname, "..", "..");
 const SCRIPT = path.join(ROOT, ".agent", "skills", "agent-dashboard", "scripts", "generate.js");
-const OUT = path.join(ROOT, ".agent/metrics/agent-dashboard.html");
+// The dashboard is generated from the real cortex-agent state (read-only),
+// but the HTML must not be written back into `.agent/metrics/` — that is
+// tracked runtime state, and the suite must leave the working copy untouched.
+const OUT_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-dashboard-p002d-"));
+const OUT = path.join(OUT_DIR, "agent-dashboard.html");
+process.on("exit", () => {
+  try { fs.rmSync(OUT_DIR, { recursive: true, force: true }); } catch (_) { /* best effort */ }
+});
 
 // Generate once (against real cortex-agent state) and reuse across tests
 function runGenerate() {

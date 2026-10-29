@@ -185,9 +185,15 @@ test("mapMany maps an empty array to an empty array and keeps order for the rest
 test("Pi adapter remains absent-safe when Pi is not installed (default probe)", () => {
   // We do not require Pi to be installed for this suite. The probe must
   // always succeed with `available: false` and an `unsupported` descriptor.
+  //
+  // The binary is pinned to a name that cannot be resolved: probing the real
+  // `pi` would make the outcome depend on whether Pi happens to be installed
+  // on this machine — and on how quickly `pi --version` answers, which sits
+  // right at the probe timeout. That is flakiness this test must not carry.
   delete process.env.PI_BINARY;
-  const probe = detectPi({ timeoutMs: 200 });
+  const probe = detectPi({ binary: "definitely-not-a-real-binary-xyz", timeoutMs: 200 });
   assert.equal(probe.available, false);
+  assert.equal(probe.reason, "not_on_path");
   assert.equal(probe.descriptor.host.adapter_id, "pi");
 });
 
@@ -197,5 +203,11 @@ test("Pi adapter does not throw when probed concurrently", async () => {
     Array.from({ length: 8 }, () => Promise.resolve(detectPi({ timeoutMs: 100 })))
   );
   assert.equal(probes.length, 8);
-  for (const probe of probes) assert.equal(probe.available, false);
+  for (const probe of probes) {
+    // Whether Pi is installed is environment-dependent, so only the contract
+    // is asserted here: concurrent probes never throw and always return a
+    // usable descriptor.
+    assert.equal(typeof probe.available, "boolean");
+    assert.equal(probe.descriptor.host.adapter_id, "pi");
+  }
 });

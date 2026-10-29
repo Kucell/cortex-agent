@@ -1,0 +1,190 @@
+name: Full Test Suite
+
+# 为什么这个 workflow 不带 paths 过滤：
+#
+# 仓库里其它 workflow 全部按 paths 过滤（各有专项），导致两个问题：
+#   1. 改动落在任何现有 paths 之外时，PR 上一个 workflow 都不会跑；
+#   2. GitHub required status checks 只能绑定到「pull_request 触发且无 paths 限制」的
+#      workflow —— 有 paths 过滤的 workflow 在某些 PR 上根本不出现 check，
+#      配成 required 会让 PR 永远卡住。
+#
+# 见 .agent/rules/vcs-pr-flow.md §4.2。本 workflow 是仓库唯一的无过滤全量门禁。
+#
+# required status check 的 context 名 = check run 的 name 字段 = job id，
+# 即 `full-test`（**不是** PR 页面上显示的 `Full Test Suite / full-test`）。
+# 配成展示串会导致 check 明明 success 但 PR 永远卡在 BLOCKED。
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: full-test-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  full-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # `.agent` 在主仓是一个 gitlink（mode 160000），但仓库没有 .gitmodules，
+      # 所以 `submodules: true` 拉不到它 —— checkout 只会留下一个空目录。
+      # 而全量测试里有 61 个测试文件依赖 `.agent/` 工作实例（规则、workflow、
+      # skill 脚本），缺了它这些测试会失败。
+      #
+      # cortex-agent-agent 是私有仓，CI 需要用仓库已有的只读治理 token
+      # （与 governance-read-preflight 同一个 secret）来拉取。
+      # 这里按 gitlink 里记录的 pin 显式拉取，不硬编码 commit。
+      - name: Fetch .agent governance repo at gitlink pin
+        env:
+          CORTEX_GOVERNANCE_READ_TOKEN: ${{ secrets.CORTEX_GOVERNANCE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          PIN=$(git ls-tree HEAD .agent | awk '{print $3}')
+          if [ -z "$PIN" ]; then
+            echo "::error::no .agent gitlink found in the tree"
+            exit 1
+          fi
+          if [ -z "${CORTEX_GOVERNANCE_READ_TOKEN:-}" ]; then
+            echo "::error::CORTEX_GOVERNANCE_READ_TOKEN is not available — cannot read the private governance repo"
+            exit 1
+          fi
+          AUTH=$(printf 'x-access-token:%s' "$CORTEX_GOVERNANCE_READ_TOKEN" | base64 | tr -d '\n')
+          git init -q .agent
+          git -C .agent remote add origin https://github.com/Kucell/cortex-agent-agent.git
+          if ! git -C .agent -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $AUTH" \
+                fetch -q --depth 1 origin "$PIN"; then
+            echo "::warning::could not fetch pinned $PIN directly; fetching main and looking it up"
+            git -C .agent -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $AUTH" \
+              fetch -q --depth 200 origin main
+          fi
+          git -C .agent checkout -q --detach "$PIN"
+          ACTUAL=$(git -C .agent rev-parse HEAD)
+          if [ "$ACTUAL" != "$PIN" ]; then
+            echo "::error::.agent HEAD $ACTUAL does not match gitlink pin $PIN"
+            exit 1
+          fi
+          echo "::notice::.agent checked out at pinned $PIN"
+          echo "::notice::.agent rules: $(ls .agent/rules | wc -l) files"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.19.0"
+
+      - name: Enable pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.13.1 --activate
+          pnpm --version
+
+      - name: Frozen workspace install
+        run: pnpm install --frozen-lockfile
+
+      - name: L3 distribution boundary check
+        run: pnpm check:l3
+
+      - name: Template parity check
+        run: pnpm check:parity
+
+      - name: L1 distribution integrity check
+        # The L1 template tree is what every downstream project receives.
+        # Without this gate a skill can ship in a state that is silently
+        # broken downstream: no SKILL.md (undiscoverable), a missing
+        # implementation file (unusable), or a manifest link pointing at a
+        # path L1 does not distribute (404). See
+        # docs/architecture/harness-review-and-runtime-evidence-design.md P-003.
+        run: pnpm check:l1-distribution
+
+      - name: Run full test suite
+        # test:ci runs the runner in strict hermetic mode: the suite must not
+        # write a single byte into .agent/. In CI nothing else can write there
+        # (no live agent session, no Dashboard supervisor daemon), so any drift
+        # is a genuine non-hermetic test. See .agent/rules/test-policy.md §3.4.
+        run: |
+          set -euo pipefail
+          PIN=$(git ls-tree HEAD .agent | awk '{print $3}')
+          ACTUAL=$(git -C .agent rev-parse HEAD)
+          if [ -z "$PIN" ] || [ "$ACTUAL" != "$PIN" ]; then
+            echo "::error::.agent HEAD $ACTUAL does not match gitlink pin $PIN"
+            exit 1
+          fi
+          pnpm test:ci
+
+      - name: Agent review benchmark (real regression dataset)
+        # The dataset is the gate, and it has to be able to fail in both
+        # directions:
+        #   reference — every blocking assertion must hold (10000 bp), so a
+        #              regression in the governance bootstrap surface fails CI;
+        #   noop     — a candidate that does nothing must score materially
+        #              lower (< 5000 bp), so the dataset is proven to detect a
+        #              regression instead of merely confirming that the code
+        #              under test still runs.
+        # A dataset that only ever sees a perfect candidate would pass just as
+        # well against a broken build.
+        run: |
+          pnpm benchmark:agent-review
+          pnpm benchmark:agent-review:noop
+
+      - name: Runtime evidence dataset (real API-layer verification)
+        # The runtime-evidence contract (verification-summary.json) had no
+        # producer at all: nothing could turn results.api.status from
+        # "not_run" into "pass"/"fail". This dataset is that producer, and it
+        # has to fail in both directions:
+        #   reference — every blocking assertion must hold (10000 bp), so a
+        #              regression in the API layer fails CI;
+        #   noop     — a candidate that does nothing must score materially
+        #              lower (< 5000 bp), so the dataset is proven to detect a
+        #              regression instead of merely confirming that the code
+        #              under test still runs.
+        # It must stay after `Run full test suite`: it writes into
+        # .agent/metrics/, and the strict-hermetic gate forbids any write
+        # there while the suite is running.
+        run: |
+          pnpm verify:runtime-evidence
+          pnpm verify:runtime-evidence:noop
+
+      - name: Guided review benchmark (real review-defect dataset)
+        # A reviewer backend is judged on the finding set it produces, so the
+        # dataset judges findings. It has to fail in both directions:
+        #   reference — the builtin backend enforces the published finding
+        #              schema, drops findings outside the reviewed changeset
+        #              and findings that cite a file which does not exist, so
+        #              every blocking assertion must hold (10000 bp);
+        #   noop     — a candidate that produces no review at all must score
+        #              materially lower (< 5000 bp).
+        # The absence assertions are what give the dataset teeth: a backend
+        # that reports everything it is handed passes every presence
+        # assertion and still fails, because it never dropped the findings it
+        # should have.
+        # It must stay after `Run full test suite`: it writes into
+        # .agent/metrics/, and the strict-hermetic gate forbids any write
+        # there while the suite is running.
+        run: |
+          pnpm benchmark:guided-review
+          pnpm benchmark:guided-review:noop
+
+      - name: Guided review benchmark results (CI summary)
+        if: always()
+        run: |
+          node scripts/append-ci-summary.cjs \
+            --title "Guided review benchmark (finding set quality)" \
+            --input .agent/metrics/guided-review-summary.json \
+            --input .agent/metrics/guided-review-noop.json
+
+      - name: Upload test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: full-test-evidence-${{ github.run_id }}
+          path: .agent/metrics/
+          if-no-files-found: warn
+          retention-days: 7

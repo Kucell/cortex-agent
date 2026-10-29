@@ -11,7 +11,10 @@ const path = require('path');
 const os = require('os');
 const { execFileSync } = require('child_process');
 
-const CLI = '/Users/xueyq/myworks/cortex-agent/.agent/skills/management-api/scripts/index.js';
+// Resolve the CLI relative to this repository instead of hardcoding a local
+// absolute path — the hardcoded form only worked on the author's machine and
+// failed everywhere else (including CI, where .agent/ is fetched by pin).
+const CLI = path.resolve(__dirname, '../../.agent/skills/management-api/scripts/index.js');
 
 function mkTmp() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tl-test-'));

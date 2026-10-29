@@ -177,6 +177,7 @@ const { stateSync, installStateGithooks, fireAndForgetSync } = require("../lib/s
 const { governanceIndexCommand } = require("../lib/governance-index/cli.js");
 const { governanceMigrateCommand } = require("../lib/governance-migration/cli.js");
 const { migrateLegacyMemoryCommand } = require("../lib/commands/migrate-legacy-memory.cli.js");
+const { migrateTaskStateCommand } = require("../lib/commands/migrate-task-state.cli.js");
 const { minimaxCliReconcile } = require("../lib/commands/reconcile");
 const { shouldAutoSyncCoordination } = require("../lib/commands/management/coordination.js");
 
@@ -344,6 +345,23 @@ const l1Ctx = options.project
   ? { ...ctx, cwd: languageProject, options: { ...options, project: "" } }
   : ctx;
 
+// Help must be a zero-write operation (issue #15 contract).
+//
+// `init` scaffolds `.agent/`, the root entry files and the cross-tool anchor;
+// `track` / `untrack` rewrite the Git tracking configuration and the local
+// exclude list. Asking for usage must never do any of that: without this
+// guard `init --help` silently scaffolds the project and `track --help`
+// silently reconfigures it — the same defect `upgrade --help` had until it
+// got a guard of its own.
+//
+// The three commands share one guard so a fourth mutating command cannot
+// reintroduce the defect by forgetting to repeat the check.
+const ZERO_WRITE_HELP_COMMANDS = new Set(["init", "track", "untrack"]);
+if (ZERO_WRITE_HELP_COMMANDS.has(command) && (args.includes("--help") || args.includes("-h"))) {
+  args.includes("--json") ? cliHelp(ctx) : printHelp();
+  return;
+}
+
 // ─── session (P-001) ─────────────────────────────────────────────────────────
 // Thin facade that delegates every `cortex-agent session <subcommand>` call to
 // the canonical Runtime Continuity v2 script at
@@ -452,6 +470,24 @@ function runSession(args) {
 // addition to the data layer. Pure addition — no changes to _base/ or
 // to the existing init() function.
 async function initModeGeneral() {
+  // --dry-run: print the plan and exit before any write
+  // Before this fix, `cortex-agent init --mode general --dry-run` still
+  // ran copyRecursive / overlay / writeVersionFile / writePublicAnchor /
+  // applyGitExclusion / linkGlobalConfig. cli.js only honoured --dry-run
+  // for upgrade + update. This block brings general init in line with
+  // the same zero-write contract as code init (lib/commands/init.js).
+  // We read --dry-run from process.argv because cli.js invokes
+  // initModeGeneral() with no arguments (see line ~551).
+  const argv = process.argv.slice(2);
+  if (argv.includes("--dry-run")) {
+    const langIdx = argv.indexOf("--lang");
+    const langEq = argv.find(function (a) { return typeof a === "string" && a.startsWith("--lang="); });
+    var lang = (langIdx !== -1 && argv[langIdx + 1] && !argv[langIdx + 1].startsWith("--") && argv[langIdx + 1]) || (langEq ? langEq.slice("--lang=".length) : null) || (process.env.LANG && process.env.LANG.startsWith("zh") ? "zh" : "en");
+    const { printInitDryRunPlan } = require("../lib/commands/init.js");
+    printInitDryRunPlan({ cwd: cwd, lang: lang, templateDir: "", options: { dryRun: true, global: false }, mode: "general" });
+    return;
+  }
+
   const { copyRecursive, overlayGeneralCapabilities } = require("../lib/setup/index.js");
   const { writeVersionFile } = require("../lib/commands/patches.js");
   const { writePublicAnchor } = require("../lib/commands/anchor.js");
@@ -586,9 +622,7 @@ async function initModeGeneral() {
   // continues to call lib/commands.js init() exactly as before.
   if (
     command === "init" &&
-    (options.mode === "general" ||
-      args.includes("--mode") ||
-      args.includes("-m"))
+    options.mode === "general"
   ) {
     if (options.mode && options.mode !== "general") {
       console.error(
@@ -601,12 +635,23 @@ async function initModeGeneral() {
     return;
   }
   switch (command) {
-    case "init":        await init(ctx); installStateGithooks({ cwd, lang }); break;
+    // Respect --dry-run: init() now short-circuits inside lib/commands/init.js
+    // when options.dryRun is set, but installStateGithooks would still copy
+    // state-githooks templates to disk, which violates the zero-write
+    // contract. Mirror the upgrade + update branches above.
+    case "init":        await init(ctx); if (!ctx.options.dryRun) installStateGithooks({ cwd, lang }); break;
     case "add":         await addPlatforms(ctx); break;
     case "remove":      await removePlatforms(ctx); break;
     case "list":        listPlatforms(ctx); break;
     case "export-anchor": exportAnchor(ctx); break;
     case "upgrade":
+      // Help must be a zero-write operation. `upgrade` copies templates into
+      // the project, so asking for usage must not install anything: without
+      // this guard `upgrade --help` silently rewrites the project.
+      if (ctx.args.includes("--help") || ctx.args.includes("-h")) {
+        args.includes("--json") ? cliHelp(ctx) : printHelp();
+        break;
+      }
       if (l1Ctx.options.team) {
         console.error("❌ `upgrade --team` is rejected: `upgrade` is additive-only and never touches Team Pack. Use `update --team` for Team Pack sync. See .agent/plans/proposals/projects/team-agent-pack/proposals/P-002-team-pack-cli-lifecycle-proposal.md §4.");
         process.exitCode = 3;
@@ -776,6 +821,13 @@ async function initModeGeneral() {
     }
     case "migrate-legacy-memory": {
       migrateLegacyMemoryCommand(ctx);
+      break;
+    }
+    case "migrate-task-state": {
+      const result = migrateTaskStateCommand(ctx);
+      if (result && result.ok && result.effect && result.effect.kind === "mutation" && result.effect.committed) {
+        fireAndForgetSync({ ...l1Ctx, cwd: result.project_root }, { paths: result.effect.paths }).catch(() => {});
+      }
       break;
     }
     case "governance-migrate": {

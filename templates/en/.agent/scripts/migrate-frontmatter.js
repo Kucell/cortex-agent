@@ -139,9 +139,9 @@ function serializeFrontmatter(fm) {
 
 function getGitAuthor() {
   try {
-    return execSync('git log -1 --format=%an', { cwd: root, encoding: 'utf8' }).trim() || 'unknown';
+    return execSync('git config user.name', { cwd: root, encoding: 'utf8' }).trim() || 'Kucell';
   } catch (_) {
-    return 'unknown';
+    return 'Kucell';
   }
 }
 

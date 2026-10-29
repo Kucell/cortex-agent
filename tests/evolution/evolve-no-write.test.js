@@ -6,12 +6,12 @@ const os=require('node:os');
 const path=require('node:path');
 const crypto=require('node:crypto');
 const {spawnSync}=require('node:child_process');
-const SCRIPT=process.env.EVOLUTION_TEST_SCRIPT||path.join(__dirname,'evolve.js');
+const SCRIPT=process.env.EVOLUTION_TEST_SCRIPT||path.resolve(__dirname,'../../templates/en/.agent/skills/evolution-pipeline/scripts/evolve.js');
 const ARCHIVE_ID='RC-20261009_B_REVIEW';
 const TASK_ID='EVO-FIXTURE-001';
 
 function fixture(t,opts={}) {
-  const root=fs.mkdtempSync(path.join(os.tmpdir(),'cortex-b-v116-review-'));
+  const root=fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(),'cortex-b-v116-review-')));
   t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
   const archives=path.join(root,'.agent','runtime-continuity','archives');
   const tasks=path.join(root,'.agent','tasks','evolution');

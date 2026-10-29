@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Pinned official 1.15.4 tar -> exact candidate tar, then synthetic project apply.
+"""Pinned official 1.15.4 or 1.15.6 tar -> exact candidate tar, then synthetic project apply.
 
 Two fixed registry GETs precede offline installs. No old CLI/init, Host, publish,
 full suite, or arbitrary user project. Reuses reviewed helpers by exact Git blob.
@@ -26,16 +26,16 @@ BASELINE_TREE = "c7660c720e501d2c5435c93b372b8714e468ab89"
 BASELINE_SRI = "sha512-Yz2TSshSzXRUbInmBzb3Hpav0GfVa8ivUAgIV9MI2f8FzIrTcyqVo9OInxj3G3lb9+PwHv6HE9RfDujCxQbbPg=="
 BASELINE_SHA256 = "5d63b33f2e8a0415070f04d571d43e24b5ae64d4eb9485643cbc5f7b24ea8285"
 BASELINE_BYTES = 1943765
-GETTER_BLOB = "43edb3528bf62a3d27aa0bc094ec88a1230a3152"
+GETTER_BLOB = "d6dfc3d5a15f8a8499f4aae44f174f0698635fb0"
 PACK_HELPER_BLOB = "ff3f2667886577e9c3ea06c3303a926a3d73625c"
 BOUNDARY_BLOB = "277c936eca2a399a000bd45eb05460b3e5a7174a"
 CORE_PINS = {
-    "bin/cli.js": "0e04b39db9e65bccbc399ab81d715094e251f2ec",
-    "lib/commands/upgrade.js": "a0555c51fae44068cb82c4aa2416f072b6d64ec9",
+    "bin/cli.js": "d1ffec235d4f1702166569b38960c026703c2c18",
+    "lib/commands/upgrade.js": "8cf1eedc5ff765f9ed07546892172b161f566afd",
     "lib/commands/update/verify.js": "f0423aeb0a1619036cf9c64e8b41e13a7900db71",
     "lib/commands/update/report.js": "396e5fc62b875da21b7eaf28f53fd26c3ccbd6a5",
     "lib/commands/update/runtime-layout-migration.js": "8566bc4d4028262853b99237a89586088f410f6d",
-    "lib/setup/index.js": "72b006e546bd2dc6814a58fc54e312fe68268bf1",
+    "lib/setup/index.js": "36dd66e77410728b5b149b5bbc4e8eaa0c6f899c",
     "lib/commands/patches.js": "9ff6e4514a552732d1f8f255e3839dffe0997827",
     "lib/script/manifest.js": "4f885384085e47bee7bcd5258a7028d9634a9f27",
     "lib/platform/index.js": "e89a99db8d980c08bacbe74fc4750fdb2deb80bf",
@@ -67,30 +67,75 @@ HELPER_PINS = {
         "templates/_shared/.agent/tasks/scripts/task-state.js": "88f6236a415d12f95ebad70441deb592d4d040b3"
     },
     "candidate": {
-        "templates/_shared/.agent/skills/runtime-continuity/scripts/index.js": "d52339c1ef154efdeb21791806bad5acb7a88ae1",
-        "templates/_shared/.agent/skills/management-api/scripts/index.js": "5aae6a59fcf6a5f119e7dc9d37fee993ff1dd87d",
+        "templates/_shared/.agent/skills/runtime-continuity/scripts/index.js": "27dc7d6dc4398add6a98fba05ef63bde0b6a7abe",
+        "templates/_shared/.agent/skills/management-api/scripts/index.js": "919634dd5cf5baaa6fb7fd1ef619d11cc8ee881c",
         "templates/_shared/.agent/skills/management-api/scripts/normalize-token-usage.js": "c8fde0357763f7b852e81e7ad50802c24e6e7d5f",
         "templates/_shared/.agent/skills/management-api/scripts/query-activity.js": "7f9973a3cf1886d075642803f00918bffce41150",
         "templates/_shared/.agent/skills/management-api/scripts/query-dispatch-state.js": "6bd07fc83011e397be70a6c3026966dbb9297b2e",
         "templates/_shared/.agent/skills/management-api/scripts/query-coordination.js": "2409714b2ce56d89d8bb62530a7178afb6add9b4",
         "templates/_shared/.agent/skills/management-api/scripts/query-governed-attempt.js": "fc0c1701c459abe08c40afe0af4a865fbf885343",
-        "templates/en/.agent/skills/runtime-continuity/scripts/index.js": "34b05a496b9c31d8fb9accd6de3f31fc84dc5e11",
-        "templates/en/.agent/skills/management-api/scripts/index.js": "b3ccd00c49e13968123f531653b6ecb2a89dc169",
+        "templates/en/.agent/skills/runtime-continuity/scripts/index.js": "27dc7d6dc4398add6a98fba05ef63bde0b6a7abe",
+        "templates/en/.agent/skills/management-api/scripts/index.js": "919634dd5cf5baaa6fb7fd1ef619d11cc8ee881c",
         "templates/en/.agent/skills/management-api/scripts/normalize-token-usage.js": "c8fde0357763f7b852e81e7ad50802c24e6e7d5f",
         "templates/en/.agent/skills/management-api/scripts/query-activity.js": "7f9973a3cf1886d075642803f00918bffce41150",
         "templates/en/.agent/skills/management-api/scripts/query-dispatch-state.js": "6bd07fc83011e397be70a6c3026966dbb9297b2e",
         "templates/en/.agent/skills/management-api/scripts/query-coordination.js": "2409714b2ce56d89d8bb62530a7178afb6add9b4",
         "templates/en/.agent/skills/management-api/scripts/query-governed-attempt.js": "fc0c1701c459abe08c40afe0af4a865fbf885343",
-        "templates/zh/.agent/skills/runtime-continuity/scripts/index.js": "34b05a496b9c31d8fb9accd6de3f31fc84dc5e11",
-        "templates/zh/.agent/skills/management-api/scripts/index.js": "b3ccd00c49e13968123f531653b6ecb2a89dc169",
+        "templates/zh/.agent/skills/runtime-continuity/scripts/index.js": "27dc7d6dc4398add6a98fba05ef63bde0b6a7abe",
+        "templates/zh/.agent/skills/management-api/scripts/index.js": "919634dd5cf5baaa6fb7fd1ef619d11cc8ee881c",
         "templates/zh/.agent/skills/management-api/scripts/normalize-token-usage.js": "c8fde0357763f7b852e81e7ad50802c24e6e7d5f",
         "templates/zh/.agent/skills/management-api/scripts/query-activity.js": "7f9973a3cf1886d075642803f00918bffce41150",
         "templates/zh/.agent/skills/management-api/scripts/query-dispatch-state.js": "6bd07fc83011e397be70a6c3026966dbb9297b2e",
         "templates/zh/.agent/skills/management-api/scripts/query-coordination.js": "2409714b2ce56d89d8bb62530a7178afb6add9b4",
         "templates/zh/.agent/skills/management-api/scripts/query-governed-attempt.js": "fc0c1701c459abe08c40afe0af4a865fbf885343",
-        "templates/_shared/.agent/tasks/scripts/task-state.js": "88f6236a415d12f95ebad70441deb592d4d040b3"
+        "templates/_shared/.agent/tasks/scripts/task-state.js": "4fc94e64559e31ad4ba898abcff04bd96ec9dd77"
     }
 }
+# Historical 1.15.4 remains independently pinned; the maintenance release is
+# an additional scenario, never a replacement or a version-only substitution.
+BASELINES = {
+    "1.15.4": {"version": BASELINE_VERSION, "head": BASELINE_HEAD, "tree": BASELINE_TREE,
+               "sri": BASELINE_SRI, "sha256": BASELINE_SHA256, "bytes": BASELINE_BYTES,
+               "members": 1224, "helper_pins": HELPER_PINS["old"]},
+    "1.15.6": {
+    "version": "1.15.6",
+    "head": "fc594201576f5239801d41b86a8f7e107ea8e7c0",
+    "tree": "dc842415070ebf4ebb96c3a59a728627e73793ad",
+    "sri": "sha512-LNzzPvzyNMGqUlETIowXWUhZTL+auULI45Y71GG6wuAOlFSOj69nVDluMlksko/MNtgckDTiD82+b2QRL7YkVg==",
+    "sha256": "80e0cce514ad9a1cc7806d57091489b13652578c560627b2a3875a95827d68e6",
+    "bytes": 2165950,
+    "members": 1301,
+    "helper_pins": {
+        "templates/_shared/.agent/skills/runtime-continuity/scripts/index.js": "47e50fa9262b8a29db46ea145329135229268a56",
+        "templates/_shared/.agent/skills/management-api/scripts/index.js": "1f3f01d05f3882c4d1fe4a75cb858badbad1807d",
+        "templates/_shared/.agent/skills/management-api/scripts/normalize-token-usage.js": "c8fde0357763f7b852e81e7ad50802c24e6e7d5f",
+        "templates/_shared/.agent/skills/management-api/scripts/query-activity.js": "7f9973a3cf1886d075642803f00918bffce41150",
+        "templates/_shared/.agent/skills/management-api/scripts/query-dispatch-state.js": "6bd07fc83011e397be70a6c3026966dbb9297b2e",
+        "templates/_shared/.agent/skills/management-api/scripts/query-coordination.js": "2409714b2ce56d89d8bb62530a7178afb6add9b4",
+        "templates/_shared/.agent/skills/management-api/scripts/query-governed-attempt.js": "fc0c1701c459abe08c40afe0af4a865fbf885343",
+        "templates/en/.agent/skills/runtime-continuity/scripts/index.js": "47e50fa9262b8a29db46ea145329135229268a56",
+        "templates/en/.agent/skills/management-api/scripts/index.js": "1f3f01d05f3882c4d1fe4a75cb858badbad1807d",
+        "templates/en/.agent/skills/management-api/scripts/normalize-token-usage.js": "c8fde0357763f7b852e81e7ad50802c24e6e7d5f",
+        "templates/en/.agent/skills/management-api/scripts/query-activity.js": "7f9973a3cf1886d075642803f00918bffce41150",
+        "templates/en/.agent/skills/management-api/scripts/query-dispatch-state.js": "6bd07fc83011e397be70a6c3026966dbb9297b2e",
+        "templates/en/.agent/skills/management-api/scripts/query-coordination.js": "2409714b2ce56d89d8bb62530a7178afb6add9b4",
+        "templates/en/.agent/skills/management-api/scripts/query-governed-attempt.js": "fc0c1701c459abe08c40afe0af4a865fbf885343",
+        "templates/zh/.agent/skills/runtime-continuity/scripts/index.js": "47e50fa9262b8a29db46ea145329135229268a56",
+        "templates/zh/.agent/skills/management-api/scripts/index.js": "1f3f01d05f3882c4d1fe4a75cb858badbad1807d",
+        "templates/zh/.agent/skills/management-api/scripts/normalize-token-usage.js": "c8fde0357763f7b852e81e7ad50802c24e6e7d5f",
+        "templates/zh/.agent/skills/management-api/scripts/query-activity.js": "7f9973a3cf1886d075642803f00918bffce41150",
+        "templates/zh/.agent/skills/management-api/scripts/query-dispatch-state.js": "6bd07fc83011e397be70a6c3026966dbb9297b2e",
+        "templates/zh/.agent/skills/management-api/scripts/query-coordination.js": "2409714b2ce56d89d8bb62530a7178afb6add9b4",
+        "templates/zh/.agent/skills/management-api/scripts/query-governed-attempt.js": "fc0c1701c459abe08c40afe0af4a865fbf885343",
+        "templates/_shared/.agent/tasks/scripts/task-state.js": "4fc94e64559e31ad4ba898abcff04bd96ec9dd77"
+    }
+}
+}
+
+def baseline_profile(version):
+    require(version in BASELINES, "unreviewed baseline version")
+    return BASELINES[version]
+
 EXECUTABLE_TEMPLATE_PATHS = [
     "templates/" + language + "/.agent/skills/" + skill + "/scripts/" + filename
     for language in ("_shared", "en", "zh")
@@ -170,8 +215,8 @@ def validate_installed(root, manifest):
         entry = root.parent / ".bin" / name
         require(entry.is_symlink() and entry.resolve() == root / relative, "installed bin mismatch")
 
-def check_helper_pins(manifest, phase):
-    for relative, expected in HELPER_PINS[phase].items():
+def check_helper_pins(manifest, phase, pins=None):
+    for relative, expected in (HELPER_PINS[phase] if pins is None else pins).items():
         require(relative in manifest and manifest[relative]["git_blob_sha1"] == expected,
                 "helper dependency source changed: " + phase + ":" + relative)
 
@@ -230,12 +275,19 @@ def main():
     require(set(os.environ) <= {"PATH", "LANG", "LC_ALL", "LC_CTYPE"}, "launcher must clear environment")
     require(os.environ.get("PATH") == "/usr/bin:/bin", "fixed launcher PATH")
     parser = argparse.ArgumentParser()
+    parser.add_argument("--baseline-version", choices=sorted(BASELINES), default="1.15.4")
     parser.add_argument("--expected-head", required=True)
     parser.add_argument("--expected-version", required=True)
     parser.add_argument("--expected-gitlink", required=True)
     parser.add_argument("--node", required=True)
     parser.add_argument("--npm-cli", required=True)
     args = parser.parse_args()
+    baseline = baseline_profile(args.baseline_version)
+    BASELINE_VERSION, BASELINE_HEAD, BASELINE_TREE = baseline["version"], baseline["head"], baseline["tree"]
+    BASELINE_SRI, BASELINE_SHA256, BASELINE_BYTES = baseline["sri"], baseline["sha256"], baseline["bytes"]
+    metadata_path = "/cortex-agent/" + BASELINE_VERSION
+    tar_path = "/cortex-agent/-/cortex-agent-" + BASELINE_VERSION + ".tgz"
+    tar_url = "https://registry.npmjs.org" + tar_path
     require(re.fullmatch(r"[a-f0-9]{40}", args.expected_head), "exact source head required")
     require(re.fullmatch(r"[a-f0-9]{40}", args.expected_gitlink), "exact gitlink required")
     require(re.fullmatch(r"\d+\.\d+\.\d+", args.expected_version), "stable candidate version required")
@@ -317,17 +369,17 @@ def main():
         signal.signal(signal.SIGALRM, identity.deadline)
         signal.alarm(90)
         try:
-            metadata_bytes = identity.get_fixed(identity.METADATA_PATH, identity.MAX_METADATA, {"application/json"})
+            metadata_bytes = identity.get_fixed(metadata_path, identity.MAX_METADATA, {"application/json"}, version=BASELINE_VERSION)
             metadata = identity.parse_json(metadata_bytes)
             require(metadata.get("name") == "cortex-agent" and metadata.get("version") == BASELINE_VERSION and
                     metadata.get("gitHead") == BASELINE_HEAD, "published baseline metadata drift")
             dist = metadata["dist"]
-            require(dist["tarball"] == identity.TAR_URL, "baseline URL drift")
+            require(dist["tarball"] == tar_url, "baseline URL drift")
             digests = identity.parse_integrity(dist["integrity"])
             require("sha512-" + base64.b64encode(digests["sha512"]).decode("ascii") == BASELINE_SRI,
                     "pinned baseline SRI drift")
-            old_raw = identity.get_fixed(identity.TAR_PATH, identity.MAX_TAR,
-                       {"application/octet-stream", "application/gzip", "application/x-gzip"})
+            old_raw = identity.get_fixed(tar_path, identity.MAX_TAR,
+                       {"application/octet-stream", "application/gzip", "application/x-gzip"}, version=BASELINE_VERSION)
             require(len(old_raw) == BASELINE_BYTES and sha(old_raw) == BASELINE_SHA256, "baseline bytes drift")
             for algorithm, expected in digests.items():
                 require(hashlib.new(algorithm, old_raw).digest() == expected, "baseline integrity mismatch")
@@ -337,12 +389,12 @@ def main():
         finally:
             signal.alarm(0)
         check_package(old_pkg, BASELINE_VERSION, identity)
-        require(len(old_manifest) == 1224, "baseline member count drift")
-        check_helper_pins(old_manifest, "old")
+        require(len(old_manifest) == baseline["members"], "baseline member count drift")
+        check_helper_pins(old_manifest, "old", baseline["helper_pins"])
         excluded_global = sorted(p for p in old_manifest if
                                  p.startswith("templates/_shared/.agent/global-shared-skills/"))
         require(len(excluded_global) == 5, "published init exclusion set changed")
-        baseline_tar = scratch / "cortex-agent-1.15.4.tgz"
+        baseline_tar = scratch / ("cortex-agent-" + BASELINE_VERSION + ".tgz")
         baseline_tar.write_bytes(old_raw)
         consumer = scratch / "consumer"
         (consumer / "package.json").write_text('{"name":"registry-upgrade-fixture","private":true}\n')
@@ -488,7 +540,7 @@ def main():
         def assert_project_helpers(fixture, phase):
             agent = fixture["project"] / ".agent"
             language = fixture["language"]
-            relative_names = {p.split("/.agent/", 1)[1] for p in HELPER_PINS["old"]}
+            relative_names = {p.split("/.agent/", 1)[1] for p in baseline["helper_pins"]}
             rows = {}
             for relative in sorted(relative_names):
                 if phase == "old":
@@ -609,7 +661,7 @@ def main():
             "git": helper.run(["/usr/bin/git", "--version"], scratch, env).strip(),
             "baseline": {"version": BASELINE_VERSION, "gitHead": BASELINE_HEAD, "source_tree": BASELINE_TREE,
                 "tar_bytes": len(old_raw), "sha256": sha(old_raw), "integrity": BASELINE_SRI,
-                "source_mapping": "same pinned tar independently mapped 1224/1224 members in prior identity evidence",
+                "source_mapping": str(baseline["members"]) + "/" + str(baseline["members"]) + " pinned tar members mapped to the baseline source tree in identity review",
                 "signature_and_provenance_verified": False, "files": old_manifest},
             "candidate_executable_template_modes": {p: oct(candidate_manifest[p]["mode"])
                                                      for p in EXECUTABLE_TEMPLATE_PATHS},
@@ -622,8 +674,8 @@ def main():
             "read_only_git_attempts": sum(row["read_only_git_attempts"] for row in commands),
             "boundary": {"denied": 0, "audit_entries": len(audit.read_text().splitlines()),
                 "scope": "reviewed network/subprocess instrumentation; not an OS filesystem sandbox"},
-            "network_requests": ["GET https://" + identity.HOST + identity.METADATA_PATH,
-                                 "GET " + identity.TAR_URL],
+            "network_requests": ["GET https://" + identity.HOST + metadata_path,
+                                 "GET " + tar_url],
             "claims_not_made": ["candidate-published-on-registry", "arbitrary-user-project-upgrade",
                 "old-init-execution", "AI-Host", "Claude-install", "formal-AUTH-L3",
                 "SelfEvolution28", "full-suite", "hostile-process-sandbox"],

@@ -14,10 +14,21 @@ function run(args, opts) {
   return execFileSync(process.execPath, [SCRIPT].concat(args), Object.assign({ encoding: "utf8" }, opts || {}));
 }
 
+// share-learnings writes /tmp/exp-<session-id>-draft.md, a fixed and therefore
+// shared path. Every case must own its session id, otherwise two concurrent
+// runs (parallel workers, a local run next to CI) write to the same file and
+// the suite fails for reasons that have nothing to do with the code.
+function uniqueSessionId(prefix) {
+  return `${prefix}-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
+}
+
+function draftPathFor(sessionId) {
+  return path.join(os.tmpdir(), "exp-" + sessionId.replace(/[^A-Za-z0-9._-]/g, "_") + "-draft.md");
+}
+
 test("share-learnings without --confirm refuses and creates no /tmp file", () => {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "fr-share-"));
-  const sessionId = "S-refuse-" + path.basename(tmp);
-  const draft = path.join(os.tmpdir(), "exp-" + sessionId.replace(/[^A-Za-z0-9._-]/g, "_") + "-draft.md");
+  const sessionId = uniqueSessionId("S-refuse");
+  const draft = draftPathFor(sessionId);
   try {
     fs.unlinkSync(draft);
   } catch (_) { /* ignore */ }
@@ -32,26 +43,35 @@ test("share-learnings without --confirm refuses and creates no /tmp file", () =>
 });
 
 test("share-learnings with --confirm writes the draft and prints a diff", () => {
-  const sessionId = "S-confirm-ok";
-  const out = run(["--session", sessionId, "--title", "Retry lesson", "--confirm"]);
-  assert.ok(out.includes("diff --git"));
-  assert.ok(out.includes("+"));
-  const draft = path.join(os.tmpdir(), "exp-" + sessionId + "-draft.md");
-  assert.ok(fs.existsSync(draft), "draft created after confirmation");
-  const content = fs.readFileSync(draft, "utf8");
-  assert.ok(content.includes("# Retry lesson"));
-  assert.ok(content.includes("status: draft (human review required)"));
+  const sessionId = uniqueSessionId("S-confirm-ok");
+  const draft = draftPathFor(sessionId);
+  try {
+    const out = run(["--session", sessionId, "--title", "Retry lesson", "--confirm"]);
+    assert.ok(out.includes("diff --git"));
+    assert.ok(out.includes("+"));
+    assert.ok(fs.existsSync(draft), "draft created after confirmation");
+    const content = fs.readFileSync(draft, "utf8");
+    assert.ok(content.includes("# Retry lesson"));
+    assert.ok(content.includes("status: draft (human review required)"));
+  } finally {
+    fs.rmSync(draft, { force: true });
+  }
 });
 
 test("share-learnings with --body includes the body text", () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "fr-share-"));
   const bodyPath = path.join(tmp, "body.md");
   fs.writeFileSync(bodyPath, "After three retries, switch to a fresh context.", "utf8");
-  const sessionId = "S-body-ok";
-  const out = run(["--session", sessionId, "--title", "T", "--body", bodyPath, "--confirm"]);
-  assert.ok(out.includes("After three retries"));
-  const draft = path.join(os.tmpdir(), "exp-" + sessionId + "-draft.md");
-  assert.ok(fs.readFileSync(draft, "utf8").includes("After three retries"));
+  const sessionId = uniqueSessionId("S-body-ok");
+  const draft = draftPathFor(sessionId);
+  try {
+    const out = run(["--session", sessionId, "--title", "T", "--body", bodyPath, "--confirm"]);
+    assert.ok(out.includes("After three retries"));
+    assert.ok(fs.readFileSync(draft, "utf8").includes("After three retries"));
+  } finally {
+    fs.rmSync(draft, { force: true });
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
 });
 
 test("friction-score CLI prints assessment with coverage and never implies zero friction", () => {

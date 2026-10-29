@@ -1,13 +1,13 @@
 "use strict";
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { parseCommand, hasIndependentApproval, validateGovernance, verifyApproval } = require("../../scripts/release/verify-approved-release.cjs");
+const { parseCommand, hasIndependentApproval, validateGovernance, verifyApproval, SINGLE_MAINTAINER_EXCEPTION_VERSION } = require("../../scripts/release/verify-approved-release.cjs");
 const sha = "a".repeat(40);
 const decision = {decision_id:"D-release-1",type:"approval",status:"approved",selected_option:"approve",resolved_by:"interactive-user",workflow_gate:"user",resolved_at:"2026-10-09T06:00:00Z",gate:{action:"release",resource_ref:"release:cortex-agent@"+sha}};
 const waitpoint = {waitpoint_id:"WP-release-1",status:"released",decision_id:"D-release-1",released_by:"/release",workflow_gate:"owner",released_at:"2026-10-09T06:05:00Z",gate:{action:"release",resource_ref:"release:cortex-agent@"+sha}};
 const pr = {number:51,merged:true,base:{ref:"main"},merge_commit_sha:sha,user:{login:"Kucell"},head:{sha:"b".repeat(40)}};
 const reviews = [{state:"APPROVED",user:{login:"separate-reviewer"},commit_id:pr.head.sha}];
-const event = {action:"created",issue:{number:51,pull_request:{}},sender:{login:"Kucell"},comment:{user:{login:"Kucell"},author_association:"OWNER",body:"/cortex-release publish v1.15.4 decision=D-release-1 waitpoint=WP-release-1"}};
+const event = {action:"created",issue:{number:51,pull_request:{}},sender:{login:"Kucell"},comment:{user:{login:"Kucell"},author_association:"OWNER",body:"/cortex-release publish v1.15.6 decision=D-release-1 waitpoint=WP-release-1"}};
 const ok = data => ({ok:true,status:200,async json(){return data;}});
 const b64 = data => ({encoding:"base64",content:Buffer.from(JSON.stringify(data)).toString("base64")});
 function http(uri) {
@@ -22,10 +22,10 @@ function http(uri) {
   if (uri.includes("/waitpoints/")) return Promise.resolve(ok(b64(waitpoint)));
   throw new Error("unexpected request");
 }
-const opts=()=>({event,repo:"Kucell/cortex-agent",mainSha:sha,packageVersion:"1.15.4",repoToken:"test",governanceToken:"test",http});
+const opts=()=>({event,repo:"Kucell/cortex-agent",mainSha:sha,packageVersion:"1.15.6",repoToken:"test",governanceToken:"test",http});
 test("strict command parser disallows missing/ambiguous request",()=>{
- assert.equal(parseCommand(event.comment.body).version,"1.15.4");
- assert.throws(()=>parseCommand("/cortex-release publish v1.15.4"));
+ assert.equal(parseCommand(event.comment.body).version,"1.15.6");
+ assert.throws(()=>parseCommand("/cortex-release publish v1.15.6"));
  assert.throws(()=>parseCommand(event.comment.body+"; rm -rf ."));
 });
 test("governance Decision and Waitpoint are exact HEAD bound",()=>{
@@ -54,7 +54,7 @@ test("governance actor, workflow and expiry proofs fail closed",()=>{
  assert.throws(()=>validateGovernance(decision,{...waitpoint,expires_at:"not-a-time"},sha));
 });
 test("exact version, SHA, independent reviewer and governance gate pass",async()=>{
- assert.deepEqual(await verifyApproval(opts()),{version:"1.15.4",sha,pr:51,review_mode:"independent"});
+ assert.deepEqual(await verifyApproval(opts()),{version:"1.15.6",sha,pr:51,review_mode:"independent"});
 });
 test("nonowner, missing governance token, drift and unmerged PR fail closed",async()=>{
  await assert.rejects(()=>verifyApproval({...opts(),event:{...event,sender:{login:"attacker"}}}));
@@ -96,7 +96,7 @@ const manualEvent = {
 };
 test("manual publishing uses exactly the same independent review and release gates",async()=>{
  const result = await verifyApproval({...opts(),event:manualEvent,eventName:"workflow_dispatch"});
- assert.deepEqual(result,{version:"1.15.4",sha,pr:51,review_mode:"independent"});
+ assert.deepEqual(result,{version:"1.15.6",sha,pr:51,review_mode:"independent"});
 });
 test("manual publish cannot bypass authorization via version, SHA, PR or actor drift",async()=>{
  for (const inputs of [
@@ -118,17 +118,29 @@ test("unknown release event never becomes approval",async()=>{
  await assert.rejects(()=>verifyApproval({...opts(),event:manualEvent,eventName:"push"}));
 });
 
+test("the single-maintainer exception is bound to exactly one version",()=>{
+ assert.equal(SINGLE_MAINTAINER_EXCEPTION_VERSION,"1.15.6");
+ // Both the command check and the Decision-rationale pattern read the same
+ // constant. They used to hardcode the version twice, so the two could drift
+ // apart and make the waiver silently unusable.
+ const ok={...decision,selected_option:"approve-single-maintainer",
+  options:["approve","reject","approve-single-maintainer"],
+  rationale:"single-maintainer v"+SINGLE_MAINTAINER_EXCEPTION_VERSION};
+ assert.equal(validateGovernance(ok,waitpoint,sha),"release:cortex-agent@"+sha);
+ // A rationale naming any other version is rejected.
+ assert.throws(()=>validateGovernance({...ok,rationale:"single-maintainer v1.15.5"},waitpoint,sha));
+});
 test("single maintainer release exception is explicit, version-bound and ancestry-checked", async () => {
   const waiver = {...decision,selected_option:"approve-single-maintainer",
     options:["approve","reject","approve-single-maintainer"],
-    rationale:"Single-maintainer review waiver for cortex-agent v1.15.4; user approved this exception after CI source audit"};
+    rationale:"Single-maintainer review waiver for cortex-agent v1.15.6; user approved this exception after CI source audit"};
   assert.equal(validateGovernance(waiver,waitpoint,sha),"release:cortex-agent@"+sha);
   const run=await verifyApproval({...opts(),http:uri=>{
     if (uri.includes("/decisions/")) return Promise.resolve(ok(b64(waiver)));
     if (uri.includes("/pulls/51/reviews")) return Promise.resolve(ok([]));
     return http(uri);
   }});
-  assert.deepEqual(run,{version:"1.15.4",sha,pr:51,review_mode:"single-maintainer"});
+  assert.deepEqual(run,{version:"1.15.6",sha,pr:51,review_mode:"single-maintainer"});
   await assert.rejects(()=>verifyApproval({...opts(),http:uri=>{
     if (uri.includes("/decisions/")) return Promise.resolve(ok(b64(waiver)));
     if (uri.includes("/pulls/51/reviews")) return Promise.resolve(ok([]));
@@ -138,16 +150,16 @@ test("single maintainer release exception is explicit, version-bound and ancestr
 });
 test("waiver cannot be implicitly inferred from 'approve' or rationale alone",()=>{
   assert.throws(()=>validateGovernance({...decision,selected_option:"approve-single-maintainer",options:["approve","reject"],
-    rationale:"single-maintainer v1.15.4"},waitpoint,sha));
+    rationale:"single-maintainer v1.15.6"},waitpoint,sha));
   assert.throws(()=>validateGovernance({...decision,selected_option:"approve-single-maintainer",options:["approve","reject","approve-single-maintainer"],
-    rationale:"v1.15.4"},waitpoint,sha));
+    rationale:"v1.15.6"},waitpoint,sha));
   assert.throws(()=>validateGovernance({...decision,selected_option:"approve-single-maintainer",options:["approve","reject","approve-single-maintainer"],
-    rationale:"single-maintainer but for v1.15.5"},waitpoint,sha));
+    rationale:"single-maintainer but for v1.16.0"},waitpoint,sha));
 });
 test("waiver does not allow unanswered change-requested reviews",async()=>{
   const waiver = {...decision,selected_option:"approve-single-maintainer",
     options:["approve","reject","approve-single-maintainer"],
-    rationale:"single-maintainer v1.15.4 explicit review exception"};
+    rationale:"single-maintainer v1.15.6 explicit review exception"};
   await assert.rejects(()=>verifyApproval({...opts(),http:uri=>{
     if (uri.includes("/decisions/")) return Promise.resolve(ok(b64(waiver)));
     if (uri.includes("/pulls/51/reviews")) return Promise.resolve(ok([{

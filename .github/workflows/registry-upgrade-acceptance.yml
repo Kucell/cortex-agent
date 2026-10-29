@@ -29,9 +29,14 @@ jobs:
         github.event.pull_request.head.repo.full_name == github.repository))
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        baseline: ["1.15.4", "1.15.6"]
     env:
+      BASELINE_VERSION: ${{ matrix.baseline }}
       SOURCE_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
-      EXPECTED_GITLINK: 7b17677b1646cdbf54e29bf44cb9a11100c90d34
+      EXPECTED_GITLINK: d7edc4ed8571815d95c032e50b74fdd562a96acf
       EXPECTED_CANDIDATE_VERSION: "1.16.0"
       DISPATCH_HEAD: ${{ inputs.expected_head }}
       DISPATCH_VERSION: ${{ inputs.expected_version }}
@@ -79,7 +84,7 @@ jobs:
               if (!changed && !manual) {
                 core.info("REGISTRY_UPGRADE_NOT_RUN: no published upgrade check change in this commit"); return;
               }
-              assert.equal(signature(snapshots[0], paths[0]), "100644:blob:00355088713b17945c4efff07265a215ebe2f163");
+              assert.equal(signature(snapshots[0], paths[0]), "100644:blob:a4c69de63130b71350619daec39b386943dd7c3f");
               const workflow = snapshots[0].find((item) => item.path === paths[1]);
               assert.ok(workflow && workflow.mode === "100644" && workflow.type === "blob");
               core.setOutput("changed", "true");
@@ -105,7 +110,7 @@ jobs:
           test -f "$SCRIPT"
           test ! -L "$SCRIPT"
           ACTUAL_SCRIPT_BLOB="$(/usr/bin/env -i PATH=/usr/bin:/bin GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null /usr/bin/git --no-lazy-fetch --no-replace-objects -c core.fsmonitor=false hash-object --no-filters "$SCRIPT")"
-          test "$ACTUAL_SCRIPT_BLOB" = "00355088713b17945c4efff07265a215ebe2f163"
+          test "$ACTUAL_SCRIPT_BLOB" = "a4c69de63130b71350619daec39b386943dd7c3f"
           NODE="$(command -v node)"
           NPM_CLI="$(readlink -f "$(command -v npm)")"
           VERSION="$(/usr/bin/env -i PATH=/usr/bin:/bin LANG=C.UTF-8 LC_ALL=C.UTF-8 /usr/bin/python3 -I -B -c 'import json; print(json.load(open("package.json", encoding="utf-8"))["version"])')"
@@ -120,4 +125,4 @@ jobs:
           /usr/bin/env -i PATH=/usr/bin:/bin LANG=C.UTF-8 LC_ALL=C.UTF-8 \
             /usr/bin/python3 -I -B "$SCRIPT" \
             --expected-head "$SOURCE_HEAD" --expected-version "$VERSION" \
-            --expected-gitlink "$EXPECTED_GITLINK" --node "$NODE" --npm-cli "$NPM_CLI"
+            --baseline-version "$BASELINE_VERSION" --expected-gitlink "$EXPECTED_GITLINK" --node "$NODE" --npm-cli "$NPM_CLI"

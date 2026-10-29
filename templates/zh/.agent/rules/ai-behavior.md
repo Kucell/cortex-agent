@@ -1,6 +1,17 @@
-# AI 行为红线与防错指南 (AI Executing Behavior)
+---
+title: "AI 行为红线与防错指南 (AI Executing Behavior)"
+description: "基于常见失败模式，所有协助开发的 AI 必须严格遵守以下行为准则，避免走弯路、执行破坏性操作或擅自改变项目方向。"
+type: rule
+scope: L1
+applicable_to:
+  - all
+linked_workflows: []
+linked_skills: []
+owner: Kucell
+last_verified: 2026-10-21
+status: stable
+---
 
-基于常见失败模式，所有协助开发的 AI 必须严格遵守以下行为准则，避免走弯路、执行破坏性操作或擅自改变项目方向。
 
 ## 1. 严格的 Git 操作纪律
 
@@ -50,17 +61,20 @@
 **执行规范**：
 
 1. **每阶段完成后立即提交**：不等全部阶段完成再统一提交。每个独立阶段结束后，用规范化 commit 锁定当前进度（参考 `commit-standards.md`）。
-2. **写入进度断点**：将状态同步到 `.agent/plans/task-progress.md`（可更新「当前活跃任务」表格或追加「断点续接」小节），例如：
-   ```
-   ## 断点续接（YYYY-MM-DD）
-   - [x] 阶段 1：xxx（已完成，commit: xxxxx）
-   - [ ] 阶段 2：xxx（进行中）
-   - [ ] 阶段 3：xxx（待开始）
-   阻塞点：无 / xxx
-   ```
-3. **会话续接**：若用户发送「继续」，**必须先** Read `.agent/plans/task-progress.md` 确认上次停止位置，再接续执行，禁止重新从头开始。
+2. **写入进度断点**：任务状态的真源是 `.agent/tasks/<task-id>.json`（`mission.json` 同理），`task-progress.md` 是由真源派生的视图。**写入顺序固定为：改 JSON 真源 → 跑 `node .agent/tasks/scripts/render-progress.js` → 两者一起提交。**
+   - 断点续接信息写在视图的 `<!-- manual:resume:start -->` / `<!-- manual:resume:end -->` 手工区，渲染器不会动它，例如：
+     ```
+     - [x] 阶段 1：xxx（已完成，commit: xxxxx）
+     - [ ] 阶段 2：xxx（进行中）
+     阻塞点：无 / xxx
+     ```
+   - **禁止**手工编辑 `<!-- generated:* -->` 区：它由渲染器拥有，手改会在下次渲染时被覆盖。
+   - 提交前用 `node .agent/tasks/scripts/render-progress.js --check` 验证视图与真源一致（不一致时退出码为 1）。
+3. **会话续接**：若用户发送「继续」，**必须先** Read `.agent/plans/task-progress.md`（或 `.agent/tasks/index.json`）确认上次停止位置，再接续执行，禁止重新从头开始。
 
 > **原因**：多轮会话可能被限流或中断；分阶段提交将损失控制在单阶段内；`task-progress.md` 是无状态会话之间的可靠衔接点。
+> 
+> **真源边界**：`.agent/tasks/*.json` / `.agent/missions/*/mission.json` 才是任务状态的唯一真源；`task-progress.md` 是派生视图，两者不一致时以 JSON 为准。
 
 ---
 

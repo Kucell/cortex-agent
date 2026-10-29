@@ -13,6 +13,19 @@ status: stable
 
 Use this workflow to regain project context without changing coordinator state.
 
+## 任务状态写入契约（T-TS-003 / MS-3）
+
+`.agent/tasks/<task-id>.json`（mission 用 `.agent/missions/<mission-id>/mission.json`）是任务状态的唯一真源；
+`.agent/plans/task-progress.md` 是由真源派生的视图。写入顺序固定为：
+
+1. 改 JSON 真源（`stage` / `status` / `gates` / `artifacts`）
+2. 跑 `node .agent/tasks/scripts/render-progress.js` 重新生成视图
+3. JSON 与视图一起提交
+
+禁止手工编辑视图里的 `<!-- generated:* -->` 区（渲染器拥有它，下次渲染会覆盖）。
+提交前用 `node .agent/tasks/scripts/render-progress.js --check` 验证（不一致时退出码 1）。
+视图的 `<!-- manual:roadmap --> / <!-- manual:backlog --> / <!-- manual:resume -->` 手工区由人维护，渲染器原样保留。
+
 ## 0. Runtime Continuity Resume Bundle
 
 Run the read-only resume entrypoint first so a new host agent can recover the

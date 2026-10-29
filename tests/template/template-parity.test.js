@@ -24,6 +24,22 @@ const EN_SELECT = path.join(ROOT, "templates", "en", ".agent", "skills", "contex
 const ZH_SELECT = path.join(ROOT, "templates", "zh", ".agent", "skills", "context-budget", "scripts", "select.js");
 const EN_MGMT_SKILL = path.join(ROOT, "templates", "en", ".agent", "skills", "management-api", "SKILL.md");
 const ZH_MGMT_SKILL = path.join(ROOT, "templates", "zh", ".agent", "skills", "management-api", "SKILL.md");
+const SHARED_JSON_SCHEMA = path.join(ROOT, "templates", "_shared", ".agent", "scripts", "json-schema.js");
+const LIVE_JSON_SCHEMA = path.join(ROOT, ".agent", "scripts", "json-schema.js");
+
+// The schema validator ships to every project (it is how an upgraded project
+// checks its own task records). The framework repository keeps its own copy
+// of the same file: two copies of one rule drift apart silently, so they are
+// compared here. A checkout of the framework repository alone has no live
+// copy to compare against.
+test("the json-schema validator is byte-identical between the live copy and the template", {
+  skip: fs.existsSync(LIVE_JSON_SCHEMA) ? false : "the live .agent copy is not part of this checkout",
+}, () => {
+  assert.equal(
+    fs.readFileSync(LIVE_JSON_SCHEMA, "utf8"),
+    fs.readFileSync(SHARED_JSON_SCHEMA, "utf8"),
+  );
+});
 
 test("context-budget selector is byte-identical between canonical and both localized templates", () => {
   const canonical = fs.readFileSync(CANONICAL_CONTEXT_BUDGET_SELECT, "utf8");

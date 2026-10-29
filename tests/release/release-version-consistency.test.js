@@ -6,6 +6,7 @@ const path = require("node:path");
 const test = require("node:test");
 
 const root = path.resolve(__dirname, "../..");
+const { buildAnchor } = require(path.join(root, "lib/anchor/anchor.js"));
 function readJson(name) {
   return JSON.parse(fs.readFileSync(path.join(root, name), "utf8"));
 }
@@ -32,4 +33,18 @@ test("the current release version is documented", () => {
   const version = readJson("package.json").version;
   const changelog = fs.readFileSync(path.join(root, "CHANGELOG.md"), "utf8");
   assert.ok(changelog.includes("## [" + version + "]"), "missing current release changelog entry");
+});
+
+test("the checked-in cross-tool anchor matches the generator and the current version", () => {
+  const version = readJson("package.json").version;
+  const file = path.join(root, "docs/cortex-agent/anchor.md");
+  assert.ok(fs.existsSync(file), "missing docs/cortex-agent/anchor.md");
+  const onDisk = fs.readFileSync(file, "utf8");
+  const { body } = buildAnchor({ projectDir: root, version });
+  assert.equal(
+    onDisk,
+    body,
+    "docs/cortex-agent/anchor.md is stale — regenerate it with `cortex-agent export-anchor --write`",
+  );
+  assert.ok(onDisk.includes("v" + version), "anchor does not state the current framework version");
 });

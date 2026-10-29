@@ -1,6 +1,17 @@
-# AI Behavior Guardrails
+---
+title: "AI Behavior Guardrails"
+description: "These rules reduce destructive edits, scope drift, and half-finished work across sessions."
+type: rule
+scope: L1
+applicable_to:
+  - all
+linked_workflows: []
+linked_skills: []
+owner: Kucell
+last_verified: 2026-10-21
+status: stable
+---
 
-These rules reduce destructive edits, scope drift, and half-finished work across sessions.
 
 ## 1. Git discipline
 
@@ -47,16 +58,20 @@ These rules reduce destructive edits, scope drift, and half-finished work across
 **Rules**:
 
 1. **Commit after each phase** (see `commit-standards.md`), not only at the end.
-2. **Update** `.agent/plans/task-progress.md` (active tasks table and/or a “resume” section), e.g.:
-   ```
-   ## Resume checkpoint (YYYY-MM-DD)
-   - [x] Phase 1: ... (done, commit: abcdef)
-   - [ ] Phase 2: ... (in progress)
-   Blocker: none / ...
-   ```
-3. On **“continue”**, **read** `task-progress.md` first—do not restart from scratch.
+2. **Record the checkpoint**: the truth source for task state is `.agent/tasks/<task-id>.json` (and `mission.json` for missions); `task-progress.md` is a view derived from it. **The write order is fixed: change the JSON truth source → run `node .agent/tasks/scripts/render-progress.js` → commit both.**
+   - Put the checkpoint inside the view's `<!-- manual:resume:start -->` / `<!-- manual:resume:end -->` region; the renderer leaves it untouched, e.g.:
+     ```
+     - [x] Phase 1: ... (done, commit: abcdef)
+     - [ ] Phase 2: ... (in progress)
+     Blocker: none / ...
+     ```
+   - **Never** hand-edit a `<!-- generated:* -->` region: the renderer owns it and the next render overwrites your change.
+   - Before committing, run `node .agent/tasks/scripts/render-progress.js --check` to confirm the view matches the truth source (exit code 1 on drift).
+3. On **“continue”**, **read** `task-progress.md` (or `.agent/tasks/index.json`) first—do not restart from scratch.
 
 > **Why**: limits blast radius on interrupts; `task-progress.md` is the cross-session handoff.
+> 
+> **Truth-source boundary**: `.agent/tasks/*.json` and `.agent/missions/*/mission.json` are the only truth source for task state. `task-progress.md` is a derived view; when the two disagree, the JSON wins.
 
 ---
 

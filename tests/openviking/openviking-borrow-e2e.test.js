@@ -6,13 +6,39 @@ const path = require("node:path");
 const { execFileSync } = require("node:child_process");
 const test = require("node:test");
 
-const ROOT = path.resolve(__dirname, "..", "..");
+const { createAgentSandbox } = require("../helpers/agent-sandbox");
+
+const REPO_ROOT = path.resolve(__dirname, "..", "..");
 const LANG = "zh";
 const VARS = {
-  canonical: path.join(ROOT, ".agent"),
-  zh: path.join(ROOT, "templates", "zh", ".agent"),
-  en: path.join(ROOT, "templates", "en", ".agent"),
+  zh: path.join(REPO_ROOT, "templates", "zh", ".agent"),
+  en: path.join(REPO_ROOT, "templates", "en", ".agent"),
 };
+// Scripts stay in the real repository (they resolve siblings through
+// `__dirname`); only `cwd` moves into the sandbox so that every state path
+// they derive from `process.cwd()` is written to the sandbox copy.
+const URI_RESOLVER = path.join(REPO_ROOT, ".agent", "skills", "uri-resolver", "scripts", "resolve.js");
+const BUILD_L0L1 = path.join(REPO_ROOT, ".agent", "skills", "context-budget", "scripts", "build-l0l1.js");
+const SELECT = path.join(REPO_ROOT, ".agent", "skills", "context-budget", "scripts", "select.js");
+const RECORD = path.join(REPO_ROOT, ".agent", "skills", "retrieval-trajectory", "scripts", "record.js");
+const REPLAY = path.join(REPO_ROOT, ".agent", "skills", "retrieval-trajectory", "scripts", "replay.js");
+const DASHBOARD = path.join(REPO_ROOT, ".agent", "skills", "agent-dashboard", "scripts", "generate.js");
+
+let sandbox = null;
+let ROOT = "";
+let URI_MAP = "";
+let TRAJECTORY_DIR = "";
+
+test.before(() => {
+  sandbox = createAgentSandbox();
+  ROOT = sandbox.root;
+  URI_MAP = path.join(ROOT, ".agent", "registry", "uri-map.json");
+  TRAJECTORY_DIR = path.join(ROOT, ".agent", "runtime-evidence", "trajectory");
+});
+
+test.after(() => {
+  if (sandbox) sandbox.cleanup();
+});
 
 function fixturePath(scope) {
   const match = /--(file|out|project|registry|uri-map|root) (\S+)/.exec(scope);
@@ -33,16 +59,8 @@ function fileExists(p) {
   return fs.existsSync(p);
 }
 
-const URI_MAP = path.join(ROOT, ".agent", "registry", "uri-map.json");
-const URI_RESOLVER = path.join(ROOT, ".agent", "skills", "uri-resolver", "scripts", "resolve.js");
-const BUILD_L0L1 = path.join(ROOT, ".agent", "skills", "context-budget", "scripts", "build-l0l1.js");
-const SELECT = path.join(ROOT, ".agent", "skills", "context-budget", "scripts", "select.js");
-const RECORD = path.join(ROOT, ".agent", "skills", "retrieval-trajectory", "scripts", "record.js");
-const REPLAY = path.join(ROOT, ".agent", "skills", "retrieval-trajectory", "scripts", "replay.js");
-const TRAJECTORY_DIR = path.join(ROOT, ".agent", "runtime-evidence", "trajectory");
-
 test("URI schema and map are present and well-formed", () => {
-  for (const v of Object.values(VARS)) {
+  for (const v of [sandbox.agentRoot, VARS.zh, VARS.en]) {
     const schema = path.join(v, "registry", "uri-map.schema.json");
     const map = path.join(v, "registry", "uri-map.json");
     assert.ok(fileExists(schema), `missing schema: ${schema}`);
@@ -162,11 +180,10 @@ test("L0/L1 plus trajectory size fits in the original budget (acceptance gate)",
 });
 
 test("agent-dashboard script generates retrieval-trace panel", () => {
-  const dashboard = path.join(ROOT, ".agent", "skills", "agent-dashboard", "scripts", "generate.js");
   const outFile = path.join(ROOT, ".agent", "metrics", "agent-dashboard-e2e.html");
   fs.mkdirSync(path.dirname(outFile), { recursive: true });
   // Run generation; tolerate missing optional state, but require the script to exit 0.
-  execFileSync(process.execPath, [dashboard, "--out", outFile], { cwd: ROOT, stdio: "ignore" });
+  execFileSync(process.execPath, [DASHBOARD, "--out", outFile], { cwd: ROOT, stdio: "ignore" });
   const html = fs.readFileSync(outFile, "utf8");
   assert.match(html, /id="retrieval-trace"/, "dashboard HTML missing retrieval-trace section");
   assert.match(html, /data-i18n="retrievalTrace"/, "dashboard HTML missing retrievalTrace i18n key");

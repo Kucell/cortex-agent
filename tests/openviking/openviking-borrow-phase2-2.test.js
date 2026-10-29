@@ -6,11 +6,30 @@ const path = require("node:path");
 const { execFileSync } = require("node:child_process");
 const test = require("node:test");
 
-const ROOT = path.resolve(__dirname, "..", "..");
-const EVOLVE = path.join(ROOT, ".agent", "skills", "evolution-pipeline", "scripts", "evolve.js");
-const TASKS_DIR = path.join(ROOT, ".agent", "tasks", "evolution");
-const DEAD_DIR = path.join(TASKS_DIR, "_dead");
-const MEMORY_DIR = path.join(ROOT, ".agent", "memory");
+const { createAgentSandbox } = require("../helpers/agent-sandbox");
+
+const REPO_ROOT = path.resolve(__dirname, "..", "..");
+// The script stays in the real repository; only `cwd` moves into the sandbox,
+// so the queue, the memory files and MEMORY.md are written there.
+const EVOLVE = path.join(REPO_ROOT, ".agent", "skills", "evolution-pipeline", "scripts", "evolve.js");
+
+let sandbox = null;
+let ROOT = "";
+let TASKS_DIR = "";
+let DEAD_DIR = "";
+let MEMORY_DIR = "";
+
+test.before(() => {
+  sandbox = createAgentSandbox();
+  ROOT = sandbox.root;
+  TASKS_DIR = path.join(ROOT, ".agent", "tasks", "evolution");
+  DEAD_DIR = path.join(TASKS_DIR, "_dead");
+  MEMORY_DIR = path.join(ROOT, ".agent", "memory");
+});
+
+test.after(() => {
+  if (sandbox) sandbox.cleanup();
+});
 
 function run(script, args = []) {
   return JSON.parse(execFileSync(process.execPath, [script, ...args], { encoding: "utf8", cwd: ROOT }));
@@ -180,10 +199,16 @@ test("--dead-letter reports dead tasks after max_retries", () => {
 });
 
 test("SKILL.md files exist in both zh and en", () => {
-  const zh = fs.readFileSync(path.join(ROOT, "templates", "zh", ".agent", "skills", "evolution-pipeline", "SKILL.md"), "utf8");
-  const en = fs.readFileSync(path.join(ROOT, "templates", "en", ".agent", "skills", "evolution-pipeline", "SKILL.md"), "utf8");
-  assert.ok(zh.includes("Self-Evolution Pipeline"));
-  assert.ok(en.includes("Self-Evolution Pipeline"));
+  const zh = fs.readFileSync(path.join(REPO_ROOT, "templates", "zh", ".agent", "skills", "evolution-pipeline", "SKILL.md"), "utf8");
+  const en = fs.readFileSync(path.join(REPO_ROOT, "templates", "en", ".agent", "skills", "evolution-pipeline", "SKILL.md"), "utf8");
+  for (const skill of [zh, en]) {
+    assert.match(skill, /^name: evolution-pipeline$/m);
+    assert.ok(skill.includes("--queue-learning-proposal"));
+    assert.ok(skill.includes("--proposal-only"));
+    assert.ok(skill.includes("--gate user"));
+  }
+  assert.ok(zh.includes("不调用模型、不更新 memory"));
+  assert.match(en, /No model is invoked, no\s+memory\/index is updated/);
   assert.ok(zh.includes("入队") || zh.includes("enqueue"));
   assert.ok(en.includes("enqueue"));
 });
@@ -201,7 +226,7 @@ test("worker --loop option is accepted (no hang)", () => {
 });
 
 test("classifyArchive() returns deterministic structure", () => {
-  const { classifyArchive } = require(path.join(ROOT, ".agent", "skills", "evolution-pipeline", "scripts", "evolve.js"));
+  const { classifyArchive } = require(path.join(REPO_ROOT, ".agent", "skills", "evolution-pipeline", "scripts", "evolve.js"));
   const sample = {
     archive_id: "RC-TEST-001",
     created_at: new Date().toISOString(),

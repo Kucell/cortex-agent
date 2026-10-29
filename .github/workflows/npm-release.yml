@@ -1,8 +1,9 @@
 name: npm Release
 
 on:
-  issue_comment:
-    types: [created]
+  # npm Trusted Publishing rejects OIDC tokens minted for issue_comment runs
+  # (pull_request_target is rejected too), so publication is dispatched
+  # explicitly and carries the canonical Decision/Waitpoint authorization.
   workflow_dispatch:
     inputs:
       publish:
@@ -10,6 +11,36 @@ on:
         required: true
         default: false
         type: boolean
+      release_type:
+        description: "Release type to publish (the prepared current version)"
+        required: true
+        default: current
+        type: choice
+        options:
+          - current
+      dist_tag:
+        description: "npm distribution tag to publish"
+        required: true
+        default: latest
+        type: choice
+        options:
+          - latest
+      release_pr:
+        description: "Merged release-preparation PR number"
+        required: true
+        type: string
+      expected_sha:
+        description: "Exact intended main commit SHA"
+        required: true
+        type: string
+      decision_id:
+        description: "Canonical live release Decision ID"
+        required: true
+        type: string
+      waitpoint_id:
+        description: "Canonical released Waitpoint ID"
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -24,12 +55,7 @@ concurrency:
 jobs:
   targeted-cli-validation:
     # Only the reviewed nine CLI regressions; no release credentials or OIDC.
-    if: >-
-      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
-      (github.event_name == 'issue_comment' && github.ref == 'refs/heads/main' &&
-       github.actor == github.repository_owner && vars.CORTEX_AUTO_RELEASE_ENABLED == 'true' &&
-       github.event.issue.pull_request &&
-       startsWith(github.event.comment.body, '/cortex-release publish v'))
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
     permissions:
       contents: read
     runs-on: ubuntu-latest
@@ -56,14 +82,9 @@ jobs:
 
   release:
     needs: [targeted-cli-validation]
-    # One-click owner workflow_dispatch is an audited human release action.
-    # Comment-triggered automatic releases retain the canonical private Decision/Waitpoint gate.
-    if: >-
-      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
-      (github.event_name == 'issue_comment' && github.ref == 'refs/heads/main' &&
-       github.actor == github.repository_owner && vars.CORTEX_AUTO_RELEASE_ENABLED == 'true' &&
-       github.event.issue.pull_request &&
-       startsWith(github.event.comment.body, '/cortex-release publish v'))
+    # Owner dispatch is the explicit human release action, and it carries the
+    # same canonical private Decision/Waitpoint gate as every other path.
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -75,17 +96,14 @@ jobs:
           submodules: false
 
       - name: Verify exact-head Cortex release authorization
-        if: ${{ github.event_name == 'issue_comment' || inputs.publish }}
+        if: ${{ inputs.publish }}
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          CORTEX_GOVERNANCE_READ_TOKEN: ${{ github.event_name == 'issue_comment' && secrets.CORTEX_GOVERNANCE_READ_TOKEN || '' }}
+          CORTEX_GOVERNANCE_READ_TOKEN: ${{ secrets.CORTEX_GOVERNANCE_READ_TOKEN }}
         run: |
           set -euo pipefail
-          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
-            node scripts/release/verify-owner-dispatch.cjs
-          else
-            node scripts/release/verify-approved-release.cjs
-          fi
+          node scripts/release/verify-owner-dispatch.cjs
+          node scripts/release/verify-approved-release.cjs
 
       - uses: actions/setup-node@v4
         with:
@@ -172,7 +190,7 @@ jobs:
           fi
 
       - name: Dry-run summary
-        if: ${{ github.event_name == 'workflow_dispatch' && !inputs.publish }}
+        if: ${{ !inputs.publish }}
         env:
           TARGET: ${{ steps.version.outputs.target }}
           RELEASE_TYPE: current
@@ -184,10 +202,10 @@ jobs:
           echo "dist_tag=$DIST_TAG"
 
       - name: Revalidate Cortex authorization before Git tag write
-        if: ${{ github.event_name == 'issue_comment' || inputs.publish }}
+        if: ${{ inputs.publish }}
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          CORTEX_GOVERNANCE_READ_TOKEN: ${{ github.event_name == 'issue_comment' && secrets.CORTEX_GOVERNANCE_READ_TOKEN || '' }}
+          CORTEX_GOVERNANCE_READ_TOKEN: ${{ secrets.CORTEX_GOVERNANCE_READ_TOKEN }}
         run: |
           set -euo pipefail
           candidate="$(git rev-parse HEAD)"
@@ -196,14 +214,11 @@ jobs:
             echo "::error::Release HEAD changed before tag; refusing release."
             exit 1
           fi
-          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
-            node scripts/release/verify-owner-dispatch.cjs
-          else
-            node scripts/release/verify-approved-release.cjs
-          fi
+          node scripts/release/verify-owner-dispatch.cjs
+          node scripts/release/verify-approved-release.cjs
 
       - name: Commit version and create tag
-        if: ${{ github.event_name == 'issue_comment' || inputs.publish }}
+        if: ${{ inputs.publish }}
         env:
           TARGET: ${{ steps.version.outputs.target }}
           RELEASE_TYPE: current
@@ -229,7 +244,7 @@ jobs:
           git push origin "v$TARGET"
 
       - name: Verify main/tag immutability before any registry write
-        if: ${{ github.event_name == 'issue_comment' || inputs.publish }}
+        if: ${{ inputs.publish }}
         env:
           TARGET: ${{ steps.version.outputs.target }}
         run: |
@@ -243,20 +258,17 @@ jobs:
           fi
 
       - name: Revalidate Cortex authorization at npm effect boundary
-        if: ${{ github.event_name == 'issue_comment' || inputs.publish }}
+        if: ${{ inputs.publish }}
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          CORTEX_GOVERNANCE_READ_TOKEN: ${{ github.event_name == 'issue_comment' && secrets.CORTEX_GOVERNANCE_READ_TOKEN || '' }}
+          CORTEX_GOVERNANCE_READ_TOKEN: ${{ secrets.CORTEX_GOVERNANCE_READ_TOKEN }}
         run: |
           set -euo pipefail
-          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
-            node scripts/release/verify-owner-dispatch.cjs
-          else
-            node scripts/release/verify-approved-release.cjs
-          fi
+          node scripts/release/verify-owner-dispatch.cjs
+          node scripts/release/verify-approved-release.cjs
 
       - name: Publish to npm with Trusted Publishing
-        if: ${{ github.event_name == 'issue_comment' || inputs.publish }}
+        if: ${{ inputs.publish }}
         env:
           TARGET: ${{ steps.version.outputs.target }}
           DIST_TAG: latest
@@ -277,7 +289,7 @@ jobs:
           fi
 
       - name: Create GitHub Release
-        if: ${{ github.event_name == 'issue_comment' || inputs.publish }}
+        if: ${{ inputs.publish }}
         env:
           GH_TOKEN: ${{ github.token }}
           TARGET: ${{ steps.version.outputs.target }}

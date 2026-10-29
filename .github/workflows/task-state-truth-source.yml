@@ -1,0 +1,74 @@
+name: Task State Truth Source
+
+on:
+  pull_request:
+    paths:
+      - 'lib/commands/migrate-task-state.js'
+      - 'lib/commands/migrate-task-state.cli.js'
+      - 'lib/commands/doctor.js'
+      - 'lib/commands/upgrade.js'
+      - 'templates/_shared/.agent/tasks/scripts/**'
+      - 'templates/_shared/.agent/skills/management-api/scripts/index.js'
+      - 'templates/_shared/.agent/skills/knowledge-lint/scripts/index.js'
+      - 'tests/management/task-state-parser.test.js'
+      - 'tests/management/render-progress.test.js'
+      - 'tests/management/migrate-task-state.test.js'
+      - 'tests/management/management-query-cli.test.js'
+      - '.github/workflows/task-state-truth-source.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'lib/commands/migrate-task-state.js'
+      - 'lib/commands/migrate-task-state.cli.js'
+      - 'lib/commands/doctor.js'
+      - 'lib/commands/upgrade.js'
+      - 'templates/_shared/.agent/tasks/scripts/**'
+      - 'templates/_shared/.agent/skills/management-api/scripts/index.js'
+      - 'templates/_shared/.agent/skills/knowledge-lint/scripts/index.js'
+      - 'tests/management/task-state-parser.test.js'
+      - 'tests/management/render-progress.test.js'
+      - 'tests/management/migrate-task-state.test.js'
+      - 'tests/management/management-query-cli.test.js'
+      - '.github/workflows/task-state-truth-source.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  task-state:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['18', '22', '24']
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - name: Task state contract
+        run: |
+          node --test tests/management/task-state-parser.test.js
+          node --test tests/management/render-progress.test.js
+          node --test tests/management/migrate-task-state.test.js
+          node --test tests/management/management-query-cli.test.js
+
+      # The truth-source boundary gate: the repo task-progress.md must stay a
+      # faithful projection of .agent/tasks/*.json. A drift here means a writer
+      # changed the markdown without changing the records (or vice versa).
+      - name: Task progress view is in sync with the truth source
+        run: node templates/_shared/.agent/tasks/scripts/render-progress.js --check
+
+      # The active-tasks section must be unique. Two writers producing two
+      # views is the drift signature this repository has hit before.
+      - name: Task progress has a single active-tasks section
+        run: node .github/scripts/check-active-tasks-section.js
+
+      - name: L3 distribution boundary
+        run: node scripts/check-l3-boundary.js
+
+      - name: Template parity
+        run: node scripts/check-template-parity.js

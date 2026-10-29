@@ -1,11 +1,35 @@
 ---
 name: ship
 description: 任务完成后的一键收尾：代码审查 → 提交 → 标记完成 → 同步计划。将 /code-review + /commit + /done + /sync-plans 串联为单一流程。Phase 1: 增加状态机和 max_retry 限制。
+type: procedure
+applicable_to:
+  - all
+inputs: []
+outputs: []
+linked_skills: []
+linked_rules: []
+linked_workflows: []
+owner: Kucell
+last_verified: 2026-10-21
+status: stable
 ---
 
 # 任务交付工作流 (/ship)
 
 当你完成了某个任务的编码，执行此流程完成交付闭环。
+
+## 任务状态写入契约（T-TS-003 / MS-3）
+
+`.agent/tasks/<task-id>.json`（mission 用 `.agent/missions/<mission-id>/mission.json`）是任务状态的唯一真源；
+`.agent/plans/task-progress.md` 是由真源派生的视图。写入顺序固定为：
+
+1. 改 JSON 真源（`stage` / `status` / `gates` / `artifacts`）
+2. 跑 `node .agent/tasks/scripts/render-progress.js` 重新生成视图
+3. JSON 与视图一起提交
+
+禁止手工编辑视图里的 `<!-- generated:* -->` 区（渲染器拥有它，下次渲染会覆盖）。
+提交前用 `node .agent/tasks/scripts/render-progress.js --check` 验证（不一致时退出码 1）。
+视图的 `<!-- manual:roadmap --> / <!-- manual:backlog --> / <!-- manual:resume -->` 手工区由人维护，渲染器原样保留。
 
 ## Phase 1 增强：状态机 + 重试控制
 
@@ -72,11 +96,23 @@ description: 任务完成后的一键收尾：代码审查 → 提交 → 标记
 - ✅ 代码文件已写入/编辑
 - ✅ git status 显示改动
 
-**执行**: 运行 `.agent/hooks/pre-commit-check.sh`
+**执行**: 运行机械门禁的 lint 检查
+
+```bash
+node .agent/skills/phase-gate/scripts/gate.js --lint-only \
+  --task <task-id> \
+  --write-lint-result .agent/artifacts/<task-id>/lint-result.json
+```
+
 - Linter 检查（ESLint, Ruff 等）
 - 密钥扫描
 
-**Blocking Condition**: Linter 失败 → 阻断，提示修复
+> ⚠️ **不要直接执行 `.agent/hooks/pre-commit-check.sh`**：它是 Claude Code 的 PostToolUse 钩子，
+> 依赖 stdin JSON payload 取目标文件，单独执行会对任何输入都 exit 0（门禁空转）。
+> 上面的 runner 负责构造正确 payload 并逐文件聚合结果。
+
+**Blocking Condition**: runner exit code ≠ 0 → 阻断，提示修复
+（runner 在钩子缺失或 `jq` 缺失时 **fail-closed**，不会静默放行）
 
 **Max Retry**: 2 次（连续 2 次 lint 失败 → 请求人工检查规则或手动修复）
 
@@ -85,7 +121,14 @@ description: 任务完成后的一键收尾：代码审查 → 提交 → 标记
 ### Phase 3: REVIEW
 
 **Gate Check**: `phase-gate --from LINT --to REVIEW`
-- ✅ Linter 检查通过（exit code 0）
+
+```bash
+node .agent/skills/phase-gate/scripts/gate.js --from LINT --to REVIEW \
+  --task <task-id> \
+  --lint-result .agent/artifacts/<task-id>/lint-result.json
+```
+
+- ✅ Linter 检查通过（runner exit code 0）
 - ✅ 无安全漏洞检测
 
 **执行**: 调用 `code-reviewer` sub-agent
@@ -103,6 +146,15 @@ description: 任务完成后的一键收尾：代码审查 → 提交 → 标记
 ### Summary
 ```
 
+**必须落盘的 verdict JSON**（Phase 4 门禁的证据来源，缺了就无法通过 `REVIEW → COMMIT`）：
+
+```bash
+# code-reviewer 输出的机器可解析 verdict 必须写入此路径
+.agent/plans/<task-id>/review_verdict.json
+```
+
+最少字段：`verdict`（`PASS` / `FAIL`）与 `blocking_issues`（数组）。
+
 **Blocking Condition**: "❌ Must Fix" 非空 → 阻断，回滚到 EXECUTE 阶段
 
 **Max Retry**: 2 次
@@ -112,8 +164,14 @@ description: 任务完成后的一键收尾：代码审查 → 提交 → 标记
 ### Phase 4: COMMIT
 
 **Gate Check**: `phase-gate --from REVIEW --to COMMIT`
-- ✅ 代码审查完成
-- ✅ 无阻断性问题（"❌ Must Fix" 为空）
+
+```bash
+node .agent/skills/phase-gate/scripts/gate.js --from REVIEW --to COMMIT --task <task-id>
+```
+
+- ✅ 代码审查完成（review verdict JSON 存在且可解析）
+- ✅ review verdict = PASS
+- ✅ `blocking_issues` 为空（等价于报告里 "❌ Must Fix" 为空）
 
 **执行**: 调用 `/commit` 逻辑
 - 分析 git diff 生成 Conventional Commits 消息

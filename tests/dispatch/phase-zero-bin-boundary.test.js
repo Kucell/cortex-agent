@@ -5,7 +5,7 @@
 // regular-file source snapshot, synthetic project and HOME.
 // Run through .github/workflows/phase-zero-bin-boundary.yml. Its exact-head
 // materializer creates phase-zero-source-proof.json; this test intentionally
-// does not run standalone from an ordinary checkout without that proof.
+// uses a separately labelled index-verified snapshot for ordinary suite runs.
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
@@ -16,12 +16,15 @@ const { spawnSync } = require("node:child_process");
 const ROOT = path.resolve(__dirname, "../..");
 const manifest = require("./phase-zero-source-manifest.json");
 const proofPath = path.join(ROOT, "phase-zero-source-proof.json");
-assert.ok(fs.existsSync(proofPath), "Run the phase-zero-bin-boundary.yml exact-head materializer first; source proof is required");
-const proof = JSON.parse(fs.readFileSync(proofPath, "utf8"));
+const proof = fs.existsSync(proofPath)
+  ? JSON.parse(fs.readFileSync(proofPath, "utf8"))
+  : require("../helpers/phase-zero-source").candidateProof(ROOT);
 assert.match(proof.source_head, /^[0-9a-f]{40}$/);
 assert.deepEqual(Object.keys(proof.blobs).sort(), manifest.sources.slice().sort());
 const hash = (bytes, algorithm = "sha256") => crypto.createHash(algorithm).update(bytes).digest("hex");
 const blobHash = (bytes) => crypto.createHash("sha1").update("blob " + bytes.length + "\0").update(bytes).digest("hex");
+assert.equal(proof.source_manifest_blob, blobHash(fs.readFileSync(path.join(__dirname, "phase-zero-source-manifest.json"))));
+assert.equal(proof.test_blob, blobHash(fs.readFileSync(__filename)));
 function write(file, bytes) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, bytes);
@@ -203,7 +206,7 @@ function boundary(config) {
   }
 }
 function fixture(t, options = {}) {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-phase0-"));
+  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "cortex-phase0-")));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const f = { root, source: path.join(root, "source"), project: path.join(root, "project"),
     home: path.join(root, "home"), tmp: path.join(root, "tmp"), control: path.join(root, "control") };
@@ -265,7 +268,7 @@ function invoke(t, f, args, expectedExit, expectedControl = null) {
   assert.equal(audit.denied.length, expectedControl ? 1 : 0);
   assert.equal(result.status, expectedExit, result.stderr);
   assert.deepEqual(snapshot(f.root), before, "source/project/HOME/tmp entries, bytes, modes and mtimes");
-  t.diagnostic(JSON.stringify({ tier: "U", source_head: proof.source_head, argv: args, audit,
+  t.diagnostic(JSON.stringify({ tier: "U", source_kind: proof.source_kind || "exact-head", source_index_sha256: proof.source_index_sha256 || null, source_head: proof.source_head, argv: args, audit,
     live_governance_effect_count: null, live_host_call_count: null, future_authority_consumers: null }));
   return { ...result, audit };
 }

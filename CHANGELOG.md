@@ -45,6 +45,32 @@ Advisor-only development candidate; not published. This release scope covers rea
 - Run the existing nine release CLI regressions in a fresh, verified public-source snapshot with allowlisted environment variables, an empty command search path, and temporary HOME/TMP directories. The runner is configured with bounded cooperating-process-group cleanup; the successful candidate run exited normally and did not exercise the timeout-cleanup branch.
 - This advisor-only scope change does not itself establish validation of a final release artifact or its published-baseline version transition. Corresponding document, parity, boundary, next-action, archive-proposal, upgrade and package checks must be recorded against the reviewed candidate. Independent release authorization remains required. Baseline artifact identity and structural package checks do not establish publication, actual Claude installation or future L3 acceptance.
 
+### Fixed
+
+- **跨工具锚点不再陈旧**：`docs/cortex-agent/anchor.md` 此前停在 v1.13.0，且没有任何机制会更新它——文件里写的「重跑 `cortex-agent export-anchor` 即可刷新」并不成立（该命令在文件已存在时只输出到 stdout）。现在锚点被纳入版本载体注册表：版本 bump 会用锚点模板重新渲染它，发包 PR 白名单随之自动放行该路径，发布一致性门禁会拒绝与生成器输出不一致的副本；同时 `export-anchor` 新增 `--write` 显式刷新，默认仍是只读导出。
+- **发布触发路径对齐 npm 可信发布约束**：npm 自 2026-10-02 起拒绝由 `issue_comment` 事件触发的可信发布（Trusted Publishing / OIDC）令牌，原评论触发路径会在 `npm publish` 阶段报 404 而非授权失败。发布收敛为唯一的 owner `workflow_dispatch`，由 dispatch 携带 `release_pr` / `expected_sha` / `decision_id` / `waitpoint_id` 四项治理输入；owner 身份门禁与权威 Decision / Waitpoint 门禁在打标签前、打标签后、发布前三处生效边界同时执行，门禁强度不降级。
+
+## [1.15.6] - 2026-10-23
+
+> **Patch**：任务状态真源归一收口（旧版数据可升级、未迁移看得见、CLI 机器可读契约统一），L1 分发面完整性门禁补齐，模板拷贝卫生与 `--help` 零写入契约修复。
+> **版本线**：本版沿用 1.15.x 补丁线发布。1.15.1 ~ 1.15.5 只存在于仓库标签，未发布到 npm——npm 上的上一版是 1.15.0，本版即从那里直接升级。
+> **升级**：安装新版即生效；已有项目运行 `cortex-agent update` 同步模板。仍在用旧版任务表的项目先跑 `cortex-agent migrate-task-state detect` 查看，按提示迁移后再继续。
+
+### Added
+
+- **旧版任务数据升级路径**：`migrate-task-state` 提供 detect / plan / apply 三段式迁移。迁移走项目自己的 `render-progress.js` 规范实现，写出前用共享 JSON Schema 校验器核对，不合规以 `ERR_RECORDS_NOT_COMPLIANT` 中止并回滚，不留半迁移状态；doctor 新增 `[task-records]` 段做真源自查。
+- **未迁移必须看得见**：渲染器在「视图非生成视图且存在没有真源记录的任务行」时拒绝写入（exit 1，文件原样不动），check 路径给醒目提醒；`T-`（任务）与 `M-`（mission）两个命名空间分开判定，迁移不再把 mission 行误报成「缺任务记录」。
+- **L1 分发面完整性门禁**：补齐 manifest 完整性、实现文件内容对等与文件集对等检查；文件集与内容对等均按 `_shared ∪ zh ∪ en` 三层遍历，每层只对自己的独有 skill 负责。
+- **版本载体单一事实来源**：`lib/release/version-carriers.js` 统一管理 6 处版本载体，`local-publish-validate --bump` 同步全部载体并写入 CHANGELOG 条目，发布 PR 路径白名单也从该注册表派生。
+
+### Fixed
+
+- **CLI 机器可读契约统一 snake_case**：`migrate-task-state detect` 的输出键改为显式 snake_case 映射；内部 API 保持 camelCase，映射收敛在 CLI 边界，避免摊开内部结果对象把它变成对外契约。
+- **模板拷贝不携带垃圾与软链**：拷贝路径改用 `lstat` 而非 `stat`，跳过 `.DS_Store` 与一切软链，并删除指向机器特定路径的绝对软链——使「npm 安装」与「源码目录安装」产出同样的项目。
+- **`--help` 零写入契约**：`upgrade` / `update` / `init` / `track` / `untrack` 的 `--help` 均不写盘。此前 `init --help` 会创建 124 个文件、`track --help` 会创建 154 个文件（issue #15 契约）。
+- **任务真源审计器与副本漂移**：校正 20 个陈旧 active 任务状态，M-032 归档限定名，修复渲染器/解析器两处副本漂移。
+- **CI 门禁加固**：机械门禁落地并把全量测试纳入 CI；消除并行负载下的假红与 OS 元数据误判；全量套件不再改写 `.agent/`，启用严格 hermetic 门禁。
+
 ## [1.15.5] - 2026-10-19
 
 > **Patch**：汇总 `v1.15.4` 之后已合入 `main` 的缺陷修复与受管只读契约，不引入新的 CLI 调度器或运行态 owner。

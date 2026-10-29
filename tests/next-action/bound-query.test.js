@@ -95,7 +95,7 @@ function makeProject(f, name, task = "T-A") {
   return { project, repo, task, head };
 }
 function fixture(t) {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-advisor-query-"));
+  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "cortex-advisor-query-")));
   const f = { root, home: path.join(root, "home"), projects: [], repos: [] };
   fs.mkdirSync(f.home); f.env = cleanEnv(f.home);
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));

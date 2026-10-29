@@ -22,14 +22,12 @@ TEST_BLOBS = {
     "tests/cli/reconcile-entrypoint.test.js": "517259058790010d69220315df524d76697c20a5",
     "tests/cli/cli-contract.test.js": "fe8d027fdfe6fef1b7b12f7d154305e8a201c7a3",
 }
-GITLINK = "184694dc8fdba873a2846cbec2ffd23518d830ff"
+GITLINK = "d7edc4ed8571815d95c032e50b74fdd562a96acf"
 EXPECTED_TESTS = 9
 # Reviewed aliases outside these nine cases; never follow or recreate them.
 OMITTED_LINKS = {
     "agents": "16f9a65697d130e7d3e21753ce43bcfdc66259cc",
     "commands": "75b8b7b6a46d901e2c9caa7aaa37319c37077a90",
-    "templates/en/.agent/skills/secrets/secrets": "02594abc6c4295ef791671082d9487ab45e37acb",
-    "templates/en/.agent/skills/vcs-pr/vcs-pr": "e5cbe1460ba858dd4c29e9199895c2c9c070a308",
 }
 
 

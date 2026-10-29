@@ -150,7 +150,15 @@ test("doctor: --fix option is accepted (does not throw on empty project)", async
 test("doctor: setup-portability section is always printed (even with no .agent/global)", async () => {
   const root = mkRoot();
   fs.mkdirSync(path.join(root, ".agent"), { recursive: true });
+  // Fake HOME with ~/.agent present. The remedy line for a missing link is
+  // only printed when the expected global target exists; relying on the
+  // developer's real ~/.agent made this assertion machine-dependent.
+  const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-doc-home-"));
+  fs.mkdirSync(path.join(fakeHome, ".agent", "rules"), { recursive: true });
+  fs.mkdirSync(path.join(fakeHome, ".agent", "workflows"), { recursive: true });
   // No .agent/global symlink → "missing" branch.
+  const originalHome = process.env.HOME;
+  process.env.HOME = fakeHome;
   const ctx = {
     cwd: root,
     lang: "en",
@@ -165,6 +173,8 @@ test("doctor: setup-portability section is always printed (even with no .agent/g
   } finally {
     out = restoreOut();
     restoreErr();
+    process.env.HOME = originalHome;
+    fs.rmSync(fakeHome, { recursive: true, force: true });
   }
   assert.match(out, /\[setup-portability\]/);
   // "missing" status appears when no .agent/global link is present.

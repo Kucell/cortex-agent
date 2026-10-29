@@ -72,8 +72,10 @@ def parse_integrity(value):
     require("sha512" in expected, "SHA512 SRI is required")
     return expected
 
-def get_fixed(path, limit, accepted_types):
-    require(path in (METADATA_PATH, TAR_PATH), "unreviewed registry path")
+def get_fixed(path, limit, accepted_types, *, version="1.15.4"):
+    require(version in ("1.15.4", "1.15.6"), "unreviewed registry version")
+    allowed = ("/cortex-agent/" + version, "/cortex-agent/-/cortex-agent-" + version + ".tgz")
+    require(path in allowed, "unreviewed registry path")
     connection = http.client.HTTPSConnection(
         HOST, port=443, timeout=20, context=ssl.create_default_context())
     try:

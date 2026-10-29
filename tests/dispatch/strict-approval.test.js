@@ -15,7 +15,7 @@ const { resolveRuntimePaths } = require("../../lib/runtime-layout");
 const sha = (value) => crypto.createHash("sha256").update(JSON.stringify(value)).digest("hex");
 
 function fixture(t) {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-strict-preflight-"));
+  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "cortex-strict-preflight-")));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   for (const dir of ["decisions", "waitpoints"]) fs.mkdirSync(path.join(root, ".agent", dir), { recursive: true });
   const date = (offset) => new Date(Date.now() + offset).toISOString();

@@ -1,5 +1,5 @@
 <!-- cortex-agent:anchor:v1 -->
-This project is managed by [cortex-agent](https://github.com/Kucell/cortex-agent) v1.13.0.
+This project is managed by [cortex-agent](https://github.com/Kucell/cortex-agent) v1.16.0.
 
 ## What this means
 - The project uses a `.agent/` directory (gitignored) as the single source of truth for AI agent rules, workflows, and skills.
@@ -11,7 +11,7 @@ This project is managed by [cortex-agent](https://github.com/Kucell/cortex-agent
 2. **Stable project knowledge** (architecture, proposals, roadmap) lives in `./docs/`. Do NOT put proposals or planning docs in `.agent/` — `.agent/` is gitignored runtime data.
 3. **Use the existing cortex-agent CLI** when available: `cortex-agent status`, `cortex-agent rules list`, `cortex-agent scan-project`, `cortex-agent dev` (Dashboard). If unavailable, fall back to reading the rule / workflow files directly.
 4. **If a workflow exists** for your task (e.g. arch-design, ship, handoff, mission, plan), use it — do not invent a new script.
-5. **Cross-tool recognition**: this project exports a `docs/cortex-agent/anchor.md` (in version control) so any AI tool can pick it up. Re-run `cortex-agent export-anchor` to refresh.
+5. **Cross-tool recognition**: this project exports a `docs/cortex-agent/anchor.md` (in version control) so any AI tool can pick it up. Re-run `cortex-agent export-anchor --write` to refresh it.
 
 ## Memory discipline
 - Memory (yours and cortex-agent's) is a hint, not live state. Always verify against the current file / code before acting.

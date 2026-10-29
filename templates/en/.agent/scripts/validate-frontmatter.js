@@ -22,8 +22,34 @@
 
 const fs = require('fs');
 const path = require('path');
+const { execSync } = require('child_process');
 
 const root = process.cwd();
+
+// owner 必须是真实知识责任人(默认 = 主仓 git author)。
+// 禁止把通用 agent 身份(Codex/claude/agent/ai 等)当 owner 写入,否则门禁阻断。
+function getGitAuthor() {
+  try {
+    return execSync('git config user.name', { cwd: root, encoding: 'utf8' }).trim();
+  } catch (_) {
+    return '';
+  }
+}
+const GIT_AUTHOR = getGitAuthor();
+const FORBIDDEN_OWNERS = new Set(['codex', 'claude', 'agent', 'ai', 'copilot', 'gpt', 'assistant', 'mavis']);
+
+function checkOwnerViolation(owner) {
+  if (typeof owner !== 'string') return null;
+  const low = owner.trim().toLowerCase();
+  if (FORBIDDEN_OWNERS.has(low)) {
+    return {
+      rule_id: 'V-FM-003',
+      severity: 'error',
+      message: `owner "${owner}" is a forbidden generic agent identity; owner must be a real knowledge owner (default = git author "${GIT_AUTHOR || 'Kucell'}")`,
+    };
+  }
+  return null;
+}
 const typeArgIdx = process.argv.indexOf('--type');
 const type = typeArgIdx !== -1 ? process.argv[typeArgIdx + 1] : 'all';
 const fileArgIdx = process.argv.indexOf('--file');
@@ -162,6 +188,11 @@ if (singleFile) {
   });
 
   if (missing.length === 0) {
+    const ownerV = checkOwnerViolation(parsed.frontmatter.owner);
+    if (ownerV) {
+      console.error(`❌ [${inferredType}] ${path.relative(root, filepath)}: ${ownerV.rule_id} ${ownerV.message}`);
+      process.exit(1);
+    }
     process.exit(0);
   }
 
@@ -237,6 +268,18 @@ for (const t of typesToRun) {
         rule_id: 'V-FM-002',
         missing_fields: missing,
         message: `missing required fields: ${missing.join(', ')}`,
+      });
+      report.summary.total_violations++;
+      perType[t].violations++;
+    }
+    const ownerV = checkOwnerViolation(parsed.frontmatter.owner);
+    if (ownerV) {
+      report.violations.push({
+        type: t,
+        file: path.relative(root, filepath),
+        severity: 'error',
+        rule_id: ownerV.rule_id,
+        message: ownerV.message,
       });
       report.summary.total_violations++;
       perType[t].violations++;

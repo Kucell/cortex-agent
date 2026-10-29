@@ -28,7 +28,7 @@ const projectionRegistryPath = path.join(__dirname, "projection-registry.json");
 
 const root = process.cwd();
 const agentRoot = path.join(root, ".agent");
-const { parseTaskProgress } = require(path.join(__dirname, "../../../tasks/scripts/task-state.js"));
+const { resolveTaskState } = require(path.join(__dirname, "../../../tasks/scripts/task-state.js"));
 const args = process.argv.slice(2);
 
 const RUN_PHASES = new Set([
@@ -174,8 +174,11 @@ function rel(file) {
 }
 
 function parseTasks() {
-  const file = path.join(agentRoot, "plans", "task-progress.md");
-  return parseTaskProgress(read(file));
+  // T-TS-003 / MS-3: the structured records (.agent/tasks/*.json +
+  // .agent/missions/*/mission.json) are the truth source. The markdown view
+  // stays a fallback so a project that has not migrated keeps working.
+  const resolved = resolveTaskState({ projectRoot: root });
+  return resolved.tasks;
 }
 
 function parseWorktrees() {
@@ -892,6 +895,23 @@ function isExpired(waitpoint, nowMs) {
   return Number.isFinite(ts) && ts <= nowMs;
 }
 
+function isValidOwnerWorkflow(value) {
+  return typeof value === "string" && /^\/[A-Za-z0-9][A-Za-z0-9-]*$/.test(value);
+}
+
+function waitpointIndexEntry(record, file) {
+  return {
+    waitpoint_id: record.waitpoint_id,
+    path: rel(file),
+    status: record.status,
+    owner_workflow: record.owner_workflow,
+    gate_action: record.gate && record.gate.action,
+    resource_ref: record.gate && record.gate.resource_ref,
+    decision_id: record.decision_id === undefined ? null : record.decision_id,
+    updated_at: record.updated_at,
+  };
+}
+
 function queryInbox() {
   const items = listJsonObjects(path.join(agentRoot, "inbox"))
     .map(({ file, data }) => ({ ...data, path: rel(file) }))
@@ -946,7 +966,10 @@ function requestDecision() {
   const decisionId = safeId(option("--decision-id", payload.decision_id), "D");
   const type = String(option("--type", payload.type || "")).trim();
   if (!DECISION_TYPES.has(type)) fail("invalid_decision_type", `--type must be one of: ${[...DECISION_TYPES].join(", ")}.`);
-  const decisionGate = payload.gate || { action: option("--gate-action"), resource_ref: option("--resource-ref") };
+  const decisionGate = payload.gate || {
+    action: option("--gate-action") || option("--action"),
+    resource_ref: option("--resource-ref"),
+  };
   const gateError = validateDecisionGate(decisionGate);
   if (gateError) fail("invalid_decision_gate", gateError);
   const requestedBy = String(option("--requested-by", payload.requested_by || "")).trim();
@@ -994,7 +1017,14 @@ function requestDecision() {
     resource_ref: decisionGate.resource_ref,
     updated_at: timestamp,
   }, (entry, current) => entry.decision_id === current.decision_id);
-  printJson({ ok: true, action: "decisions request", path: rel(file), decision: next });
+  printJson({
+    ok: true,
+    action: "decisions request",
+    path: rel(file),
+    decision: next,
+    changed_paths: [rel(file), rel(path.join(agentRoot, "decisions", "index.json"))],
+    changed_resources: [`decision:${decisionId}`],
+  });
 }
 
 function resolveDecision() {
@@ -1099,7 +1129,15 @@ function supersedeDecision() {
     resource_ref: next.gate.resource_ref,
     updated_at: timestamp,
   }, (entry, current) => entry.decision_id === current.decision_id);
-  printJson({ ok: true, action: "decisions supersede", path: rel(file), decision: next, replacement: { decision_id: replacementId } });
+  printJson({
+    ok: true,
+    action: "decisions supersede",
+    path: rel(file),
+    decision: next,
+    replacement: { decision_id: replacementId },
+    changed_paths: [rel(file), rel(path.join(agentRoot, "decisions", "index.json"))],
+    changed_resources: [`decision:${decisionId}`],
+  });
 }
 
 function createInbox() {
@@ -1154,7 +1192,14 @@ function createInbox() {
     sender_id: senderId,
     updated_at: timestamp,
   }, (entry, current) => entry.message_id === current.message_id);
-  printJson({ ok: true, action: "inbox send", path: rel(file), message: next });
+  printJson({
+    ok: true,
+    action: "inbox send",
+    path: rel(file),
+    message: next,
+    changed_paths: [rel(file), rel(path.join(agentRoot, "inbox", "index.json"))],
+    changed_resources: [`inbox:${messageId}`],
+  });
 }
 
 function acknowledgeInbox() {
@@ -1185,7 +1230,14 @@ function acknowledgeInbox() {
     sender_id: existing.sender_id,
     updated_at: timestamp,
   }, (entry, current) => entry.message_id === current.message_id);
-  printJson({ ok: true, action: "inbox transition", path: rel(file), message: next });
+  printJson({
+    ok: true,
+    action: "inbox transition",
+    path: rel(file),
+    message: next,
+    changed_paths: [rel(file), rel(path.join(agentRoot, "inbox", "index.json"))],
+    changed_resources: [`inbox:${messageId}`],
+  });
 }
 
 function createWaitpoint() {
@@ -1193,7 +1245,9 @@ function createWaitpoint() {
   const payload = parsePayload();
   const waitpointId = safeId(option("--waitpoint-id", payload.waitpoint_id), "WP");
   const ownerWorkflow = String(option("--owner-workflow", payload.owner_workflow || "")).trim();
-  if (!ownerWorkflow) fail("invalid_waitpoint_owner", "--owner-workflow is required.");
+  if (!isValidOwnerWorkflow(ownerWorkflow)) {
+    fail("invalid_waitpoint_owner", "--owner-workflow must match /<workflow-name>.");
+  }
   const reason = String(option("--reason", payload.reason || "")).trim();
   if (!reason) fail("invalid_waitpoint_reason", "--reason is required.");
   const action = String(option("--action", payload.gate?.action || "")).trim();
@@ -1228,15 +1282,20 @@ function createWaitpoint() {
     workflow_gate: gate,
   };
   writeJson(file, next);
-  upsertIndexEntry("waitpoints", "waitpoints", {
-    waitpoint_id: waitpointId,
+  upsertIndexEntry(
+    "waitpoints",
+    "waitpoints",
+    waitpointIndexEntry(next, file),
+    (entry, current) => entry.waitpoint_id === current.waitpoint_id,
+  );
+  printJson({
+    ok: true,
+    action: "waitpoints create",
     path: rel(file),
-    status: next.status,
-    owner_workflow: ownerWorkflow,
-    decision_id: next.decision_id,
-    updated_at: timestamp,
-  }, (entry, current) => entry.waitpoint_id === current.waitpoint_id);
-  printJson({ ok: true, action: "waitpoints create", path: rel(file), waitpoint: next });
+    waitpoint: next,
+    changed_paths: [rel(file), rel(path.join(agentRoot, "waitpoints", "index.json"))],
+    changed_resources: [`waitpoint:${waitpointId}`],
+  });
 }
 
 function cancelWaitpoint() {
@@ -1260,15 +1319,20 @@ function cancelWaitpoint() {
     workflow_gate: gate,
   };
   writeJson(file, next);
-  upsertIndexEntry("waitpoints", "waitpoints", {
-    waitpoint_id: waitpointId,
+  upsertIndexEntry(
+    "waitpoints",
+    "waitpoints",
+    waitpointIndexEntry(next, file),
+    (entry, current) => entry.waitpoint_id === current.waitpoint_id,
+  );
+  printJson({
+    ok: true,
+    action: "waitpoints cancel",
     path: rel(file),
-    status: "canceled",
-    owner_workflow: existing.owner_workflow,
-    decision_id: existing.decision_id,
-    updated_at: timestamp,
-  }, (entry, current) => entry.waitpoint_id === current.waitpoint_id);
-  printJson({ ok: true, action: "waitpoints cancel", path: rel(file), waitpoint: next });
+    waitpoint: next,
+    changed_paths: [rel(file), rel(path.join(agentRoot, "waitpoints", "index.json"))],
+    changed_resources: [`waitpoint:${waitpointId}`],
+  });
 }
 
 function releaseWaitpoint() {
@@ -1315,15 +1379,20 @@ function releaseWaitpoint() {
     workflow_gate: gate,
   };
   writeJson(file, next);
-  upsertIndexEntry("waitpoints", "waitpoints", {
-    waitpoint_id: waitpointId,
+  upsertIndexEntry(
+    "waitpoints",
+    "waitpoints",
+    waitpointIndexEntry(next, file),
+    (entry, current) => entry.waitpoint_id === current.waitpoint_id,
+  );
+  printJson({
+    ok: true,
+    action: "waitpoints release",
     path: rel(file),
-    status: "released",
-    owner_workflow: existing.owner_workflow,
-    decision_id: decisionId,
-    updated_at: timestamp,
-  }, (entry, current) => entry.waitpoint_id === current.waitpoint_id);
-  printJson({ ok: true, action: "waitpoints release", path: rel(file), waitpoint: next });
+    waitpoint: next,
+    changed_paths: [rel(file), rel(path.join(agentRoot, "waitpoints", "index.json"))],
+    changed_resources: [`waitpoint:${waitpointId}`],
+  });
 }
 
 function upsertIndexEntry(dir, key, entry, match) {
@@ -1703,6 +1772,30 @@ function tokenAttemptsProjection() {
   });
 }
 
+function taskStateProjection() {
+  if (!fs.existsSync(path.join(__dirname, "query-task-state.js"))) {
+    return { ok: false, error: "task_state_query_unavailable", reason: "Run cortex-agent update." };
+  }
+  const { queryTaskState } = require("./query-task-state.js");
+  const result = queryTaskState(root, { task: option("--task") });
+  if (!result.ok) process.exitCode = 2;
+  // MS-004 R1: queryTaskState now returns `{ok, task: {...}}` so the CLI's
+  // formatQueryPayload() can extract it via capability.data_field = "task".
+  return result;
+}
+
+function runStateProjection() {
+  if (!fs.existsSync(path.join(__dirname, "query-run-state.js"))) {
+    return { ok: false, error: "run_state_query_unavailable", reason: "Run cortex-agent update." };
+  }
+  const { queryRunState } = require("./query-run-state.js");
+  const result = queryRunState(root, { run: option("--run") });
+  if (!result.ok) process.exitCode = 2;
+  // Same envelope rationale as taskStateProjection() — queryRunState now
+  // returns `{ok, run: {...}}` for capability.data_field = "run".
+  return result;
+}
+
 function checkpointRun() {
   const payload = parsePayload();
   const runId = safeId(option("--run-id", payload.run_id), "R");
@@ -2054,6 +2147,8 @@ const QUERY_HANDLERS = Object.freeze({
   "governed-attempt-progress": governedAttemptProgressProjection,
   "governed-attempt-diagnostics": governedAttemptDiagnosticsProjection,
   "token-attempts": tokenAttemptsProjection,
+  "task-state": taskStateProjection,
+  "run-state": runStateProjection,
 });
 
 function availableProjections() {

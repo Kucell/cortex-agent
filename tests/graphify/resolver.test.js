@@ -498,6 +498,14 @@ test("hook: runPostCommit writes semantic marker when only docs change", () => {
     sourceHead: "abc",
     branch: "agent/test",
   });
+  if (!hookLib.detectPluginState(root).cli) {
+    // Without the graphify CLI the hook degrades to a no-op — that is the
+    // documented fail-safe and the only correct outcome on a machine (or CI
+    // runner) where graphify is not installed. SEMANTIC_MARKED is only
+    // reachable when the CLI is present.
+    assert.equal(r.result, hookLib.HOOK_RESULT.NOOP);
+    return;
+  }
   assert.equal(r.result, hookLib.HOOK_RESULT.SEMANTIC_MARKED);
   const marker = markersLib.readMarker(path.join(root, "graphify-out"));
   assert.equal(marker.ok, true);
@@ -516,6 +524,12 @@ test("hook: runPostCommit attempts incremental update on code changes", () => {
     sourceHead: "abc",
     branch: "agent/test",
   });
+  if (!hookLib.detectPluginState(root).cli) {
+    // No CLI → the plugin is not enabled → the hook must degrade to a no-op
+    // instead of attempting an incremental update.
+    assert.equal(r.result, hookLib.HOOK_RESULT.NOOP);
+    return;
+  }
   // Either INCREMENTAL_OK (binary present) or INCREMENTAL_FAILED (binary
   // absent) — both are valid outcomes that the hook handled gracefully.
   assert.ok([hookLib.HOOK_RESULT.INCREMENTAL_OK, hookLib.HOOK_RESULT.INCREMENTAL_FAILED].includes(r.result));
