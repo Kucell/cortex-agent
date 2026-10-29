@@ -1,0 +1,184 @@
+name: Runtime Owner S1 Offline Contracts
+
+on:
+  pull_request:
+    paths:
+      - "lib/governance/github-selection.js"
+      - "lib/governance/github-selection-evidence.schema.json"
+      - "lib/dispatch/strict-domain-entry.js"
+      - "lib/dispatch/execute.js"
+      - "lib/coordination/application-service.js"
+      - "tests/governance/github-selection.test.js"
+      - "tests/dispatch/strict-domain-entry.test.js"
+      - "tests/dispatch/entry-ordering.test.js"
+      - "tests/dispatch/phase-zero-source-manifest.json"
+      - ".github/workflows/runtime-owner-s1.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ["22", "24"]
+    env:
+      SOURCE_HEAD: ${{ github.event.pull_request.head.sha }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ env.SOURCE_HEAD }}
+          fetch-depth: 1
+          submodules: false
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: ${{ matrix.node }}
+      - name: Verify exact source and run only reviewed S1 inert fixtures
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$SOURCE_HEAD" =~ ^[a-f0-9]{40}$ ]]
+          test "$(/usr/bin/git -c core.fsmonitor=false rev-parse HEAD)" = "$SOURCE_HEAD"
+          test -z "$(/usr/bin/git -c core.fsmonitor=false status --porcelain --untracked-files=all)"
+          scratch=$(mktemp -d "$RUNNER_TEMP/cortex-owner-s1.XXXXXX")
+          cleanup() { rm -rf -- "$scratch"; test ! -e "$scratch"; echo "S1 temporary_tree_removed=true"; }
+          trap cleanup EXIT
+          mkdir -p "$scratch/source" "$scratch/home" "$scratch/tmp"
+          /usr/bin/git -c core.fsmonitor=false ls-tree -rz --full-tree HEAD > "$scratch/tree"
+          node_bin="$(command -v node)"
+          env -i PATH="" HOME="$scratch/home" LANG=C LC_ALL=C TZ=UTC \
+            "$node_bin" - "$GITHUB_WORKSPACE" "$scratch/source" "$scratch/tree" "$SOURCE_HEAD" <<'NODE'
+          const fs = require("node:fs"), path = require("node:path"), crypto = require("node:crypto");
+          const assert = require("node:assert/strict");
+          const [checkout, root, treeFile, head] = process.argv.slice(2);
+          const tree = new Map(fs.readFileSync(treeFile, "utf8").split("\0").filter(Boolean).map((record) => {
+            const tab = record.indexOf("\t");
+            const [mode, type, blob] = record.slice(0, tab).split(" ");
+            return [record.slice(tab + 1), { mode, type, blob }];
+          }));
+          assert.equal(tree.get(".agent").mode, "160000");
+          const binding = path.join(checkout, ".agent");
+          if (fs.existsSync(binding)) {
+            assert.equal(fs.lstatSync(binding).isSymbolicLink(), false);
+            assert.deepEqual(fs.readdirSync(binding), []);
+          }
+          function bytesFor(relative) {
+            assert.ok(relative && !path.isAbsolute(relative) && !relative.split("/").includes(".."));
+            const entry = tree.get(relative);
+            assert.ok(entry, "untracked source " + relative);
+            assert.equal(entry.type, "blob");
+            assert.ok(["100644", "100755"].includes(entry.mode));
+            const source = path.join(checkout, relative), st = fs.lstatSync(source);
+            assert.ok(st.isFile() && !st.isSymbolicLink());
+            const bytes = fs.readFileSync(source);
+            const actual = crypto.createHash("sha1").update("blob " + bytes.length + "\0").update(bytes).digest("hex");
+            assert.equal(actual, entry.blob, "source blob mismatch: " + relative);
+            return { bytes, entry };
+          }
+          const manifestPath = "tests/dispatch/phase-zero-source-manifest.json";
+          const manifest = JSON.parse(bytesFor(manifestPath).bytes.toString("utf8"));
+          assert.equal(manifest.sources.length, 259);
+          assert.equal(new Set(manifest.sources).size, 259);
+          const additions = [
+            "lib/dispatch/execute.js",
+            "lib/dispatch/strict-domain-entry.js",
+            "lib/governance/github-selection.js",
+            "lib/governance/github-selection-evidence.schema.json",
+            "tests/dispatch/strict-domain-entry.test.js",
+            "tests/dispatch/entry-ordering.test.js",
+            "tests/governance/github-selection.test.js",
+          ];
+          const sources = [...new Set([...manifest.sources, ...additions, manifestPath])];
+          assert.equal(sources.length, 267);
+          const proof = { source_head: head, manifest_blob: tree.get(manifestPath).blob, blobs: {} };
+          for (const relative of sources) {
+            assert.ok(!relative.startsWith(".agent/") && !relative.includes("node_modules/"));
+            const { bytes, entry } = bytesFor(relative);
+            const dest = path.join(root, relative);
+            fs.mkdirSync(path.dirname(dest), { recursive: true });
+            fs.writeFileSync(dest, bytes, { flag: "wx", mode: entry.mode === "100755" ? 0o755 : 0o644 });
+            proof.blobs[relative] = entry;
+          }
+          fs.writeFileSync(path.join(root, "s1-source-proof.json"), JSON.stringify(proof) + "\n", { flag: "wx" });
+          console.log(JSON.stringify(proof));
+          NODE
+          cat > "$scratch/offline-guard.cjs" <<'GUARD'
+          "use strict";
+          // An inert-fixture tripwire, not an AI Host sandbox.
+          let attempts = 0;
+          const denied = (kind) => function () {
+            attempts += 1;
+            const error = new Error("S1_NETWORK_DISABLED:" + kind);
+            error.code = "S1_NETWORK_DISABLED";
+            throw error;
+          };
+          for (const [name, methods] of [
+            ["node:http", ["request", "get"]],
+            ["node:https", ["request", "get"]],
+            ["node:http2", ["connect", "createServer", "createSecureServer"]],
+            ["node:net", ["connect", "createConnection", "createServer"]],
+            ["node:tls", ["connect", "createServer"]],
+            ["node:dgram", ["createSocket"]],
+          ]) {
+            const api = require(name);
+            for (const method of methods) api[method] = denied(name + "." + method);
+          }
+          require("node:net").Socket.prototype.connect = denied("Socket.connect");
+          require("node:net").Server.prototype.listen = denied("Server.listen");
+          for (const api of [require("node:dns"), require("node:dns/promises")]) {
+            for (const name of Object.keys(api)) {
+              if (typeof api[name] === "function" && /^(lookup|resolve|reverse|setServers)/.test(name)) {
+                api[name] = denied("dns." + name);
+              }
+            }
+          }
+          globalThis.fetch = denied("fetch");
+          globalThis.WebSocket = denied("WebSocket");
+          process.once("exit", () => {
+            console.log("# S1 network_attempts=" + attempts + " (fixture tripwire)");
+            if (attempts !== 0) process.exitCode = 1;
+          });
+          GUARD
+          cd "$scratch/source"
+          major="$("$node_bin" -p 'process.versions.node.split(".")[0]')"
+          case "$major" in
+            22) isolation="--experimental-test-isolation=none" ;;
+            24) isolation="--test-isolation=none" ;;
+            *) exit 1 ;;
+          esac
+          env -i PATH="" HOME="$scratch/home" USERPROFILE="$scratch/home" \
+            TMPDIR="$scratch/tmp" TMP="$scratch/tmp" TEMP="$scratch/tmp" \
+            XDG_CONFIG_HOME="$scratch/home" LANG=C LC_ALL=C TZ=UTC \
+            /usr/bin/timeout --signal=TERM --kill-after=5 180 "$node_bin" \
+            --permission --allow-fs-read="$scratch" --allow-fs-write="$scratch/tmp" \
+            --allow-fs-write="$scratch/home" --require="$scratch/offline-guard.cjs" \
+            --test "$isolation" --test-reporter=tap \
+            tests/dispatch/strict-domain-entry.test.js \
+            tests/dispatch/entry-ordering.test.js \
+            tests/governance/github-selection.test.js | tee "$scratch/tap.log"
+          env -i PATH="" HOME="$scratch/home" "$node_bin" - "$scratch/tap.log" "$scratch/source" <<'NODE'
+          const fs = require("node:fs"), path = require("node:path"), crypto = require("node:crypto");
+          const assert = require("node:assert/strict");
+          const [tapFile, root] = process.argv.slice(2);
+          const tap = fs.readFileSync(tapFile, "utf8");
+          const count = (key) => [...tap.matchAll(new RegExp("^# " + key + " (\\d+)\\s*$", "gm"))].map((item) => Number(item[1]));
+          assert.match(tap, /^# S1 network_attempts=0 \(fixture tripwire\)$/m);
+          const expected = 83;
+          for (const [key, n] of Object.entries({tests: expected, pass: expected, fail: 0, skipped: 0, cancelled: 0, todo: 0})) {
+            assert.deepEqual(count(key), [n], "unexpected S1 TAP " + key);
+          }
+          const proof = JSON.parse(fs.readFileSync(path.join(root, "s1-source-proof.json"), "utf8"));
+          for (const [relative, entry] of Object.entries(proof.blobs)) {
+            const file = path.join(root, relative), st = fs.lstatSync(file);
+            assert.ok(st.isFile() && !st.isSymbolicLink());
+            const bytes = fs.readFileSync(file);
+            assert.equal(crypto.createHash("sha1").update("blob " + bytes.length + "\0").update(bytes).digest("hex"), entry.blob);
+            assert.equal(st.mode & 0o777, entry.mode === "100755" ? 0o755 : 0o644);
+          }
+          console.log(JSON.stringify({source_head: proof.source_head, source_unchanged: true,
+            source_count: Object.keys(proof.blobs).length, tests: expected, evidence_level: "S1_INERT_FIXTURE_ONLY"}));
+          NODE

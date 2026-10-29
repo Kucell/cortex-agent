@@ -31,6 +31,51 @@ test("monitor runs in a detached process group after the launcher exits", () => 
   assert.equal(options.env.CORTEX_LAUNCH_CONTEXT, "/private/context.json");
 });
 
+// Synthetic children remain referenced until close; deadlines fail the
+// fixture rather than changing any production timeout or launch policy.
+function spawnOwnedFixture(children, command, args, options, { lifetimeMs = 5000, expectedSpawnError = null } = {}) {
+  const child = require("node:child_process").spawn(command, args, options);
+  const entry = { child, closed: null, didClose: false, timedOut: false, spawnError: null, expectedSpawnError };
+  child.once("error", (error) => { entry.spawnError = error; });
+  entry.closed = new Promise((resolve) => {
+    const watchdog = setTimeout(() => {
+      entry.timedOut = true;
+      child.kill("SIGKILL");
+    }, lifetimeMs);
+    child.once("close", () => {
+      clearTimeout(watchdog); entry.didClose = true; resolve();
+    });
+  });
+  children.push(entry);
+  return child;
+}
+async function cleanupOwnedFixtures(children, service, directories) {
+  const errors = [];
+  for (const entry of children) {
+    let deadline;
+    try {
+      await Promise.race([entry.closed, new Promise((_, reject) => {
+        deadline = setTimeout(() => {
+          entry.child.kill("SIGKILL");
+          reject(new Error("Synthetic child did not close within cleanup deadline"));
+        }, 6000);
+      })]);
+      if (entry.spawnError && entry.spawnError.code !== entry.expectedSpawnError) throw entry.spawnError;
+      assert.equal(entry.timedOut, false, "Synthetic child exceeded fixture lifetime");
+    } catch (error) { errors.push(error); }
+    finally { clearTimeout(deadline); }
+  }
+  try { service.close(); } catch (error) { errors.push(error); }
+  // A stuck live child must never race directory removal.
+  if (children.every((entry) => entry.didClose)) {
+    for (const dir of directories) {
+      try { fs.rmSync(dir, { recursive: true, force: true }); }
+      catch (error) { errors.push(error); }
+    }
+  }
+  if (errors.length) throw new AggregateError(errors, errors.map((error) => error.message).join("; "));
+}
+
 function mockExecutor() {
   return { pid: 12345, launchedAt: new Date().toISOString() };
 }
@@ -436,6 +481,7 @@ test("launch with real subprocess executor — accepted after child alive", asyn
   const service = createService(dir);
   const fixtureDir = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-launch-fixture-"));
   const agentPath = createTempExecutable(fixtureDir);
+  const children = [];
   try {
     const launcher = createGovernedLauncher(service, {
       coordinatorId: "coordinator-1",
@@ -444,7 +490,7 @@ test("launch with real subprocess executor — accepted after child alive", asyn
       executor: (ctxFile, privateCtx) => {
         const { spawn } = require("node:child_process");
         return new Promise((resolve, reject) => {
-          const child = spawn(process.execPath, ["-e", "setTimeout(() => process.exit(0), 500)"], {
+          const child = spawnOwnedFixture(children, process.execPath, ["-e", "setTimeout(() => process.exit(0), 500)"], {
             stdio: "ignore",
             env: { CORTEX_LAUNCH_CONTEXT: ctxFile },
           });
@@ -460,7 +506,6 @@ test("launch with real subprocess executor — accepted after child alive", asyn
             // Child exited successfully — still resolve
             resolve({ pid: child.pid, launchedAt: new Date().toISOString() });
           });
-          child.unref();
         });
       },
       testMode: true,
@@ -486,9 +531,7 @@ test("launch with real subprocess executor — accepted after child alive", asyn
     const task = service.getTask("TASK-ASYNC-ALIVE-001");
     assert.ok(task);
   } finally {
-    service.close();
-    fs.rmSync(dir, { recursive: true, force: true });
-    fs.rmSync(fixtureDir, { recursive: true, force: true });
+    await cleanupOwnedFixtures(children, service, [dir, fixtureDir]);
   }
 });
 
@@ -497,6 +540,7 @@ test("launch with real executor — spawn failure produces task.failed", async (
   const service = createService(dir);
   const fixtureDir = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-launch-fixture-"));
   const agentPath = createTempExecutable(fixtureDir);
+  const children = [];
   try {
     const launcher = createGovernedLauncher(service, {
       coordinatorId: "coordinator-1",
@@ -504,14 +548,13 @@ test("launch with real executor — spawn failure produces task.failed", async (
       executor: (ctxFile, privateCtx) => {
         const { spawn } = require("node:child_process");
         return new Promise((resolve, reject) => {
-          const child = spawn("/nonexistent/binary", [], { stdio: "ignore" });
+          const child = spawnOwnedFixture(children, "/nonexistent/binary", [], { stdio: "ignore" }, { expectedSpawnError: "ENOENT" });
           child.once("error", (err) => {
             reject(err);
           });
           child.once("exit", (code, signal) => {
             reject(new Error(`Spawn failed: code=${code} signal=${signal}`));
           });
-          child.unref();
         });
       },
       testMode: true,
@@ -538,9 +581,7 @@ test("launch with real executor — spawn failure produces task.failed", async (
     assert.equal(task.assignee, "claude-agent");
     assert.equal(task.state, STATES.FAILED);
   } finally {
-    service.close();
-    fs.rmSync(dir, { recursive: true, force: true });
-    fs.rmSync(fixtureDir, { recursive: true, force: true });
+    await cleanupOwnedFixtures(children, service, [dir, fixtureDir]);
   }
 });
 
@@ -549,6 +590,7 @@ test("launch with real executor — early exit produces task.failed", async () =
   const service = createService(dir);
   const fixtureDir = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-launch-fixture-"));
   const agentPath = createTempExecutable(fixtureDir);
+  const children = [];
   try {
     const launcher = createGovernedLauncher(service, {
       coordinatorId: "coordinator-1",
@@ -556,7 +598,7 @@ test("launch with real executor — early exit produces task.failed", async () =
       executor: (ctxFile, privateCtx) => {
         const { spawn } = require("node:child_process");
         return new Promise((resolve, reject) => {
-          const child = spawn(process.execPath, ["-e", "process.exit(1)"], {
+          const child = spawnOwnedFixture(children, process.execPath, ["-e", "process.exit(1)"], {
             stdio: "ignore",
             env: { CORTEX_LAUNCH_CONTEXT: ctxFile },
           });
@@ -564,7 +606,6 @@ test("launch with real executor — early exit produces task.failed", async () =
           child.once("exit", (code, signal) => {
             reject(new Error(`Executor exited early: code=${code} signal=${signal}`));
           });
-          child.unref();
         });
       },
       testMode: true,
@@ -591,9 +632,7 @@ test("launch with real executor — early exit produces task.failed", async () =
     assert.equal(task.assignee, "claude-agent");
     assert.equal(task.state, STATES.FAILED);
   } finally {
-    service.close();
-    fs.rmSync(dir, { recursive: true, force: true });
-    fs.rmSync(fixtureDir, { recursive: true, force: true });
+    await cleanupOwnedFixtures(children, service, [dir, fixtureDir]);
   }
 });
 
@@ -936,6 +975,7 @@ test("temp executable fixture can be launched", async () => {
   const service = createService(dir);
   const fixtureDir2 = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-launch-fixture-"));
   const agentPath = createTempExecutable(fixtureDir2, "#!/bin/sh\necho 'agent-alive'");
+  const children = [];
   try {
     const launcher = createGovernedLauncher(service, {
       coordinatorId: "coordinator-1",
@@ -944,7 +984,7 @@ test("temp executable fixture can be launched", async () => {
         // Use the validated agent command from private context
         const { spawn } = require("node:child_process");
         return new Promise((resolve, reject) => {
-          const child = spawn(privateCtx.agentCommand, [], {
+          const child = spawnOwnedFixture(children, privateCtx.agentCommand, [], {
             stdio: "ignore",
             env: { CORTEX_LAUNCH_CONTEXT: ctxFile },
           });
@@ -959,7 +999,6 @@ test("temp executable fixture can be launched", async () => {
             clearTimeout(timeout);
             resolve({ pid: child.pid, launchedAt: new Date().toISOString() });
           });
-          child.unref();
         });
       },
       testMode: true,
@@ -979,9 +1018,7 @@ test("temp executable fixture can be launched", async () => {
     const task = service.getTask("TASK-FIXTURE-ALIVE-001");
     assert.ok(task);
   } finally {
-    service.close();
-    fs.rmSync(dir, { recursive: true, force: true });
-    fs.rmSync(fixtureDir2, { recursive: true, force: true });
+    await cleanupOwnedFixtures(children, service, [dir, fixtureDir2]);
   }
 });
 
@@ -1171,4 +1208,27 @@ test("launch rejects non-whitelisted command despite valid executable", async ()
     fs.rmSync(dir, { recursive: true, force: true });
     fs.rmSync(fixtureDir2, { recursive: true, force: true });
   }
+});
+
+test("owned fixture watchdog fails after reaping children and closing/removing resources", async () => {
+  const dir = runtimeDir();
+  const fixtureDir = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-watchdog-fixture-"));
+  const service = createService(dir);
+  const children = [];
+  spawnOwnedFixture(children, process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore" }, { lifetimeMs: 100 });
+  spawnOwnedFixture(children, process.execPath, ["-e", "process.exit(0)"], { stdio: "ignore" });
+  await assert.rejects(cleanupOwnedFixtures(children, service, [dir, fixtureDir]), /exceeded fixture lifetime/);
+  assert.ok(children.every((entry) => entry.didClose));
+  assert.equal(fs.existsSync(dir), false);
+  assert.equal(fs.existsSync(fixtureDir), false);
+});
+
+test("owned fixture unexpected spawn error is propagated after resource cleanup", async () => {
+  const dir = runtimeDir();
+  const service = createService(dir);
+  const children = [];
+  spawnOwnedFixture(children, path.join(dir, "missing-executable"), [], { stdio: "ignore" });
+  await assert.rejects(cleanupOwnedFixtures(children, service, [dir]), /ENOENT/);
+  assert.ok(children.every((entry) => entry.didClose));
+  assert.equal(fs.existsSync(dir), false);
 });

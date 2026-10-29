@@ -307,8 +307,8 @@ test("MS-003 two processes cannot issue two permits for one idempotency key", { 
       reserveInProcess(f.file, f.anchorDir, fields, 1_000_001),
       reserveInProcess(f.file, f.anchorDir, fields, 1_000_001),
     ]);
-    assert.equal(a.ok, true);
-    assert.equal(b.ok, true);
+    assert.equal(a.ok, true, JSON.stringify({ child: "a", result: a }));
+    assert.equal(b.ok, true, JSON.stringify({ child: "b", result: b }));
     assert.equal(a.permitId, b.permitId);
     assert.equal(Object.keys(f.store.snapshot().permits).length, 1);
   } finally { f.cleanup(); }

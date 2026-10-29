@@ -363,9 +363,24 @@ test("resources/read resolves prototype:// and prd:// and blocks traversal", asy
 
 // ─── install backend ─────────────────────────────────────────────────────────
 
-test("defaultInstallSystem maps design install exit codes to status", () => {
-  // Exit 2 (id not in catalog) is the deterministic offline path.
-  const result = defaultInstallSystem("definitely-not-in-catalog", { cwd: process.cwd() });
-  assert.ok(["rejected", "network_error", "error"].includes(result.status), result.status);
-  assert.ok(typeof result.message === "string");
+test("defaultInstallSystem rejects an unknown id offline without rewriting the cache", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-mcp-install-"));
+  const cachePath = path.join(root, "catalog-cache.json");
+  const previousCache = process.env.CORTEX_AGENT_DESIGN_CACHE;
+  // The real CLI child inherits this fixture. Without it, a cold user cache
+  // triggers a network fetch and home-cache write before the id is rejected.
+  const cache = JSON.stringify({ fetched_at: new Date().toISOString(), entries: [] });
+  fs.writeFileSync(cachePath, cache);
+  process.env.CORTEX_AGENT_DESIGN_CACHE = cachePath;
+  try {
+    const result = defaultInstallSystem("definitely-not-in-catalog", { cwd: root });
+    assert.equal(result.status, "rejected", result.message);
+    assert.match(result.message, /not found in catalog/);
+    assert.equal(fs.readFileSync(cachePath, "utf8"), cache);
+    assert.deepEqual(fs.readdirSync(root), ["catalog-cache.json"]);
+  } finally {
+    if (previousCache === undefined) delete process.env.CORTEX_AGENT_DESIGN_CACHE;
+    else process.env.CORTEX_AGENT_DESIGN_CACHE = previousCache;
+    fs.rmSync(root, { recursive: true, force: true });
+  }
 });

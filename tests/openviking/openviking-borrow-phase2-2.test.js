@@ -201,8 +201,14 @@ test("--dead-letter reports dead tasks after max_retries", () => {
 test("SKILL.md files exist in both zh and en", () => {
   const zh = fs.readFileSync(path.join(REPO_ROOT, "templates", "zh", ".agent", "skills", "evolution-pipeline", "SKILL.md"), "utf8");
   const en = fs.readFileSync(path.join(REPO_ROOT, "templates", "en", ".agent", "skills", "evolution-pipeline", "SKILL.md"), "utf8");
-  assert.ok(zh.includes("Self-Evolution Pipeline"));
-  assert.ok(en.includes("Self-Evolution Pipeline"));
+  for (const skill of [zh, en]) {
+    assert.match(skill, /^name: evolution-pipeline$/m);
+    assert.ok(skill.includes("--queue-learning-proposal"));
+    assert.ok(skill.includes("--proposal-only"));
+    assert.ok(skill.includes("--gate user"));
+  }
+  assert.ok(zh.includes("不调用模型、不更新 memory"));
+  assert.match(en, /No model is invoked, no\s+memory\/index is updated/);
   assert.ok(zh.includes("入队") || zh.includes("enqueue"));
   assert.ok(en.includes("enqueue"));
 });

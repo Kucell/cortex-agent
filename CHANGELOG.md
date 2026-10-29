@@ -9,6 +9,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- 下一个版本的条目写在这里 -->
 
+## [1.16.0] - Unreleased development candidate
+
+Advisor-only development candidate; not published. This release scope covers read-only advice, proposal preparation and upgrade/safety fixes. Real L3 autonomy and real AI Host execution are deferred to incremental, independently accepted 1.16.x delivery. The formal 28-item authorization/L3/SelfEvolution matrix remains a future L3 enablement gate, not a blanket prerequisite for this advisor-only release.
+
+### Added
+
+- Add an opt-in session-archive proposal queue and shared English/Chinese evolution helpers. The default remains off; this path produces project-local metadata-only proposal records without copying raw archived text into proposal records, output, or long-term memory, or automatically applying proposals.
+- Add proposal-only evolution contracts and side-effect-free reasoning-handoff preparation.
+- Add a package-owned read-only next-action gap report for the CLI and local SDK, using bounded same-commit Task, advisory-plan, Mission-identity, Decision, and Waitpoint observations, plus a pure advisory-plan draft producer. Incomplete or changed bindings remain explicit gaps; the report does not authorize execution or establish ready-candidate acceptance.
+- Add experimental Chat/GitHub review receipts as evidence transport, without promoting them to authoritative Tasks, Decisions, Waitpoints, or execution approval.
+- Add development-only strict-approval/runtime fixtures and process-canary diagnostics using a fixed cooperative worker. These fixtures do not establish formal L3 autonomy or real AI Host acceptance.
+
+### Fixed
+
+- Preserve customized framework files and migration before-images during upgrade. Fail closed on detected planning, scanning, and migration errors, stop subsequent configuration/version writes after a failed migration, and retain the previous framework version when an update is incomplete.
+- Separate Decision resolution from Waitpoint release or cancellation; downstream lifecycle changes require their own validated operation.
+- Reference packaged Claude command, agent, and skill templates explicitly, retain the packaged `cortex-setup` entrypoint, and remove the default root skills alias that would otherwise be scanned in addition to the configured skills directory.
+- Keep the root npm lockfile executable map aligned with the package manifest and enforce bin-map parity in the existing version-consistency regression.
+- Remove the stale fixed skill count from Marketplace metadata.
+- Restore the submodule mapping for the existing governance gitlink without initializing private governance content.
+- Preserve executable modes for the English/Chinese evolution helpers and shared/local management entrypoints; the new shared evolution helper is executable as well.
+
+### Not Delivered in 1.16.0
+
+- Public `dispatch execute`, `dispatch <task-id>`, `daemon` and `trigger` remain Phase 0 stubs. The bound next-action report retains `execution_authorized=false` and `authority_attested=false`. Review receipts retain `authority:none` and `execution_authorized=false`; neither authenticates an Owner or grants effect permission.
+- Strict fixtures remain disabled by default and test workers are excluded from the npm package. Canonical control has no real platform source configured and `approved-installation` remains null. No controller deployment, permission change, bootstrap refresh or Linux probe is authorized by this scope.
+- Real authority, Host admission/effect acceptance and the remaining formal28 checks are future L3 enablement gates, outside the advisor-only 1.16.0 scope.
+
+### Release Validation and Pending Acceptance
+
+- Add exact-source tar file-manifest and digest checks, structural plugin checks, offline local-tar installation with lifecycle scripts disabled, and isolated synthetic upgrade-preservation checks.
+- Verify the official published 1.15.4 baseline tar against its registry metadata and exact public Git tree, with pinned SHA512 integrity and per-member blob/mode checks. Registry signatures and provenance remain unverified.
+- Verify actual installation of the pinned published 1.15.4 tar followed by source-candidate replacement and apply operations on four fresh English/Chinese managed/customized projects. The prior candidate run preserved custom content, nonempty historical state, and executable modes across 20 commands and eight apply operations. That historical run used two packages labeled 1.15.4 and is not evidence of a 1.15.4-to-1.16.0 transition. Version metadata is now aligned at 1.16.0; any later transition result must identify its exact source and artifacts separately, without implying publication.
+- Run the existing nine release CLI regressions in a fresh, verified public-source snapshot with allowlisted environment variables, an empty command search path, and temporary HOME/TMP directories. The runner is configured with bounded cooperating-process-group cleanup; the successful candidate run exited normally and did not exercise the timeout-cleanup branch.
+- This advisor-only scope change does not itself establish validation of a final release artifact or its published-baseline version transition. Corresponding document, parity, boundary, next-action, archive-proposal, upgrade and package checks must be recorded against the reviewed candidate. Independent release authorization remains required. Baseline artifact identity and structural package checks do not establish publication, actual Claude installation or future L3 acceptance.
+
 ### Fixed
 
 - **跨工具锚点不再陈旧**：`docs/cortex-agent/anchor.md` 此前停在 v1.13.0，且没有任何机制会更新它——文件里写的「重跑 `cortex-agent export-anchor` 即可刷新」并不成立（该命令在文件已存在时只输出到 stdout）。现在锚点被纳入版本载体注册表：版本 bump 会用锚点模板重新渲染它，发包 PR 白名单随之自动放行该路径，发布一致性门禁会拒绝与生成器输出不一致的副本；同时 `export-anchor` 新增 `--write` 显式刷新，默认仍是只读导出。

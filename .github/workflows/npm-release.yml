@@ -53,7 +53,35 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  targeted-cli-validation:
+    # Only the reviewed nine CLI regressions; no release credentials or OIDC.
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          submodules: false
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.19.0"
+      - name: Verify shipped reconcile CLI entrypoint in isolated environment
+        env:
+          SOURCE_HEAD: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          node_bin="$(command -v node)"
+          /usr/bin/env -i PATH=/usr/bin:/bin /usr/bin/python3 -I \
+            scripts/release/targeted-cli-validation.py \
+            --expected-head "$SOURCE_HEAD" --node "$node_bin"
+
   release:
+    needs: [targeted-cli-validation]
     # Owner dispatch is the explicit human release action, and it carries the
     # same canonical private Decision/Waitpoint gate as every other path.
     if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
@@ -63,7 +91,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.sha }}
           fetch-depth: 0
+          submodules: false
 
       - name: Verify exact-head Cortex release authorization
         if: ${{ inputs.publish }}
@@ -110,18 +140,6 @@ jobs:
 
       - name: Run focused product validation
         run: pnpm test:m040
-
-      - name: Verify shipped reconcile CLI entrypoint
-        run: |
-          set -euo pipefail
-          if [[ -f tests/cli/reconcile-entrypoint.test.js ]]; then
-            node --test tests/commands/reconcile.test.js tests/cli/reconcile-entrypoint.test.js tests/cli/cli-contract.test.js
-          elif [[ "$(node -p "require('./package.json').version")" == "1.15.4" ]]; then
-            echo "::error::v1.15.4 requires the real reconcile CLI regression tests"
-            exit 1
-          else
-            echo "CLI entrypoint test not introduced on this earlier base."
-          fi
 
       - name: Verify package can be packed
         run: npm pack --dry-run --json > npm-release-pack-dry-run.json
