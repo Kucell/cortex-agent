@@ -136,9 +136,12 @@ def baseline_profile(version):
     require(version in BASELINES, "unreviewed baseline version")
     return BASELINES[version]
 
+# The template tree is layered: the language-neutral copy lives under _shared,
+# and en/zh only override a path when the language genuinely differs. These
+# two scripts are language-neutral, so each exists once, under _shared. Listing
+# all three layers would demand files the layering deliberately removed.
 EXECUTABLE_TEMPLATE_PATHS = [
-    "templates/" + language + "/.agent/skills/" + skill + "/scripts/" + filename
-    for language in ("_shared", "en", "zh")
+    "templates/_shared/.agent/skills/" + skill + "/scripts/" + filename
     for skill, filename in (("evolution-pipeline", "evolve.js"), ("management-api", "index.js"))
 ]
 DEPENDENCY_KEYS = ("dependencies", "devDependencies", "optionalDependencies",
