@@ -24,7 +24,7 @@ status: stable
 
 典型场景：
 
-- **双仓联合提案**：csm-view-1（后台/网关） + samkoonyun-mobile（移动端）共同交付，两边各有一份
+- **双仓联合提案**：backend-project（后台/网关） + mobile-project（移动端）共同交付，两边各有一份
   `.agent/plans/proposals/projects/<slug>/` 分册，需要一起共享，不能只给一边。
 - `.agent/` 通常被 gitignore（`git check-ignore .agent` 返回 0），**不能靠 git clone/push 传递**，
   必须用 tar/zip 打包或直接复制目录。

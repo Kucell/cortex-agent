@@ -164,7 +164,7 @@ VERIFY 失败 → 回 EXECUTE（状态写 `verify` → `execute`）；通过 →
 - Phase 1 自举：cortex-agent 主仓库 `.agent/specs/` 创建一份示例 Spec（如本文档自身的中文摘要简报），跑通 CLARIFY → DELIVER 全链路
 - Phase 2 模板同步：`templates/{zh,en}/.agent/workflows/spec.md` + `templates/{zh,en}/.agent/resources/templates/spec.md` 对齐
 - Phase 3 升级路径实测：在 DELIVER 后调 `/spec upgrade --to prd|plan|mission`，验证状态机正确推进
-- Phase 4 实战验证：下发 samhmi 或其他下游项目，跑一份真实 Spec
+- Phase 4 实战验证：下发到下游项目，跑一份真实 Spec
 
 ## Cross-References
 

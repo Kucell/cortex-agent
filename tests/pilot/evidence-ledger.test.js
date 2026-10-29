@@ -174,12 +174,12 @@ test('run-pilot-stack.js without --layer runs all 3 (fake-host passes, others sk
   const layers = result.results.map((r) => r.layer);
   assert.ok(layers.includes('fake-host'));
   assert.ok(layers.includes('real-pi'));
-  assert.ok(layers.includes('samhmi'));
-  // fake-host passes; others skip (no Pi / no SAMHMI_PATH)
+  assert.ok(layers.includes('project'));
+  // fake-host passes; others skip (no Pi / no PILOT_PROJECT_PATH)
   const fakeHost = result.results.find((r) => r.layer === 'fake-host');
   const realPi = result.results.find((r) => r.layer === 'real-pi');
-  const samhmi = result.results.find((r) => r.layer === 'samhmi');
+  const project = result.results.find((r) => r.layer === 'project');
   assert.equal(fakeHost.status, 'passed');
-  assert.ok(['skipped', 'requires-pi-binary', 'requires-samhmi-env'].includes(realPi.status), `real-pi status: ${realPi.status}`);
-  assert.ok(['skipped', 'requires-pi-binary', 'requires-samhmi-env'].includes(samhmi.status), `samhmi status: ${samhmi.status}`);
+  assert.ok(['skipped', 'requires-pi-binary', 'requires-project-env'].includes(realPi.status), `real-pi status: ${realPi.status}`);
+  assert.ok(['skipped', 'requires-pi-binary', 'requires-project-env'].includes(project.status), `project status: ${project.status}`);
 });
