@@ -6,7 +6,9 @@ const os=require('node:os');
 const path=require('node:path');
 const crypto=require('node:crypto');
 const {spawnSync}=require('node:child_process');
-const SCRIPT=process.env.EVOLUTION_TEST_SCRIPT||path.resolve(__dirname,'../../templates/en/.agent/skills/evolution-pipeline/scripts/evolve.js');
+// The script ships once, in the shared template layer; the language overlays
+// carry the manifest only.
+const SCRIPT=process.env.EVOLUTION_TEST_SCRIPT||path.resolve(__dirname,'../../templates/_shared/.agent/skills/evolution-pipeline/scripts/evolve.js');
 const ARCHIVE_ID='RC-20261009_B_REVIEW';
 const TASK_ID='EVO-FIXTURE-001';
 

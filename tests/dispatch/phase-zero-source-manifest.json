@@ -238,6 +238,7 @@
     "lib/state-registry/index.js",
     "lib/state-sync/index.js",
     "lib/team-pack/index.js",
+    "lib/template-layers.js",
     "lib/templates/html-deck.js",
     "lib/templates/md-deck.js",
     "lib/templates/open-design-deck-adapter.js",

@@ -4,13 +4,12 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
+const { resolveTemplatePath, templateSurface } = require("../helpers/template-layers");
 
 const ROOT = path.resolve(__dirname, "..", "..");
-const EN = path.join(ROOT, "templates", "en", ".agent", "contracts", "runtime-state");
-const ZH = path.join(ROOT, "templates", "zh", ".agent", "contracts", "runtime-state");
 const SHARED = path.join(ROOT, "templates", "_shared", ".agent", "contracts", "runtime-state");
-// MS-004 R1 / VC-013: These 5 schemas are committed to all three
-// distribution templates (en/zh/_shared). Earlier schema files
+// MS-004 R1 / VC-013: These 5 schemas reach both languages through
+// the template layers. Earlier schema files
 // (resource-event, log-cursor, evidence-ref, operation, authorization,
 // readiness-projection) referenced by the tests below live under
 // `.agent/contracts/runtime-state/` in the project runtime and were
@@ -42,10 +41,18 @@ function schema(root, file) {
 }
 
 test("runtime schemas parse and remain identical across distribution templates", () => {
-  // EN/ZH/SHARED now share the same set of schemas under contracts/runtime-state/.
   const allExpected = [...SCHEMAS, "README.md"];
-  assert.deepEqual(fs.readdirSync(EN).sort(), allExpected.slice().sort());
-  assert.deepEqual(fs.readdirSync(ZH).sort(), allExpected.slice().sort());
+  for (const lang of ["en", "zh"]) {
+    const files = [...templateSurface(lang).keys()]
+      .filter((file) => path.posix.dirname(file) === "contracts/runtime-state")
+      .map((file) => path.posix.basename(file));
+    assert.deepEqual(files.sort(), allExpected.slice().sort());
+    for (const file of SCHEMAS) {
+      const content = fs.readFileSync(resolveTemplatePath(`contracts/runtime-state/${file}`, lang), "utf8");
+      assert.doesNotThrow(() => JSON.parse(content), `${lang}/${file}`);
+      assert.equal(content, read(SHARED, file), `${lang}/${file} drifted`);
+    }
+  }
   assert.deepEqual(fs.readdirSync(SHARED).sort(), allExpected.slice().sort());
 
   for (const file of SCHEMAS) {
@@ -101,8 +108,8 @@ test("log and evidence references fail closed on redaction and availability", ()
 });
 
 test("localized documentation preserves the read-only reader boundary", () => {
-  const english = read(EN, "README.md");
-  const chinese = read(ZH, "README.md");
+  const english = fs.readFileSync(resolveTemplatePath("contracts/runtime-state/README.md", "en"), "utf8");
+  const chinese = fs.readFileSync(resolveTemplatePath("contracts/runtime-state/README.md", "zh"), "utf8");
   // MS-004 R1: markers reflect the actual contract language used in the
   // frozen README ("Writers ... target `.agent/runtime/`; readers fall
   // back to `.agent-runtime/` ..."). Earlier draft markers ("Writers

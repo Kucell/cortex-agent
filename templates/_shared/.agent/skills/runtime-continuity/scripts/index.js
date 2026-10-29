@@ -1905,7 +1905,15 @@ function main() {
   if (mode === "status") {
     const out = statusReport(project);
     emit(out);
-    appendRunEvent({ type: "session_status_queried", project, ...(out.age_hours != null ? { age_hours: out.age_hours } : {}) });
+    // `status` is a query, and a query must not mutate. It used to append a
+    // `session_status_queried` run event unconditionally, which meant every
+    // read rewrote `runs/<active-run>.json` — the run's own mtime and
+    // `last_event` moved, and any caller watching the run record saw a
+    // mutation it never asked for. A caller that genuinely wants the read
+    // to be audited asks for it explicitly with `--audit`.
+    if (argv.includes("--audit")) {
+      appendRunEvent({ type: "session_status_queried", project, ...(out.age_hours != null ? { age_hours: out.age_hours } : {}) });
+    }
     return;
   }
 

@@ -25,7 +25,7 @@ agent 任何 observation / tool failure 都可即时登记 — 让下次 agent /
 ```bash
 node .agent/skills/session-triage/scripts/index.js triage \
   --threshold 3 \
-  --signal-file /tmp/session-signals.json  # optional,默认 stdin
+  --signal-file .agent/runtime-evidence/session-triage/session-signals.json  # optional,默认 stdin
 ```
 
 读 JSON `{ turns: N, text: "...", tool_failures: N, user_questions: N }`。

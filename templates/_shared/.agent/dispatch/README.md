@@ -4,14 +4,14 @@ This directory defines the machine-readable schemas and human-readable
 documentation for the **Dispatch / Lease** vocabulary introduced by FAE-001
 and extended by FAE-002 / FAE-003 / FAE-004 / FAE-007. The vocabulary is the
 shared language for the public lease CLI, the read-only dispatch-state query,
-the dispatch dry-run, the internal explicit manual-dispatch contract, and the
-corresponding Management API projections.
+the dispatch dry-run, the explicit manual dispatch, and the corresponding
+Management API projections.
 
-The public `cortex-agent dispatch dry-run <task-id>` command is read-only.
-`dispatch execute`, `dispatch <task-id>`, `daemon` and `trigger` remain
-**Phase 0 stubs**: no execution, persistence, lease acquisition, or automatic
-fallback occurs through those stub routes. Internal manual-dispatch helpers
-do not enable the public command or establish authenticated Owner authority.
+`cortex-agent dispatch` now provides a deliberately explicit manual surface:
+`dispatch dry-run <task-id>` is read-only and `dispatch <task-id>` is gated,
+lease-fenced, and idempotent. `daemon` and `trigger` remain **Phase 0 stubs**
+— no daemon, no trigger persistence, and no automatic fallback. All FAE-002 /
+FAE-003 / FAE-004 / FAE-007 surfaces remain human-triggered and fail-closed.
 
 ## Schemas
 
@@ -34,7 +34,7 @@ do not enable the public command or establish authenticated Owner authority.
 | `cortex-agent query triggers` | Read-only trigger index (Phase 0 returns empty). | FAE-002 |
 | `cortex-agent query dispatch-plan <task-id>` | Read-only plan preview for a task. | FAE-002 |
 | `cortex-agent dispatch dry-run <task-id>` | Pure resolver; never writes to `.agent/` or `.agent-runtime/`. | FAE-003 |
-| `cortex-agent dispatch execute` / `cortex-agent dispatch <task-id>` | Phase 0 stub. Governed explicit manual dispatch is an internal contract, not enabled by these public routes; automatic dispatch is disabled. | FAE-001 / FAE-004 |
+| `cortex-agent dispatch <task-id>` | Governed explicit manual dispatch; gates + lease fencing + idempotency + rollback; automatic dispatch is disabled. | FAE-004 |
 | `cortex-agent lease acquire --scope <scope> --owner <owner> [--idempotency-key <key>] [--ttl <seconds>]` | Public ownership lease acquire; idempotent on key+scope+owner. | FAE-007 |
 | `cortex-agent lease renew --lease-id <id> | --scope <scope> [--ttl <seconds>]` | Public ownership lease renew. | FAE-007 |
 | `cortex-agent lease release --lease-id <id>` | Public ownership lease release (idempotent). | FAE-007 |
@@ -43,22 +43,18 @@ do not enable the public command or establish authenticated Owner authority.
 
 ## Boundaries
 
-- Public dispatch execution, `daemon` and `trigger` Phase 0 stubs are **never**
-  replaced by silent execution. Their `--json` response includes `ok: false`,
-  `implemented: false`, `status: not_implemented` and `PHASE_ZERO_STUB`, and
-  exits 2; no subprocess is spawned, no state file is written, no lock is taken.
+- `daemon` and `trigger` Phase 0 stubs are **never** replaced by silent execution. Their
+  `--json` stub returns `ok: false, status: not_implemented` and exits 2;
+  no subprocess is spawned, no `.agent/` file is written, no lock is taken.
 - FAE-002 query projections are **read-only**. They never call `runs upsert`,
   `queues upsert`, `decisions resolve`, or any mutation primitive.
 - FAE-003 dry-run is a **pure resolver**. It writes nothing; the only side
   effects are stdout / stderr / process exit code.
-- FAE-004 describes an internal explicit manual-dispatch contract, not an
-  enabled public execution route. `automatic_dispatch_enabled` and
-  `daemon_enabled` remain frozen `false`. Local Decision/Waitpoint JSON and
-  caller-supplied gate/actor strings are same-user workflow records, not
-  authenticated Owner authority. Real authority and AIHost admission/effect
-  acceptance are future L3 enablement gates for incremental 1.16.x delivery,
-  outside the advisor-only 1.16.0 scope. They remain mandatory before enabling
-  those effects; advice and fixture results do not satisfy them.
+- FAE-004 explicit dispatch is **manually triggered and gated**. `automatic_dispatch_enabled`
+  and `daemon_enabled` remain frozen `false`. The dispatch writes to
+  `.agent-runtime/dispatch/idempotency/<key>.json` for deduplication, and
+  to existing Operation / boundary-event / journal owners — never to a new
+  state machine.
 - FAE-007 public lease wraps the audited M-008 / T-ACN-005 LeaseManager.
   It does not introduce a new algorithm; it persists to
   `.agent-runtime/coordination/leases/{state.json,idempotency.json}` with
@@ -66,9 +62,8 @@ do not enable the public command or establish authenticated Owner authority.
 
 ## Forbidden side effects
 
-The following are **never** executed by the public FAE-002 query, FAE-003
-dry-run, Phase 0 stub, or FAE-007 lease surfaces, even with
-`--non-interactive --quiet` or other bypass flags:
+The following are **never** executed by any FAE-002 / FAE-003 / FAE-004 /
+FAE-007 surface, even with `--non-interactive --quiet` or other bypass flags:
 
 - `mmx auth` (any subcommand), `mmx config` (any subcommand), `mmx quota`,
   `mmx update`, `mmx install`, `mmx file` (any subcommand), or any paid

@@ -6,6 +6,7 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const { execFileSync } = require("node:child_process");
+const { createAgentSandbox } = require("../helpers/agent-sandbox");
 
 const SCRIPT = path.join(__dirname, "..", "..", "templates", "_shared", ".agent", "skills", "friction", "scripts", "share-learnings.js");
 const SCORE_SCRIPT = path.join(__dirname, "..", "..", "templates", "_shared", ".agent", "skills", "friction", "scripts", "friction-score.js");
@@ -14,19 +15,44 @@ function run(args, opts) {
   return execFileSync(process.execPath, [SCRIPT].concat(args), Object.assign({ encoding: "utf8" }, opts || {}));
 }
 
-// share-learnings writes /tmp/exp-<session-id>-draft.md, a fixed and therefore
-// shared path. Every case must own its session id, otherwise two concurrent
-// runs (parallel workers, a local run next to CI) write to the same file and
-// the suite fails for reasons that have nothing to do with the code.
+// The draft lands under .agent/runtime-evidence/friction/drafts/ — see
+// .agent/rules/runtime-artifacts-location.md. That means the suite must run
+// against a sandboxed project root: writing into the real .agent/ would leave
+// debris in the developer's working copy and trip the hermetic gate.
+let sandbox = null;
+let ROOT = "";
+let DRAFT_DIR = "";
+
+test.before(() => {
+  sandbox = createAgentSandbox({ git: false });
+  ROOT = sandbox.root;
+  DRAFT_DIR = path.join(ROOT, ".agent", "runtime-evidence", "friction", "drafts");
+});
+
+test.after(() => {
+  if (sandbox) sandbox.cleanup();
+});
+
+// share-learnings writes .agent/runtime-evidence/friction/drafts/exp-<session-id>-draft.md.
+// Every case must own its session id, otherwise two concurrent runs (parallel
+// workers, a local run next to CI) write to the same file and the suite fails
+// for reasons that have nothing to do with the code.
 function uniqueSessionId(prefix) {
   return `${prefix}-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
 }
 
 function draftPathFor(sessionId) {
-  return path.join(os.tmpdir(), "exp-" + sessionId.replace(/[^A-Za-z0-9._-]/g, "_") + "-draft.md");
+  return path.join(
+    DRAFT_DIR,
+    "exp-" + sessionId.replace(/[^A-Za-z0-9._-]/g, "_") + "-draft.md"
+  );
 }
 
-test("share-learnings without --confirm refuses and creates no /tmp file", () => {
+function runInSandbox(args, opts) {
+  return run(args, Object.assign({ cwd: ROOT }, opts || {}));
+}
+
+test("share-learnings without --confirm refuses and creates no draft", () => {
   const sessionId = uniqueSessionId("S-refuse");
   const draft = draftPathFor(sessionId);
   try {
@@ -34,7 +60,7 @@ test("share-learnings without --confirm refuses and creates no /tmp file", () =>
   } catch (_) { /* ignore */ }
   let threw = null;
   try {
-    run(["--session", sessionId, "--title", "Demo"]);
+    runInSandbox(["--session", sessionId, "--title", "Demo"]);
   } catch (err) {
     threw = err;
   }
@@ -46,7 +72,7 @@ test("share-learnings with --confirm writes the draft and prints a diff", () => 
   const sessionId = uniqueSessionId("S-confirm-ok");
   const draft = draftPathFor(sessionId);
   try {
-    const out = run(["--session", sessionId, "--title", "Retry lesson", "--confirm"]);
+    const out = runInSandbox(["--session", sessionId, "--title", "Retry lesson", "--confirm"]);
     assert.ok(out.includes("diff --git"));
     assert.ok(out.includes("+"));
     assert.ok(fs.existsSync(draft), "draft created after confirmation");
@@ -65,7 +91,7 @@ test("share-learnings with --body includes the body text", () => {
   const sessionId = uniqueSessionId("S-body-ok");
   const draft = draftPathFor(sessionId);
   try {
-    const out = run(["--session", sessionId, "--title", "T", "--body", bodyPath, "--confirm"]);
+    const out = runInSandbox(["--session", sessionId, "--title", "T", "--body", bodyPath, "--confirm"]);
     assert.ok(out.includes("After three retries"));
     assert.ok(fs.readFileSync(draft, "utf8").includes("After three retries"));
   } finally {

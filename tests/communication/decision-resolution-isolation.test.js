@@ -65,7 +65,9 @@ function fixture(t, variant) {
   const scripts = path.join(cwd, ".agent", "skills", "management-api", "scripts");
   fs.mkdirSync(scripts, { recursive: true });
   for (const file of ["index.js", "normalize-token-usage.js", "query-activity.js", "query-dispatch-state.js", "projection-registry.json"]) {
-    const sourceVariant = file === "index.js" ? variant : "_shared";
+    // The scripts live in the shared layer only; the language overlays carry
+    // the manifest. Every language therefore receives the same script.
+    const sourceVariant = "_shared";
     fs.copyFileSync(
       path.join(ROOT, "templates", sourceVariant, ".agent", "skills", "management-api", "scripts", file),
       path.join(scripts, file),

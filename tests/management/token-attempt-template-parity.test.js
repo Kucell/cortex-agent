@@ -16,12 +16,12 @@ const fs = require("node:fs");
 const path = require("path");
 const test = require("node:test");
 
+const { resolveTemplatePath } = require("../helpers/template-layers");
+
 const TEMPLATES_ROOT = path.resolve(__dirname, "../../templates");
 const SHARED_SCRIPTS = path.join(TEMPLATES_ROOT, "_shared/.agent/skills/management-api/scripts");
-const ZH_SCRIPTS = path.join(TEMPLATES_ROOT, "zh/.agent/skills/management-api/scripts");
-const EN_SCRIPTS = path.join(TEMPLATES_ROOT, "en/.agent/skills/management-api/scripts");
 
-// Files that must exist in all three locations
+// Files that must be available from shared and both language surfaces
 const REQUIRED_FILES = [
   "token-attempt-receipt.js",
   "token-attempt-ledger.js",
@@ -38,17 +38,17 @@ test("VC-007: all required files exist in _shared", () => {
   }
 });
 
-test("VC-007: all required files exist in zh", () => {
+test("VC-007: all required files reach zh", () => {
   for (const file of REQUIRED_FILES) {
-    const filePath = path.join(ZH_SCRIPTS, file);
-    assert.ok(fs.existsSync(filePath), `${file} must exist in zh`);
+    const filePath = resolveTemplatePath(`skills/management-api/scripts/${file}`, "zh");
+    assert.ok(filePath, `${file} must reach zh`);
   }
 });
 
-test("VC-007: all required files exist in en", () => {
+test("VC-007: all required files reach en", () => {
   for (const file of REQUIRED_FILES) {
-    const filePath = path.join(EN_SCRIPTS, file);
-    assert.ok(fs.existsSync(filePath), `${file} must exist in en`);
+    const filePath = resolveTemplatePath(`skills/management-api/scripts/${file}`, "en");
+    assert.ok(filePath, `${file} must reach en`);
   }
 });
 
@@ -56,8 +56,8 @@ test("VC-007: all required files exist in en", () => {
 
 test("VC-007: token-attempt-receipt exports same schema version across templates", () => {
   const shared = require(path.join(SHARED_SCRIPTS, "token-attempt-receipt.js"));
-  const zh = require(path.join(ZH_SCRIPTS, "token-attempt-receipt.js"));
-  const en = require(path.join(EN_SCRIPTS, "token-attempt-receipt.js"));
+  const zh = require(resolveTemplatePath("skills/management-api/scripts/token-attempt-receipt.js", "zh"));
+  const en = require(resolveTemplatePath("skills/management-api/scripts/token-attempt-receipt.js", "en"));
 
   assert.equal(shared.SCHEMA_VERSION, "1.0");
   assert.equal(zh.SCHEMA_VERSION, "1.0");
@@ -68,8 +68,8 @@ test("VC-007: token-attempt-receipt exports same schema version across templates
 
 test("VC-007: USAGE_STATUS enum is identical across templates", () => {
   const shared = require(path.join(SHARED_SCRIPTS, "token-attempt-receipt.js"));
-  const zh = require(path.join(ZH_SCRIPTS, "token-attempt-receipt.js"));
-  const en = require(path.join(EN_SCRIPTS, "token-attempt-receipt.js"));
+  const zh = require(resolveTemplatePath("skills/management-api/scripts/token-attempt-receipt.js", "zh"));
+  const en = require(resolveTemplatePath("skills/management-api/scripts/token-attempt-receipt.js", "en"));
 
   assert.deepEqual(shared.USAGE_STATUS, zh.USAGE_STATUS);
   assert.deepEqual(shared.USAGE_STATUS, en.USAGE_STATUS);
@@ -86,8 +86,8 @@ test("VC-007: USAGE_STATUS enum is identical across templates", () => {
 
 test("VC-007: token-attempt-receipt exports same functions across templates", () => {
   const shared = require(path.join(SHARED_SCRIPTS, "token-attempt-receipt.js"));
-  const zh = require(path.join(ZH_SCRIPTS, "token-attempt-receipt.js"));
-  const en = require(path.join(EN_SCRIPTS, "token-attempt-receipt.js"));
+  const zh = require(resolveTemplatePath("skills/management-api/scripts/token-attempt-receipt.js", "zh"));
+  const en = require(resolveTemplatePath("skills/management-api/scripts/token-attempt-receipt.js", "en"));
 
   const sharedExports = Object.keys(shared).sort();
   const zhExports = Object.keys(zh).sort();
@@ -99,8 +99,8 @@ test("VC-007: token-attempt-receipt exports same functions across templates", ()
 
 test("VC-007: token-attempt-ledger exports same functions across templates", () => {
   const shared = require(path.join(SHARED_SCRIPTS, "token-attempt-ledger.js"));
-  const zh = require(path.join(ZH_SCRIPTS, "token-attempt-ledger.js"));
-  const en = require(path.join(EN_SCRIPTS, "token-attempt-ledger.js"));
+  const zh = require(resolveTemplatePath("skills/management-api/scripts/token-attempt-ledger.js", "zh"));
+  const en = require(resolveTemplatePath("skills/management-api/scripts/token-attempt-ledger.js", "en"));
 
   const sharedExports = Object.keys(shared).sort();
   const zhExports = Object.keys(zh).sort();
@@ -112,8 +112,8 @@ test("VC-007: token-attempt-ledger exports same functions across templates", () 
 
 test("VC-007: query-token-attempts exports same functions across templates", () => {
   const shared = require(path.join(SHARED_SCRIPTS, "query-token-attempts.js"));
-  const zh = require(path.join(ZH_SCRIPTS, "query-token-attempts.js"));
-  const en = require(path.join(EN_SCRIPTS, "query-token-attempts.js"));
+  const zh = require(resolveTemplatePath("skills/management-api/scripts/query-token-attempts.js", "zh"));
+  const en = require(resolveTemplatePath("skills/management-api/scripts/query-token-attempts.js", "en"));
 
   const sharedExports = Object.keys(shared).sort();
   const zhExports = Object.keys(zh).sort();
@@ -127,8 +127,8 @@ test("VC-007: query-token-attempts exports same functions across templates", () 
 
 test("VC-007: createTokenAttemptReceipt produces identical receipts across templates", () => {
   const shared = require(path.join(SHARED_SCRIPTS, "token-attempt-receipt.js"));
-  const zh = require(path.join(ZH_SCRIPTS, "token-attempt-receipt.js"));
-  const en = require(path.join(EN_SCRIPTS, "token-attempt-receipt.js"));
+  const zh = require(resolveTemplatePath("skills/management-api/scripts/token-attempt-receipt.js", "zh"));
+  const en = require(resolveTemplatePath("skills/management-api/scripts/token-attempt-receipt.js", "en"));
 
   const sharedTimestamp = "2026-08-13T00:00:00.000Z";
   const options = {
@@ -150,8 +150,8 @@ test("VC-007: createTokenAttemptReceipt produces identical receipts across templ
 
 test("VC-007: validateReceiptSecurity produces identical results across templates", () => {
   const shared = require(path.join(SHARED_SCRIPTS, "token-attempt-receipt.js"));
-  const zh = require(path.join(ZH_SCRIPTS, "token-attempt-receipt.js"));
-  const en = require(path.join(EN_SCRIPTS, "token-attempt-receipt.js"));
+  const zh = require(resolveTemplatePath("skills/management-api/scripts/token-attempt-receipt.js", "zh"));
+  const en = require(resolveTemplatePath("skills/management-api/scripts/token-attempt-receipt.js", "en"));
 
   // Good receipt
   const goodReceipt = {
@@ -173,8 +173,8 @@ test("VC-007: validateReceiptSecurity produces identical results across template
 
 test("VC-007: normalizeTokenUsage produces identical results across templates", () => {
   const shared = require(path.join(SHARED_SCRIPTS, "token-attempt-receipt.js"));
-  const zh = require(path.join(ZH_SCRIPTS, "token-attempt-receipt.js"));
-  const en = require(path.join(EN_SCRIPTS, "token-attempt-receipt.js"));
+  const zh = require(resolveTemplatePath("skills/management-api/scripts/token-attempt-receipt.js", "zh"));
+  const en = require(resolveTemplatePath("skills/management-api/scripts/token-attempt-receipt.js", "en"));
 
   const dirtyInput = {
     input_tokens: "7,29000000",
@@ -191,8 +191,8 @@ test("VC-007: normalizeTokenUsage produces identical results across templates", 
 
 test("VC-007: BLOCKED_RECEIPT_FIELDS is identical across templates", () => {
   const shared = require(path.join(SHARED_SCRIPTS, "token-attempt-receipt.js"));
-  const zh = require(path.join(ZH_SCRIPTS, "token-attempt-receipt.js"));
-  const en = require(path.join(EN_SCRIPTS, "token-attempt-receipt.js"));
+  const zh = require(resolveTemplatePath("skills/management-api/scripts/token-attempt-receipt.js", "zh"));
+  const en = require(resolveTemplatePath("skills/management-api/scripts/token-attempt-receipt.js", "en"));
 
   assert.deepEqual(shared.BLOCKED_RECEIPT_FIELDS, zh.BLOCKED_RECEIPT_FIELDS);
   assert.deepEqual(shared.BLOCKED_RECEIPT_FIELDS, en.BLOCKED_RECEIPT_FIELDS);
@@ -200,8 +200,8 @@ test("VC-007: BLOCKED_RECEIPT_FIELDS is identical across templates", () => {
 
 test("VC-007: ALLOWED_RECEIPT_FIELDS is identical across templates", () => {
   const shared = require(path.join(SHARED_SCRIPTS, "token-attempt-receipt.js"));
-  const zh = require(path.join(ZH_SCRIPTS, "token-attempt-receipt.js"));
-  const en = require(path.join(EN_SCRIPTS, "token-attempt-receipt.js"));
+  const zh = require(resolveTemplatePath("skills/management-api/scripts/token-attempt-receipt.js", "zh"));
+  const en = require(resolveTemplatePath("skills/management-api/scripts/token-attempt-receipt.js", "en"));
 
   assert.deepEqual(shared.ALLOWED_RECEIPT_FIELDS, zh.ALLOWED_RECEIPT_FIELDS);
   assert.deepEqual(shared.ALLOWED_RECEIPT_FIELDS, en.ALLOWED_RECEIPT_FIELDS);
@@ -211,8 +211,8 @@ test("VC-007: ALLOWED_RECEIPT_FIELDS is identical across templates", () => {
 
 test("VC-007: ledger LEDGER_DIR and LEDGER_INDEX constants are identical", () => {
   const shared = require(path.join(SHARED_SCRIPTS, "token-attempt-ledger.js"));
-  const zh = require(path.join(ZH_SCRIPTS, "token-attempt-ledger.js"));
-  const en = require(path.join(EN_SCRIPTS, "token-attempt-ledger.js"));
+  const zh = require(resolveTemplatePath("skills/management-api/scripts/token-attempt-ledger.js", "zh"));
+  const en = require(resolveTemplatePath("skills/management-api/scripts/token-attempt-ledger.js", "en"));
 
   assert.equal(shared.LEDGER_DIR, ".agent/token-attempts");
   assert.equal(zh.LEDGER_DIR, shared.LEDGER_DIR);
@@ -233,8 +233,8 @@ test("VC-007: ledger LEDGER_DIR and LEDGER_INDEX constants are identical", () =>
 
 test("VC-007: token-attempt-receipt content hash matches across templates", () => {
   const shared = fs.readFileSync(path.join(SHARED_SCRIPTS, "token-attempt-receipt.js"), "utf8");
-  const zh = fs.readFileSync(path.join(ZH_SCRIPTS, "token-attempt-receipt.js"), "utf8");
-  const en = fs.readFileSync(path.join(EN_SCRIPTS, "token-attempt-receipt.js"), "utf8");
+  const zh = fs.readFileSync(resolveTemplatePath("skills/management-api/scripts/token-attempt-receipt.js", "zh"), "utf8");
+  const en = fs.readFileSync(resolveTemplatePath("skills/management-api/scripts/token-attempt-receipt.js", "en"), "utf8");
 
   const crypto = require("node:crypto");
   const sharedHash = crypto.createHash("sha256").update(shared).digest("hex");
@@ -247,8 +247,8 @@ test("VC-007: token-attempt-receipt content hash matches across templates", () =
 
 test("VC-007: token-attempt-ledger content hash matches across templates", () => {
   const shared = fs.readFileSync(path.join(SHARED_SCRIPTS, "token-attempt-ledger.js"), "utf8");
-  const zh = fs.readFileSync(path.join(ZH_SCRIPTS, "token-attempt-ledger.js"), "utf8");
-  const en = fs.readFileSync(path.join(EN_SCRIPTS, "token-attempt-ledger.js"), "utf8");
+  const zh = fs.readFileSync(resolveTemplatePath("skills/management-api/scripts/token-attempt-ledger.js", "zh"), "utf8");
+  const en = fs.readFileSync(resolveTemplatePath("skills/management-api/scripts/token-attempt-ledger.js", "en"), "utf8");
 
   const crypto = require("node:crypto");
   const sharedHash = crypto.createHash("sha256").update(shared).digest("hex");
@@ -261,8 +261,8 @@ test("VC-007: token-attempt-ledger content hash matches across templates", () =>
 
 test("VC-007: query-token-attempts content hash matches across templates", () => {
   const shared = fs.readFileSync(path.join(SHARED_SCRIPTS, "query-token-attempts.js"), "utf8");
-  const zh = fs.readFileSync(path.join(ZH_SCRIPTS, "query-token-attempts.js"), "utf8");
-  const en = fs.readFileSync(path.join(EN_SCRIPTS, "query-token-attempts.js"), "utf8");
+  const zh = fs.readFileSync(resolveTemplatePath("skills/management-api/scripts/query-token-attempts.js", "zh"), "utf8");
+  const en = fs.readFileSync(resolveTemplatePath("skills/management-api/scripts/query-token-attempts.js", "en"), "utf8");
 
   const crypto = require("node:crypto");
   const sharedHash = crypto.createHash("sha256").update(shared).digest("hex");

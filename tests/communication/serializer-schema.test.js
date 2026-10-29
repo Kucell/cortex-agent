@@ -61,8 +61,12 @@ function fixture(t, variant) {
   const scripts = path.join(root, ".agent/skills/management-api/scripts");
   fs.mkdirSync(scripts, { recursive: true });
   for (const file of ["index.js", "normalize-token-usage.js", "query-activity.js", "query-dispatch-state.js", "projection-registry.json"]) {
-    fs.copyFileSync(path.join(ROOT, "templates", file === "index.js" ? variant : "_shared",
-      ".agent/skills/management-api/scripts", file), path.join(scripts, file));
+    // The management-api scripts are shipped once, in the shared layer. The
+    // language overlays carry the manifest, not a second copy of the code, so
+    // every language receives the same script -- which is what the variant
+    // loop below now asserts.
+    fs.copyFileSync(path.join(ROOT, "templates/_shared/.agent/skills/management-api/scripts", file),
+      path.join(scripts, file));
   }
   const tasks = path.join(root, ".agent/tasks/scripts");
   fs.mkdirSync(tasks, { recursive: true });

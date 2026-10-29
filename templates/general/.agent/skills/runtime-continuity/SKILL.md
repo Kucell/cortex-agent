@@ -61,8 +61,10 @@ node .agent/skills/runtime-continuity/scripts/index.js resume-bundle \
   --project <project>
 
 # 6. status — show last archive timing
+#    只读：不写 runs/、sessions/ 或任何运行态记录。
+#    需要把这次读取也记入审计时显式加 --audit。
 node .agent/skills/runtime-continuity/scripts/index.js status \
-  --project <project>
+  --project <project> [--audit]
 
 # 7. warm — output the "5-hour timer starting" prompt for the host
 node .agent/skills/runtime-continuity/scripts/index.js warm
@@ -102,10 +104,11 @@ node .agent/skills/runtime-continuity/scripts/index.js list-contexts \
   interval archives.
 - **New-agent entrypoint**: `resume-bundle` summarizes latest archive,
   handoffs, runs, sessions, artifacts, runtime events, and git state.
-- **Audit-friendly**: every archive / restore / status call writes
-  one `session_archived` / `session_restored` / `session_status_queried`
-  event into `runs/<active-run>.json#events[]` so the audit-trail
-  can correlate.
+- **Audit-friendly**: every archive / restore call writes one
+  `session_archived` / `session_restored` event into
+  `runs/<active-run>.json#events[]` so the audit-trail can correlate.
+  `status` is a query and writes nothing by default; pass `--audit` to
+  record a `session_status_queried` event as well.
 - **Zero dependency**: pure stdlib + existing management-api events
   writer.  No npm install.
 

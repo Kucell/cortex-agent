@@ -9,8 +9,12 @@ const { spawnSync } = require("node:child_process");
 const test = require("node:test");
 
 const root = path.resolve(__dirname, "../..");
+// The knowledge-lint script is resolved the way the installation resolves it:
+// the language overlay when it carries one, the shared base otherwise. A
+// fixed per-language path no longer describes what a project receives.
+const { resolveTemplatePath } = require("../helpers/template-layers");
 const sources = ["_shared", "zh", "en"].map((variant) => [variant,
-  path.join(root, "templates", variant, ".agent/skills/knowledge-lint/scripts/index.js")]);
+  resolveTemplatePath("skills/knowledge-lint/scripts/index.js", variant)]);
 if (process.env.CORTEX_GOVERNANCE_KNOWLEDGE_LINT_PATH) {
   sources.push(["governance", process.env.CORTEX_GOVERNANCE_KNOWLEDGE_LINT_PATH]);
 }

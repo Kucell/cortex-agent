@@ -41,9 +41,10 @@ test('probe: cache hit is fast (< 5ms)', () => {
 
 test('probe: never modifies index / files / branches', () => {
   clearCache();
-  const before = require('node:child_process').execSync('git status --porcelain', { cwd: REPO, encoding: 'utf8' });
+  const statusArgs = 'git status --porcelain --ignore-submodules=all';
+  const before = require('node:child_process').execSync(statusArgs, { cwd: REPO, encoding: 'utf8' });
   probeWorktree(REPO);
-  const after = require('node:child_process').execSync('git status --porcelain', { cwd: REPO, encoding: 'utf8' });
+  const after = require('node:child_process').execSync(statusArgs, { cwd: REPO, encoding: 'utf8' });
   assert.equal(before, after, 'probe must not modify working tree');
 });
 

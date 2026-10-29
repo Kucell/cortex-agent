@@ -1,4 +1,0 @@
-interface:
-  display_name: "Runtime State Integration"
-  short_description: "Validate stateful feature runtime integration contracts"
-  default_prompt: "Use $runtime-state-integration to assess and check this feature runtime contract."

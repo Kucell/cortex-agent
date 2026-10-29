@@ -330,7 +330,7 @@ test("validateEvent keeps runtime IDs and nullable fields aligned with schema", 
 });
 
 test("all EVENT_TYPES are in vocabulary", () => {
-  assert.equal(EVENT_TYPES.length, 20);
+  assert.equal(EVENT_TYPES.length, 21);
   assert.ok(EVENT_TYPES.includes("task.created"));
   assert.ok(EVENT_TYPES.includes("task.heartbeat"));
   assert.ok(EVENT_TYPES.includes("artifact.ready"));

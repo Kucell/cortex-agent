@@ -25,14 +25,14 @@ const os = require("node:os");
 const path = require("node:path");
 const { spawnSync } = require("node:child_process");
 const { test, describe, before, after } = require("node:test");
+const { resolveTemplatePath } = require("../helpers/template-layers");
 
-const ROOT = path.resolve(__dirname, "..", "..");
 const TEMPLATES = ["_shared", "zh", "en"];
 
 let home;
 
 function scriptFor(tpl) {
-  return path.join(ROOT, "templates", tpl, ".agent", "skills", "runtime-continuity", "scripts", "index.js");
+  return resolveTemplatePath("skills/runtime-continuity/scripts/index.js", tpl);
 }
 
 function contextHome(tpl) {

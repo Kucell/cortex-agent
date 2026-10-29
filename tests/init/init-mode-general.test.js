@@ -48,6 +48,50 @@ function readBaseCommit() {
   return out.stdout.trim();
 }
 
+// ─── General-mode capability overlay ─────────────────────────────────────────
+
+test("general mode ships the path and artifact location rules", () => {
+  // General mode installs a narrow capability set. Two of those entries are
+  // the rules that keep a managed project from spilling artifacts into /tmp
+  // and from pinning paths to the maintainer's machine. A rule that is not
+  // listed here is not distributed — so the list is the contract, and it has
+  // to be asserted rather than assumed.
+  const { overlayGeneralCapabilities } = require("../../lib/setup/index.js");
+  const shared = path.join(ROOT, "templates", "_shared", ".agent");
+
+  // Run the overlay for real: an entry whose source is missing is silently
+  // skipped (copyRecursive on a missing source is a no-op), so the project
+  // would receive nothing while the list still looked right.
+  const dest = mkTmp("cortex-general-overlay-");
+  try {
+    const overlaid = overlayGeneralCapabilities(path.join(ROOT, "templates"), dest);
+    assert.ok(
+      overlaid.includes("rules/runtime-artifacts-location.md"),
+      `general mode must ship the runtime artifact location rule (got: ${overlaid.join(", ")})`
+    );
+    assert.ok(
+      overlaid.includes("rules/portable-path-design.md"),
+      `general mode must ship the portable path design rule (got: ${overlaid.join(", ")})`
+    );
+    assert.ok(
+      overlaid.includes("rules/template-layer-dedup.md"),
+      `general mode must ship the template layer dedup rule (got: ${overlaid.join(", ")})`
+    );
+
+    // The rule must actually land on disk, with real content — a copied but
+    // empty file teaches nothing.
+    const rulePath = path.join(dest, "rules", "portable-path-design.md");
+    assert.ok(fs.existsSync(rulePath), "the portable path rule must be written to disk");
+    assert.ok(
+      fs.readFileSync(rulePath, "utf8").length > 200,
+      "the portable path rule must be copied with its content"
+    );
+    assert.ok(fs.existsSync(shared), "the shared template tree must exist");
+  } finally {
+    rmrf(dest);
+  }
+});
+
 // ─── 1. inferMode unit tests ──────────────────────────────────────────────────
 
 test("inferMode: empty directory defaults to 'general'", () => {

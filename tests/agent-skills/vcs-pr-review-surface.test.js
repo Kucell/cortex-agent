@@ -26,11 +26,11 @@ const os = require("node:os");
 const path = require("node:path");
 const { execFileSync } = require("node:child_process");
 const { describe, test } = require("node:test");
+const { resolveTemplatePath } = require("../helpers/template-layers");
 
-const SCRIPT = path.resolve(
-  __dirname,
-  "../../templates/en/.agent/skills/vcs-pr/scripts/index.js"
-);
+// The vcs-pr implementation is language-neutral, so it lives in the shared
+// layer and both language overlays receive it from there.
+const SCRIPT = resolveTemplatePath("skills/vcs-pr/scripts/index.js", "en");
 
 const STUB_SECRETS = `"use strict";
 const args = process.argv.slice(2);

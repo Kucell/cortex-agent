@@ -28,6 +28,7 @@ const { test, describe, before, after } = require("node:test");
 // memory pressure (the kernel refuses fork/exec with EAGAIN / ENOMEM). The
 // shared helper retries only that class; a process that ran is never retried.
 const { spawnSyncWithRetry } = require("../helpers/spawn-retry");
+const { resolveTemplatePath } = require("../helpers/template-layers");
 
 const ROOT = path.resolve(__dirname, "..", "..");
 const TEMPLATES = ["_shared", "zh", "en"];
@@ -53,9 +54,8 @@ before(() => {
     const root = path.join(project, tpl);
     const scripts = path.join(root, ".agent", "skills", "management-api", "scripts");
     fs.mkdirSync(scripts, { recursive: true });
-    const src = path.join(ROOT, "templates", tpl, ".agent", "skills", "management-api", "scripts");
     for (const f of MGMT_FILES) {
-      fs.copyFileSync(path.join(src, f), path.join(scripts, f));
+      fs.copyFileSync(resolveTemplatePath(`skills/management-api/scripts/${f}`, tpl), path.join(scripts, f));
     }
     const taskScripts = path.join(root, ".agent", "tasks", "scripts");
     fs.mkdirSync(taskScripts, { recursive: true });

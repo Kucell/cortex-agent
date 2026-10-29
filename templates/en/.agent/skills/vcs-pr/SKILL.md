@@ -110,11 +110,11 @@ run 的 `status` 必须是 `running` 或 `queued`,且 `updated_at` / `started_at
 `.agent/config/vcs.yml`:
 ```yaml
 backend: gitea
-host: "http://192.168.2.110:3000"
+host: "https://vcs.example.com"
 token_ref: gitea-pr
 default:
-  org: SamkoonHMI
-  repo: SamHMI
+  org: your-org
+  repo: your-repo
   base_branch: main
 ```
 

@@ -104,6 +104,39 @@ jobs:
         # docs/architecture/harness-review-and-runtime-evidence-design.md P-003.
         run: pnpm check:l1-distribution
 
+      - name: Runtime artifact location check
+        # The L1 rule `runtime-artifacts-location.md` says every runtime
+        # artifact belongs under the project .agent/ directory, never in
+        # /tmp. Prose alone does not stop a skill from shipping an
+        # os.tmpdir() draft directory to every managed project, so the rule
+        # is enforced mechanically here.
+        run: pnpm check:runtime-artifact-location
+
+      - name: Portable path check
+        # cortex-agent is a generic framework: the code it ships to every
+        # managed project has to hold on a machine that is not the author's.
+        # A path pinned to one machine either crashes elsewhere or - worse -
+        # resolves to an older version there and still reports success. Prose
+        # alone does not stop that, so the rule is enforced mechanically here.
+        run: pnpm check:portable-paths
+
+      - name: Template layer dedup check
+        # The template tree has three layers: _shared (language-neutral base),
+        # zh and en (language overlays). upgrade lays them down in that order,
+        # so a language layer only overrides. A byte-identical copy in a
+        # language layer is therefore pure duplication - maintained twice and
+        # drifting silently. The rule is rules/template-layer-dedup.md.
+        run: pnpm check:template-dedup
+
+      - name: Framework generality check
+        # cortex-agent is a generic framework: what it ships to a managed
+        # project must not be bound to one field project. A distributed
+        # config example naming one project's repo does not fail loudly for
+        # the reader — it works, and it works wrong, which is worse. Prose
+        # alone does not stop that, so the rule is enforced mechanically
+        # here. See .agent/rules/framework-generality.md.
+        run: pnpm check:framework-generality
+
       - name: Run full test suite
         # test:ci runs the runner in strict hermetic mode: the suite must not
         # write a single byte into .agent/. In CI nothing else can write there

@@ -270,7 +270,7 @@ test("same-state event for a non-liveness type fails closed", () => {
 
 test("same-state bookkeeping events include ownership release", () => {
   assert.deepEqual([...LIVENESS_EVENT_TYPES].sort(),
-    ["artifact.ready", "ownership.released", "task.heartbeat", "task.progress"]);
+    ["artifact.ready", "ownership.rebound", "ownership.released", "task.heartbeat", "task.progress"]);
 });
 
 test("heartbeat is a legal same-state liveness update (bumps revision/lastSequence)", () => {

@@ -20,12 +20,22 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
-const ROOT = path.resolve(__dirname, '..');
-const SHARED = path.join(ROOT, 'templates/_shared/.agent');
-const ZH = path.join(ROOT, 'templates/zh/.agent');
-const EN = path.join(ROOT, 'templates/en/.agent');
+const DEFAULT_ROOT = path.resolve(__dirname, '..');
 
-// Paths that must be identical (V1 schema + projection registry) across all 3 L1 templates.
+// Paths whose content must be identical wherever they appear across the L1
+// template layers.
+//
+// A path is not required to exist in every layer. The template tree has three
+// layers — _shared (language-neutral base), zh and en (language overlays) —
+// and `upgrade` lays them down in that order, with the language layer
+// overriding the shared one. A language-neutral file therefore lives in
+// _shared alone; only content that genuinely differs by language is copied
+// into zh / en. See .agent/rules/template-layer-dedup.md.
+//
+// So the invariant this gate protects is: *if a path appears in more than
+// one layer, the layers must agree byte for byte.* A path that appears in a
+// single layer is that layer's business — the dedup gate decides whether
+// that placement is right.
 const PARITY_PATHS = Object.freeze([
   // SP-001 GovernedAttemptProgress V1 schema
   'schemas/governed-attempt-progress.v1.json',
@@ -57,6 +67,13 @@ function main() {
   const args = process.argv.slice(2);
   const verbose = args.includes('--verbose') || args.includes('-v');
   const strict = args.includes('--strict');
+  const rootIndex = args.indexOf('--root');
+  const root = rootIndex >= 0 && args[rootIndex + 1]
+    ? path.resolve(args[rootIndex + 1])
+    : DEFAULT_ROOT;
+  const SHARED = path.join(root, 'templates/_shared/.agent');
+  const ZH = path.join(root, 'templates/zh/.agent');
+  const EN = path.join(root, 'templates/en/.agent');
 
   let totalChecked = 0;
   let totalMatches = 0;
@@ -68,42 +85,64 @@ function main() {
     const zhFile = path.join(ZH, rel);
     const enFile = path.join(EN, rel);
 
-    if (!relativeExists(SHARED, rel) && !relativeExists(ZH, rel) && !relativeExists(EN, rel)) {
-      missing.push(rel);
-      continue;
-    }
-
     const sharedExists = relativeExists(SHARED, rel);
     const zhExists = relativeExists(ZH, rel);
     const enExists = relativeExists(EN, rel);
 
-    if (!sharedExists || !zhExists || !enExists) {
+    if (!sharedExists && !zhExists && !enExists) {
       missing.push(rel);
       continue;
     }
 
-    const sharedHash = sha256(sharedFile);
-    const zhHash = sha256(zhFile);
-    const enHash = sha256(enFile);
+    // Collect the layers that actually carry this path. Only those are
+    // compared — a language overlay that legitimately differs from the
+    // shared base is not a parity break.
+    const present = [];
+    if (sharedExists) present.push(["shared", sha256(sharedFile)]);
+    if (zhExists) present.push(["zh", sha256(zhFile)]);
+    if (enExists) present.push(["en", sha256(enFile)]);
 
     totalChecked += 1;
-    if (sharedHash === zhHash && zhHash === enHash) {
+
+    // Every language must be able to reach the path. A path that only
+    // exists in one language layer is unreachable from the other one:
+    // the installation resolves the language overlay over the shared base,
+    // so a Chinese project with the file only in `en` gets nothing, and
+    // vice versa. That is a hole in the distribution surface, not a
+    // placement choice for the dedup gate to make.
+    const unreachable = [];
+    if (!sharedExists) {
+      // Without a shared copy, each language has to carry its own.
+      if (!zhExists) unreachable.push("zh");
+      if (!enExists) unreachable.push("en");
+    }
+
+    const hashes = new Set(present.map(([, hash]) => hash));
+    if (unreachable.length > 0) {
+      missing.push({ rel, unreachable });
+      if (verbose) {
+        console.log(`❌ ${rel} (unreachable for: ${unreachable.join(", ")})`);
+      }
+      continue;
+    }
+
+    if (hashes.size === 1) {
       totalMatches += 1;
       if (verbose) {
-        console.log(`✅ ${rel} ${sharedHash}`);
+        console.log(`✅ ${rel} ${present[0][1]} (${present.map(([l]) => l).join(", ")})`);
       }
     } else {
       mismatches.push({
         rel,
-        shared: sharedHash,
-        zh: zhHash,
-        en: enHash,
+        shared: sharedExists ? sha256(sharedFile) : null,
+        zh: zhExists ? sha256(zhFile) : null,
+        en: enExists ? sha256(enFile) : null,
       });
       if (verbose) {
         console.log(`❌ ${rel} (mismatch)`);
-        console.log(`   shared: ${sharedHash}`);
-        console.log(`   zh:     ${zhHash}`);
-        console.log(`   en:     ${enHash}`);
+        for (const [layer, hash] of present) {
+          console.log(`   ${layer.padEnd(6)} ${hash}`);
+        }
       }
     }
   }
@@ -116,9 +155,13 @@ function main() {
   console.log(`   Missing: ${missing.length}`);
 
   if (missing.length > 0) {
-    console.log(`\n⚠️  Missing files (must be present in all 3 L1 templates):`);
-    for (const rel of missing) {
-      console.log(`   - ${rel}`);
+    console.log(`\n⚠️  Unreachable files (every language must be able to receive them):`);
+    for (const entry of missing) {
+      if (typeof entry === "string") {
+        console.log(`   - ${entry}`);
+      } else {
+        console.log(`   - ${entry.rel} (unreachable for: ${entry.unreachable.join(", ")})`);
+      }
     }
   }
 

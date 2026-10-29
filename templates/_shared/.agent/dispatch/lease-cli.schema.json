@@ -15,7 +15,7 @@
         "idempotent": { "type": "boolean" },
         "lease": {
           "type": "object",
-          "required": ["leaseId", "scope", "owner", "actorId", "fencingToken", "acquiredAt", "expiresAt", "releasedAt", "staleAt", "takeover", "recoveredFrom"],
+          "required": ["leaseId", "scope", "owner", "actorId", "fencingToken", "acquiredAt", "expiresAt", "releasedAt", "staleAt", "takeover", "recoveredFrom", "continuityFrom"],
           "properties": {
             "leaseId": { "type": "string", "pattern": "^LEASE-[0-9]+$" },
             "scope": { "type": "string", "minLength": 1 },
@@ -28,6 +28,7 @@
             "staleAt": { "anyOf": [{ "type": "null" }, { "type": "string", "format": "date-time" }] },
             "takeover": { "type": "boolean" },
             "recoveredFrom": { "anyOf": [{ "type": "null" }, { "type": "string" }] },
+            "continuityFrom": { "anyOf": [{ "type": "null" }, { "type": "string" }] },
             "idempotencyKey": { "anyOf": [{ "type": "null" }, { "type": "string" }] },
             "status": { "enum": ["active", "expired", "released", "stale"] },
             "remaining_ms": { "type": "integer", "minimum": 0 }
@@ -96,7 +97,7 @@
   "$defs": {
     "leaseEntry": {
       "type": "object",
-      "required": ["leaseId", "scope", "owner", "actorId", "fencingToken", "acquiredAt", "expiresAt", "releasedAt", "staleAt", "takeover", "recoveredFrom", "status", "remaining_ms"],
+      "required": ["leaseId", "scope", "owner", "actorId", "fencingToken", "acquiredAt", "expiresAt", "releasedAt", "staleAt", "takeover", "recoveredFrom", "continuityFrom", "status", "remaining_ms"],
       "properties": {
         "leaseId": { "type": "string", "pattern": "^LEASE-[0-9]+$" },
         "scope": { "type": "string", "minLength": 1 },
@@ -109,6 +110,7 @@
         "staleAt": { "anyOf": [{ "type": "null" }, { "type": "string", "format": "date-time" }] },
         "takeover": { "type": "boolean" },
         "recoveredFrom": { "anyOf": [{ "type": "null" }, { "type": "string" }] },
+        "continuityFrom": { "anyOf": [{ "type": "null" }, { "type": "string" }] },
         "idempotencyKey": { "anyOf": [{ "type": "null" }, { "type": "string" }] },
         "status": { "enum": ["active", "expired", "released", "stale"] },
         "remaining_ms": { "type": "integer", "minimum": 0 }

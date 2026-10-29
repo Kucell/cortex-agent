@@ -81,5 +81,21 @@ Per project ≤30 feedback entries; on overflow **auto-archive** the earliest 5 
 
 - **Bootstrap First**: If this `/agent-update` promotes a new capability from a framework or capability provider into reusable templates, verify it in the provider's own `.agent/` first. Follow `.agent/rules/agent-scope.md` "New Capability Bootstrap Verification Order".
 - **Evidence Required**: Record concrete self-use evidence: command, exit code, generated report/artifact path, or workflow dry-run result. Do not claim template or downstream-project readiness before provider-side `.agent` verification passes.
+- **L1 Gate Stack**: The distribution surface is what every managed project
+  receives, so it is gated mechanically. Run these before calling the update
+  ready:
+  ```bash
+  pnpm check:parity                    # zh/en/_shared mirrors agree
+  pnpm check:l1-distribution           # distribution surface complete
+  pnpm check:runtime-artifact-location # artifacts land in .agent/, not /tmp
+  pnpm check:portable-paths            # paths derived at runtime, never pinned
+  ```
+  `check:portable-paths` is the mechanical gate for
+  `rules/portable-path-design.md`: cortex-agent is a generic framework, so the
+  code it ships must hold on a machine that is not the author's. Any path
+  added to — or changed in — the distribution surface must pass it.
+  A rule that general mode must ship also has to be listed in
+  `GENERAL_CAPABILITY_PATHS` in `lib/setup/index.js`, with its source present
+  in `templates/_shared/.agent/` (a missing source is skipped silently).
 - **Verify Links**: If it's a global update, confirm that the symlinks in the local project are effective.
 - **Submit Report**: Explain the adjustments made, confirm the synchronization status, and report whether an experience record was created.

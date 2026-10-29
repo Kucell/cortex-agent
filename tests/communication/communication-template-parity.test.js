@@ -43,6 +43,16 @@ function read(root, relativePath) {
   return fs.readFileSync(path.join(root, relativePath), "utf8");
 }
 
+// A template file lives in exactly one layer: the language-neutral base or
+// one of the language overlays. A project receives the overlay's copy when
+// it has one and the shared base's copy otherwise, so a file that is only in
+// the shared base is still delivered to both languages. The overlay wins.
+function readResolved(templateRoot, relativePath) {
+  const overlayPath = path.join(templateRoot, relativePath);
+  if (fs.existsSync(overlayPath)) return fs.readFileSync(overlayPath, "utf8");
+  return read(SHARED_ROOT, relativePath);
+}
+
 function hash(root, relativePath) {
   return crypto.createHash("sha256").update(read(root, relativePath)).digest("hex");
 }
@@ -72,7 +82,12 @@ test("machine-readable communication files match canonical hashes", () => {
 test("English communication documents match canonical content", () => {
   const englishRoot = TEMPLATE_ROOTS[0];
   for (const relativePath of DOCUMENT_FILES) {
-    assert.equal(read(englishRoot, relativePath), read(CANONICAL, relativePath), `${relativePath} drifted`);
+    // The English layer may not carry a file at all: when its content is the
+    // shared base's content, the copy is redundant and the file lives in the
+    // shared base alone. What an English project receives is the same bytes
+    // either way, so the comparison resolves through the same precedence the
+    // installation uses.
+    assert.equal(readResolved(englishRoot, relativePath), read(CANONICAL, relativePath), `${relativePath} drifted`);
   }
 });
 
@@ -103,7 +118,7 @@ test("localized documents retain commands, lifecycle states, gates, and safety b
 
   for (const templateRoot of TEMPLATE_ROOTS) {
     for (const [relativePath, markers] of Object.entries(requiredByFile)) {
-      const content = read(templateRoot, relativePath);
+      const content = readResolved(templateRoot, relativePath);
       for (const marker of markers) {
         assert.ok(content.includes(marker), `${relativePath} in ${templateRoot} is missing ${marker}`);
       }

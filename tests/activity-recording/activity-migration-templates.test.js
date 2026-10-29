@@ -26,11 +26,10 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const { execFileSync } = require("node:child_process");
+const { resolveTemplatePath } = require("../helpers/template-layers");
 
 const ROOT = path.resolve(__dirname, "..", "..");
 const SHARED = path.join(ROOT, "templates", "_shared", ".agent");
-const EN_TPL = path.join(ROOT, "templates", "en", ".agent");
-const ZH_TPL = path.join(ROOT, "templates", "zh", ".agent");
 const INNER = path.join(ROOT, ".agent");
 
 test("VC-014 shared template, current .agent, and zh / en templates agree on the recording baseline", () => {
@@ -45,8 +44,9 @@ test("VC-014 shared template, current .agent, and zh / en templates agree on the
     "skills/activity-recording/SKILL.md",
   ]) {
     assert.ok(fs.existsSync(path.join(SHARED, relPath)), `shared missing: ${relPath}`);
-    assert.ok(fs.existsSync(path.join(EN_TPL, relPath)), `en missing: ${relPath}`);
-    assert.ok(fs.existsSync(path.join(ZH_TPL, relPath)), `zh missing: ${relPath}`);
+    for (const language of ["en", "zh"]) {
+      assert.ok(resolveTemplatePath(relPath, language), `${language} missing: ${relPath}`);
+    }
   }
   // The recording profile must declare "policy: workflow-enforced" — this
   // is the contract downstream projects rely on.

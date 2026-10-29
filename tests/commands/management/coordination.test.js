@@ -221,3 +221,42 @@ test("coordination: dependencies.service skips CoordinationApplicationService.op
   // (openedService sentinel is unused; included for documentation.)
   assert.equal(openedService, false);
 });
+
+test("coordination: task gates lists the workflow gates the project accepts", () => {
+  // A gated event is refused unless the caller supplies a gate the project
+  // actually holds, and that allow-list is server-side state — the caller
+  // cannot infer it and a guess is rejected. `task gates` makes it readable,
+  // and it must be read-only: it creates no runtime state.
+  const root = mkRoot();
+  const missions = path.join(root, ".agent", "missions", "M-042");
+  fs.mkdirSync(missions, { recursive: true });
+  fs.writeFileSync(path.join(missions, "mission-plan.md"), "# M-042\n", "utf8");
+  const policyDir = path.join(root, ".agent", "coordination");
+  fs.mkdirSync(policyDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(policyDir, "authorization-policy.json"),
+    JSON.stringify({ trustModel: "local_same_user", workflowGates: ["D-test-1"] }),
+    "utf8",
+  );
+
+  const { restore } = captureStdout();
+  let output;
+  try {
+    coordination({ cwd: root, args: ["task", "gates"], options: { project: root } });
+    output = restore();
+  } finally {
+    restore();
+  }
+
+  const payload = JSON.parse(output);
+  assert.equal(payload.ok, true);
+  assert.equal(payload.command, "task.gates");
+  assert.equal(payload.trustModel, "local_same_user");
+  assert.ok(payload.workflowGates.includes("M-042"), "the mission registry contributes its gate");
+  assert.ok(payload.workflowGates.includes("D-test-1"), "the explicit policy contributes its gate");
+  assert.equal(
+    fs.existsSync(path.join(root, ".agent", "runtime")),
+    false,
+    "listing the gates must not create runtime state",
+  );
+});
