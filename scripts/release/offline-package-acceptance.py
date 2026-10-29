@@ -440,6 +440,16 @@ def main():
                     if file.is_file() and not file.is_symlink():
                         origins[file.relative_to(template).as_posix()] = digest(file.read_bytes())
             target_rel = "skills/evolution-pipeline/scripts/evolve.js"
+            # evolve.js is language-neutral: after the layering change it
+            # lives under _shared only. Resolve it through the same precedence
+            # the installer uses — the language overlay wins when it carries
+            # the path, otherwise the shared layer supplies it.
+            def layer_file(relative):
+                for template in [localized, shared]:
+                    candidate = template / relative
+                    if candidate.is_file():
+                        return candidate
+                return None
             for modified in [False, True]:
                 root, project, home = fixture("update-" + language + ("-modified" if modified else "-managed"))
                 agent = project / ".agent"
@@ -489,7 +499,8 @@ def main():
                     require(any(x["path"] == ".agent/" + target_rel and x["reason"] == "user_modified"
                                 for x in report["changes"]["protected"]), "missing protected-script report")
                 else:
-                    require(target.read_bytes() == (localized / target_rel).read_bytes() and
+                    expected_bytes = (layer_file(target_rel) or shared / target_rel).read_bytes()
+                    require(target.read_bytes() == expected_bytes and
                             report["status"] == "passed" and
                             version_file.read_text().strip() == args.expected_version,
                             "managed update did not install current bytes/version")
