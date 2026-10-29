@@ -321,7 +321,7 @@ jobs:
            suites=[r for r in receipts if r['role']=='suite'];children=[r for r in receipts if r['role']=='child'];assert len(suites)==1 and len(children)==9
            assert suites[0]['syncChildren']==3 and suites[0]['asyncChildren']==6 and suites[0]['children']==9;assert all(r['children']==0 for r in children)
            assert all(not r['blocked'] and not r['spawnErrors'] and not r['outside'] and r['node']==version for r in receipts)
-           loaded={item['path']:item['sha256'] for r in receipts for item in r['loaded']};assert len(loaded)==228;assert all(name in before and before[name][1]==digest for name,digest in loaded.items());report['loaded_source_count']=len(loaded)
+           loaded={item['path']:item['sha256'] for r in receipts for item in r['loaded']};assert len(loaded)==231;assert all(name in before and before[name][1]==digest for name,digest in loaded.items());report['loaded_source_count']=len(loaded)
            assert snapshot(SOURCE)==before;assert not any(p.is_symlink() for p in SOURCE.rglob('*'));assert list((root/'tmp').iterdir())==[];report['source_unchanged']=True;report['fixture_test_cleanup']=True;report['status']='PASS'
           except BaseException as error:
            report['status']='FAIL';report['error']=str(error);raise

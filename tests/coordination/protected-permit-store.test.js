@@ -573,7 +573,10 @@ test("MS-003 the anchor refuses to start when the database is ahead of it", { sk
     f.store.close();
     // A missing journal behind a committed database is a rollback of the
     // journal itself; the service must not guess which side wins.
-    for (const name of fs.readdirSync(f.anchorDir)) fs.unlinkSync(path.join(f.anchorDir, name));
+    // Lose all witnesses, retaining the stable coordination domain (v2).
+    for (const name of fs.readdirSync(f.anchorDir)) {
+      if (name !== "protected-store-coordination.sqlite") fs.unlinkSync(path.join(f.anchorDir, name));
+    }
     assert.throws(() => ProtectedPermitStore.open(f.file, {
       expectedDecisionId: "D-test-init", minimumEpoch: 1, anchorDir: f.anchorDir, clock: f.clock,
     }), { code: "ERR_ANCHOR_MISSING" });
@@ -824,7 +827,10 @@ test("MS-003 an open store refuses to advance a missing journal", { skip: !suppo
     f.store.acquire(leaseFields());
     // Remove the journal while the store is open. The next transaction must
     // fail closed instead of recreating the high-water mark.
-    for (const name of fs.readdirSync(f.anchorDir)) fs.unlinkSync(path.join(f.anchorDir, name));
+    // Lose all witnesses, retaining the stable coordination domain (v2).
+    for (const name of fs.readdirSync(f.anchorDir)) {
+      if (name !== "protected-store-coordination.sqlite") fs.unlinkSync(path.join(f.anchorDir, name));
+    }
     assert.throws(() => f.store.acquire(leaseFields({ idempotencyKey: "after-journal-loss" })), { code: "ERR_ANCHOR_MISSING" });
   } finally { f.cleanup(); }
 });
@@ -1049,7 +1055,10 @@ test("MS-003 the anchor can be rebuilt through the managed recovery without lowe
   try {
     f.store.acquire(leaseFields());
     f.store.close();
-    for (const name of fs.readdirSync(f.anchorDir)) fs.unlinkSync(path.join(f.anchorDir, name));
+    // Lose all witnesses, retaining the stable coordination domain (v2).
+    for (const name of fs.readdirSync(f.anchorDir)) {
+      if (name !== "protected-store-coordination.sqlite") fs.unlinkSync(path.join(f.anchorDir, name));
+    }
 
     assert.throws(() => ProtectedPermitStore.open(f.file, {
       expectedDecisionId: "D-test-init", minimumEpoch: 1, anchorDir: f.anchorDir, clock: f.clock,
@@ -1122,7 +1131,10 @@ test("MS-003 the anchor loss reset does not carry any old permit over", { skip: 
       const body = JSON.stringify(state);
       db.prepare("UPDATE protected_state SET body = ?, sha256 = ? WHERE id = 1").run(body, crypto.createHash("sha256").update(body).digest("hex"));
     } finally { db.close(); }
-    for (const name of fs.readdirSync(f.anchorDir)) fs.unlinkSync(path.join(f.anchorDir, name));
+    // Lose all witnesses, retaining the stable coordination domain (v2).
+    for (const name of fs.readdirSync(f.anchorDir)) {
+      if (name !== "protected-store-coordination.sqlite") fs.unlinkSync(path.join(f.anchorDir, name));
+    }
 
     const reset = ProtectedPermitStore.resetAfterAnchorLoss(f.file, {
       expectedDecisionId: "D-test-init", anchorDir: f.anchorDir, clock: f.clock,
@@ -1301,13 +1313,13 @@ test("MS-003 the whole anchor domain cannot be wiped to launder a one-shot permi
     assert.throws(() => ProtectedPermitStore.rebuildAnchor(f.file, {
       expectedDecisionId: "D-test-init", anchorDir: f.anchorDir,
       acceptDatabaseAsTruth: true, audit: { by: "admin", reason: "attempted" },
-    }), { code: "ERR_ANCHOR_DECLARATION_MISSING" });
+    }), { code: "ERR_COORDINATION_LOCK_MISSING" });
     // And the service refuses to start. The empty journal is reported first,
     // because without any journal entry there is no anchor to check the
     // declaration against.
     assert.throws(() => ProtectedPermitStore.open(f.file, {
       expectedDecisionId: "D-test-init", minimumEpoch: 1, anchorDir: f.anchorDir, clock: f.clock,
-    }), { code: "ERR_ANCHOR_MISSING" });
+    }), { code: "ERR_COORDINATION_LOCK_MISSING" });
   } finally { f.cleanup(); }
 });
 
