@@ -13,7 +13,7 @@ const bootstrap = require("../../lib/coordination/bootstrap-snapshot");
 const cross = require("../../lib/coordination/cross-machine-permit");
 
 function fixture() {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "m044-ms004-cross-"));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "coord-cross-"));
   const pinDir = path.join(dir, "pin");
   const snapshotDir = path.join(dir, "snapshot");
   fs.mkdirSync(pinDir, { recursive: true });
@@ -35,7 +35,7 @@ function keyPair() {
 function batchIdentityFor(key, overrides = {}) {
   return Object.assign({
     decision_id: "D-test-cross",
-    instance_id: "m044-instance",
+    instance_id: "test-instance",
     fingerprint: publicKeyFingerprint(key.publicKeyPem),
   }, overrides);
 }

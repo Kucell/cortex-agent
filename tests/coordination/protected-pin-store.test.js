@@ -39,7 +39,7 @@ test("the carried registration fields are NOT part of the batch identity", () =>
 });
 
 function fixture(options = {}) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "m044-ms004-pin-"));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "coord-pin-"));
   const pinDir = path.join(dir, "pin");
   fs.mkdirSync(pinDir, { recursive: true });
   const store = ProtectedPinStore.open(pinDir, {
@@ -63,7 +63,7 @@ function keyPair() {
 function batchIdentityFor(key, overrides = {}) {
   return Object.assign({
     decision_id: "D-test-pin",
-    instance_id: "m044-instance",
+    instance_id: "test-instance",
     fingerprint: publicKeyFingerprint(key.publicKeyPem),
   }, overrides);
 }
@@ -176,7 +176,7 @@ test("a pin from a DIFFERENT batch is refused and never overwritten", () => {
     );
     // The original pin is untouched.
     assert.equal(f.store.listPins().length, 1);
-    assert.equal(f.store.listPins()[0].instance_id, "m044-instance");
+    assert.equal(f.store.listPins()[0].instance_id, "test-instance");
   } finally {
     f.cleanup();
   }
@@ -406,7 +406,7 @@ test("on Windows the service identity must be declared, or the domain is refused
   // be exercised on a development machine. The judgement the design cares
   // about -- "the declaration is mandatory on Windows" -- does not depend
   // on the host the test runs on.
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "m044-ms004-pin-strict-"));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "coord-pin-strict-"));
   try {
     const pinDir = path.join(dir, "pin");
     fs.mkdirSync(pinDir, { recursive: true });
@@ -450,7 +450,7 @@ test("a declared service identity that is not the caller is refused", () => {
   // The declared identity has to BE the calling identity. A process that
   // merely CAN run as the service would otherwise pass the check by
   // definition.
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "m044-ms004-pin-caller-"));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "coord-pin-caller-"));
   try {
     const pinDir = path.join(dir, "pin");
     fs.mkdirSync(pinDir, { recursive: true });
