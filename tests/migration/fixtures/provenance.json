@@ -1,0 +1,70 @@
+{
+  "kind": "published-source-template-examples",
+  "limitation": "Exact shipped source examples, not live customer records or a fresh registry download. Runtime permit v1 fixtures are separate.",
+  "files": [
+    {
+      "version": "1.15.4",
+      "git_head": "ea360b6697ecac9a37090e7b40df14b8a3585d8f",
+      "source": "templates/_base/.agent/tasks/sample.json",
+      "fixture": "1.15.4-tasks.json",
+      "sha256": "f3580b8a356d82fdd942b44e7c6c8b5d44892d55ed3d9f087d16934fe8b82ed4",
+      "blob": "bb25d6a8cc63f38983f69b36fb06441d1c8a8996"
+    },
+    {
+      "version": "1.15.4",
+      "git_head": "ea360b6697ecac9a37090e7b40df14b8a3585d8f",
+      "source": "templates/_base/.agent/decisions/sample.json",
+      "fixture": "1.15.4-decisions.json",
+      "sha256": "359222a7ab0f5d674ad2b0a65b0141608e9b11d5d0253cb32c3854f84e5f1ee4",
+      "blob": "0f41c68e3c7ab43d188b2c49ec892a63ffa19eeb"
+    },
+    {
+      "version": "1.15.4",
+      "git_head": "ea360b6697ecac9a37090e7b40df14b8a3585d8f",
+      "source": "templates/_base/.agent/missions/sample.json",
+      "fixture": "1.15.4-missions.json",
+      "sha256": "2eabb6d523a5851f2cfc3abd6e0cf2af1d690d6a1c4e28be3470c889b974615d",
+      "blob": "b681e6e01ea5c18139c1cacb552d928e55f223e3"
+    },
+    {
+      "version": "1.15.4",
+      "git_head": "ea360b6697ecac9a37090e7b40df14b8a3585d8f",
+      "source": "templates/_base/.agent/waitpoints/sample.json",
+      "fixture": "1.15.4-waitpoints.json",
+      "sha256": "c09c9c8b917ebded318f094940c021bcfd5699c69007db0d3d67b3d77f262e2f",
+      "blob": "5d0a3f3b6d884c6c97eaa3c0e2c85db221971bc2"
+    },
+    {
+      "version": "1.15.6",
+      "git_head": "fc594201576f5239801d41b86a8f7e107ea8e7c0",
+      "source": "templates/_base/.agent/tasks/sample.json",
+      "fixture": "1.15.6-tasks.json",
+      "sha256": "f3580b8a356d82fdd942b44e7c6c8b5d44892d55ed3d9f087d16934fe8b82ed4",
+      "blob": "bb25d6a8cc63f38983f69b36fb06441d1c8a8996"
+    },
+    {
+      "version": "1.15.6",
+      "git_head": "fc594201576f5239801d41b86a8f7e107ea8e7c0",
+      "source": "templates/_base/.agent/decisions/sample.json",
+      "fixture": "1.15.6-decisions.json",
+      "sha256": "359222a7ab0f5d674ad2b0a65b0141608e9b11d5d0253cb32c3854f84e5f1ee4",
+      "blob": "0f41c68e3c7ab43d188b2c49ec892a63ffa19eeb"
+    },
+    {
+      "version": "1.15.6",
+      "git_head": "fc594201576f5239801d41b86a8f7e107ea8e7c0",
+      "source": "templates/_base/.agent/missions/sample.json",
+      "fixture": "1.15.6-missions.json",
+      "sha256": "2eabb6d523a5851f2cfc3abd6e0cf2af1d690d6a1c4e28be3470c889b974615d",
+      "blob": "b681e6e01ea5c18139c1cacb552d928e55f223e3"
+    },
+    {
+      "version": "1.15.6",
+      "git_head": "fc594201576f5239801d41b86a8f7e107ea8e7c0",
+      "source": "templates/_base/.agent/waitpoints/sample.json",
+      "fixture": "1.15.6-waitpoints.json",
+      "sha256": "c09c9c8b917ebded318f094940c021bcfd5699c69007db0d3d67b3d77f262e2f",
+      "blob": "5d0a3f3b6d884c6c97eaa3c0e2c85db221971bc2"
+    }
+  ]
+}

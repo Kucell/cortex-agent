@@ -823,6 +823,10 @@ async function initModeGeneral() {
       migrateLegacyMemoryCommand(ctx);
       break;
     }
+    case "migration": {
+      require("../lib/commands/migration.cli").migrationCommand(ctx);
+      break;
+    }
     case "migrate-task-state": {
       const result = migrateTaskStateCommand(ctx);
       if (result && result.ok && result.effect && result.effect.kind === "mutation" && result.effect.committed) {

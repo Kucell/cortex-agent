@@ -62,6 +62,7 @@
     "lib/commands/migrate-legacy-memory.js",
     "lib/commands/migrate-task-state.cli.js",
     "lib/commands/migrate-task-state.js",
+    "lib/commands/migration.cli.js",
     "lib/commands/motion.js",
     "lib/commands/patches.js",
     "lib/commands/platform.js",
@@ -208,6 +209,10 @@
     "lib/next-action/canonical-task-source.js",
     "lib/next-action/cli.js",
     "lib/next-action/index.js",
+    "lib/offline-migration/index.js",
+    "lib/offline-migration/inventory.js",
+    "lib/offline-migration/json.js",
+    "lib/offline-migration/schema.js",
     "lib/platform/index.js",
     "lib/project/health.js",
     "lib/reconciliation/index.js",
@@ -259,13 +264,18 @@
     "packages/protocol/src/version.js",
     "packages/sdk/src/index.js",
     "scripts/codex-p002-shadow-pilot.js",
+    "templates/_base/.agent/decisions/decision.schema.json",
+    "templates/_base/.agent/missions/mission.schema.json",
+    "templates/_base/.agent/tasks/task.schema.json",
+    "templates/_base/.agent/waitpoints/waitpoint.schema.json",
     "templates/_shared/.agent/contracts/state-classes.json",
     "templates/_shared/.agent/decisions/decision.schema.json",
     "templates/_shared/.agent/skills/management-api/scripts/query-dispatch-state.js",
+    "templates/_shared/.agent/tasks/task.schema.json",
     "templates/_shared/.agent/waitpoints/waitpoint.schema.json"
   ],
   "protected_source_blobs": {
-    "bin/cli.js": "d1ffec235d4f1702166569b38960c026703c2c18",
+    "bin/cli.js": "4a720cfd018133b15b1409e93a00d9b7b15c1853",
     "lib/dispatch/execute.js": "ad89e6bd06ce20005b9d1037195dfde657dedb57"
   },
   "builtins": [
@@ -404,6 +414,7 @@
     "Comment-only require('./'), require('./catalog'), and require('@graphify') do not create dependencies.",
     "S1 follow-up changes dispatch approval/cache ordering and coordination authorization/repair ordering. This phase-zero test still does not exercise existing manual dispatch; separate S1 fixtures cover the bounded ordering changes.",
     "Tier-U public-bin regression only. No live GovernanceStore, Host, Owner/Lease, authority acceptance, package install, full suite, or live E2E claim.",
-    "The dedicated workflow requires exact-head materialization; ordinary suite runs verify the staged source inventory and report index-verified-working-tree provenance, which is not release HEAD evidence."
+    "The dedicated workflow requires exact-head materialization; ordinary suite runs verify the staged source inventory and report index-verified-working-tree provenance, which is not release HEAD evidence.",
+    "The bin/cli.js protected blob advanced with the reviewed read-only migration inspect/plan route (P-001/P-002, independent review PASS). The migration route never writes: it prints JSON, exits 0 when the scoped format inspection has no unresolved findings, 1 for unresolved input and 2 for unsupported stages. Phase 0 dispatch behaviour is unchanged."
   ]
 }

@@ -12,7 +12,7 @@ function fixture(t) {
   const git = (...args) => execFileSync("git", ["-C", root, ...args], { encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] }).trim();
   const write = (file, bytes) => { fs.mkdirSync(path.dirname(path.join(root, file)), { recursive: true }); fs.writeFileSync(path.join(root, file), bytes); };
   git("init");
-  const sources = Array.from({ length: 260 }, (_, i) => "source/f" + i + ".js");
+  const sources = Array.from({ length: 270 }, (_, i) => "source/f" + i + ".js");
   for (const file of sources) write(file, "// synthetic source\n");
   for (const file of ["tests/helpers/phase-zero-source.js", "tests/dispatch/phase-zero-bin-boundary.test.js"]) write(file, "// synthetic verifier\n");
   const pin = git("hash-object", sources[0]);
@@ -28,7 +28,7 @@ test("candidate proof identifies index provenance and never labels it exact HEAD
   assert.equal(proof.source_kind, "index-verified-working-tree");
   assert.equal(proof.source_head, f.git("rev-parse", "HEAD"));
   assert.match(proof.source_index_sha256, /^[0-9a-f]{64}$/);
-  assert.equal(Object.keys(proof.blobs).length, 260);
+  assert.equal(Object.keys(proof.blobs).length, 270);
 });
 for (const file of ["source/f1.js", "tests/helpers/phase-zero-source.js", "tests/dispatch/phase-zero-bin-boundary.test.js", "tests/dispatch/phase-zero-source-manifest.json"]) {
   test("rejects unstaged bytes: " + file, (t) => {

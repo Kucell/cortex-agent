@@ -191,8 +191,8 @@ jobs:
               const bytes=Buffer.from(file.content,'base64');assert.equal(bytes.length,file.size);assert.ok(bytes.length<=2097152);const blob=crypto.createHash('sha1').update('blob '+bytes.length+'\0').update(bytes).digest('hex');assert.equal(blob,entry.sha);return {bytes,blob};
             }
             const manifestPath='tests/dispatch/phase-zero-source-manifest.json',manifest=JSON.parse((await bytesFor(manifestPath)).bytes);
-            assert.equal(manifest.sources.length,260);assert.equal(new Set(manifest.sources).size,260);assert.equal(manifest.sources.filter(x=>x.endsWith('.js')).length,255);
-            const tests=['inbox','cli','multiprocess','redact','nudge'].map(x=>'tests/feedback/'+x+'.test.js'),files=[...new Set([...manifest.sources,'lib/feedback/nudge.js',...tests,manifestPath])];assert.equal(files.length,267);
+            assert.equal(manifest.sources.length,270);assert.equal(new Set(manifest.sources).size,270);assert.equal(manifest.sources.filter(x=>x.endsWith('.js')).length,260);
+            const tests=['inbox','cli','multiprocess','redact','nudge'].map(x=>'tests/feedback/'+x+'.test.js'),files=[...new Set([...manifest.sources,'lib/feedback/nudge.js',...tests,manifestPath])];assert.equal(files.length,277);
             for(const relative of files){const {bytes,blob}=await bytesFor(relative),file=path.join(root,'source',relative);assert.ok(file.startsWith(path.join(root,'source')+path.sep));fs.mkdirSync(path.dirname(file),{recursive:true});fs.writeFileSync(file,bytes,{flag:'wx',mode:0o444});proof.sources.push({path:relative,blob,sha256:crypto.createHash('sha256').update(bytes).digest('hex')});}
             fs.writeFileSync(path.join(root,'source-proof.json'),JSON.stringify(proof)+'\n',{flag:'wx',mode:0o444});core.info(JSON.stringify(proof));
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020

@@ -1,0 +1,76 @@
+{
+  "schema_version": 1,
+  "mission_id": "M-001",
+  "title": "Phase 1 — mode 切分 + 跨 host 切换总线",
+  "description": "抽 templates/_base/ 共享层(9 个 data 目录 schema),实现 cortex-agent init --mode general 与自动 mode 推断,落 shadow 双跑路径(老 v1 schema 项目零变化,新 init 走 v2 schema),使 v1.10.0 可以基于真实 mode 切分能力发版。",
+  "status": "active",
+  "current_milestone_id": "MS-001",
+  "milestones": [
+    {
+      "milestone_id": "MS-001",
+      "title": "templates/_base/ 共享层抽离完成,9 data 目录 schema publish",
+      "description": "抽 templates/_base/ 共享层,落 9-11 个 data 目录 schema,每个目录含 schema.json + README.md + 1 个 sample,顶层有 _base/.agent/README.md 解释用途。",
+      "status": "in_progress",
+      "owner": "Worker-A-MS001",
+      "depends_on": [],
+      "validation_contract_ref": ".agent/missions/M-001/validation-contract.json",
+      "milestone_ref": ".agent/missions/M-001/milestones/MS-001.md",
+      "started_at": "2026-08-01T15:20:00.000Z",
+      "completed_at": null
+    },
+    {
+      "milestone_id": "MS-002",
+      "title": "bin/cli.js init --mode general 命令可执行",
+      "description": "实现 cortex-agent init --mode general,在空目录运行成功,生成 9 核心目录。",
+      "status": "planned",
+      "owner": "Worker-B",
+      "depends_on": ["MS-001"],
+      "validation_contract_ref": ".agent/missions/M-001/validation-contract.json",
+      "milestone_ref": null,
+      "started_at": null,
+      "completed_at": null
+    },
+    {
+      "milestone_id": "MS-003",
+      "title": "bin/cli.js init 无参数时自动 mode 推断",
+      "description": "在含 package.json 的 code 项目推断为 code 模式;空目录 / 含 .agent/conversations/ 推断为 general 模式。",
+      "status": "planned",
+      "owner": "Worker-C",
+      "depends_on": ["MS-001"],
+      "validation_contract_ref": ".agent/missions/M-001/validation-contract.json",
+      "milestone_ref": null,
+      "started_at": null,
+      "completed_at": null
+    },
+    {
+      "milestone_id": "MS-004",
+      "title": "shadow 路径测试矩阵 100% pass,现有回归测试 100% pass",
+      "description": "shadow 双跑路径:老 v1 schema 项目零变化,新 init 走 v2 schema;现有 272+ 回归测试 100% pass。",
+      "status": "planned",
+      "owner": "Worker-D",
+      "depends_on": ["MS-001", "MS-002", "MS-003"],
+      "validation_contract_ref": ".agent/missions/M-001/validation-contract.json",
+      "milestone_ref": null,
+      "started_at": null,
+      "completed_at": null
+    },
+    {
+      "milestone_id": "MS-005",
+      "title": "RFC §15 Phase 1 翻 ✅,v1.10.0-rc.1 release notes 草稿",
+      "description": "RFC v0.2 同步,§15 Phase 1 翻 ✅,v1.10.0-rc.1 release notes 草稿。",
+      "status": "planned",
+      "owner": "Worker-E",
+      "depends_on": ["MS-001", "MS-002", "MS-003", "MS-004"],
+      "validation_contract_ref": ".agent/missions/M-001/validation-contract.json",
+      "milestone_ref": null,
+      "started_at": null,
+      "completed_at": null
+    }
+  ],
+  "validation_contract_ref": ".agent/missions/M-001/validation-contract.json",
+  "command_log_ref": ".agent/missions/M-001/command-log.md",
+  "owner": "Worker-A-MS001",
+  "coordinator_session_id": "S-M-001",
+  "created_at": "2026-08-01T15:15:00.000Z",
+  "updated_at": "2026-08-01T15:20:00.000Z"
+}

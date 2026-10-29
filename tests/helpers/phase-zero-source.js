@@ -42,8 +42,8 @@ function candidateProof(checkout) {
     return { bytes, entry };
   }
   const manifest = JSON.parse(bytesFor(MANIFEST).bytes);
-  assert.equal(manifest.sources.length, 260);
-  assert.equal(new Set(manifest.sources).size, 260);
+  assert.equal(manifest.sources.length, 270);
+  assert.equal(new Set(manifest.sources).size, 270);
   for (const [file, pin] of Object.entries(manifest.protected_source_blobs)) {
     assert.equal(bytesFor(file).entry.blob, pin, "protected source changed: " + file);
   }
