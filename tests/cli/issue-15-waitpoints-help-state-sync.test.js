@@ -316,14 +316,8 @@ test("issue #15: successful waitpoints write DOES push state (positive control)"
   assert.ok(beforeDirty.length > 0, "fixture must start with unrelated dirty state");
 });
 
-test("decision resolve records only the decision, never releasing its waitpoint", (t) => {
-  // Decision resolution used to auto-release every Waitpoint bound to the
-  // decision.  That coupled two independent lifecycles: resolving a record
-  // of a choice silently advanced the gate that was waiting on it.  The
-  // owning workflow must now perform a separate, validated release or
-  // cancel — so this test pins the *absence* of the old side effect, not
-  // merely the presence of the decision path.
-  const { project } = mkInnerRepoWithOrigin();
+test("decision resolve reports only Decision-owned changes and leaves its Waitpoint untouched", (t) => {
+  const { project, agentDir } = mkInnerRepoWithOrigin();
   t.after(() => fs.rmSync(project, { recursive: true, force: true }));
   seedManagementScripts(project);
   const env = { CORTEX_STATE_SYNC: "off" };
@@ -352,6 +346,10 @@ test("decision resolve records only the decision, never releasing its waitpoint"
     "--decision-id", "D-MULTI",
   ], env);
   assert.equal(result.status, 0, result.stderr + result.stdout);
+  const waitpointFile = path.join(agentDir, "waitpoints", "WP-MULTI.json");
+  const waitpointIndex = path.join(agentDir, "waitpoints", "index.json");
+  const beforeWaitpoint = fs.readFileSync(waitpointFile, "utf8");
+  const beforeIndex = fs.readFileSync(waitpointIndex, "utf8");
 
   const waitpointBefore = fs.readFileSync(
     path.join(project, ".agent", "waitpoints", "WP-MULTI.json"),
@@ -370,30 +368,14 @@ test("decision resolve records only the decision, never releasing its waitpoint"
   assert.equal(result.status, 0, result.stderr + result.stdout);
 
   const body = JSON.parse(result.stdout);
-  const paths = new Set(body.changed_paths || []);
-
-  // The decision and its index are the only paths a resolution may touch.
-  assert.ok(paths.has(".agent/decisions/D-MULTI.json"), "missing changed path .agent/decisions/D-MULTI.json");
-  assert.ok(paths.has(".agent/decisions/index.json"), "missing changed path .agent/decisions/index.json");
-  for (const forbidden of [
-    ".agent/waitpoints/WP-MULTI.json",
-    ".agent/waitpoints/index.json",
-  ]) {
-    assert.equal(paths.has(forbidden), false, "resolve must not touch " + forbidden);
-  }
-
-  assert.deepEqual(
-    new Set(body.changed_resources || []),
-    new Set(["decision:D-MULTI"]),
-  );
-
-  // The waitpoint itself must be byte-identical: no status, no release
-  // timestamp, no release note smuggled in by the resolution.
-  const waitpointAfter = fs.readFileSync(
-    path.join(project, ".agent", "waitpoints", "WP-MULTI.json"),
-    "utf8",
-  );
-  assert.equal(waitpointAfter, waitpointBefore, "resolve must not modify the waitpoint");
+  assert.deepEqual(body.changed_paths, [
+    ".agent/decisions/D-MULTI.json",
+    ".agent/decisions/index.json",
+  ]);
+  assert.deepEqual(body.changed_resources, ["decision:D-MULTI"]);
+  assert.equal(fs.readFileSync(waitpointFile, "utf8"), beforeWaitpoint);
+  assert.equal(fs.readFileSync(waitpointIndex, "utf8"), beforeIndex);
+  assert.equal(JSON.parse(beforeWaitpoint).status, "blocked");
 });
 
 // helpers ─────────────────────────────────────────────────────────────────────

@@ -1,87 +1,66 @@
 ---
 name: evolution-pipeline
-description: OpenViking 风格的异步自我进化管线。Session 归档 (`runtime-continuity/archive`) 后自动 enqueue，worker 后台提取 observation 写入 `.agent/memory/{feedback,project,experiences}/`。零 LLM 依赖（v1）。
+description: 显式启用的项目内归档接入与不可变学习建议队列，只记录元数据，不自动更新记忆或调用 Host。
 area: agent-tuning
-summary: OpenViking 风格的异步自我进化管线。Session 归档 (`runtime-continuity/archive`) 后自动 enqueue，worker 后台提取 observation 写入 `.agent/memory/{feedback,project,experiences}/`。零 LLM 依赖（v1）。
+summary: 默认关闭的归档建议接线，支持项目隔离、去重与可恢复重放。
 ---
 
-# Self-Evolution Pipeline (Phase 2.2)
+# 归档学习建议
 
-## 目标
+## 范围
 
-把 OpenViking 的 `session.commit()` 异步 memory extraction 适配到 cortex-agent：
+手工会话归档可显式选择加入项目内建议队列。未指定选项时保持原归档行为。
+自动连续性守护不会启用此选项。
 
-- `runtime-continuity` 每次归档后自动创建 evolution task
-- `evolve.js --worker` 后台处理，分类写入 4 个 memory scope
-- 支持重试、死信队列、幂等去重
-- v1 = 纯确定性规则分类（零 token 消耗）
-
-## 架构
-
-```
-runtime-continuity/archive
-         ↓ (manual or --auto)
-evolve.js --enqueue-from-latest
-         ↓
-.agent/tasks/evolution/EVO-YYYY-MM-DD-NNN.json
-         ↓ (poll loop)
-evolve.js --worker --loop --interval 30
-         ↓
-.classifyArchive() → {user, feedback, project, experiences} routes
-         ↓
-writeMemoryItem() → .agent/memory/{scope}/{name}.md
-         ↓
-updateMemoryIndex() → .agent/memory/MEMORY.md
-```
+建议只保存来源引用、归档原始字节的 SHA-256、观察项数量与通用核验提醒，
+不复制归档原文。归档仍留在选定项目内。本流程不调用模型、不更新 memory
+或索引、不创建 Task，也不授予执行权限。
 
 ## 命令
 
-```bash
-# 入队（手动）
-node .agent/skills/evolution-pipeline/scripts/evolve.js --enqueue-from-latest
-node .agent/skills/evolution-pipeline/scripts/evolve.js --enqueue-from-latest --max 5
-node .agent/skills/evolution-pipeline/scripts/evolve.js --enqueue --archive RC-20260724_053807_983
+仅在明确选定的项目与范围内运行：
 
-# worker
-node .agent/skills/evolution-pipeline/scripts/evolve.js --worker --once
-node .agent/skills/evolution-pipeline/scripts/evolve.js --worker --loop --interval 30
-
-# 管理
-node .agent/skills/evolution-pipeline/scripts/evolve.js --status
-node .agent/skills/evolution-pipeline/scripts/evolve.js --list --status failed
-node .agent/skills/evolution-pipeline/scripts/evolve.js --replay EVO-2026-07-24-001
-node .agent/skills/evolution-pipeline/scripts/evolve.js --dead-letter
+```sh
+cortex-agent session archive --project <name> --gate user --queue-learning-proposal
+node .agent/skills/evolution-pipeline/scripts/evolve.js --enqueue --archive <archive-id> --project <name> --proposal-only
+node .agent/skills/evolution-pipeline/scripts/evolve.js --worker --once --proposal-only
+node .agent/skills/evolution-pipeline/scripts/evolve.js --replay <EVO-P-id> --proposal-only
 ```
 
-## 分类规则（v1 = 确定性）
+proposal-only 的 list/status 只检查保留的 EVO-P- 记录，不读旧队列或 dead-letter。
+此模式不支持 --enqueue-from-latest、--dead-letter 或 --loop，须明确指定归档。
 
-| 类别 | 触发条件 | 写入目录 |
-|---|---|---|
-| feedback | state.blockers[] + state.in_progress | memory/feedback/ |
-| project fact | state.done[] (非 lesson) + state.next[] | memory/project/ |
-| experience | state.done[] + keywords: lesson/trap/regression/root cause/防复发 | experiences/ |
-| user | (v2) 用户偏好关键词提取 | memory/user/ |
-| dropped | 无 match 或重复 | - |
+建议入队与单次 worker 可加 --dry-run，只读预览不分配队列记录。
+重放和轮询不支持 --dry-run；建议专用 worker 必须使用 --once。
 
-## 与其他组件的边界
+CLI 标记只是用户请求入口，不是 owner、consent、审批或 effect admission
+的证明。真实项目执行与框架提升仍须各自的治理门禁。
 
-- **与 `runtime-continuity`**: 不修改 guard/archive 逻辑，只做下游消费
-- **与 `memory-protocol.md`**: 100% 兼容 frontmatter 格式 + MEMORY.md 索引约定
-- **与 `experience-recall`**: 写入 lessons 到 `experiences/` 供检索
-- **与 LLM extraction**: classifyArchive() 函数可替换而不改变入队/worker contract
-- **与 `skill-selector`**: v1 暂不做显式 skills 提取（OpenViking 有 skill/ 目录但 cortex-agent 已有）
+## 持久化与重放
 
-## 幂等与收敛
+- 输入队列：.agent/tasks/evolution/EVO-P-<digest>.json
+- 建议输出：.agent/tasks/evolution/_proposals/EVO-P-<digest>.json
+- 去重键包含项目名、当前规范工作区路径的摘要、归档 ID 和归档原始字节摘要。
+- 输入与输出均不可变。相同重放只核对既有字节，不重写；冲突时关闭处理。
+- 归档变更产生新键。旧任务复制到另一工作区不能复用身份；工作区搬迁后须重新接入。
+- 先写完整临时文件，再以 create-if-absent 硬链接发布。发布前进程退出可能留下被忽略的
+  .tmp；创建硬链接后、移除临时名之前退出会留下双链记录，必须保留并阻断，等待显式修复。
+  重放不猜测所有权、不删除旧临时链接；只有单链记录可正常恢复。这不是分布式 fencing 或断电持久性证明。
+- 输入文件保持 pending。list/worker 只读核对建议回执后派生 proposal_only；
+  来源变化或冲突派生 blocked。这些状态都不表示验证通过或获得授权。
 
-- 相同 archive → 相同 content hash → 相同文件名
-- 重复写入覆盖文件本身（append 语义由 MANIFEST 跟踪）
-- 每个 evolution task status: pending → running → completed/failed → dead
-- 重试 max_retries 次后转入 `_dead/` 目录
+可选建议入队失败不会回滚成功归档；响应的 learning_proposal.status 为 unavailable，
+不会删除归档或悄悄切换项目重试。
 
-## 验收
+## 既有 legacy worker
 
-- 入队：`--enqueue-from-latest` 创建 task 文件
-- 执行：`--worker --once` 更新 status → completed，创建 memory/ 文件
-- 索引更新：MEMORY.md 新增对应条目
-- 失败重试：人工 bug fix 后 `--replay` 可重跑
-- 死信队列：超限后转入 `_dead/`
+旧的确定性记忆写入流程仍是独立的显式流程。--worker --once --proposal-only
+会排除旧队列项。新归档建议项不能落入旧 memory/index 写入或旧 replay 改写逻辑。
+关键词分类不等同于 AI 推理、验证通过的学习结果或受治理的自动效果。
+
+## 证据边界
+
+全新临时目录测试覆盖真实归档 API、lib/commands/session.js 库级 facade、单次 worker、
+默认关闭、隔离去重、独立进程竞争、进程退出后的恢复/阻断状态、来源冲突与预览零写。
+测试在模块加载前预加载常见 Node 网络 API 拦截与有界子进程 guard；这不是操作系统级网络隔离。
+这些仅证明本地文件接线，不证明两个异构 L2、真实 AI Host 或 SelfEvolutionE2E 验收。

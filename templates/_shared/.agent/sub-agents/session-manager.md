@@ -207,6 +207,12 @@ tools: Read, Write, Shell
 手工 `archive` 仍必须使用 `--gate user`。自动守护不得提交代码、停止 Dashboard、
 触碰业务源码，也不得并行启动第二个归档进程。
 
+手工归档可另加 `--queue-learning-proposal`，显式把本项目归档引用加入建议队列。
+默认关闭，自动守护不会启用。后续 `evolve.js --worker --once --proposal-only`
+只生成项目内的不可变元数据建议，不复制归档原文、不更新 memory/index、不调用 Host。
+项目名、工作区摘要与归档字节摘要共同绑定去重键。CLI 标记不构成授权或 consent 证明。
+建议入队失败会报告 unavailable，但保留成功归档；跨项目提升和执行仍须独立门禁。
+
 ### SessionStart 自动注入：[CORTEX-RESUME] 块（P-002 / MS-002）
 
 新 host 的 SessionStart hook 在 `warm --auto` 之后自动调

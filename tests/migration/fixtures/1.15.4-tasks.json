@@ -1,0 +1,89 @@
+{
+  "schema_version": 1,
+  "task_id": "M-001-MS-001",
+  "title": "templates/_base/ 共享层抽离 + 9 data 目录 schema publish",
+  "description": "抽 templates/_base/ 共享层,落 9-11 个 data 目录 schema(inbox / decisions / waitpoints / runs / sessions / missions / handoffs / conversations / memory / agents / tasks),每个目录含 schema.json + README.md + 1 个 sample,顶层有 _base/.agent/README.md 解释用途。",
+  "status": "active",
+  "stage": "implement",
+  "priority": "P0",
+  "owner": "Worker-A-MS001",
+  "mission_id": "M-001",
+  "acceptance_criteria": [
+    "templates/_base/.agent/ 顶层 README 存在并解释 9-11 目录关系",
+    "11 个 data 目录(inbox / decisions / waitpoints / runs / sessions / missions / handoffs / conversations / memory / agents / tasks)每个含 schema.json + README.md + sample.json",
+    "11 个 schema.json 合法(JSON Schema draft-07)",
+    "tests/_base-extraction.test.js 全绿(22+ 断言)",
+    "templates/{zh,en}/*、bin/cli.js、lib/commands.js 零修改(纯加法)"
+  ],
+  "dependencies": [],
+  "subtasks": [
+    "extract-11-data-directory-schemas",
+    "write-22-readmes",
+    "write-11-samples",
+    "write-top-level-readme",
+    "write-tests",
+    "commit-and-handoff"
+  ],
+  "validation_commands": [
+    "node --test tests/_base-extraction.test.js"
+  ],
+  "gates": [
+    {
+      "from_stage": "plan",
+      "to_stage": "implement",
+      "status": "passed",
+      "required_artifacts": ["plan", "architecture"],
+      "evidence_refs": [
+        ".agent/missions/M-001/mission-plan.md",
+        ".agent/missions/M-001/validation-contract.json"
+      ],
+      "checked_by": "coordinator",
+      "checked_at": "2026-08-01T15:15:00.000Z",
+      "reason": "Mission plan + validation contract approved"
+    },
+    {
+      "from_stage": "implement",
+      "to_stage": "validate",
+      "status": "pending",
+      "required_artifacts": ["implementation"],
+      "evidence_refs": [],
+      "checked_by": null,
+      "checked_at": null,
+      "reason": null
+    },
+    {
+      "from_stage": "validate",
+      "to_stage": "review",
+      "status": "pending",
+      "required_artifacts": ["validation"],
+      "evidence_refs": [],
+      "checked_by": null,
+      "checked_at": null,
+      "reason": null
+    },
+    {
+      "from_stage": "review",
+      "to_stage": "done",
+      "status": "pending",
+      "required_artifacts": ["review"],
+      "evidence_refs": [],
+      "checked_by": null,
+      "checked_at": null,
+      "reason": null
+    }
+  ],
+  "artifacts": [
+    {
+      "kind": "plan",
+      "ref": ".agent/missions/M-001/mission-plan.md",
+      "status": "final"
+    },
+    {
+      "kind": "implementation",
+      "ref": "templates/_base/.agent/",
+      "status": "draft"
+    }
+  ],
+  "created_at": "2026-08-01T15:15:00.000Z",
+  "updated_at": "2026-08-01T15:30:00.000Z"
+}

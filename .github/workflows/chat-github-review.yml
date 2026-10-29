@@ -1,0 +1,30 @@
+name: Chat GitHub Review Contract
+
+on:
+  pull_request:
+    paths:
+      - "lib/governance/chat-github-review.js"
+      - "tests/governance/chat-github-review.test.js"
+      - "docs/architecture/chat-github-review.md"
+      - ".github/workflows/chat-github-review.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  review-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Run focused Chat GitHub and existing governance contracts
+        run: |
+          node --test \
+            tests/governance/chat-github-review.test.js \
+            tests/governance/provider-adapters.test.js \
+            tests/governance/git-governance-store.test.js \
+            tests/project-sdk/remote-governance-contracts.test.js

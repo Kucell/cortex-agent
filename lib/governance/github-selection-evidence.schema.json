@@ -1,0 +1,354 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:cortex-agent:governance:github-selection-evidence:1",
+  "title": "Cortex GitHub selection structural evidence v1",
+  "description": "Inert audit evidence only. Matching the schema or audit digest never authenticates GitHub identity or authorizes a canonical transition. No migration of existing Decision/Waitpoint records and no historical permission upgrade.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "kind",
+    "verification",
+    "authentication",
+    "authority",
+    "execution_authorized",
+    "effect_permitted",
+    "canonical_mutation",
+    "human_presence_verified",
+    "project_id",
+    "subject",
+    "product_repository",
+    "governance_repository",
+    "controller",
+    "provenance",
+    "canonical",
+    "selection",
+    "replay",
+    "audit_ref"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "kind": {
+      "const": "github-selection-structural-evidence"
+    },
+    "verification": {
+      "const": "STRUCTURAL_MATCH_ONLY"
+    },
+    "authentication": {
+      "const": "NOT_ESTABLISHED"
+    },
+    "authority": {
+      "const": "none"
+    },
+    "execution_authorized": {
+      "const": false
+    },
+    "effect_permitted": {
+      "const": false
+    },
+    "canonical_mutation": {
+      "const": false
+    },
+    "human_presence_verified": {
+      "const": false
+    },
+    "project_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 36,
+      "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$"
+    },
+    "subject": {
+      "type": "object",
+      "required": [
+        "provider",
+        "account_id"
+      ],
+      "properties": {
+        "provider": {
+          "const": "github"
+        },
+        "account_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 20,
+          "pattern": "^[1-9][0-9]{0,19}$"
+        }
+      },
+      "additionalProperties": false
+    },
+    "product_repository": {
+      "type": "object",
+      "required": [
+        "id",
+        "name",
+        "head_sha"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 20,
+          "pattern": "^[1-9][0-9]{0,19}$"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 140,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,38}/[A-Za-z0-9][A-Za-z0-9_.-]{0,99}$"
+        },
+        "head_sha": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 40,
+          "pattern": "^[a-f0-9]{40}$"
+        }
+      },
+      "additionalProperties": false
+    },
+    "governance_repository": {
+      "type": "object",
+      "required": [
+        "id",
+        "name",
+        "revision"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 20,
+          "pattern": "^[1-9][0-9]{0,19}$"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 140,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,38}/[A-Za-z0-9][A-Za-z0-9_.-]{0,99}$"
+        },
+        "revision": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 40,
+          "pattern": "^[a-f0-9]{40}$"
+        }
+      },
+      "additionalProperties": false
+    },
+    "controller": {
+      "type": "object",
+      "required": [
+        "workflow_path",
+        "ref",
+        "workflow_ref",
+        "workflow_sha",
+        "script_digest"
+      ],
+      "properties": {
+        "workflow_path": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^\\.github/workflows/[A-Za-z0-9_-][A-Za-z0-9_.-]{0,100}\\.ya?ml$"
+        },
+        "ref": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 75,
+          "pattern": "^refs/heads/[A-Za-z0-9][A-Za-z0-9_-]{0,63}$"
+        },
+        "workflow_ref": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,38}/[A-Za-z0-9][A-Za-z0-9_.-]{0,99}/\\.github/workflows/[A-Za-z0-9_.-]+\\.ya?ml@refs/heads/[A-Za-z0-9_-]+$"
+        },
+        "workflow_sha": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 40,
+          "pattern": "^[a-f0-9]{40}$"
+        },
+        "script_digest": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 71,
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        }
+      },
+      "additionalProperties": false
+    },
+    "provenance": {
+      "type": "object",
+      "required": [
+        "repository_id",
+        "repository",
+        "sender_id",
+        "actor_id",
+        "triggering_actor_id",
+        "event_name",
+        "run_id",
+        "run_attempt"
+      ],
+      "properties": {
+        "repository_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 20,
+          "pattern": "^[1-9][0-9]{0,19}$"
+        },
+        "repository": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 140,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,38}/[A-Za-z0-9][A-Za-z0-9_.-]{0,99}$"
+        },
+        "sender_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 20,
+          "pattern": "^[1-9][0-9]{0,19}$"
+        },
+        "actor_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 20,
+          "pattern": "^[1-9][0-9]{0,19}$"
+        },
+        "triggering_actor_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 20,
+          "pattern": "^[1-9][0-9]{0,19}$"
+        },
+        "event_name": {
+          "const": "workflow_dispatch"
+        },
+        "run_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 20,
+          "pattern": "^[1-9][0-9]{0,19}$"
+        },
+        "run_attempt": {
+          "const": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "canonical": {
+      "type": "object",
+      "required": [
+        "resource_ref",
+        "resource_digest",
+        "decision_id",
+        "decision_digest",
+        "frozen_digest"
+      ],
+      "properties": {
+        "resource_ref": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "resource_digest": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 71,
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "decision_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^D-[A-Za-z0-9][A-Za-z0-9._-]{0,125}$"
+        },
+        "decision_digest": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 71,
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "frozen_digest": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 71,
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        }
+      },
+      "additionalProperties": false
+    },
+    "selection": {
+      "type": "object",
+      "required": [
+        "operation_id",
+        "operation",
+        "action"
+      ],
+      "properties": {
+        "operation_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "operation": {
+          "enum": [
+            "plan",
+            "implement",
+            "test",
+            "review",
+            "local_commit"
+          ]
+        },
+        "action": {
+          "enum": [
+            "approve",
+            "reject",
+            "request_revision"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "replay": {
+      "type": "object",
+      "required": [
+        "run_key",
+        "selection_key",
+        "observation",
+        "consumption"
+      ],
+      "properties": {
+        "run_key": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 71,
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "selection_key": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 71,
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "observation": {
+          "const": "NOT_ATOMIC"
+        },
+        "consumption": {
+          "const": "CANONICAL_TRANSACTION_REQUIRED"
+        }
+      },
+      "additionalProperties": false
+    },
+    "audit_ref": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 71,
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    }
+  },
+  "additionalProperties": false
+}

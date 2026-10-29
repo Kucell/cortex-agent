@@ -99,7 +99,7 @@
 
 > ✓ = 启用;△ = 可选;**✓** = 模式核心
 
-`code` 模式:编程项目,v1.x 全自动开发;workflow 偏重 `/start-task` `/ship` `/prototype` `/arch-design`。
+`code` 模式:编程项目,通过既有工作流协助开发;workflow 偏重 `/start-task` `/ship` `/prototype` `/arch-design`。
 `general` 模式:日常任务 + 对话管理;workflow 偏重 `/conversation log` `/memory recall` `/memory distill` `/agent invoke` `/handoff`。
 
 ## 5. schema 命名约定

@@ -467,7 +467,7 @@ test("m003-cli: agent dispatch-execute --protocol file end-to-end (real CLI, rea
   } finally { rmProject(root); }
 });
 
-test("m003-cli: agent dispatch-execute --protocol http end-to-end (real CLI, in-process HTTP server)", () => {
+test("m003-cli: agent dispatch-execute --protocol http end-to-end (real CLI, in-process HTTP server)", async () => {
   const root = mkProject();
   // In-process HTTP server mimicking an MCP-style endpoint.
   const httpServer = require("node:http");
@@ -480,37 +480,31 @@ test("m003-cli: agent dispatch-execute --protocol http end-to-end (real CLI, in-
       res.end(JSON.stringify({ ok: true, received: body, adapter: "claude-code" }));
     });
   });
-  let port = 0;
-  // Listen synchronously using a one-shot callback to capture the port.
-  const started = new Promise((resolve) => {
-    server.listen(0, "127.0.0.1", () => {
-      port = server.address().port;
-      resolve();
+  try {
+    await new Promise((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(0, "127.0.0.1", resolve);
     });
-  });
-  return started.then(() => new Promise((resolve) => {
-    try {
+    const port = server.address().port;
       seedAgent(root, "Worker-A-MS004-http", {
         external: { adapter_type: "claude-code", config_ref: "cfg", credential_ref: "sec" },
       });
-      const r = spawnSync("node", [
+      const r = await require("node:util").promisify(require("node:child_process").execFile)(process.execPath, [
         binCli, "agent", "dispatch-execute",
         "Worker-A-MS004-http", "review via http",
         "--project", root, "--output", "json", "--timeout", "10",
         "--protocol", "http", "--url", `http://127.0.0.1:${port}/claude-code/invoke`,
-      ], { encoding: "utf8" });
-      assert.equal(r.status, 0, `stderr: ${r.stderr}\nstdout: ${r.stdout}`);
+      ], { encoding: "utf8", timeout: 15000, killSignal: "SIGKILL", maxBuffer: 1024 * 1024 });
       const json = JSON.parse(r.stdout);
       assert.equal(json.status, "ok");
       assert.equal(json.protocol, "http");
       assert.equal(json.agent_id, "Worker-A-MS004-http");
       assert.equal(json.dispatcher, "m003-cli (protocol.http)");
-    } finally {
-      server.close();
-      rmProject(root);
-      resolve();
-    }
-  }));
+  } finally {
+    server.closeAllConnections();
+    await new Promise((resolve) => server.close(resolve));
+    rmProject(root);
+  }
 });
 
 test("m003-cli: agent dispatch-execute --protocol file missing --output-path returns exit 2", () => {

@@ -58,9 +58,10 @@ function producerCtx() {
 // VC-005.1: publish throughput >= 1000 events/sec
 // ---------------------------------------------------------------------------
 
-test("VC-005 perf: publish throughput >= 1000 events/sec", { skip: PERF_SKIP_REASON }, () => {
+test("VC-005 perf: publish throughput >= 1000 events/sec", { skip: PERF_SKIP_REASON }, (t) => {
   const dir = tmpDir();
   const bus = makeBus(dir);
+  t.after(() => { bus.close(); fs.rmSync(dir, { recursive: true, force: true }); });
   const COUNT = 10000;
   const MAX_SECONDS = 10;
 
@@ -82,16 +83,16 @@ test("VC-005 perf: publish throughput >= 1000 events/sec", { skip: PERF_SKIP_REA
   assert.ok(throughput >= 1000,
     `Throughput ${throughput.toFixed(0)} < 1000 events/sec threshold`);
 
-  bus.close();
 });
 
 // ---------------------------------------------------------------------------
 // VC-005.2: end-to-end latency <= 100ms (publish -> handler called)
 // ---------------------------------------------------------------------------
 
-test("VC-005 perf: end-to-end latency <= 100ms", { skip: PERF_SKIP_REASON }, () => {
+test("VC-005 perf: end-to-end latency <= 100ms", { skip: PERF_SKIP_REASON }, (t) => {
   const dir = tmpDir();
   const bus = makeBus(dir);
+  t.after(() => { bus.close(); fs.rmSync(dir, { recursive: true, force: true }); });
 
   let handlerCalledAt = null;
   bus.subscribe(
@@ -121,14 +122,13 @@ test("VC-005 perf: end-to-end latency <= 100ms", { skip: PERF_SKIP_REASON }, () 
   assert.ok(latencyMs <= 100,
     `E2E latency ${latencyMs.toFixed(2)}ms > 100ms threshold`);
 
-  bus.close();
 });
 
 // ---------------------------------------------------------------------------
 // VC-005.3: archive rotate time <= 200ms
 // ---------------------------------------------------------------------------
 
-test("VC-005 perf: archive rotate time <= 200ms", { skip: PERF_SKIP_REASON }, () => {
+test("VC-005 perf: archive rotate time <= 200ms", { skip: PERF_SKIP_REASON }, (t) => {
   const dir = tmpDir();
   // Use a very small archive cap to trigger rotation quickly
   const p = createPersistence({
@@ -137,6 +137,7 @@ test("VC-005 perf: archive rotate time <= 200ms", { skip: PERF_SKIP_REASON }, ()
     archiveCapBytes: 1024,  // 1KB -> will rotate after ~5-10 events
     totalCapBytes: 100 * 1024 * 1024,
   });
+  t.after(() => { p.close(); fs.rmSync(dir, { recursive: true, force: true }); });
   p.init();
 
   // Write enough events to trigger at least one rotation
@@ -160,16 +161,16 @@ test("VC-005 perf: archive rotate time <= 200ms", { skip: PERF_SKIP_REASON }, ()
   assert.ok(elapsedMs <= 200 * 50, // allow 200ms per rotate, we might rotate multiple times
     `Total time ${elapsedMs.toFixed(2)}ms for ${archiveInfo.archives.length} rotations`);
 
-  p.close();
 });
 
 // ---------------------------------------------------------------------------
 // VC-005.4: memory usage <= 50MB after 1000 events
 // ---------------------------------------------------------------------------
 
-test("VC-005 perf: memory usage <= 50MB after 1000 events", { skip: PERF_SKIP_REASON }, () => {
+test("VC-005 perf: memory usage <= 50MB after 1000 events", { skip: PERF_SKIP_REASON }, (t) => {
   const dir = tmpDir();
   const bus = makeBus(dir);
+  t.after(() => { bus.close(); fs.rmSync(dir, { recursive: true, force: true }); });
 
   // Publish 1000 events
   for (let i = 0; i < 1000; i++) {
@@ -187,16 +188,16 @@ test("VC-005 perf: memory usage <= 50MB after 1000 events", { skip: PERF_SKIP_RE
   assert.ok(heapMB <= 50,
     `Heap usage ${heapMB.toFixed(2)}MB > 50MB threshold`);
 
-  bus.close();
 });
 
 // ---------------------------------------------------------------------------
 // VC-005.5: subscribe fan-out throughput with handler
 // ---------------------------------------------------------------------------
 
-test("VC-005 perf: fan-out to 5 subscribers maintains >= 200 events/sec", { skip: PERF_SKIP_REASON }, () => {
+test("VC-005 perf: fan-out to 5 subscribers maintains >= 200 events/sec", { skip: PERF_SKIP_REASON }, (t) => {
   const dir = tmpDir();
   const bus = makeBus(dir);
+  t.after(() => { bus.close(); fs.rmSync(dir, { recursive: true, force: true }); });
 
   // Register 5 subscribers
   for (let i = 0; i < 5; i++) {
@@ -222,5 +223,4 @@ test("VC-005 perf: fan-out to 5 subscribers maintains >= 200 events/sec", { skip
   assert.ok(throughput >= 200,
     `Fan-out throughput ${throughput.toFixed(0)} < 200 events/sec threshold`);
 
-  bus.close();
 });

@@ -93,7 +93,7 @@ function showHelp() {
   console.log(`Usage: node scripts/test-runner.cjs [options]
 
 Options:
-  --serial                Run tests serially in a single node process
+  --serial                Run one test file at a time in separate child processes
   --parallel              Run tests in parallel workers (default)
   -w, --workers N         Number of workers (default: cpu.length, max 8)
   -m, --module NAME       Run only tests/commands/NAME[.test.js|/**/*.test.js]
@@ -185,19 +185,22 @@ function childEnv() {
   return env;
 }
 
-function runOne(file, timeoutSec, perTestTimeoutMs, idleTimeoutSec) {
+function runAttempt(file, timeoutSec, perTestTimeoutMs, idleTimeoutSec, spawnProcess) {
   return new Promise((resolve) => {
     const start = Date.now();
     const rel = toRel(file);
     // Build child argv. Node 24+ supports --test-timeout for per-test
     // granularity (independent of the file-level timeout we set below).
-    const childArgv = ['--test', file];
+    const childArgv = ['--test'];
     if (perTestTimeoutMs > 0) childArgv.push(`--test-timeout=${perTestTimeoutMs}`);
-    const child = spawn(process.execPath, childArgv, {
+    childArgv.push(file);
+    const child = spawnProcess(process.execPath, childArgv, {
       cwd: ROOT,
       stdio: ['ignore', 'pipe', 'pipe'],
       env: childEnv(),
     });
+    let started = false;
+    child.once('spawn', () => { started = true; });
     let stdout = '';
     let stderr = '';
     child.stdout.on('data', d => { stdout += d.toString(); lastActivity = Date.now(); });
@@ -245,6 +248,7 @@ function runOne(file, timeoutSec, perTestTimeoutMs, idleTimeoutSec) {
     });
     child.on('error', (err) => {
       clearTimeout(timer);
+      if (idleTimer) clearInterval(idleTimer);
       resolve({
         file,
         rel,
@@ -255,9 +259,35 @@ function runOne(file, timeoutSec, perTestTimeoutMs, idleTimeoutSec) {
         duration: Date.now() - start,
         stdout,
         stderr: stderr + `\n[SPAWN ERROR: ${err.message}]`,
+        spawnError: { code: err.code, message: err.message },
+        // Never infer spawn failure from test output, exit status, or a signal.
+        retryableSpawnFailure: !started && !child.pid && !killed &&
+          new Set(['EAGAIN', 'ENOMEM', 'EMFILE', 'ENFILE']).has(err.code),
       });
     });
   });
+}
+
+// Only a failed OS spawn can be retried: the test process never ran.
+// Each worker awaits every attempt and its bounded backoff. There is no
+// file-level rerun or claim that a retry owns the machine exclusively.
+async function runOne(file, timeoutSec, perTestTimeoutMs, idleTimeoutSec, spawnProcess = spawn) {
+  const attempts = [];
+  const start = Date.now();
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const result = await runAttempt(file, timeoutSec, perTestTimeoutMs, idleTimeoutSec, spawnProcess);
+    attempts.push(result);
+    if (!result.retryableSpawnFailure || attempt === 2) break;
+    await new Promise(resolve => setTimeout(resolve, 100 * (attempt + 1)));
+  }
+  const result = attempts[attempts.length - 1];
+  return {
+    ...result,
+    duration: Date.now() - start,
+    attempts,
+    retried: attempts.length > 1,
+    firstFailure: attempts.length > 1 ? attempts[0] : null,
+  };
 }
 
 // ---- Runners ------------------------------------------------------------
@@ -265,56 +295,18 @@ function runOne(file, timeoutSec, perTestTimeoutMs, idleTimeoutSec) {
 async function runParallel(files, workers, timeoutSec, quiet, perTestTimeoutMs, idleTimeoutSec) {
   const queue = files.slice();
   const results = [];
-  let inflight = 0;
   let completed = 0;
   const total = files.length;
-
-  // ---- Exclusive retry ----------------------------------------------------
-  //
-  // The suite spawns hundreds of child processes. On a machine that is out of
-  // memory the kernel refuses the fork/exec (EAGAIN / ENOMEM) and the child
-  // never starts — a failure that says nothing about the code under test, but
-  // that the test file reports as a plain assertion error.
-  //
-  // Re-running a failed file *alone* discriminates the two cases: it passes
-  // alone → the parallel run was contended; it fails alone → the failure is
-  // real and stays red. Other workers stop starting new files while the
-  // retry owns the machine, which is what makes the retry meaningful.
-  //
-  // This is a discriminator, not a mask. A file that fails twice is reported
-  // as failed, and every retry is printed and counted in the summary.
-  let exclusive = null;
-
   async function worker() {
     while (queue.length) {
-      // While another worker owns an exclusive retry, start no new files.
-      while (exclusive) await exclusive;
       const file = queue.shift();
       if (!file) return;
-      inflight += 1;
-      let r = await runOne(file, timeoutSec, perTestTimeoutMs, idleTimeoutSec);
-      if (!r.ok && !r.killed) {
-        let release;
-        exclusive = new Promise((resolve) => { release = resolve; });
-        try {
-          const retry = await runOne(file, timeoutSec, perTestTimeoutMs, idleTimeoutSec);
-          r = {
-            ...retry,
-            retried: true,
-            firstFailure: { code: r.code, signal: r.signal, duration: r.duration },
-          };
-        } finally {
-          exclusive = null;
-          release();
-        }
-      }
-      inflight -= 1;
+      const r = await runOne(file, timeoutSec, perTestTimeoutMs, idleTimeoutSec);
       completed += 1;
       results.push(r);
-      if (!quiet) printResult(r, completed, total);
-    if (r.killed && r.killReason) {
-      console.error(`  ⏱ kill-reason: ${r.killReason}`);
-    }
+      // Quiet hides routine passes, never failed attempts or recovered spawns.
+      if (!quiet || r.retried || !r.ok) printResult(r, completed, total);
+      if (r.killed && r.killReason) console.error(`  ⏱ kill-reason: ${r.killReason}`);
     }
   }
   const w = Math.max(1, Math.min(workers, files.length || 1));
@@ -322,47 +314,9 @@ async function runParallel(files, workers, timeoutSec, quiet, perTestTimeoutMs, 
   return results;
 }
 
-function runSerial(files, timeoutSec) {
-  return new Promise((resolve) => {
-    const start = Date.now();
-    const child = spawn(process.execPath, ['--test', ...files], {
-      cwd: ROOT,
-      stdio: 'inherit',
-      env: childEnv(),
-    });
-    const timer = setTimeout(() => {
-      try { child.kill('SIGKILL'); } catch (_) {}
-      console.error(`\n[TIMEOUT after ${timeoutSec}s — process killed]`);
-      resolve([{
-        file: '<serial>',
-        rel: '<serial>',
-        ok: false,
-        code: -1,
-        signal: 'SIGKILL',
-        killed: true,
-        duration: Date.now() - start,
-        stdout: '',
-        stderr: '',
-      }]);
-    }, timeoutSec * 1000);
-    child.on('close', (code) => {
-      clearTimeout(timer);
-      resolve([{
-        file: '<serial>',
-        rel: '<serial>',
-        ok: code === 0,
-        code: code || 0,
-        signal: null,
-        killed: false,
-        duration: Date.now() - start,
-        stdout: '',
-        stderr: '',
-      }]);
-    });
-  });
+function runSerial(files, timeoutSec, quiet = false, perTestTimeoutMs = 0, idleTimeoutSec = 0) {
+  return runParallel(files, 1, timeoutSec, quiet, perTestTimeoutMs, idleTimeoutSec);
 }
-
-// ---- Output -------------------------------------------------------------
 
 const COLOR = {
   reset: '\x1b[0m',
@@ -390,24 +344,26 @@ function printResult(r, idx, total) {
   const idxStr = total ? `[${String(idx).padStart(String(total).length)}/${total}]` : '';
   console.log(`${tag} ${idxStr} ${r.rel}  (${r.duration}ms, ${where})`);
   if (r.retried) {
-    const dim = colorize('', 'dim', useColor);
-    const first = r.firstFailure || {};
-    const firstWhere = first.signal ? `signal=${first.signal}` : `exit=${first.code}`;
-    // 重试也失败时不能说「重跑通过」——那会把真失败说成资源争用。
-    const outcome = r.ok
-      ? '独占重跑通过（疑似资源争用）'
-      : '独占重跑仍失败';
-    console.log(dim + `    ↺ 首次并行失败（${firstWhere}）→ ${outcome}` + COLOR.reset);
+    console.log(`    ↺ 启动资源错误重试${r.ok ? '成功' : '失败'} (${r.attempts.length} attempts)`);
   }
-  if (!r.ok && (r.stderr || r.stdout)) {
-    const text = (r.stderr || r.stdout);
-    const lines = text.split('\n').filter(l => l.trim().length > 0);
-    const tail = lines.slice(-25).join('\n');
-    if (tail) {
-      const dim = colorize('', 'dim', useColor);
-      console.log(dim + '    ' + tail.split('\n').join('\n    ') + COLOR.reset);
+  if (r.retried || !r.ok) {
+    for (const [index, attempt] of (r.attempts || [r]).entries()) {
+      console.log(`    attempt ${index + 1}: exit=${attempt.code} signal=${attempt.signal || '-'} spawn=${attempt.spawnError?.code || '-'}`);
+      // Keep both streams and all attempts; a later success must not hide failure evidence.
+      if (attempt.stdout) console.log(attempt.stdout);
+      if (attempt.stderr) console.error(attempt.stderr);
     }
   }
+}
+
+function summarizeResults(results) {
+  return {
+    pass: results.filter(r => r.ok).length,
+    fail: results.filter(r => !r.ok).length,
+    timeouts: results.filter(r => r.killed).length,
+    retryPassed: results.filter(r => r.retried && r.ok).length,
+    retryFailed: results.filter(r => r.retried && !r.ok).length,
+  };
 }
 
 // ---- Main ---------------------------------------------------------------
@@ -565,7 +521,7 @@ async function main() {
 
   const cpuCount = os.cpus().length;
   const defaultWorkers = Math.min(8, Math.max(2, cpuCount));
-  const workers = opts.workers || defaultWorkers;
+  const workers = opts.serial ? 1 : Math.min(files.length, opts.workers || defaultWorkers);
   const useColor = process.stdout.isTTY;
 
   console.log(colorize(
@@ -593,12 +549,8 @@ async function main() {
   const t0 = Date.now();
   const artifactSnapshot = snapshotGuardedArtifacts();
   const agentTreeSnapshot = snapshotAgentTree();
-  let results;
-  if (opts.serial || files.length === 1) {
-    results = await runSerial(files, opts.timeoutSec * Math.max(1, files.length));
-  } else {
-    results = await runParallel(files, workers, opts.timeoutSec, opts.quiet, opts.perTestTimeoutMs, opts.idleTimeoutSec);
-  }
+  const results = await runParallel(files, workers, opts.timeoutSec, opts.quiet,
+    opts.perTestTimeoutMs, opts.idleTimeoutSec);
   if (globalTimer) clearTimeout(globalTimer);
   const total = Date.now() - t0;
 
@@ -647,16 +599,14 @@ async function main() {
       'yellow', useColor,
     ));
   }
-  const pass = results.filter(r => r.ok).length;
-  const fail = results.length - pass;
-  const timeouts = results.filter(r => r.killed).length;
-  const retried = results.filter(r => r.retried).length;
+  const { pass, fail, timeouts, retryPassed, retryFailed } = summarizeResults(results);
 
   console.log('');
   console.log(colorize(
     `[test-runner] ${pass}/${results.length} passed in ${total}ms` +
     (timeouts ? ` (${timeouts} TIMEOUT)` : '') +
-    (retried ? ` (${retried} 经独占重跑通过)` : '') +
+    (retryPassed ? ` (${retryPassed} 启动重试成功)` : '') +
+    (retryFailed ? ` (${retryFailed} 启动重试失败)` : '') +
     (fail ? `, ${fail} FAILED` : ''),
     fail === 0 ? 'green' : 'red', useColor,
   ));
@@ -675,7 +625,7 @@ async function main() {
   // Writing into `.agent/` is a defect, not a warning: the working copy must
   // survive a full run untouched. This is the mechanical counterpart of the
   // "tests must be hermetic" rule — see .agent/rules/test-policy.md §2.4.
-  const strict = opts.strictHermmetic && !opts.allowNonHermetic;
+  const strict = opts.strictHermetic && !opts.allowNonHermetic;
   const fatal = strict ? drift : curatedDrift;
   if (fatal.length) {
     console.error(
@@ -691,7 +641,7 @@ async function main() {
 }
 
 // The runner is a script first and a module second: requiring it must not
-// start a run, otherwise the unit test for the exclusive-retry behaviour
+// start a run, otherwise the unit test for the bounded spawn-retry behaviour
 // could not drive `runParallel` against fixtures.
 if (require.main === module) {
   main().catch(err => {
@@ -704,9 +654,11 @@ module.exports = {
   filterFiles,
   listTestFiles,
   parseArgs,
+  printResult,
   runOne,
   runParallel,
   runSerial,
+  summarizeResults,
   toRel,
 };
 

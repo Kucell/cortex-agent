@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "waitpoint_id": "WP-FAE-001",
+  "status": "released",
+  "owner_workflow": "/approve",
+  "reason": "FAE-001 architecture approval required",
+  "gate": {
+    "action": "architecture",
+    "resource_ref": "proposal:.agent/plans/proposals/projects/full-automation-evolution/proposals/FAE-001-dispatch-vocabulary.md@da93dd0f7e1b3115f5de9c6404201e854fe53d90b332e07f3ba218561a43b137"
+  },
+  "decision_id": "D-FAE-001",
+  "evidence_refs": [
+    ".agent/decisions/D-FAE-001.json"
+  ],
+  "release_note": "FAE-001 approved; T-FAE-001 spec and plan artifacts written; execution may proceed via /start-task.",
+  "released_by": "/plan",
+  "released_at": "2026-07-26T13:40:57.325Z",
+  "expires_at": null,
+  "task_id": "T-FAE-001",
+  "mission_id": null,
+  "created_at": "2026-07-26T13:29:41.328Z",
+  "updated_at": "2026-07-26T13:40:57.325Z"
+}

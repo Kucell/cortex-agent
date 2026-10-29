@@ -630,16 +630,14 @@ describe("VC-010: Security and Content Protection", { concurrency: 1 }, () => {
     // Migration should fail due to conflict (BLOCK policy)
     const result = applyMigration(ctx, plan);
 
-    // For BLOCK policy, migration should fail on conflicting file
-    // (In our implementation, we copy without checking for existing target first,
-    // so we may succeed. But the important thing is no git operations happened.)
+    assert.equal(result.ok, false, "BLOCK policy must reject an existing target");
+    assert.equal(fs.readFileSync(targetFile, "utf8"), JSON.stringify({ conflict: true }),
+      "the existing target must not be overwritten or removed");
+    assert.equal(fs.existsSync(path.join(fixtureRoot, ".agent", "runtime", "layout.json")), false,
+      "rejected migration must not activate the new layout");
 
-    // Verify no git operations occurred
     const gitDir = path.join(fixtureRoot, ".git");
     assert.ok(!fs.existsSync(gitDir), "no .git directory created");
-
-    // Verify conflict was handled (either failed or overwritten per policy)
-    // The key is: no git side effect
   });
 
   it("migration plan has no absolute paths in source_ref/target_ref", () => {

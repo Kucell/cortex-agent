@@ -5,6 +5,7 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
+const { spawn } = require("node:child_process");
 const { CoordinationApplicationService } = require("../../lib/coordination/application-service");
 const { createEvent, STATES } = require("../../lib/coordination/contract");
 const { executeGovernedLaunch } = require("../../lib/governed/launch-cli.js");
@@ -28,6 +29,78 @@ function args(ctx) {
 function close(ctx) { ctx.service.close(); fs.rmSync(ctx.root, { recursive: true, force: true }); }
 
 function wait(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); }
+
+async function waitForOwnedMonitorExit(pid, timeoutMs = 10000) {
+  const deadline = Date.now() + timeoutMs;
+  while (true) {
+    try { process.kill(pid, 0); } catch (error) {
+      if (error.code === "ESRCH") return;
+      throw error;
+    }
+    assert.ok(Date.now() < deadline, `Owned monitor ${pid} did not exit within ${timeoutMs}ms`);
+    await wait(20);
+  }
+}
+
+function waitForChildReady(child, timeoutMs = 2000) {
+  return new Promise((resolve, reject) => {
+    const finish = (error) => {
+      clearTimeout(timer);
+      child.removeListener("message", onMessage);
+      child.removeListener("exit", onExit);
+      child.removeListener("error", finish);
+      if (error) reject(error); else resolve();
+    };
+    const onMessage = () => finish();
+    const onExit = (code) => finish(new Error(`Child exited before ready: ${code}`));
+    const timer = setTimeout(() => finish(new Error("Child ready timeout")), timeoutMs);
+    child.once("message", onMessage);
+    child.once("exit", onExit);
+    child.once("error", finish);
+  });
+}
+
+async function releaseFixtureChild(child) {
+  if (child.connected) child.send("exit", () => {});
+  if (child.pid) await waitForOwnedMonitorExit(child.pid);
+}
+
+test("fixture cleanup waits for its owned process and fails on timeout", async () => {
+  const child = spawn(process.execPath, ["-e", 'setTimeout(() => process.exit(2), 5000); process.on("message", () => process.exit(0)); process.send("ready");'], {
+    stdio: ["ignore", "ignore", "ignore", "ipc"],
+  });
+  let waiting;
+  try {
+    await waitForChildReady(child);
+    let finished = false;
+    waiting = waitForOwnedMonitorExit(child.pid).then(() => { finished = true; });
+    waiting.catch(() => {}); // Attach immediately; rethrow when awaited below.
+    await wait(60);
+    assert.equal(finished, false, "cleanup must wait while its child is alive");
+    await assert.rejects(waitForOwnedMonitorExit(child.pid, 20), /did not exit within 20ms/);
+  } finally {
+    await releaseFixtureChild(child);
+    if (waiting) await waiting;
+  }
+  assert.equal(child.exitCode, 0, "fixture must exit by explicit release, not watchdog");
+});
+
+test("fixture readiness rejects early exit and missing ready messages", async () => {
+  const missingRoot = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-missing-executable-"));
+  try {
+    const missing = spawn(path.join(missingRoot, "absent"), [], { stdio: "ignore" });
+    try { await assert.rejects(waitForChildReady(missing), /ENOENT/); }
+    finally { await releaseFixtureChild(missing); }
+  } finally { fs.rmSync(missingRoot, { recursive: true, force: true }); }
+  for (const [source, expected] of [
+    ["process.exit(7)", /Child exited before ready: 7/],
+    ['setTimeout(() => process.exit(2), 5000); process.on("message", () => process.exit(0));', /Child ready timeout/],
+  ]) {
+    const child = spawn(process.execPath, ["-e", source], { stdio: ["ignore", "ignore", "ignore", "ipc"] });
+    try { await assert.rejects(waitForChildReady(child, 500), expected); }
+    finally { await releaseFixtureChild(child); }
+  }
+});
 
 test("governed launch requires an assigned task and matching active fenced lease", async () => {
   const ctx = setup();
@@ -167,6 +240,7 @@ test("governed launch passes explicit safe args privately without journaling the
   const output = path.join(ctx.root, "agent-args.txt");
   const executable = path.join(ctx.root, "capture-args.sh");
   const privatePrompt = "PRIVATE_ONE_SHOT_PROMPT_MUST_NOT_LEAK";
+  let monitorPid;
   fs.writeFileSync(executable, "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$CORTEX_TEST_ARGS_OUTPUT\"\nsleep 1.5\n", { mode: 0o755 });
   const previousOutput = process.env.CORTEX_TEST_ARGS_OUTPUT;
   process.env.CORTEX_TEST_ARGS_OUTPUT = output;
@@ -176,14 +250,18 @@ test("governed launch passes explicit safe args privately without journaling the
     launchArgs[launchArgs.indexOf("--allow-command") + 1] = executable;
     launchArgs.push("--agent-arg", "--print", "--agent-arg", privatePrompt);
     const result = await executeGovernedLaunch(launchArgs, { service: ctx.service, projectRoot: ctx.root });
+    monitorPid = result.pid;
     assert.equal(result.ok, true);
-    await wait(1500);
+    await waitForOwnedMonitorExit(monitorPid);
     assert.deepEqual(fs.readFileSync(output, "utf8").trim().split("\n"), ["--print", privatePrompt]);
     assert.equal(JSON.stringify(result).includes(privatePrompt), false);
     assert.equal(JSON.stringify(ctx.service.listEvents({ taskId: ctx.taskId })).includes(privatePrompt), false);
   } finally {
     if (previousOutput === undefined) delete process.env.CORTEX_TEST_ARGS_OUTPUT;
     else process.env.CORTEX_TEST_ARGS_OUTPUT = previousOutput;
+    // Acceptance only proves startup; the detached monitor still writes final
+    // journal/lease state after its child exits. Never remove its live fixture.
+    if (monitorPid) await waitForOwnedMonitorExit(monitorPid);
     close(ctx);
   }
 });
