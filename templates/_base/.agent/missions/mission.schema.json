@@ -23,6 +23,7 @@
     },
     "title": { "type": "string", "minLength": 1 },
     "description": { "type": "string" },
+    "note": { "type": "string", "description": "Human-authored context preserved during derivation; not a state override." },
     "status": {
       "type": "string",
       "enum": ["draft", "active", "blocked", "completed", "canceled", "superseded"]
