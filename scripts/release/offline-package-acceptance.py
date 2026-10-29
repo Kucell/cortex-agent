@@ -237,14 +237,20 @@ def main():
                 "root lock metadata mismatch")
         require("## [" + args.expected_version + "]" in (source / "CHANGELOG.md").read_text(),
                 "missing current version changelog")
+        # The template tree is layered: _shared carries the language-neutral
+        # copy, and en/zh only override a path when the language genuinely
+        # differs. evolve.js is language-neutral, so it exists once, under
+        # _shared. A language overlay that reintroduces its own copy would
+        # reintroduce the drift this layering removed.
         evolve_paths = [
             "templates/" + language + "/.agent/skills/evolution-pipeline/scripts/evolve.js"
             for language in ["_shared", "en", "zh"]
         ]
-        require(all(p in tree for p in evolve_paths),
+        require(evolve_paths[0] in tree,
                 "final head must include the reviewed shared proposal implementation")
-        require(len({tree[p]["blob"] for p in evolve_paths}) == 1, "three evolve blobs differ")
-        for language in ["_shared", "en", "zh"]:
+        require(all(p not in tree for p in evolve_paths[1:]),
+                "language overlay reintroduces the shared evolve implementation")
+        for language in ["_shared", "en", "zh", "_base"]:
             require(not (source / ("templates/" + language +
                     "/.agent/skills/self-check/scripts/index.js")).exists(),
                     "new self-check subprocess needs separate review")
