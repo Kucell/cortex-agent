@@ -1,0 +1,91 @@
+name: Local Git Transaction Contract
+
+on:
+  pull_request:
+    paths:
+      - "lib/governance/git-transaction-store.js"
+      - "tests/governance/git-transaction-store.test.js"
+      - ".github/workflows/git-transaction-contract.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  git-transaction:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ["22", "24"]
+    env:
+      SOURCE_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - name: Materialize only the exact-head local Git transaction closure
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b
+        with:
+          script: |
+            const fs = require("node:fs"), path = require("node:path"), crypto = require("node:crypto");
+            const assert = require("node:assert/strict");
+            const head = process.env.SOURCE_HEAD;
+            assert.match(head || "", /^[a-f0-9]{40}$/);
+            const {owner, repo} = context.repo;
+            const {data: commit} = await github.rest.git.getCommit({owner, repo, commit_sha: head});
+            assert.equal(commit.sha, head);
+            const {data: tree} = await github.rest.git.getTree({owner, repo, tree_sha: commit.tree.sha, recursive: "true"});
+            assert.equal(tree.truncated, false);
+            assert.equal(tree.sha, commit.tree.sha);
+            const root = process.env.GITHUB_WORKSPACE;
+            assert.ok(root);
+            assert.equal(fs.existsSync(path.join(root, "node_modules")), false);
+            for (const relative of ["lib/governance/git-transaction-store.js","tests/governance/git-transaction-store.test.js"]) {
+              const entry = tree.tree.find((item) => item.path === relative);
+              assert.ok(entry, "missing " + relative);
+              assert.equal(entry.type, "blob");
+              assert.equal(entry.mode, "100644");
+              const {data: file} = await github.rest.repos.getContent({owner, repo, path: relative, ref: head});
+              assert.equal(file.path, relative);
+              assert.equal(file.type, "file");
+              assert.equal(file.encoding, "base64");
+              assert.equal(file.sha, entry.sha);
+              const bytes = Buffer.from(file.content, "base64");
+              assert.equal(bytes.length, file.size);
+              const blob = crypto.createHash("sha1").update("blob " + bytes.length + "\0").update(bytes).digest("hex");
+              assert.equal(blob, entry.sha);
+              const destination = path.join(root, relative);
+              assert.ok(destination.startsWith(root + path.sep));
+              fs.mkdirSync(path.dirname(destination), {recursive: true});
+              fs.writeFileSync(destination, bytes, {flag: "wx", mode: 0o644});
+              core.info(JSON.stringify({source_head: head, path: relative, blob}));
+            }
+            core.info(JSON.stringify({verified_source_head: head, tree: tree.sha}));
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: ${{ matrix.node }}
+      - name: Run 47 local synthetic storage cases and one test container
+        shell: bash
+        run: |
+          set -euo pipefail
+          scratch=$(mktemp -d "$RUNNER_TEMP/cortex-git-transaction.XXXXXX")
+          # Failed or unobserved process exits retain their disposable fixtures
+          # for the runner lifetime. Never erase failure evidence in an EXIT trap.
+          mkdir -p "$scratch/home" "$scratch/tmp"
+          node_bin="$(command -v node)"
+          "$node_bin" --version
+          /usr/bin/git --version
+          env -i PATH=/usr/bin:/bin HOME="$scratch/home" USERPROFILE="$scratch/home" \
+            TMPDIR="$scratch/tmp" TMP="$scratch/tmp" TEMP="$scratch/tmp" \
+            XDG_CONFIG_HOME="$scratch/home" LANG=C LC_ALL=C TZ=UTC \
+            /usr/bin/timeout --signal=TERM --kill-after=5 120 \
+            "$node_bin" --test --test-concurrency=1 --test-reporter=tap tests/governance/git-transaction-store.test.js | tee "$scratch/tap.log"
+          env -i PATH=/usr/bin:/bin "$node_bin" - "$scratch/tap.log" "$scratch/tmp" <<'NODE'
+          const fs = require("node:fs"), assert = require("node:assert/strict");
+          const tap = fs.readFileSync(process.argv[2], "utf8");
+          for (const [key, count] of Object.entries({tests: 48, pass: 48, fail: 0, skipped: 0, cancelled: 0, todo: 0})) {
+            const matches = [...tap.matchAll(new RegExp("^# " + key + " (\\d+)\\s*$", "gm"))].map((item) => Number(item[1]));
+            assert.deepEqual(matches, [count], "Unexpected " + key + " summary");
+          }
+          assert.deepEqual(fs.readdirSync(process.argv[3]), [], "all owned synthetic fixture roots must be removed after observed exits");
+          console.log("GIT_TRANSACTION_FIXTURE_CLEANUP_VERIFIED");
+          NODE
+          rm -rf -- "$scratch"

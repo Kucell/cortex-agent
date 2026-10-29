@@ -1,6 +1,8 @@
 {
   "name": "cortex-agent",
-  "version": "1.15.7",
+
+  "version": "1.16.0",
+
   "description": "AI Agent Governance Framework — structured Rules, Workflows, Skills, Sub-agents, and Hooks for Cursor, Claude Code, Windsurf and more.",
   "author": {
     "name": "Kucell",
@@ -21,6 +23,25 @@
     "workflow",
     "architecture"
   ],
-  "commands": "./commands/",
-  "agents": "./agents/"
+  "commands": [
+    "./templates/zh/.agent/workflows/",
+    "./templates/_shared/.agent/workflows/code-review.md",
+    "./templates/_shared/.agent/workflows/configure-agent.md",
+    "./templates/_shared/.agent/workflows/cortex-setup.md",
+    "./templates/_shared/.agent/workflows/migrate-rules.md",
+    "./templates/_shared/.agent/workflows/scan-project.md",
+    "./templates/_shared/.agent/workflows/sync-plans.md",
+    "./templates/_shared/.agent/workflows/weekly-report.md"
+  ],
+  "agents": [
+    "./templates/zh/.agent/sub-agents/code-reviewer.md",
+    "./templates/zh/.agent/sub-agents/coordinator.md",
+    "./templates/zh/.agent/sub-agents/documenter.md",
+    "./templates/zh/.agent/sub-agents/entropy-scanner.md",
+    "./templates/zh/.agent/sub-agents/implementer.md",
+    "./templates/zh/.agent/sub-agents/planner.md",
+    "./templates/zh/.agent/sub-agents/researcher.md",
+    "./templates/_shared/.agent/sub-agents/session-manager.md"
+  ],
+  "skills": "./templates/zh/.agent/skills/"
 }

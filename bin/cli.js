@@ -2,6 +2,12 @@
 
 "use strict";
 
+// Keep this exact package-owned diagnostic route ahead of eager Host/command imports.
+if (process.argv[2] === "query" && process.argv[3] === "next-action") {
+  require("../lib/next-action/cli.js").runNextActionQuery(process.argv.slice(2), process.cwd());
+  return;
+}
+
 const path = require("path");
 const fs = require("fs");
 const { spawn } = require("child_process");
@@ -815,6 +821,10 @@ async function initModeGeneral() {
     }
     case "migrate-legacy-memory": {
       migrateLegacyMemoryCommand(ctx);
+      break;
+    }
+    case "migration": {
+      require("../lib/commands/migration.cli").migrationCommand(ctx);
       break;
     }
     case "migrate-task-state": {

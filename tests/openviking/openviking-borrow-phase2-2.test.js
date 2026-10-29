@@ -200,10 +200,20 @@ test("--dead-letter reports dead tasks after max_retries", () => {
 });
 
 test("SKILL.md reaches both zh and en", () => {
+  // The skill manifest lives in the shared layer and is resolved the way the
+  // installation resolves it: the language overlay when it has one, the
+  // shared copy otherwise. Reading a fixed path per language would no longer
+  // describe what a project actually receives.
   const zh = fs.readFileSync(resolveTemplatePath("skills/evolution-pipeline/SKILL.md", "zh"), "utf8");
   const en = fs.readFileSync(resolveTemplatePath("skills/evolution-pipeline/SKILL.md", "en"), "utf8");
-  assert.ok(zh.includes("Self-Evolution Pipeline"));
-  assert.ok(en.includes("Self-Evolution Pipeline"));
+  for (const skill of [zh, en]) {
+    assert.match(skill, /^name: evolution-pipeline$/m);
+    assert.ok(skill.includes("--queue-learning-proposal"));
+    assert.ok(skill.includes("--proposal-only"));
+    assert.ok(skill.includes("--gate user"));
+  }
+  assert.ok(zh.includes("不调用模型、不更新 memory"));
+  assert.match(en, /No model is invoked, no\s+memory\/index is updated/);
   assert.ok(zh.includes("入队") || zh.includes("enqueue"));
   assert.ok(en.includes("enqueue"));
 });

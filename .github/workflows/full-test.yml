@@ -61,17 +61,19 @@ jobs:
           AUTH=$(printf 'x-access-token:%s' "$CORTEX_GOVERNANCE_READ_TOKEN" | base64 | tr -d '\n')
           git init -q .agent
           git -C .agent remote add origin https://github.com/Kucell/cortex-agent-agent.git
-          if git -C .agent -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $AUTH" \
+          if ! git -C .agent -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $AUTH" \
                 fetch -q --depth 1 origin "$PIN"; then
-            git -C .agent checkout -q FETCH_HEAD
-            echo "::notice::.agent checked out at pinned $PIN"
-          else
             echo "::warning::could not fetch pinned $PIN directly; fetching main and looking it up"
             git -C .agent -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $AUTH" \
               fetch -q --depth 200 origin main
-            git -C .agent checkout -q "$PIN" || git -C .agent checkout -q FETCH_HEAD
-            echo "::notice::.agent checked out at $(git -C .agent rev-parse HEAD)"
           fi
+          git -C .agent checkout -q --detach "$PIN"
+          ACTUAL=$(git -C .agent rev-parse HEAD)
+          if [ "$ACTUAL" != "$PIN" ]; then
+            echo "::error::.agent HEAD $ACTUAL does not match gitlink pin $PIN"
+            exit 1
+          fi
+          echo "::notice::.agent checked out at pinned $PIN"
           echo "::notice::.agent rules: $(ls .agent/rules | wc -l) files"
 
       - uses: actions/setup-node@v4
@@ -140,7 +142,15 @@ jobs:
         # write a single byte into .agent/. In CI nothing else can write there
         # (no live agent session, no Dashboard supervisor daemon), so any drift
         # is a genuine non-hermetic test. See .agent/rules/test-policy.md §3.4.
-        run: pnpm test:ci
+        run: |
+          set -euo pipefail
+          PIN=$(git ls-tree HEAD .agent | awk '{print $3}')
+          ACTUAL=$(git -C .agent rev-parse HEAD)
+          if [ -z "$PIN" ] || [ "$ACTUAL" != "$PIN" ]; then
+            echo "::error::.agent HEAD $ACTUAL does not match gitlink pin $PIN"
+            exit 1
+          fi
+          pnpm test:ci
 
       - name: Agent review benchmark (real regression dataset)
         # The dataset is the gate, and it has to be able to fail in both
