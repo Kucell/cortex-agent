@@ -111,13 +111,13 @@ the granular token is allowed to bypass publish 2FA.
 `.agent/config/secrets.yml` 示例:
 ```yaml
 backend: keychain           # default
-namespace: SamHMI
+namespace: your-project
 secrets:
   - ref: gitea-pr
-    service: gitea-192.168.2.110-codex-samhmi-pr
-    account: xueyq
+    service: gitea-your-org-your-repo-pr
+    account: your-account
   - ref: github-copilot
-    service: github-copilot-xueyq
+    service: github-copilot-your-account
 ```
 
 无 `config/secrets.yml` → `secrets list` 提示 host 先 first-time setup。

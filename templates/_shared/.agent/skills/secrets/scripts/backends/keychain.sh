@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Backend: macOS keychain via `security(1)`.
 # JSON protocol: {"action":"get","ref":"gitea-pr","service":"gitea-..."}
-#               {"action":"store","ref":"...", "service":"...", "value":"...", "account":"xueyq"}
+#               {"action":"store","ref":"...", "service":"...", "value":"...", "account":"<your-account>"}
 #               {"action":"rotate","ref":"...","reason":"..."}
 #               {"action":"delete","ref":"...","service":"..."}
 # Output: JSON {"ok":true,"value":"...","ref":"..."} or {"ok":false,"error":"reason"}.
@@ -30,7 +30,7 @@ case "$ACTION" in
   store)
     if [ -z "$VALUE" ]; then echo '{"ok":false,"error":"missing_value_for_store"}'; exit 1; fi
     security delete-generic-password -s "$SERVICE" >/dev/null 2>&1 || true
-    security add-generic-password -s "$SERVICE" -a "${ACCOUNT:-xueyq}" -w "$VALUE" \
+    security add-generic-password -s "$SERVICE" -a "${ACCOUNT:-${USER:-$(id -un)}}" -w "$VALUE" \
       >/dev/null 2>&1 \
       || { echo '{"ok":false,"error":"keychain_store_failed"}'; exit 1; }
     printf '{"ok":true,"action":"store","ref":"%s","service":"%s"}\n' "$REF" "$SERVICE"

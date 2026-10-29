@@ -102,6 +102,15 @@ jobs:
         # docs/architecture/harness-review-and-runtime-evidence-design.md P-003.
         run: pnpm check:l1-distribution
 
+      - name: Framework generality check
+        # cortex-agent is a generic framework: what it ships to a managed
+        # project must not be bound to one field project. A distributed
+        # config example naming one project's repo does not fail loudly for
+        # the reader — it works, and it works wrong, which is worse. Prose
+        # alone does not stop that, so the rule is enforced mechanically
+        # here. See .agent/rules/framework-generality.md.
+        run: pnpm check:framework-generality
+
       - name: Run full test suite
         # test:ci runs the runner in strict hermetic mode: the suite must not
         # write a single byte into .agent/. In CI nothing else can write there

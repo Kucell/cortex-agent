@@ -10,10 +10,10 @@
 #           internally to fetch the Authorization header. The agent
 #           never sees this value.
 backend: gitea
-host: "http://192.168.2.110:3000"
+host: "https://vcs.example.com"
 token_ref: gitea-pr
 
 default:
-  org: SamkoonHMI
-  repo: SamHMI
+  org: your-org
+  repo: your-repo
   base_branch: main

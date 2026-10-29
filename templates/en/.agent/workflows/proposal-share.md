@@ -26,7 +26,7 @@ standard paths on the receiving side.
 
 Typical scenario:
 
-- **Dual-repo joint proposal**: csm-view-1 (backend/gateway) + samkoonyun-mobile (mobile) deliver
+- **Dual-repo joint proposal**: backend-project (backend/gateway) + mobile-project (mobile) deliver
   together, each holding its own `.agent/plans/proposals/projects/<slug>/` volume; both sides must
   be shared, never just one.
 - `.agent/` is usually gitignored (`git check-ignore .agent` exits 0), so **git clone/push cannot

@@ -7,7 +7,7 @@
  * Layers (each independent, each producing bounded evidence ledger):
  *   1. fake-host: deterministic Pi JSONL fixture streams + scripted RPC supervisor
  *   2. real-pi:   live `pi --mode json` / `--mode rpc` execution in worktree (skipped if no binary)
- *   3. samhmi:   2026-08-11 SamHMI observation log replay (skipped if no env)
+ *   3. project:  observation log replay from a real project (skipped if no env)
  *
  * Per P-005 §9 + §15.3: each layer produces bounded evidence ledger; no
  * raw bodies / paths / secrets in any ledger entry.
@@ -114,14 +114,16 @@ function runRealPiLayer() {
   return { layer: 'real-pi', status: 'requires-pi-binary', reason: 'binary detected but real-pi pilot pending local environment' };
 }
 
-function runSamhmiLayer() {
-  const samhmiPath = process.env.SAMHMI_PATH;
-  if (!samhmiPath || !fs.existsSync(samhmiPath)) {
-    return { layer: 'samhmi', status: 'skipped', reason: 'SAMHMI_PATH not set or directory missing' };
+function runProjectLayer() {
+  // The project root is supplied by the caller. The historical variable name
+  // is still accepted so an existing local setup keeps working.
+  const projectPath = process.env.PILOT_PROJECT_PATH || process.env.SAMHMI_PATH;
+  if (!projectPath || !fs.existsSync(projectPath)) {
+    return { layer: 'project', status: 'skipped', reason: 'PILOT_PROJECT_PATH not set or directory missing' };
   }
-  // SamHMI layer would replay observation log + verify ≥ 3 scenarios reproduce.
+  // The project layer would replay observation log + verify ≥ 3 scenarios reproduce.
   // Stubbed here.
-  return { layer: 'samhmi', status: 'requires-samhmi-env', reason: 'SAMHMI_PATH set but full replay pending SamHMI machine' };
+  return { layer: 'project', status: 'requires-project-env', reason: 'PILOT_PROJECT_PATH set but full replay pending the target machine' };
 }
 
 function main() {
@@ -132,8 +134,23 @@ function main() {
   const layers = [
     { name: 'fake-host', fn: runFakeHostLayer },
     { name: 'real-pi', fn: runRealPiLayer },
-    { name: 'samhmi', fn: runSamhmiLayer }
-  ].filter((l) => !filterLayer || l.name === filterLayer);
+    { name: 'project', fn: runProjectLayer }
+  ].filter((l) => {
+    if (!filterLayer) return true;
+    return l.name === filterLayer;
+  });
+
+  // A layer name that no longer exists is almost always the historical
+  // project-specific spelling of `project`. Say so, rather than reporting
+  // an empty result set that looks like a successful run.
+  if (filterLayer && layers.length === 0) {
+    const known = ["fake-host", "real-pi", "project"].join(", ");
+    process.stderr.write(
+      `✗ unknown layer "${filterLayer}". Known layers: ${known}. ` +
+      "If you used an older project-specific layer name, use `project`.\n",
+    );
+    return 2;
+  }
 
   const results = layers.map((l) => {
     try {

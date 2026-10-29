@@ -115,7 +115,7 @@ function printHelp() {
     "  --dsh-home PATH         DSH root (default: ~/.dsh)",
     "  --project-root DIR      Project root (default: cortex-agent repo)",
     "  --ledger-dir DIR        Override ledger directory",
-    "  --session-slug SLUG     Restrict to one project slug (e.g. --Users-xueyq-myworks-cortex-agent--)",
+    "  --session-slug SLUG     Restrict to one project slug (e.g. --Users-<you>-myworks-<project>--)",
     "  --dry-run               Validate only, never write (default)",
     "  --apply                 Persist receipts via MS-001 ledger writer",
     "  --limit N               Stop after writing N receipts (0 = unlimited)",
