@@ -41,7 +41,7 @@
     "./templates/zh/.agent/sub-agents/implementer.md",
     "./templates/zh/.agent/sub-agents/planner.md",
     "./templates/zh/.agent/sub-agents/researcher.md",
-    "./templates/zh/.agent/sub-agents/session-manager.md"
+    "./templates/_shared/.agent/sub-agents/session-manager.md"
   ],
   "skills": "./templates/zh/.agent/skills/"
 }
