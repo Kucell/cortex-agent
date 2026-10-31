@@ -660,7 +660,7 @@ async function initModeGeneral() {
       await upgrade(l1Ctx);
       // Respect --dry-run: state-githooks installer copies templates to disk,
       // which would violate the zero-write contract. Skip when dryRun is set.
-      if (!l1Ctx.options.dryRun) installStateGithooks({ cwd, lang });
+      if (!l1Ctx.options.dryRun && !process.exitCode) installStateGithooks({ cwd, lang });
       break;
     case "update":
       // Help must be a zero-write operation. In particular, do not enter
@@ -677,7 +677,7 @@ async function initModeGeneral() {
       await upgrade(l1Ctx);
       // Respect --dry-run: state-githooks installer copies templates to disk,
       // which would violate the zero-write contract. Skip when dryRun is set.
-      if (!l1Ctx.options.dryRun) installStateGithooks({ cwd, lang });
+      if (!l1Ctx.options.dryRun && !process.exitCode) installStateGithooks({ cwd, lang });
       break;
     case "track":       trackAgent(ctx); break;
     case "untrack":     untrackAgent(ctx); break;
@@ -693,7 +693,11 @@ async function initModeGeneral() {
     case "bridge":      bridge(l1Ctx); break;
     case "topology":    topology(l1Ctx); break;
     case "automation":  automation(l1Ctx); break;
-    case "local-publish-validate": localPublishValidate(ctx); break;
+    case "local-publish-validate": {
+      const code = localPublishValidate(ctx);
+      if (code !== 0) process.exitCode = code;
+      break;
+    }
     case "proposal-share": proposalShare(ctx); break;
     case "skill":        skillBrowse(ctx); break;
     case "runs":        runs(ctx); break;
@@ -748,6 +752,7 @@ async function initModeGeneral() {
       break;
     }
     case "lease":       lease(ctx); break;
+    case "permit":      await require("../lib/commands/permit-managed-cli").permitManagedCli(ctx); break;
     case "notification": await notification(ctx); break;
     case "mcp":         await mcpCommand(ctx); break;
     case "motion":      await motionCommand(ctx); break;

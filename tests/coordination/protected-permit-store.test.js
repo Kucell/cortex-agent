@@ -112,6 +112,74 @@ test("MS-003 initialization is explicit and a missing or malformed store never r
   }
 });
 
+test("batch-bound reservation refuses legacy and different-batch idempotent retries", { skip: !supportsSqlite }, () => {
+  const f = fixture();
+  try {
+    const lease = f.store.acquire(leaseFields());
+    const fields = permitFields(lease);
+    const original = f.store.reserve(fields);
+    assert.equal(original.batchFingerprint, undefined);
+    assert.throws(() => f.store.reserveBoundToBatch(fields, "a".repeat(64)), { code: "ERR_IDEMPOTENCY_MISMATCH" });
+    assert.deepEqual(f.store.reserve(fields), original);
+  } finally { f.cleanup(); }
+});
+
+test("legacy batch reservation without stored issuance is not re-signed", { skip: !supportsSqlite }, () => {
+  const f = fixture();
+  try {
+    const leaseRequest = leaseFields();
+    const lease = f.store.acquire(leaseRequest);
+    const request = permitFields(lease);
+    const fingerprint = "a".repeat(64);
+    f.store.reserveBoundToBatch(request, fingerprint);
+    const before = f.store.snapshot();
+    let signerInvoked = false;
+    assert.throws(() => f.store.acquireAndReserveBoundToBatch(leaseRequest, request, fingerprint, () => {
+      signerInvoked = true;
+      return {};
+    }), { code: "ERR_IDEMPOTENCY_MISMATCH" });
+    assert.equal(signerInvoked, false);
+    assert.deepEqual(f.store.snapshot(), before);
+  } finally { f.cleanup(); }
+});
+
+test("lease mutations reject a stale epoch or fencing value", { skip: !supportsSqlite }, () => {
+  const f = fixture();
+  try {
+    const lease = f.store.acquire(leaseFields());
+    const before = f.store.snapshot();
+    for (const method of ["renew", "release", "revoke"]) {
+      for (const fields of [{ ...lease, serviceEpoch: lease.serviceEpoch + 1 },
+        { ...lease, fencing: lease.fencing + 1 }, { ...lease, fencing: undefined }]) {
+        assert.throws(() => f.store[method](fields), { code: "ERR_LEASE_NOT_CURRENT" });
+        assert.deepEqual(f.store.snapshot(), before);
+      }
+    }
+  } finally { f.cleanup(); }
+});
+
+test("competing processes cannot bind the same permit to different batches", { skip: !supportsSqlite }, async () => {
+  const f = fixture();
+  try {
+    const lease = f.store.acquire(leaseFields());
+    const fields = permitFields(lease);
+    const run = (fingerprint) => new Promise((resolve, reject) => {
+      const child = spawn(process.execPath, [path.join(__dirname, "fixtures", "permit-batch-reserve.js"),
+        f.file, f.anchorDir, JSON.stringify(fields), fingerprint, "1000000"], { stdio: ["ignore", "pipe", "pipe"] });
+      let output = "";
+      child.stdout.setEncoding("utf8");
+      child.stdout.on("data", (part) => { output += part; });
+      child.on("error", reject);
+      child.on("close", () => { try { resolve(JSON.parse(output)); } catch (error) { reject(error); } });
+    });
+    const results = await Promise.all([run("a".repeat(64)), run("b".repeat(64))]);
+    assert.equal(results.filter((item) => item.ok).length, 1);
+    assert.equal(results.find((item) => !item.ok).code, "ERR_IDEMPOTENCY_MISMATCH");
+    const winner = results.find((item) => item.ok);
+    assert.equal(f.store.snapshot().permits[winner.permitId].batchFingerprint, winner.fingerprint);
+  } finally { f.cleanup(); }
+});
+
 test("MS-003 reserve and consume bind the exact Worker, target and parameters once", { skip: !supportsSqlite }, () => {
   const f = fixture();
   try {
@@ -157,6 +225,19 @@ test("MS-003 an elapsed permit is durably expired and cannot be replayed", { ski
     assert.equal(state.permits[permit.permitId].status, "expired");
     assert.equal(state.tombstones[permit.permitId].reason, "deadline");
     assert.throws(() => f.store.consume(consumeFields(permit)), { code: "ERR_PERMIT_NOT_CONSUMABLE" });
+  } finally { f.cleanup(); }
+});
+
+test("a permit cannot be consumed at its exact deadline", { skip: !supportsSqlite }, () => {
+  const f = fixture();
+  try {
+    const lease = f.store.acquire(leaseFields());
+    const permit = f.store.reserve(permitFields(lease, { ttlMs: 100 }));
+    f.advance(100);
+    assert.throws(() => f.store.consume(consumeFields(permit)), { code: "ERR_PERMIT_NOT_CONSUMABLE" });
+    const state = f.store.snapshot();
+    assert.equal(state.permits[permit.permitId].status, "expired");
+    assert.equal(state.tombstones[permit.permitId].reason, "deadline");
   } finally { f.cleanup(); }
 });
 
