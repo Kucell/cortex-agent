@@ -850,9 +850,14 @@ for (const point of ["marker", "state"]) test(`failed ${point} provisioning stay
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "pin-init-fault-"));
   const options = { decisionId: "D-test-pin", anchorMode: "permissive" }, rename = fs.renameSync;
   const target = path.join(root, point === "marker" ? "pin-domain.json" : "pin-state.json");
+  // The store publishes under the canonical path of the pin directory, so a
+  // fault has to be injected on the OBJECT, not on one spelling of its path:
+  // on macOS the temporary directory is reached through /var, which is a
+  // symbolic link to /private/var.
+  const canonicalTarget = fs.realpathSync(root) + path.sep + path.basename(target);
   try {
     fs.renameSync = function(from, to) {
-      if (to === target) throw Object.assign(new Error("injected"), { code: "EIO" });
+      if (to === target || to === canonicalTarget) throw Object.assign(new Error("injected"), { code: "EIO" });
       return rename.call(this, from, to);
     };
     assert.throws(() => ProtectedPinStore.initialize(root, options), { code: "EIO" });

@@ -1,0 +1,285 @@
+{
+  "format": "permit-witness-frame-candidate-v1",
+  "scope": "Framing only; opaque payloads. No business schema, authentication, commit proof, idempotency or execution authorization. No production activation.",
+  "layout": "u32be length excluding prefix | version:u8=1 | operation:u8=1/2 | UUID:16 in text hex order | request:data starting 7b or response:status:u8=0..3 + data",
+  "data_bytes": {
+    "minimum": 1,
+    "maximum": 1048576
+  },
+  "response_correlation": {
+    "expected_operation": 2,
+    "expected_request_id": "00112233-4455-6677-8899-aabbccddeeff"
+  },
+  "completion": "Exactly one frame followed by clean EOF. Trailing bytes and second frames fail. Direction is out of band; disjoint request 7b and response 00..03 prefixes reject reflection but do not authenticate peers.",
+  "positive": [
+    {
+      "name": "checkpoint-empty-object",
+      "direction": "request",
+      "operation": 1,
+      "request_id": "00112233-4455-6677-8899-aabbccddeeff",
+      "payload_hex": "7b7d",
+      "wire_hex": "00000014010100112233445566778899aabbccddeeff7b7d",
+      "wire_sha256": "86a56893752b417647c22dd49f6d2d94c30785a5c398a74d407d56151213fc44"
+    },
+    {
+      "name": "object-prefix-only-no-json-validation",
+      "direction": "request",
+      "operation": 2,
+      "request_id": "00112233-4455-6677-8899-aabbccddeeff",
+      "payload_hex": "7b00ff80",
+      "wire_hex": "00000016010200112233445566778899aabbccddeeff7b00ff80",
+      "wire_sha256": "4f446953a9d8374fff26799f579870d241c5b747ab7842e41f84fc0047f5e18f"
+    },
+    {
+      "name": "response-status-0",
+      "direction": "response",
+      "operation": 2,
+      "request_id": "00112233-4455-6677-8899-aabbccddeeff",
+      "payload_hex": "7b7d",
+      "wire_hex": "00000015010200112233445566778899aabbccddeeff007b7d",
+      "wire_sha256": "c6f7f39ac3264e797b02c93f8a2730456d576cdd2cfcbbf56b0752b658955633",
+      "status": 0
+    },
+    {
+      "name": "response-status-1",
+      "direction": "response",
+      "operation": 2,
+      "request_id": "00112233-4455-6677-8899-aabbccddeeff",
+      "payload_hex": "7b7d",
+      "wire_hex": "00000015010200112233445566778899aabbccddeeff017b7d",
+      "wire_sha256": "21495bf693414a1d003ac9237bcdd81293a281a44412d2cb3bc18aabae9352cd",
+      "status": 1
+    },
+    {
+      "name": "response-status-2",
+      "direction": "response",
+      "operation": 2,
+      "request_id": "00112233-4455-6677-8899-aabbccddeeff",
+      "payload_hex": "7b7d",
+      "wire_hex": "00000015010200112233445566778899aabbccddeeff027b7d",
+      "wire_sha256": "58a35249482cd1ee6e7db2044dbbf69550c24a0361cff0470a00c965cc773bc7",
+      "status": 2
+    },
+    {
+      "name": "response-status-3",
+      "direction": "response",
+      "operation": 2,
+      "request_id": "00112233-4455-6677-8899-aabbccddeeff",
+      "payload_hex": "7b7d",
+      "wire_hex": "00000015010200112233445566778899aabbccddeeff037b7d",
+      "wire_sha256": "0de6107468a3137376f280e0b844ff26317a6d425890a82dea0ed04b33f4c6eb",
+      "status": 3
+    }
+  ],
+  "negative": [
+    {
+      "name": "request-length-0",
+      "direction": "request",
+      "wire_hex": "00000000",
+      "error": "ERR_WITNESS_FRAME_SIZE"
+    },
+    {
+      "name": "request-length-18",
+      "direction": "request",
+      "wire_hex": "00000012",
+      "error": "ERR_WITNESS_FRAME_SIZE"
+    },
+    {
+      "name": "request-length-4294967295",
+      "direction": "request",
+      "wire_hex": "ffffffff",
+      "error": "ERR_WITNESS_FRAME_SIZE"
+    },
+    {
+      "name": "response-with-status-only",
+      "direction": "response",
+      "wire_hex": "00000013",
+      "error": "ERR_WITNESS_FRAME_SIZE"
+    },
+    {
+      "name": "request-response-only-capacity",
+      "direction": "request",
+      "wire_hex": "00100013",
+      "error": "ERR_WITNESS_FRAME_SIZE"
+    },
+    {
+      "name": "response-over-capacity",
+      "direction": "response",
+      "wire_hex": "00100014",
+      "error": "ERR_WITNESS_FRAME_SIZE"
+    },
+    {
+      "name": "eof-at-0",
+      "direction": "request",
+      "wire_hex": "",
+      "error": "ERR_WITNESS_FRAME_TRUNCATED"
+    },
+    {
+      "name": "eof-at-1",
+      "direction": "request",
+      "wire_hex": "00",
+      "error": "ERR_WITNESS_FRAME_TRUNCATED"
+    },
+    {
+      "name": "eof-at-3",
+      "direction": "request",
+      "wire_hex": "000000",
+      "error": "ERR_WITNESS_FRAME_TRUNCATED"
+    },
+    {
+      "name": "eof-at-4",
+      "direction": "request",
+      "wire_hex": "00000014",
+      "error": "ERR_WITNESS_FRAME_TRUNCATED"
+    },
+    {
+      "name": "eof-at-21",
+      "direction": "request",
+      "wire_hex": "00000014010100112233445566778899aabbccddee",
+      "error": "ERR_WITNESS_FRAME_TRUNCATED"
+    },
+    {
+      "name": "eof-at-23",
+      "direction": "request",
+      "wire_hex": "00000014010100112233445566778899aabbccddeeff7b",
+      "error": "ERR_WITNESS_FRAME_TRUNCATED"
+    },
+    {
+      "name": "invalid-header-4-0",
+      "direction": "request",
+      "wire_hex": "00000014000100112233445566778899aabbccddeeff7b7d",
+      "error": "ERR_WITNESS_FRAME_PROTOCOL"
+    },
+    {
+      "name": "invalid-header-4-2",
+      "direction": "request",
+      "wire_hex": "00000014020100112233445566778899aabbccddeeff7b7d",
+      "error": "ERR_WITNESS_FRAME_PROTOCOL"
+    },
+    {
+      "name": "invalid-header-5-0",
+      "direction": "request",
+      "wire_hex": "00000014010000112233445566778899aabbccddeeff7b7d",
+      "error": "ERR_WITNESS_FRAME_PROTOCOL"
+    },
+    {
+      "name": "invalid-header-5-3",
+      "direction": "request",
+      "wire_hex": "00000014010300112233445566778899aabbccddeeff7b7d",
+      "error": "ERR_WITNESS_FRAME_PROTOCOL"
+    },
+    {
+      "name": "invalid-header-5-255",
+      "direction": "request",
+      "wire_hex": "0000001401ff00112233445566778899aabbccddeeff7b7d",
+      "error": "ERR_WITNESS_FRAME_PROTOCOL"
+    },
+    {
+      "name": "request-trailing-byte",
+      "direction": "request",
+      "wire_hex": "00000014010100112233445566778899aabbccddeeff7b7d00",
+      "error": "ERR_WITNESS_FRAME_PROTOCOL"
+    },
+    {
+      "name": "request-two-frames",
+      "direction": "request",
+      "wire_hex": "00000014010100112233445566778899aabbccddeeff7b7d00000014010100112233445566778899aabbccddeeff7b7d",
+      "error": "ERR_WITNESS_FRAME_PROTOCOL"
+    },
+    {
+      "name": "response-trailing-byte",
+      "direction": "response",
+      "wire_hex": "00000015010200112233445566778899aabbccddeeff007b7d00",
+      "error": "ERR_WITNESS_FRAME_PROTOCOL"
+    },
+    {
+      "name": "response-two-frames",
+      "direction": "response",
+      "wire_hex": "00000015010200112233445566778899aabbccddeeff007b7d00000015010200112233445566778899aabbccddeeff007b7d",
+      "error": "ERR_WITNESS_FRAME_PROTOCOL"
+    },
+    {
+      "name": "response-wrong-operation",
+      "direction": "response",
+      "wire_hex": "00000015010100112233445566778899aabbccddeeff007b7d",
+      "error": "ERR_WITNESS_FRAME_MISMATCH"
+    },
+    {
+      "name": "response-wrong-uuid",
+      "direction": "response",
+      "wire_hex": "000000150102ff112233445566778899aabbccddeeff007b7d",
+      "error": "ERR_WITNESS_FRAME_MISMATCH"
+    },
+    {
+      "name": "response-unknown-status",
+      "direction": "response",
+      "wire_hex": "00000015010200112233445566778899aabbccddeeff047b7d",
+      "error": "ERR_WITNESS_FRAME_PROTOCOL"
+    },
+    {
+      "name": "request-object-is-not-response",
+      "direction": "response",
+      "wire_hex": "00000014010200112233445566778899aabbccddeeff7b7d",
+      "error": "ERR_WITNESS_FRAME_PROTOCOL"
+    },
+    {
+      "name": "legacy-non-object-state-rejected",
+      "direction": "request",
+      "wire_hex": "00000017010100112233445566778899aabbccddeeff7374617465",
+      "error": "ERR_WITNESS_FRAME_PROTOCOL"
+    },
+    {
+      "name": "response-status-0-reflected-as-request",
+      "direction": "request",
+      "wire_hex": "00000015010200112233445566778899aabbccddeeff007b7d",
+      "error": "ERR_WITNESS_FRAME_PROTOCOL"
+    },
+    {
+      "name": "response-status-1-reflected-as-request",
+      "direction": "request",
+      "wire_hex": "00000015010200112233445566778899aabbccddeeff017b7d",
+      "error": "ERR_WITNESS_FRAME_PROTOCOL"
+    },
+    {
+      "name": "response-status-2-reflected-as-request",
+      "direction": "request",
+      "wire_hex": "00000015010200112233445566778899aabbccddeeff027b7d",
+      "error": "ERR_WITNESS_FRAME_PROTOCOL"
+    },
+    {
+      "name": "response-status-3-reflected-as-request",
+      "direction": "request",
+      "wire_hex": "00000015010200112233445566778899aabbccddeeff037b7d",
+      "error": "ERR_WITNESS_FRAME_PROTOCOL"
+    }
+  ],
+  "boundary": [
+    {
+      "name": "request-maximum",
+      "direction": "request",
+      "operation": 2,
+      "request_id": "00112233-4455-6677-8899-aabbccddeeff",
+      "payload_repeat_hex": "a5",
+      "payload_bytes": 1048576,
+      "status": null,
+      "length": 1048594,
+      "wire_bytes": 1048598,
+      "header_hex": "00100012010200112233445566778899aabbccddeeff",
+      "wire_sha256": "dbc73e83e2cb4d01964875f19b0c07f977cb17ca2d92e5046b3c709fe9252ff5",
+      "payload_prefix_hex": "7b"
+    },
+    {
+      "name": "response-maximum",
+      "direction": "response",
+      "operation": 2,
+      "request_id": "00112233-4455-6677-8899-aabbccddeeff",
+      "payload_repeat_hex": "a5",
+      "payload_bytes": 1048576,
+      "status": 0,
+      "length": 1048595,
+      "wire_bytes": 1048599,
+      "header_hex": "00100013010200112233445566778899aabbccddeeff",
+      "wire_sha256": "dc95609c5c6f69e6e8152fa5aac5d7c701b8f2105b4676e70c901fbd0bffeb17"
+    }
+  ]
+}

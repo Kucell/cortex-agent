@@ -7,7 +7,6 @@
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
-const os = require("node:os");
 const path = require("node:path");
 const vm = require("node:vm");
 const migration = require("../../lib/commands/update/runtime-layout-migration");
@@ -23,7 +22,9 @@ const oldMarker = JSON.stringify({ layout_version: "1", activated_at: "2026-01-0
   plan_id: "fixture-existing", source: "fixture" });
 
 function fixture(body) {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-upgrade-failure-"));
+  const runtime = path.resolve(__dirname, "../../.agent/runtime");
+  fs.mkdirSync(runtime, { recursive: true });
+  const root = fs.mkdtempSync(path.join(runtime, "cortex-upgrade-failure-"));
   try { return body(root); } finally { fs.rmSync(root, { recursive: true, force: true }); }
 }
 function put(root, relative, bytes) {
@@ -366,7 +367,7 @@ function upgradeHarness(root, overrides) {
     "./management/api-helpers": { printManagementPayload: (value) => payloads.push(value) },
     "../script/manifest": { reconcileScripts: () => ({ updates: [], applied: [], failed: [], skipped: [] }) },
     "../registry/index": { PLATFORM_REGISTRY: {} },
-    "./patches": { applyPatches: call("applyPatches"), writeVersionFile: call("writeVersionFile") },
+    "./patches": { applyPatches: call("applyPatches"), writeVersionFile: call("writeVersionFile", { ok: true, outcome: "written" }) },
     "./migrate-legacy-memory": { detectLegacyFiles: call("detectLegacyFiles", { found: 0 }) },
     "../memory-validate": { validateMemory: call("validateMemory", { issues: [] }) },
     "../platform/index": { getInstalledPlatforms: call("getInstalledPlatforms", []) },

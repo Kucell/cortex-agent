@@ -92,6 +92,32 @@ function codeOf(fn) {
 // argument being optional.
 const NOTHING_REVOKED = new Set();
 
+test("permit preparation fixes the exact signed bytes without invoking a signer", () => {
+  const permit = samplePermit(), issuedAtMs = permit.deadline - 1000;
+  let calls = 0;
+  const options = { permit, issuedAtMs, get privateKeyRef() { calls++; throw Error("signer accessed"); } };
+  const prepared = delivery.preparePermitSigning(options);
+  assert.equal(calls, 0);
+  assert.deepEqual(Buffer.from(prepared.bytes, "base64"), delivery.canonicalBytes(prepared.message));
+  const expected = '{"deadline_ms":1700000000000,"desktop_key":"desktop-1","fencing":5,' +
+    '"generation":3,"host_identity":"host-a","issued_at_ms":1699999999000,"lease_id":"P-LEASE-1",' +
+    '"operation":"desktop.screenshot","owned_app_id":"app-1","params_digest":"' + "b".repeat(64) +
+    '","permit_id":"P-PERMIT-7","run_id":"run-1","sequence":7,"service_epoch":2,' +
+    '"session_id":"sess-1","target_digest":"' + "a".repeat(64) + '","worker_identity":"worker-a"}';
+  assert.equal(Buffer.from(prepared.bytes, "base64").toString("utf8"), expected);
+  assert.equal(delivery.preparePermitSigning({ permit, issuedAtMs, nowMs: issuedAtMs + 1 }).nowMs, issuedAtMs + 1);
+  const keyPair = delivery.createBatchKeyPair();
+  const signed = delivery.buildSignedPermit({ permit, issuedAtMs, privateKeyRef: keyPair.privateKeyRef });
+  assert.deepEqual({ ...signed, signature: undefined }, { ...prepared, signature: undefined });
+  assert.equal(crypto.verify(null, Buffer.from(prepared.bytes, "base64"), keyPair.publicKeyPem,
+    Buffer.from(signed.signature, "base64")), true);
+  assert.equal(prepared.deadline, permit.deadline);
+  let signedCalls = 0;
+  assert.throws(() => delivery.buildSignedPermit({ permit, issuedAtMs, nowMs: NaN,
+    privateKeyRef: { sign() { signedCalls++; } } }));
+  assert.equal(signedCalls, 0, "invalid metadata must not invoke the signer");
+});
+
 test("the signed message covers every field consume() binds", () => {
   const keyPair = delivery.createBatchKeyPair();
   const signed = sign(samplePermit(), keyPair);
@@ -367,6 +393,15 @@ test("an expired permit is refused", () => {
     })),
     "ERR_PERMIT_DEADLINE_EXPIRED",
   );
+});
+
+test("a permit is refused at its exact signed deadline", () => {
+  const keyPair = delivery.createBatchKeyPair();
+  const permit = samplePermit();
+  const signed = sign(permit, keyPair);
+  assert.equal(codeOf(() => delivery.verifyPermitSignature({ revokedFingerprints: NOTHING_REVOKED,
+    message: signed.message, signature: signed.signature, publicKeyPem: keyPair.publicKeyPem,
+    expectedFingerprint: keyPair.fingerprint, nowMs: permit.deadline })), "ERR_PERMIT_DEADLINE_EXPIRED");
 });
 
 test("a replayed sequence is refused and the high-water mark only advances on acceptance", () => {

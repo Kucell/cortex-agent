@@ -159,10 +159,22 @@ function tempDir(prefix) {
 }
 
 // A fake adapter: the writable identities of a path are given by name.
+// The real adapters answer by inspecting the OBJECT a path names, so a
+// caller may hand them the canonical path of that object. The fake one
+// answers by name, so it has to know both spellings of the same object -- on
+// macOS the temporary directory is reached through /var, which is a symbolic
+// link to /private/var.
 function fakeAdapter(map, current, normalized) {
+  const byObject = new Map();
+  for (const [key, value] of map) {
+    byObject.set(key, value);
+    let real = null;
+    try { real = fs.realpathSync(key); } catch { real = null; }
+    if (real !== null) byObject.set(real, value);
+  }
   return {
     writableIdentities: (targetPath) => {
-      const value = map.get(targetPath);
+      const value = byObject.get(targetPath);
       return value === undefined ? null : new Set(value);
     },
     writableIdentitiesBatch: null,

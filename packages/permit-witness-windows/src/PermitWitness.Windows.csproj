@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType></PropertyGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="PermitWitness.Windows.Tests" />
+    <InternalsVisibleTo Include="PermitWitness.PublicationEvidence" />
+  </ItemGroup>
+</Project>

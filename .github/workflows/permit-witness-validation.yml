@@ -1,0 +1,416 @@
+name: Permit Witness Validation (Stage A)
+
+# Candidate/isolated tests only: no provisioned identity, real mTLS, service
+# account, certificate-store access, key ACL or deployment acceptance evidence.
+# Like the other focused workflows, this is path-filtered. Keep full-test as
+# the repository-wide required check; this file does not change branch rules.
+on:
+  pull_request:
+    paths:
+      - "lib/coordination/**"
+      - "lib/governed/**"
+      - "lib/offline-migration/**"
+      - "lib/commands/permit-managed-cli.js"
+      - "lib/commands/local-publish-validate.js"
+      - "lib/commands/patches.js"
+      - "lib/commands/upgrade.js"
+      - "lib/cli/contract.js"
+      - "bin/cli.js"
+      - "bin/local-publish-validate.cjs"
+      - "tests/commands/local-publish-validate-exit.test.js"
+      - "tests/commands/local-publish-validate-stage.test.js"
+      - "tests/commands/fixtures/local-publish-validate-stage-child.cjs"
+      - "tests/commands/upgrade-version-stamp.test.js"
+      - "tests/commands/upgrade-cli-hooks.test.js"
+      - "tests/update/upgrade-failure-preservation.test.js"
+      - "tests/coordination/**"
+      - "tests/governed/**"
+      - "tests/migration/**"
+      - "packages/permit-witness-macos/**"
+      - "packages/permit-witness-windows/**"
+      - "packages/permit-upgrade-linux-guard/**"
+      - "packages/permit-sqlite-observer/**"
+      - "package.json"
+      - "package-lock.json"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/permit-witness-validation.yml"
+  push:
+    branches: [main]
+    paths:
+      - "lib/coordination/**"
+      - "lib/governed/**"
+      - "lib/offline-migration/**"
+      - "lib/commands/permit-managed-cli.js"
+      - "lib/commands/local-publish-validate.js"
+      - "lib/commands/patches.js"
+      - "lib/commands/upgrade.js"
+      - "lib/cli/contract.js"
+      - "bin/cli.js"
+      - "bin/local-publish-validate.cjs"
+      - "tests/commands/local-publish-validate-exit.test.js"
+      - "tests/commands/local-publish-validate-stage.test.js"
+      - "tests/commands/fixtures/local-publish-validate-stage-child.cjs"
+      - "tests/commands/upgrade-version-stamp.test.js"
+      - "tests/commands/upgrade-cli-hooks.test.js"
+      - "tests/update/upgrade-failure-preservation.test.js"
+      - "tests/coordination/**"
+      - "tests/governed/**"
+      - "tests/migration/**"
+      - "packages/permit-witness-macos/**"
+      - "packages/permit-witness-windows/**"
+      - "packages/permit-upgrade-linux-guard/**"
+      - "packages/permit-sqlite-observer/**"
+      - "package.json"
+      - "package-lock.json"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/permit-witness-validation.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: permit-witness-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  node-and-swift:
+    name: Node 24 / ${{ matrix.os }} candidate regressions
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        # Authority-store tests deliberately skip win32. These are real POSIX
+        # hosts, including the macOS ancestor-path/SQLite-lock regression.
+        os: [ubuntu-24.04, macos-15]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          submodules: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Prepare project-local runtime directories
+        run: |
+          set -euo pipefail
+          root="$GITHUB_WORKSPACE/.agent/runtime/permit-witness-validation"
+          mkdir -p "$root"/{tmp,logs,npm,xdg-cache,xdg-config,swift-build,swift-cache,swift-config,swift-security,swift-modules,clang-modules,dotnet-home,nuget,nuget-http,nuget-plugins}
+          {
+            echo "VALIDATION_ROOT=$root"
+            echo "TMPDIR=$root/tmp"
+            echo "TMP=$root/tmp"
+            echo "TEMP=$root/tmp"
+            echo "NPM_CONFIG_CACHE=$root/npm"
+            echo "XDG_CACHE_HOME=$root/xdg-cache"
+            echo "XDG_CONFIG_HOME=$root/xdg-config"
+            echo "SWIFTPM_MODULECACHE_OVERRIDE=$root/swift-modules"
+            echo "CLANG_MODULE_CACHE_PATH=$root/clang-modules"
+            echo "DOTNET_CLI_HOME=$root/dotnet-home"
+            echo "NUGET_PACKAGES=$root/nuget"
+            echo "NUGET_HTTP_CACHE_PATH=$root/nuget-http"
+            echo "NUGET_PLUGINS_CACHE_PATH=$root/nuget-plugins"
+            echo "DOTNET_GENERATE_ASPNET_CERTIFICATE=false"
+            echo "DOTNET_SKIP_FIRST_TIME_EXPERIENCE=1"
+            echo "DOTNET_CLI_TELEMETRY_OPTOUT=1"
+            echo "DOTNET_CLI_WORKLOAD_UPDATE_NOTIFY_DISABLE=true"
+            echo "DOTNET_NOLOGO=1"
+          } >> "$GITHUB_ENV"
+      - uses: actions/setup-dotnet@v4
+        if: runner.os == 'macOS'
+        env:
+          DOTNET_INSTALL_DIR: ${{ github.workspace }}/.agent/runtime/permit-witness-validation/dotnet-sdk
+        with:
+          dotnet-version: "10.0.x"
+      - name: Witness, authority and lock critical regressions (no skips)
+        run: |
+          set -euo pipefail
+          node --version | tee "$VALIDATION_ROOT/logs/node-version.log"
+          node -e 'if (process.versions.node.split(".")[0] !== "24") process.exit(1); const { DatabaseSync } = require("node:sqlite"); const db = new DatabaseSync(":memory:"); db.close();'
+          node --test --test-concurrency=1 --test-timeout=120000 --test-reporter=tap \
+            tests/coordination/permit-witness-frame.test.js \
+            tests/coordination/permit-witness-bounded-channel.test.js \
+            tests/coordination/permit-witness-bounded-session.test.js \
+            tests/coordination/permit-witness-bounded-session-capacity.test.js \
+            tests/coordination/permit-phase-a-synthetic-state.test.js \
+            tests/coordination/permit-phase-a-synthetic-publication.test.js \
+            tests/coordination/permit-phase-a-sqlite.test.js \
+            tests/coordination/permit-store-declaration.test.js \
+            tests/coordination/permit-store-declaration-loader.test.js \
+            tests/coordination/permit-sqlite-preflight.test.js \
+            tests/coordination/permit-sqlite-observer.test.js \
+            tests/coordination/permit-legacy-migration-core.test.js \
+            tests/coordination/permit-legacy-sqlite-rehearsal.test.js \
+            tests/coordination/permit-upgrade-strict-writer.test.js \
+            tests/commands/local-publish-validate-exit.test.js \
+            tests/commands/local-publish-validate-stage.test.js \
+            tests/commands/upgrade-version-stamp.test.js \
+            tests/commands/upgrade-cli-hooks.test.js \
+            tests/update/upgrade-failure-preservation.test.js \
+            tests/coordination/permit-authority-capability.test.js \
+            tests/coordination/permit-authority-admission.test.js \
+            tests/coordination/permit-authority-signing-gate.test.js \
+            tests/coordination/permit-witness-admission-host.test.js \
+            tests/coordination/permit-audit-durability.test.js \
+            tests/coordination/permit-anchor-durability.test.js \
+            tests/coordination/permit-history-close-durability.test.js \
+            tests/coordination/permit-witness-v2-frame.test.js \
+            tests/coordination/permit-witness-v2-wire.test.js \
+            tests/coordination/permit-witness-v2-history-wire.test.js \
+            tests/coordination/permit-witness-v2-exchange.test.js \
+            tests/coordination/permit-witness-v2-history-exchange.test.js \
+            tests/coordination/permit-witness-wire.test.js \
+            tests/coordination/permit-witness-host.test.js \
+            tests/coordination/permit-witness-managed-host.test.js \
+            tests/coordination/permit-witness-worker-isolation.test.js \
+            tests/coordination/permit-witness-isolated-adapter.test.js \
+            tests/coordination/permit-witness-contract.test.js \
+            tests/coordination/permit-witness-authority-store.test.js \
+            tests/coordination/permit-witness-history.test.js \
+            tests/coordination/permit-authority-service.test.js \
+            tests/governed/managed-caller-lifecycle-ticket.test.js \
+            tests/coordination/protected-store-lock.test.js \
+            2>&1 | tee "$VALIDATION_ROOT/logs/critical.tap"
+          node <<'NODE'
+          const fs = require("node:fs"), assert = require("node:assert/strict");
+          const tap = fs.readFileSync(process.env.VALIDATION_ROOT + "/logs/critical.tap", "utf8");
+          for (const key of ["tests", "pass", "fail", "cancelled", "skipped", "todo"]) {
+            const values = [...tap.matchAll(new RegExp("^# " + key + " (\\d+)\\s*$", "gm"))].map(m => Number(m[1]));
+            assert.equal(values.length, 1, "missing/ambiguous TAP summary: " + key);
+            if (key === "tests" || key === "pass") assert.ok(values[0] > 0, "empty critical suite");
+            else assert.equal(values[0], 0, "critical suite must not " + key);
+          }
+          NODE
+      - name: Store and delivery compatibility regressions
+        run: |
+          set -euo pipefail
+          node --test --test-concurrency=1 --test-timeout=120000 --test-reporter=tap \
+            tests/coordination/protected-pin-store.test.js \
+            tests/coordination/protected-permit-store.test.js \
+            tests/coordination/permit-delivery.test.js \
+            2>&1 | tee "$VALIDATION_ROOT/logs/store-delivery.tap"
+      - name: Legacy high-water compaction evidence (test trust model)
+        run: |
+          set -euo pipefail
+          node --test --test-concurrency=1 --test-timeout=300000 --test-reporter=tap \
+            tests/coordination/permit-legacy-highwater-compaction.test.js \
+            2>&1 | tee "$VALIDATION_ROOT/logs/legacy-highwater.tap"
+          node <<'NODE'
+          const fs = require("node:fs"), assert = require("node:assert/strict");
+          const tap = fs.readFileSync(process.env.VALIDATION_ROOT + "/logs/legacy-highwater.tap", "utf8");
+          const summary = key => {
+            const m = [...tap.matchAll(new RegExp("^# " + key + " (\\d+)\\s*$", "gm"))];
+            assert.equal(m.length, 1, key); return Number(m[0][1]);
+          };
+          assert.ok(summary("tests") >= 7); assert.ok(summary("pass") >= 6);
+          for (const key of ["fail", "cancelled", "todo"]) assert.equal(summary(key), 0, key);
+          const skipped = summary("skipped");
+          assert.ok(skipped <= 1, "only installed 1.15.7 may be unavailable");
+          if (skipped) assert.match(tap, /# SKIP Installed 1\.15\.7 unavailable/);
+          NODE
+      - name: Legacy archive preparation evidence (test trust model)
+        run: |
+          set -euo pipefail
+          node --test --test-concurrency=1 --test-timeout=300000 --test-reporter=tap \
+            tests/coordination/permit-legacy-archive-evidence.test.js \
+            2>&1 | tee "$VALIDATION_ROOT/logs/legacy-archive.tap"
+          node <<'NODE'
+          const fs = require("node:fs"), assert = require("node:assert/strict");
+          const tap = fs.readFileSync(process.env.VALIDATION_ROOT + "/logs/legacy-archive.tap", "utf8");
+          const summary = key => {
+            const m = [...tap.matchAll(new RegExp("^# " + key + " (\\d+)\\s*$", "gm"))];
+            assert.equal(m.length, 1, key); return Number(m[0][1]);
+          };
+          assert.ok(summary("tests") >= 15); assert.ok(summary("pass") >= 14);
+          for (const key of ["fail", "cancelled", "todo"]) assert.equal(summary(key), 0, key);
+          const frozen = [...tap.matchAll(/^ok \d+ - frozen 1\.15\.7 naturally compacts; production entry matches raw bytes and preserves core refusal$/gm)];
+          assert.equal(frozen.length, 1, "frozen coverage must pass exactly once");
+          const skipped = summary("skipped");
+          assert.ok(skipped <= 1, "only installed 1.15.7 may be unavailable");
+          const skipLines = [...tap.matchAll(/^(?:not )?ok \d+ - .* # SKIP(?: .*)?$/gm)];
+          assert.equal(skipLines.length, skipped, "skip results and summary must agree");
+          const installed = [...tap.matchAll(/^ok \d+ - installed 1\.15\.7 naturally compacts; production entry matches raw bytes and preserves core refusal( # SKIP .+)?$/gm)];
+          assert.equal(installed.length, 1, "installed coverage must have exactly one result");
+          assert.equal(Boolean(installed[0][1]), skipped === 1, "only installed coverage may skip");
+          NODE
+      - name: Linux native guard scope and lock regressions
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          PERMIT_LINUX_GUARD_REQUIRE=1 PERMIT_LINUX_GUARD_SANITIZE=1 node --test --test-concurrency=1 --test-timeout=120000 --test-reporter=tap \
+            tests/coordination/permit-upgrade-linux-guard.test.js \
+            2>&1 | tee "$VALIDATION_ROOT/logs/linux-guard.tap"
+          node -e 'const fs=require("node:fs"),assert=require("node:assert/strict"),s=fs.readFileSync(process.env.VALIDATION_ROOT+"/logs/linux-guard.tap","utf8"); for(const k of ["tests","pass","fail","cancelled","skipped","todo"]){const m=[...s.matchAll(new RegExp("^# "+k+" (\\d+)\\s*$","gm"))]; assert.equal(m.length,1,k); if(k==="tests"||k==="pass") assert.ok(+m[0][1]>0,k); else assert.equal(+m[0][1],0,k);}'
+      - name: Linux control journal regressions (test trust model)
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          mkdir -p "$VALIDATION_ROOT/journal-build" "$VALIDATION_ROOT/journal-data"
+          PERMIT_LINUX_JOURNAL_REQUIRE=1 \
+          PERMIT_LINUX_JOURNAL_BUILD_ROOT="$VALIDATION_ROOT/journal-build" \
+          PERMIT_LINUX_JOURNAL_TEST_ROOT="$VALIDATION_ROOT/journal-data" \
+            node --test --test-concurrency=1 --test-timeout=120000 --test-reporter=tap \
+            tests/coordination/permit-upgrade-linux-journal.test.js \
+            2>&1 | tee "$VALIDATION_ROOT/logs/linux-journal.tap"
+          node -e 'const fs=require("node:fs"),assert=require("node:assert/strict"),s=fs.readFileSync(process.env.VALIDATION_ROOT+"/logs/linux-journal.tap","utf8"); for(const k of ["tests","pass","fail","cancelled","skipped","todo"]){const m=[...s.matchAll(new RegExp("^# "+k+" (\\d+)\\s*$","gm"))]; assert.equal(m.length,1,k); if(k==="tests"||k==="pass") assert.ok(+m[0][1]>0,k); else assert.equal(+m[0][1],0,k);}'
+      - name: Legacy offline migration regression (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          GIT_CEILING_DIRECTORIES="$TMPDIR" node --test --test-concurrency=1 --test-timeout=120000 --test-reporter=tap \
+            tests/migration/offline-migration.test.js \
+            2>&1 | tee "$VALIDATION_ROOT/logs/offline-migration.log"
+          node -e 'const fs=require("node:fs"),assert=require("node:assert/strict"),s=fs.readFileSync(process.env.VALIDATION_ROOT+"/logs/offline-migration.log","utf8"); for(const k of ["tests","pass","fail","cancelled","skipped","todo"]){const m=[...s.matchAll(new RegExp("^# "+k+" (\\d+)\\s*$","gm"))]; assert.equal(m.length,1,k); if(k==="tests"||k==="pass") assert.ok(+m[0][1]>0,k); else assert.equal(+m[0][1],0,k);}'
+      - name: macOS Swift candidate tests (Swift 6, synthetic trust only)
+        if: runner.os == 'macOS'
+        run: |
+          set -euo pipefail
+          # Use the hosted image's selected full Xcode toolchain, rather than
+          # a PATH-installed Swift paired with a different ManifestAPI/SDK.
+          xcodebuild -version | tee "$VALIDATION_ROOT/logs/xcode-version.log"
+          xcrun swift --version | tee "$VALIDATION_ROOT/logs/swift-version.log"
+          xcrun swift test --package-path packages/permit-witness-macos \
+            --scratch-path "$VALIDATION_ROOT/swift-build" \
+            --cache-path "$VALIDATION_ROOT/swift-cache" \
+            --config-path "$VALIDATION_ROOT/swift-config" \
+            --security-path "$VALIDATION_ROOT/swift-security" \
+            --disable-dependency-cache --manifest-cache local \
+            -Xswiftc -module-cache-path -Xswiftc "$VALIDATION_ROOT/swift-modules" \
+            -Xcc "-fmodules-cache-path=$VALIDATION_ROOT/clang-modules" \
+            2>&1 | tee "$VALIDATION_ROOT/logs/swift-test.log"
+      - name: Shared framing vectors across JavaScript, Swift and .NET
+        if: runner.os == 'macOS'
+        run: |
+          set -euo pipefail
+          PERMIT_WITNESS_KEEP_ARTIFACTS=1 PERMIT_WITNESS_REQUIRE_TOOLCHAINS=swift,dotnet node --test \
+            tests/coordination/permit-witness-cross-language.test.js \
+            2>&1 | tee "$VALIDATION_ROOT/logs/cross-language.log"
+          PERMIT_WITNESS_REQUIRE_TOOLCHAINS=swift,dotnet node --test \
+            tests/coordination/permit-witness-v2-cross-language.test.js \
+            2>&1 | tee "$VALIDATION_ROOT/logs/v2-cross-language.log"
+      - name: Upload candidate logs (exclude state, keys and build products)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: permit-witness-${{ matrix.os }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            .agent/runtime/permit-witness-validation/logs/
+            .agent/runtime/permit-witness-cross-language/run-*/logs/
+            .agent/runtime/permit-witness-v2-interop/run-*/logs/
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 7
+
+  dotnet-candidate:
+    name: Windows .NET 10 isolated candidate tests
+    runs-on: windows-2025
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      DOTNET_INSTALL_DIR: ${{ github.workspace }}/.agent/runtime/permit-witness-validation/dotnet-sdk
+      DOTNET_CLI_HOME: ${{ github.workspace }}/.agent/runtime/permit-witness-windows/dotnet-home
+      NUGET_PACKAGES: ${{ github.workspace }}/.agent/runtime/permit-witness-windows/nuget
+      NUGET_HTTP_CACHE_PATH: ${{ github.workspace }}/.agent/runtime/permit-witness-windows/nuget-http
+      NUGET_PLUGINS_CACHE_PATH: ${{ github.workspace }}/.agent/runtime/permit-witness-windows/nuget-plugins
+      DOTNET_GENERATE_ASPNET_CERTIFICATE: "false"
+      DOTNET_SKIP_FIRST_TIME_EXPERIENCE: "1"
+      DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+      DOTNET_CLI_WORKLOAD_UPDATE_NOTIFY_DISABLE: "true"
+      DOTNET_NOLOGO: "1"
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          submodules: false
+      - name: Prepare project-local runtime directories
+        run: |
+          $root = Join-Path $env:GITHUB_WORKSPACE '.agent/runtime/permit-witness-windows'
+          foreach ($dir in @('logs', 'tmp', 'dotnet-home', 'nuget', 'nuget-http', 'nuget-plugins', 'pycache')) {
+            New-Item -ItemType Directory -Force (Join-Path $root $dir) | Out-Null
+          }
+          "VALIDATION_ROOT=$root" >> $env:GITHUB_ENV
+          "TMPDIR=$root/tmp" >> $env:GITHUB_ENV
+          "TMP=$root/tmp" >> $env:GITHUB_ENV
+          "TEMP=$root/tmp" >> $env:GITHUB_ENV
+          "PYTHONPYCACHEPREFIX=$root/pycache" >> $env:GITHUB_ENV
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # Directory.Build.props places obj/bin under .agent/runtime; NuGet.Config
+      # clears all feeds. This is an executable harness, NOT dotnet test/VSTest.
+      - name: Build dependency-free Windows candidate
+        run: |
+          dotnet --info | Tee-Object "$env:VALIDATION_ROOT/logs/dotnet-info.log"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          dotnet build packages/permit-witness-windows/tests/PermitWitness.Windows.Tests.csproj `
+            --configfile packages/permit-witness-windows/NuGet.Config --disable-build-servers `
+            -p:NuGetAudit=false -p:UseSharedCompilation=false `
+            2>&1 | Tee-Object "$env:VALIDATION_ROOT/logs/build.log"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Run isolated frames, cancellation and policy harness (no credentials)
+        run: |
+          dotnet "$env:VALIDATION_ROOT/artifacts/bin/PermitWitness.Windows.Tests/Debug/net10.0-windows/PermitWitness.Windows.Tests.dll" `
+            2>&1 | Tee-Object "$env:VALIDATION_ROOT/logs/tests.log"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Build and run service identity configuration contract (no credentials)
+        run: |
+          dotnet build packages/permit-witness-windows/identity-tests/PermitWitness.ServiceIdentity.Tests.csproj `
+            --configfile packages/permit-witness-windows/NuGet.Config --disable-build-servers `
+            -p:NuGetAudit=false -p:UseSharedCompilation=false `
+            2>&1 | Tee-Object "$env:VALIDATION_ROOT/logs/identity-build.log"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          dotnet "$env:VALIDATION_ROOT/artifacts/bin/PermitWitness.ServiceIdentity.Tests/Debug/net10.0-windows/PermitWitness.ServiceIdentity.Tests.dll" `
+            2>&1 | Tee-Object "$env:VALIDATION_ROOT/logs/identity-tests.log"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Build and run CNG handle lifetime model (synthetic handles)
+        run: |
+          dotnet build packages/permit-witness-windows/identity-tests/NativeKeyHandle.Lifetime.Tests.csproj `
+            --configfile packages/permit-witness-windows/NuGet.Config --disable-build-servers `
+            -p:NuGetAudit=false -p:UseSharedCompilation=false `
+            2>&1 | Tee-Object "$env:VALIDATION_ROOT/logs/key-handle-build.log"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          dotnet "$env:VALIDATION_ROOT/artifacts/bin/NativeKeyHandle.Lifetime.Tests/Debug/net10.0-windows/NativeKeyHandle.Lifetime.Tests.dll" `
+            2>&1 | Tee-Object "$env:VALIDATION_ROOT/logs/key-handle-tests.log"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Real anonymous-pipe backpressure refusal (Python 3.12)
+        run: |
+          python --version | Tee-Object "$env:VALIDATION_ROOT/logs/python-version.log"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -B packages/permit-witness-windows/tests/test_backpressure.py `
+            2>&1 | Tee-Object "$env:VALIDATION_ROOT/logs/backpressure.log"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Shared framing vectors across JavaScript and .NET
+        run: |
+          $env:PERMIT_WITNESS_REQUIRE_TOOLCHAINS = 'dotnet'
+          $env:PERMIT_WITNESS_KEEP_ARTIFACTS = '1'
+          node --test tests/coordination/permit-witness-cross-language.test.js `
+            2>&1 | Tee-Object "$env:VALIDATION_ROOT/logs/cross-language.log"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node --test tests/coordination/permit-witness-v2-cross-language.test.js `
+            2>&1 | Tee-Object "$env:VALIDATION_ROOT/logs/v2-cross-language.log"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Upload candidate logs (exclude state, keys and build products)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: permit-witness-windows-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            .agent/runtime/permit-witness-windows/logs/
+            .agent/runtime/permit-witness-cross-language/run-*/logs/
+            .agent/runtime/permit-witness-v2-interop/run-*/logs/
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 7

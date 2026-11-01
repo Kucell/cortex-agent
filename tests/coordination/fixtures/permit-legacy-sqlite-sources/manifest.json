@@ -1,0 +1,20 @@
+{
+  "format": 1,
+  "legacy": {
+    "version": "1.15.7",
+    "store_sha256": "26e20acab1dd50396c55b404b39b2340035c95c8835eaa425e13b07cc36b772a",
+    "store_fixture": "protected-permit-store-v1-source.txt"
+  },
+  "candidate": {
+    "version": "1.16.0",
+    "tag_commit": "6bd1b0870363072b66aaff34de733ba645ea41a2",
+    "store_sha256": "9d584b29d9f25e392b9fa2d6157318c9334372e5ae6bf14692acfe33622f62c6",
+    "store_fixture": "protected-permit-store-v2-source.txt"
+  },
+  "dependencies": {
+    "protected-anchor": "24627d5f413da24937e2833d0dc22cc2522e55bd35a9546ef5459ddf1ba17bb4",
+    "anchor-authorization": "362369c2e0d275474857729c30dd494493ead5f7e433b2716efcf76cf59fc740",
+    "protected-scope": "26c48fe0397a9952c268e9ebd98b543733fdb01e5e9487daded718153d3cd5d4",
+    "protected-store-lock": "42725897fce921127d905ced390479b52d12f81538cc3b2a9a70f9393bfe1929"
+  }
+}

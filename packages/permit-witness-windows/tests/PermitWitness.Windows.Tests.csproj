@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType></PropertyGroup>
+  <ItemGroup><ProjectReference Include="../src/PermitWitness.Windows.csproj" /></ItemGroup>
+  <ItemGroup>
+    <!-- The cross-language oracle travels with the test binary so the
+         harness never depends on the caller's working directory. -->
+    <None Include="v2_payload_policy.js" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

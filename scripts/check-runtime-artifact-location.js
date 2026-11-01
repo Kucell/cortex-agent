@@ -366,6 +366,10 @@ function main() {
 
   const violations = [];
   let checked = 0;
+  // The runtime library is scanned as well: a module that writes its logs,
+  // scripts or fixtures into a temporary directory violates the project rule,
+  // and the rule only holds while the code is checked.
+  checked += scanTree(root, "lib", violations);
   checked += scanTree(root, "templates", violations);
   checked += scanTree(root, path.join(".agent", "skills"), violations);
   checked += scanTree(root, path.join(".agent", "scripts"), violations);

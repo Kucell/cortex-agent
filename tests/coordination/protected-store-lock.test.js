@@ -3,12 +3,57 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
-const os = require("node:os");
+const testRoot = path.resolve(__dirname, "../../.agent/runtime/test-tmp");
+fs.mkdirSync(testRoot, { recursive: true });
 const { spawn } = require("node:child_process");
 const readline = require("node:readline");
 const { ProtectedPermitStore: Store } = require("../../lib/coordination/protected-permit-store");
 const lock = require("../../lib/coordination/protected-store-lock");
 const supported = Number(process.versions.node.split(".")[0]) >= 24;
+test("lock restoration accepts only the empty version zero shape", { skip: !supported }, t => {
+  const root = fs.mkdtempSync(path.join(testRoot, "lock-restore-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const { DatabaseSync } = require("node:sqlite");
+  for (const [name, setup, expected] of [
+    ["empty", "", true],
+    ["unknown", "PRAGMA user_version=99", false],
+    ["view", "CREATE VIEW extra AS SELECT 1", false],
+    ["application", "PRAGMA application_id=42", false],
+    ["encoding", "PRAGMA encoding='UTF-16'; CREATE TABLE extra(x); DROP TABLE extra; PRAGMA schema_version=0", false],
+    ["dropped", "CREATE TABLE extra(x); DROP TABLE extra", false],
+  ]) {
+    const dir = path.join(root, name); fs.mkdirSync(dir);
+    const file = path.join(dir, lock.FILE), db = new DatabaseSync(file);
+    fs.chmodSync(file, 0o600);
+    if (setup) db.exec(setup);
+    const version = db.prepare("PRAGMA user_version").get().user_version;
+    db.close();
+    if (expected) assert.equal(lock.reinitializeUninitializedLock(dir).restored, true);
+    else assert.throws(() => lock.reinitializeUninitializedLock(dir), { code: "ERR_COORDINATION_LOCK_INVALID" });
+    const verify = new DatabaseSync(file);
+    assert.equal(verify.prepare("PRAGMA user_version").get().user_version, expected ? 1 : version);
+    if (name === "view") assert.equal(verify.prepare("SELECT count(*) AS n FROM sqlite_schema WHERE type='view'").get().n, 1);
+    verify.close();
+  }
+});
+test("lock restoration validates under exclusion and preserves version zero after rejection", { skip: !supported }, t => {
+  const dir = fs.mkdtempSync(path.join(testRoot, "lock-restore-validation-"));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const { DatabaseSync } = require("node:sqlite"), file = path.join(dir, lock.FILE);
+  const db = new DatabaseSync(file); db.close(); fs.chmodSync(file, 0o600);
+  const rejected = Object.assign(Error("rejected"), { code: "ERR_DECISION_MISMATCH" });
+  assert.throws(() => lock.reinitializeUninitializedLock(dir, identity => {
+    assert.equal(typeof identity, "string");
+    const probe = new DatabaseSync(file, { timeout: 0 });
+    try { assert.throws(() => probe.exec("BEGIN IMMEDIATE"), error => error.errcode === 5); }
+    finally { probe.close(); }
+    throw rejected;
+  }), error => error === rejected);
+  const probe = new DatabaseSync(file);
+  try { assert.equal(probe.prepare("PRAGMA user_version").get().user_version, 0); }
+  finally { probe.close(); }
+  assert.equal(lock.reinitializeUninitializedLock(dir, () => {}).restored, true);
+});
 function fixture(t) {
   // The root is canonicalised because the temporary directory is reached
   // through a platform alias on macOS (/var is a symbolic link to
@@ -16,7 +61,7 @@ function fixture(t) {
   // paths the test compares against must be canonical as well -- otherwise a
   // legitimate anchor is reported under two spellings and the comparison
   // silently fails.
-  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "store-lock-")));
+  const root = fs.realpathSync(fs.mkdtempSync(path.join(testRoot, "store-lock-")));
   const dbDir = path.join(root, "db"), anchorDir = path.join(root, "anchor");
   fs.mkdirSync(dbDir); fs.mkdirSync(anchorDir);
   const file = path.join(dbDir, "state.sqlite");
@@ -105,7 +150,7 @@ test("real v1 implementation refuses v2 open and recovery", { skip: !supported }
   }
 });
 test("an already-open real v1 handle refuses a v2 body before writing", { skip: !supported }, t => {
-  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "store-v1-handle-")));
+  const root = fs.realpathSync(fs.mkdtempSync(path.join(testRoot, "store-v1-handle-")));
   const dir = path.join(root, "db"), anchorDir = path.join(root, "anchor"); fs.mkdirSync(dir); fs.mkdirSync(anchorDir);
   const file = path.join(dir, "state.sqlite"), Old = oldStore();
   const old = Old.initialize(file, { decisionId: "D-old", anchorDir, anchorMode: "permissive", clock: () => 1000000 });
@@ -118,7 +163,7 @@ test("an already-open real v1 handle refuses a v2 body before writing", { skip: 
   assert.throws(() => old.acquire({ owner: "test", sessionId: "s", hostId: "h", workerId: "w", runId: "r", generation: "g", desktopKey: "d", ownedAppId: "a", idempotencyKey: "lease", ttlMs: 60000 }), { code: "ERR_STATE_INVALID" });
 });
 test("v1 database and absent lock are never silently upgraded", { skip: !supported }, t => {
-  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "store-v1-refuse-")));
+  const root = fs.realpathSync(fs.mkdtempSync(path.join(testRoot, "store-v1-refuse-")));
   const dir = path.join(root, "db"), anchorDir = path.join(root, "anchor"); fs.mkdirSync(dir); fs.mkdirSync(anchorDir);
   const file = path.join(dir, "state.sqlite"), old = oldStore().initialize(file, { decisionId: "D-old", anchorDir, anchorMode: "permissive" }); old.close();
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));

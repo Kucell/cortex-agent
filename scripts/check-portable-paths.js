@@ -68,6 +68,10 @@ const SKIP_DIRS = Object.freeze([
 // reusable verification scripts live.
 const SCAN_TREES = Object.freeze([
   "templates",
+  // The runtime library is scanned as well: a module that writes its logs,
+  // scripts or fixtures into a temporary directory is a violation of the
+  // project rule, and the rule only holds while the code is checked.
+  "lib",
   ".agent/skills",
   ".agent/scripts",
   ".agent/workflows",
