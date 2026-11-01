@@ -275,7 +275,7 @@
     "templates/_shared/.agent/waitpoints/waitpoint.schema.json"
   ],
   "protected_source_blobs": {
-    "bin/cli.js": "4a720cfd018133b15b1409e93a00d9b7b15c1853",
+    "bin/cli.js": "2054bee968f32a9ffcf9bb822d749d06cff34f41",
     "lib/dispatch/execute.js": "ad89e6bd06ce20005b9d1037195dfde657dedb57"
   },
   "builtins": [

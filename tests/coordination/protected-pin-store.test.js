@@ -1,10 +1,14 @@
 "use strict";
 
 const assert = require("node:assert/strict");
+const crypto = require("node:crypto");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
+const { spawn } = require("node:child_process");
+const readline = require("node:readline");
+const coordination = require("../../lib/coordination/protected-store-lock");
 
 const {
   ProtectedPinStore,
@@ -38,11 +42,26 @@ test("the carried registration fields are NOT part of the batch identity", () =>
   assert.deepEqual(BATCH_IDENTITY_FIELDS, ["decision_id", "instance_id", "fingerprint"]);
 });
 
+test("a private PEM is refused before any pin is written", () => {
+  const f = fixture();
+  try {
+    const pair = crypto.generateKeyPairSync("ed25519");
+    const privatePem = pair.privateKey.export({ type: "pkcs8", format: "pem" });
+    const publicKeyPem = pair.publicKey.export({ type: "spki", format: "pem" });
+    let wrote = false;
+    assert.throws(() => f.store.registerPin({ batchIdentity: {
+      decision_id: "D-test-pin", instance_id: "instance", fingerprint: publicKeyFingerprint(publicKeyPem),
+    }, publicKeyPem: privatePem, write: () => { wrote = true; return true; } }), { key: "ERR_PERMIT_INPUT_INVALID" });
+    assert.equal(wrote, false);
+    assert.deepEqual(f.store.listPins(), []);
+  } finally { f.cleanup(); }
+});
+
 function fixture(options = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "coord-pin-"));
   const pinDir = path.join(dir, "pin");
   fs.mkdirSync(pinDir, { recursive: true });
-  const store = ProtectedPinStore.open(pinDir, {
+  const store = ProtectedPinStore.initialize(pinDir, {
     decisionId: options.decisionId || "D-test-pin",
     // The development environment has no separate service identity, so the
     // permission contract is opted out of explicitly here.
@@ -217,6 +236,21 @@ test("a concurrent registrant that loses the race does not overwrite the winner"
   }
 });
 
+test("an existing stale-looking lock is not moved or reclaimed", () => {
+  const f = fixture();
+  try {
+    const lockPath = path.join(f.pinDir, ".pin-critical-section.lock");
+    const content = JSON.stringify({ owner: "old", pid: 2147483647, token: "old", expiresAt: "2000-01-01T00:00:00Z" });
+    fs.renameSync(lockPath, path.join(f.pinDir, "original-fence"));
+    fs.writeFileSync(lockPath, content, { flag: "wx", mode: 0o600 });
+    let ran = false;
+    assert.equal(codeOf(() => f.store.criticalSection(() => { ran = true; })), "ERR_PIN_STATE_CORRUPT");
+    assert.equal(ran, false);
+    assert.equal(fs.readFileSync(lockPath, "utf8"), content);
+    assert.equal(fs.readdirSync(f.pinDir).some((name) => name.includes(".stale.")), false);
+  } finally { f.cleanup(); }
+});
+
 test("the fingerprint is derived from the key, not taken from the caller", () => {
   // Design counterexample 15: a fingerprint that disagrees with the
   // snapshot registration is refused. A self-reported fingerprint would
@@ -326,6 +360,23 @@ test("the direct revocation registration advances the chain by one", () => {
   }
 });
 
+test("direct revocation rejects gaps and replay without changing state", () => {
+  const f = fixture();
+  try {
+    const fingerprint = "c".repeat(64);
+    assert.throws(() => f.store.registerDirectRevocation({ fingerprint, sequence: 2 }),
+      { key: "ERR_REVOCATION_SEQUENCE_BROKEN" });
+    assert.equal(f.store.revocationState().appliedRevocationSequence, 0);
+    assert.equal(f.store.revocationState().revokedFingerprints.size, 0);
+    f.store.registerDirectRevocation({ fingerprint, sequence: 1 });
+    assert.throws(() => f.store.registerDirectRevocation({ fingerprint: "d".repeat(64), sequence: 1 }),
+      { key: "ERR_REVOCATION_SEQUENCE_BROKEN" });
+    const state = f.store.revocationState();
+    assert.equal(state.appliedRevocationSequence, 1);
+    assert.deepEqual([...state.revokedFingerprints], [fingerprint]);
+  } finally { f.cleanup(); }
+});
+
 test("the verification path only trusts the keys in the pin", () => {
   // Design section 2.3.1 R3-B2 ruling 2: Windows side trusts ONLY the
   // public key in the pin. A key carried by a list itself is never
@@ -433,7 +484,7 @@ test("on Windows the service identity must be declared, or the domain is refused
     );
 
     // With the declaration the domain opens.
-    const store = ProtectedPinStore.open(pinDir, {
+    const store = ProtectedPinStore.initialize(pinDir, {
       decisionId: "D-test-strict",
       anchorMode: anchorModule.ANCHOR_MODE.strict,
       platform: "windows",
@@ -488,13 +539,13 @@ test("a declared service identity that is not the caller is refused", () => {
 // being unreadable and the state file not existing are now different
 // facts, and only the second one is an empty domain.
 
-test("a domain that never held state reads as empty", () => {
+test("an explicitly initialized domain contains durable empty state", () => {
   const f = fixture();
   try {
     assert.equal(f.store.listPins().length, 0);
     assert.equal(f.store.revocationState().appliedRevocationSequence, 0);
-    // No state was ever written, so no initialisation marker exists yet.
-    assert.equal(fs.existsSync(path.join(f.pinDir, DOMAIN_MARKER_FILE)), false);
+    assert.equal(fs.existsSync(path.join(f.pinDir, DOMAIN_MARKER_FILE)), true);
+    assert.equal(fs.existsSync(path.join(f.pinDir, "pin-state.json")), true);
   } finally {
     f.cleanup();
   }
@@ -536,11 +587,11 @@ test("a deleted state file is refused, and the revoked set does not reset to emp
       write: atomicCreate(path.join(f.dir, "pin.marker")),
     });
     f.store.commitRevocation({
-      sequence: 4,
+      sequence: 1,
       revokedFingerprints: ["a".repeat(64)],
     });
     assert.equal(f.store.revocationState().revokedFingerprints.size, 1);
-    assert.equal(f.store.revocationState().appliedRevocationSequence, 4);
+    assert.equal(f.store.revocationState().appliedRevocationSequence, 1);
 
     // The domain was initialised, so the marker is present.
     assert.equal(fs.existsSync(path.join(f.pinDir, DOMAIN_MARKER_FILE)), true);
@@ -571,4 +622,247 @@ test("the initialisation marker is written before the first state file", () => {
   } finally {
     f.cleanup();
   }
+});
+
+function processFixture(t) {
+  const f = fixture(), children = [];
+  t.after(async () => {
+    for (const child of children) if (child.proc.exitCode === null) child.proc.kill("SIGKILL");
+    await Promise.all(children.map(child => child.done));
+    f.cleanup();
+  });
+  function child(mode, version) {
+    const proc = spawn(process.execPath, [path.join(__dirname, "fixtures/protected-pin-store-process.js"),
+      f.pinDir, mode, path.join(f.dir, "release"), ...(version ? [version] : [])], { stdio: ["ignore", "pipe", "pipe"] });
+    const events = [], waiters = [];
+    let stderr = "", closed = false;
+    proc.stderr.on("data", chunk => { stderr += chunk; });
+    readline.createInterface({ input: proc.stdout }).on("line", line => {
+      const event = JSON.parse(line); events.push(event);
+      for (const waiter of [...waiters]) if (waiter.name === event.event) {
+        waiters.splice(waiters.indexOf(waiter), 1); clearTimeout(waiter.timer); waiter.resolve(event);
+      }
+    });
+    const done = new Promise((resolve, reject) => {
+      proc.once("error", reject);
+      proc.once("close", (code, signal) => {
+        closed = true;
+        for (const waiter of waiters.splice(0)) {
+          clearTimeout(waiter.timer); waiter.reject(new Error(`missing ${waiter.name}: ${code}/${signal} ${stderr}`));
+        }
+        resolve({ code, signal });
+      });
+    });
+    const result = { proc, done, events, wait(name) {
+      const event = events.find(event => event.event === name);
+      if (event) return Promise.resolve(event);
+      if (closed) return Promise.reject(new Error(`child closed: ${stderr}`));
+      return new Promise((resolve, reject) => {
+        const waiter = { name, resolve, reject };
+        waiter.timer = setTimeout(() => {
+          waiters.splice(waiters.indexOf(waiter), 1); reject(new Error(`deadline: ${name} ${stderr}`));
+        }, 12000);
+        waiters.push(waiter);
+      });
+    } };
+    children.push(result); return result;
+  }
+  return { ...f, child, release() { fs.writeFileSync(path.join(f.dir, "release"), "go"); } };
+}
+
+test("two real writers serialize read-decide-write and reject the losing replay", async t => {
+  const f = processFixture(t), first = f.child("hold");
+  await first.wait("paused");
+  const second = f.child("write"); await second.wait("starting");
+  f.release();
+  assert.equal((await first.wait("result")).ok, true);
+  assert.deepEqual(await second.wait("result"), { event: "result", ok: false, code: "ERR_REVOCATION_SEQUENCE_BROKEN" });
+  assert.equal(f.store.revocationState().appliedRevocationSequence, 1);
+  assert.equal(f.store.assertPermitReplayState(), 1);
+  assert.deepEqual([...f.store.revocationState().revokedFingerprints], ["revoked"]);
+});
+
+test("contention times out without running business work or deleting either lock", async t => {
+  const f = processFixture(t), lockPath = path.join(f.pinDir, coordination.FILE);
+  const inode = fs.statSync(lockPath).ino, writer = f.child("hold");
+  await writer.wait("paused");
+  const contender = f.child("write"), started = Date.now();
+  assert.deepEqual(await contender.wait("result"), { event: "result", ok: false, code: "ERR_COORDINATION_BUSY" });
+  assert.ok(Date.now() - started < 10000);
+  assert.equal(fs.statSync(lockPath).ino, inode);
+  assert.equal(fs.existsSync(path.join(f.pinDir, ".pin-critical-section.lock")), true);
+  f.release(); assert.equal((await writer.wait("result")).ok, true);
+});
+
+test("SIGKILL releases the same SQLite inode and keeps the previous state", async t => {
+  const f = processFixture(t), lockPath = path.join(f.pinDir, coordination.FILE);
+  const inode = fs.statSync(lockPath).ino;
+  f.store.noteRevocationSeen(7);
+  const writer = f.child("hold"); await writer.wait("paused"); writer.proc.kill("SIGKILL");
+  assert.equal((await writer.done).signal, "SIGKILL");
+  const store = ProtectedPinStore.open(f.pinDir, { decisionId: "D-test-pin", anchorMode: "permissive" });
+  assert.equal(store.revocationState().highestSeenRevocationSequence, 7);
+  store.commitRevocation({ sequence: 1, revokedFingerprints: ["retained"], permitSequence: 8 });
+  assert.equal(store.assertPermitReplayState(), 8);
+  assert.equal(fs.statSync(lockPath).ino, inode);
+});
+
+for (const kind of ["missing", "replaced", "symlink", "hardlink", "mode", "corrupt"]) {
+  test(`SQLite lock ${kind} refuses reads, writes and reopen without repair`, () => {
+    const f = fixture(), file = path.join(f.pinDir, coordination.FILE), backup = path.join(f.dir, "backup");
+    try {
+      const state = fs.readFileSync(path.join(f.pinDir, "pin-state.json"));
+      if (kind === "missing") fs.unlinkSync(file);
+      if (kind === "replaced") { fs.renameSync(file, backup); fs.copyFileSync(backup, file); }
+      if (kind === "symlink") { fs.renameSync(file, backup); fs.symlinkSync(backup, file); }
+      if (kind === "hardlink") fs.linkSync(file, backup);
+      if (kind === "mode") fs.chmodSync(file, 0o666);
+      if (kind === "corrupt") fs.writeFileSync(file, "broken");
+      assert.throws(() => f.store.listPins());
+      let ran = false;
+      assert.throws(() => f.store.criticalSection(() => { ran = true; }));
+      assert.equal(ran, false);
+      assert.throws(() => ProtectedPinStore.open(f.pinDir, { decisionId: "D-test-pin", anchorMode: "permissive" }));
+      assert.deepEqual(fs.readFileSync(path.join(f.pinDir, "pin-state.json")), state);
+      assert.equal(fs.existsSync(file), kind !== "missing");
+    } finally { f.cleanup(); }
+  });
+}
+
+test("replaced lock during an outer section fences nested business work", () => {
+  const f = fixture();
+  try {
+    let ran = false;
+    assert.throws(() => f.store.criticalSection(() => {
+      const file = path.join(f.pinDir, coordination.FILE), backup = path.join(f.dir, "backup");
+      fs.renameSync(file, backup); fs.copyFileSync(backup, file);
+      f.store.criticalSection(() => { ran = true; });
+    }), { code: "ERR_COORDINATION_LOCK_REPLACED" });
+    assert.equal(ran, false);
+  } finally { f.cleanup(); }
+});
+
+test("same-handle nesting and thrown bodies release the stable lock", () => {
+  const f = fixture();
+  try {
+    const file = path.join(f.pinDir, coordination.FILE), inode = fs.statSync(file).ino, primary = new Error("PRIMARY");
+    assert.equal(f.store.criticalSection(() => f.store.criticalSection(() => 42)), 42);
+    assert.throws(() => f.store.criticalSection(() => { throw primary; }), error => error === primary);
+    assert.equal(f.store.criticalSection(() => true), true);
+    assert.equal(fs.statSync(file).ino, inode);
+    let ran = false;
+    assert.throws(() => f.store.criticalSection(async () => { ran = true; }), { key: "ERR_PERMIT_INPUT_INVALID" });
+    assert.equal(ran, false);
+  } finally { f.cleanup(); }
+});
+
+function legacyStore(version = 2) {
+  const Module = require("node:module"), filename = path.resolve(__dirname, "../../lib/coordination/protected-pin-store.js");
+  const compiled = new Module(filename, module);
+  compiled.filename = filename;
+  compiled.paths = Module._nodeModulePaths(path.dirname(filename));
+  compiled._compile(fs.readFileSync(path.join(__dirname, `fixtures/protected-pin-store-v${version}-source.txt`), "utf8"), filename);
+  return compiled.exports.ProtectedPinStore;
+}
+
+test("open never provisions an empty, legacy or partially lost domain", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "pin-open-refuse-"));
+  const options = { decisionId: "D-test-pin", anchorMode: "permissive" };
+  try {
+    assert.throws(() => ProtectedPinStore.open(root, options), { key: "ERR_PIN_STATE_CORRUPT" });
+    assert.deepEqual(fs.readdirSync(root), []);
+    const old = legacyStore().open(root, options);
+    old.commitRevocation({ sequence: 1, revokedFingerprints: ["retained"], permitSequence: 9 });
+    const before = fs.readFileSync(path.join(root, "pin-state.json"));
+    assert.throws(() => ProtectedPinStore.open(root, options), { key: "ERR_PIN_STATE_CORRUPT" });
+    assert.throws(() => ProtectedPinStore.initialize(root, options), { key: "ERR_PIN_STATE_CORRUPT" });
+    assert.equal(fs.existsSync(path.join(root, coordination.FILE)), false);
+    assert.deepEqual(fs.readFileSync(path.join(root, "pin-state.json")), before);
+    fs.unlinkSync(path.join(root, "pin-state.json"));
+    assert.throws(() => ProtectedPinStore.migrateOffline(root, { ...options, offline: true }), { key: "ERR_PIN_STATE_CORRUPT" });
+    assert.equal(fs.existsSync(path.join(root, coordination.FILE)), false);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test("explicit offline format-2 migration retains pins, revocations, replay and clock baselines", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "pin-migrate-"));
+  const options = { decisionId: "D-test-pin", anchorMode: "permissive" };
+  try {
+    const old = legacyStore().open(root, options), key = keyPair();
+    old.registerPin({ ...carried(), batchIdentity: batchIdentityFor(key), publicKeyPem: key.publicKeyPem,
+      nowMs: 1000, write: () => true });
+    old.commitRevocation({ sequence: 1, revokedFingerprints: [key.fingerprint], permitSequence: 19 });
+    old.noteRevocationSeen(7); old.observePermitClock(12345); old.setClockPoisoned(true);
+    const before = JSON.parse(fs.readFileSync(path.join(root, "pin-state.json")));
+    assert.throws(() => ProtectedPinStore.migrateOffline(root, options), { key: "ERR_PERMIT_INPUT_INVALID" });
+    const migrated = ProtectedPinStore.migrateOffline(root, { ...options, offline: true });
+    const after = JSON.parse(fs.readFileSync(path.join(root, "pin-state.json")));
+    assert.deepEqual(after, { ...before, schema_version: 3 });
+    assert.equal(migrated.assertPermitReplayState(), 19);
+    assert.equal(migrated.isClockPoisoned(), true);
+    assert.equal(migrated.listPins().length, 1);
+    assert.throws(() => old.listPins(), { key: "ERR_PIN_STATE_CORRUPT" });
+    assert.throws(() => old.commitRevocation({ sequence: 2, revokedFingerprints: [] }), { key: "ERR_LEASE_CONFLICT" });
+    assert.throws(() => ProtectedPinStore.migrateOffline(root, { ...options, offline: true }), { key: "ERR_PIN_STATE_CORRUPT" });
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test("a live legacy holder prevents migration without touching state or either lock", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "pin-live-legacy-"));
+  const options = { decisionId: "D-test-pin", anchorMode: "permissive" };
+  try {
+    const old = legacyStore().open(root, options);
+    old.commitRevocation({ sequence: 1, revokedFingerprints: ["retained"] });
+    const before = fs.readFileSync(path.join(root, "pin-state.json"));
+    old.criticalSection(() => {
+      const lock = fs.readFileSync(path.join(root, ".pin-critical-section.lock"));
+      assert.throws(() => ProtectedPinStore.migrateOffline(root, { ...options, offline: true }), { code: "EEXIST" });
+      assert.deepEqual(fs.readFileSync(path.join(root, ".pin-critical-section.lock")), lock);
+      assert.equal(fs.existsSync(path.join(root, coordination.FILE)), false);
+    });
+    assert.deepEqual(fs.readFileSync(path.join(root, "pin-state.json")), before);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+for (const version of ["1", "2"]) test(`real legacy format-${version} process refuses new state before writing`, async t => {
+  const f = processFixture(t), before = fs.readFileSync(path.join(f.pinDir, "pin-state.json"));
+  const reader = f.child("read", version);
+  assert.deepEqual(await reader.wait("result"), { event: "result", ok: false, code: "ERR_PIN_STATE_CORRUPT" });
+  const writer = f.child("write", version), result = await writer.wait("result");
+  assert.equal(result.ok, false);
+  assert.ok(["ERR_LEASE_CONFLICT", "ERR_PIN_STATE_CORRUPT"].includes(result.code));
+  assert.deepEqual(fs.readFileSync(path.join(f.pinDir, "pin-state.json")), before);
+});
+
+test("legacy format 1 cannot migrate by guessing missing replay and clock history", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "pin-v1-blocked-"));
+  const options = { decisionId: "D-test-pin", anchorMode: "permissive" };
+  try {
+    legacyStore(1).open(root, options).commitRevocation({ sequence: 1, revokedFingerprints: ["retained"] });
+    const before = fs.readFileSync(path.join(root, "pin-state.json"));
+    assert.throws(() => ProtectedPinStore.migrateOffline(root, { ...options, offline: true }), { key: "ERR_PIN_STATE_CORRUPT" });
+    assert.deepEqual(fs.readFileSync(path.join(root, "pin-state.json")), before);
+    assert.equal(fs.existsSync(path.join(root, coordination.FILE)), false);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+for (const point of ["marker", "state"]) test(`failed ${point} provisioning stays closed and is never silently reset`, () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "pin-init-fault-"));
+  const options = { decisionId: "D-test-pin", anchorMode: "permissive" }, rename = fs.renameSync;
+  const target = path.join(root, point === "marker" ? "pin-domain.json" : "pin-state.json");
+  try {
+    fs.renameSync = function(from, to) {
+      if (to === target) throw Object.assign(new Error("injected"), { code: "EIO" });
+      return rename.call(this, from, to);
+    };
+    assert.throws(() => ProtectedPinStore.initialize(root, options), { code: "EIO" });
+  } finally { fs.renameSync = rename; }
+  try {
+    const inode = fs.statSync(path.join(root, coordination.FILE)).ino;
+    assert.throws(() => ProtectedPinStore.open(root, options));
+    assert.throws(() => ProtectedPinStore.initialize(root, options), { key: "ERR_PIN_STATE_CORRUPT" });
+    assert.equal(fs.statSync(path.join(root, coordination.FILE)).ino, inode);
+    assert.equal(fs.existsSync(path.join(root, ".pin-critical-section.lock")), true);
+    assert.equal(fs.readdirSync(root).some(name => name.includes(".tmp-")), false);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });

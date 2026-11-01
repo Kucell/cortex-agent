@@ -868,7 +868,7 @@ describe("governed/managed-caller-session - identity does not come from self-rep
           startToken: replaced
             ? "linux:the-process-that-replaced-it"
             : "linux:the-process-that-was-established",
-          commandDigest: null,
+          commandDigest: "stable-digest",
           socketAddress: null,
           socketEndpoint: null,
           holders: [],
@@ -917,7 +917,7 @@ describe("governed/managed-caller-session - identity does not come from self-rep
           startToken: replaced
             ? "linux:the-process-that-replaced-it"
             : "linux:the-process-that-was-established",
-          commandDigest: null,
+          commandDigest: "stable-digest",
           socketAddress: null,
           socketEndpoint: null,
           holders: [],
