@@ -109,10 +109,13 @@ async function merge(opts) {
   const { config, token, pr_number, commit_message } = opts;
   const { owner, repo } = mapRepo(opts, config);
   const path = `/api/v1/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/pulls/${pr_number}/merge`;
-  const res = await send("POST", config.host, path, token, {
+  const payload = {
     Do: opts.merge_method || "merge",
-    Merge_Message: commit_message || "",
-  });
+  };
+  // Omit an empty merge message instead of sending a blank one so Gitea falls
+  // back to its default message for the selected merge method.
+  if (commit_message) payload.Merge_Message = commit_message;
+  const res = await send("POST", config.host, path, token, payload);
   if (res.status !== 200 && res.status !== 204 && res.status !== 201) {
     throw new Error(`gitea_merge_failed: HTTP ${res.status} ${res.raw?.slice(0, 200)}`);
   }

@@ -424,6 +424,12 @@ async function main() {
       commit_message: flag("--commit-message", argv),
       sha: flag("--sha", argv),
       squash,
+      // GitHub / Gitea select the merge strategy through `merge_method`
+      // rather than a boolean `squash` flag.  Forward the same intent so
+      // `--squash` is honoured on every backend instead of silently doing a
+      // merge commit.
+      merge_method: flag("--merge-method", argv)
+        || (squash ? "squash" : undefined),
     });
     if (runId) {
       appendRunEvent(runId, {
