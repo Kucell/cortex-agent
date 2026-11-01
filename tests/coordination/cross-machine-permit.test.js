@@ -18,7 +18,7 @@ function fixture() {
   const snapshotDir = path.join(dir, "snapshot");
   fs.mkdirSync(pinDir, { recursive: true });
   fs.mkdirSync(snapshotDir, { recursive: true });
-  const store = ProtectedPinStore.open(pinDir, {
+  const store = ProtectedPinStore.initialize(pinDir, {
     decisionId: "D-test-cross",
     anchorMode: anchorModule.ANCHOR_MODE.permissive,
   });
