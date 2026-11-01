@@ -76,10 +76,14 @@ async function getStatus(opts) {
 async function merge(opts) {
   const { config, token, pr_number, commit_message } = opts;
   const { owner, repo } = mapRepo(opts, config);
-  const res = await send("PUT", config.host, `/repos/${owner}/${repo}/pulls/${pr_number}/merge`, token, {
-    commit_message: commit_message || "",
+  const payload = {
     merge_method: opts.merge_method || "merge",
-  });
+  };
+  // Omit an empty commit message instead of sending a blank one: GitHub
+  // applies its own default (the PR title) for the selected merge method
+  // only when the field is absent.
+  if (commit_message) payload.commit_message = commit_message;
+  const res = await send("PUT", config.host, `/repos/${owner}/${repo}/pulls/${pr_number}/merge`, token, payload);
   if (res.status !== 200) throw new Error(`github_merge_failed: HTTP ${res.status} ${res.raw?.slice(0, 200)}`);
   return { merged: true, raw: res.body };
 }
