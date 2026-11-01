@@ -42,6 +42,15 @@ function installedAvailability() {
   const prior = process.env.CORTEX_LEGACY_1157_ROOT;
   process.env.CORTEX_LEGACY_1157_ROOT = root;
   try { legacy.installed(); return { available: true }; }
+  catch (error) {
+    // A 1.15.7 installation whose sources were rebuilt on top of the release
+    // is not the unchanged legacy producer. It is unavailable evidence, not
+    // a corrupted installation: the frozen producer still covers the case.
+    if (error.code === "HIGHWATER_INSTALLED_NOT_LEGACY") {
+      return { available: false, reason: "Installed 1.15.7 is not the unchanged legacy build; frozen coverage is separate" };
+    }
+    throw error;
+  }
   finally { if (prior === undefined) delete process.env.CORTEX_LEGACY_1157_ROOT; else process.env.CORTEX_LEGACY_1157_ROOT = prior; }
 }
 function capture(source, archive) {

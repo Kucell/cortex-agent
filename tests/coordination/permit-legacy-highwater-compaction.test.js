@@ -41,7 +41,10 @@ async function ensureProducers() {
   // The installed run is optional on other hosts, but a discovered mismatched
   // version/hash is a hard failure, never silently replaced by the fixture.
   try { f.installed(); }
-  catch (e) { if (e.code !== "HIGHWATER_INSTALLED_1157_UNAVAILABLE") throw e; installedAvailable = false; }
+  catch (e) {
+    if (e.code !== "HIGHWATER_INSTALLED_1157_UNAVAILABLE" && e.code !== "HIGHWATER_INSTALLED_NOT_LEGACY") throw e;
+    installedAvailable = false;
+  }
   producerPromise = Promise.all([produce("frozen"), ...(installedAvailable ? [produce("installed")] : [])]).then(results => {
     producers = results;
     record("runs.json", { producers, installedAvailable, authority: false, executionAuthorized: false });

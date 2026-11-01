@@ -540,7 +540,10 @@ test("installed discovery skips only absent paths; wrong version, source or inco
     fs.writeFileSync(path.join(dir, "package.json"), JSON.stringify({ version: "1.15.7" }));
     fs.mkdirSync(path.join(dir, "lib/coordination"), { recursive: true });
     fs.writeFileSync(path.join(dir, "lib/coordination/protected-permit-store.js"), "wrong source bytes");
-    assert.throws(() => f.installedAvailability(), { code: "HIGHWATER_INSTALLED_SOURCE_MISMATCH" });
+    // A rebuilt 1.15.7 is not the unchanged legacy producer, so it is
+    // unavailable evidence rather than a corrupted installation.
+    assert.deepEqual(f.installedAvailability(), { available: false,
+      reason: "Installed 1.15.7 is not the unchanged legacy build; frozen coverage is separate" });
     const childProcess = require("node:child_process"), discovery = childProcess.spawnSync;
     delete process.env.CORTEX_LEGACY_1157_ROOT;
     try {

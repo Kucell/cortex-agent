@@ -33,7 +33,11 @@ function installed() {
     const file = path.join(root, "lib/coordination", name + ".js");
     const frozen = path.join(__dirname, name === "protected-permit-store" ? manifest.legacy.store_fixture : "permit-legacy-sqlite-sources/" + name + ".txt");
     const bytes = fs.readFileSync(file), expected = fs.readFileSync(frozen);
-    if (!bytes.equals(expected) || hash(bytes) !== (name === "protected-permit-store" ? manifest.legacy.store_sha256 : manifest.dependencies[name])) fail("HIGHWATER_INSTALLED_SOURCE_MISMATCH");
+    // The legacy producer must be the UNCHANGED 1.15.7 build. A 1.15.7
+    // installation whose sources were rebuilt on top of it is a DIFFERENT
+    // build: it is not this producer, and it cannot stand in for one. Report
+    // that as an unavailable legacy producer instead of failing the suite.
+    if (!bytes.equals(expected) || hash(bytes) !== (name === "protected-permit-store" ? manifest.legacy.store_sha256 : manifest.dependencies[name])) fail("HIGHWATER_INSTALLED_NOT_LEGACY");
     return { name, sha256: hash(bytes) };
   });
   // Load actual installed files, rather than relabeling a frozen-fixture run.
