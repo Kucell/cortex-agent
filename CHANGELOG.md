@@ -90,6 +90,7 @@ Advisor-only development candidate; not published. This release scope covers rea
 
 ### Fixed
 
+- **只读迁移检视拒绝本产品自己的版本戳**：`.agent/.cortex-version` 记录的是产品来源，`offline-migration` 的来源白名单只接受 1.15.4 / 1.15.6 / 1.16.0，本补丁线随产品版本升到 1.15.7 后，新写入版本戳的项目会被判为 `UNSUPPORTED_PRODUCT_PROVENANCE` 而无法通过只读迁移检视。现在白名单纳入当前产品版本，并新增一条以 `package.json` 版本为输入的回归，避免以后再次漂移；来源标记仍然只是来源证据，不会因此被当作数据格式证据。
 - **分发模板的事件类型白名单漏项**：随模板分发的 `coordination-event.schema.json` 未包含 `ownership.rebound`，受管项目升级后会拿到一份拒绝该合法事件类型的 schema。已补齐并由上一条的回归测试长期绑定。
 - **rebind 可更换 scope、可接受伪造引用元数据**：原实现的授权循环按 scope 查找被替换的旧引用，scope 一旦不同就找不到旧引用，于是「同 scope、owner 不变、fencing 严格递增」三项检查全部落空——同 Owner 拿着另一份合法 lease 就能把 Task 从一个 scope 迁到另一个 scope。事件本身携带的 `scope` / `owner` 也只与 lease 的 `leaseId` 和 fencing token 核对，手写事件可以给真实 lease 配上伪造的 scope/owner，伪造元数据会进入 snapshot。现在 rebind 必须命中一条**已存在的同 scope 引用**，引用的 scope/owner 必须与持久化 lease 一致，两者都通过持久化记录判定，调用方无法伪造。
 - **rebind 单项恢复会丢弃任务其余 ownership 引用**：reducer 原先对 rebound 整体替换 `ownership[]`，只重绑一个 scope 时其余 scope 的过期引用一并消失，任务相当于被解除了对那些 scope 的约束，而它们本应继续阻止 progress 直到逐项恢复。现在 rebound 按 scope 替换对应项并保留其余引用；其余已过期 scope 仍然阻止 `task.progress`，必须逐项恢复。`--lease-id` 支持逗号分隔的多个 lease，一次即可恢复多个 scope。

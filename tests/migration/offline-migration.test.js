@@ -57,6 +57,11 @@ test("unknown product does not become supported from a familiar record", t => {
 test("product update alone does not force a data format migration", t => {
   const { root } = setup(t, "1.16.0"); assert.equal(inspect(root).needs_migration, false);
 });
+test("the current product release line is accepted as provenance", t => {
+  const { root } = setup(t, require("../../package.json").version);
+  assert.equal(inspect(root).unresolved.length, 0);
+  assert.equal(inspect(root).needs_migration, false);
+});
 test("unknown fields are not silently dropped", t => {
   const { root, write } = setup(t), value = JSON.parse(fs.readFileSync(path.join(fixtures, "1.15.6-missions.json")));
   value.unreviewed = true; write(`.agent/missions/${value.mission_id}.json`, JSON.stringify(value));
