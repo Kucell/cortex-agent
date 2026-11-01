@@ -254,10 +254,15 @@ async function merge(opts) {
   // supplied; otherwise omit the field so older GitLab versions still accept
   // the request.
   const payload = {
-    merge_commit_message: commit_message || "",
     squash: opts.squash === true,
     should_remove_source_branch: opts.remove_source !== false,
   };
+  // An empty `merge_commit_message` is not the same as "no message": GitLab
+  // rejects the whole PUT with HTTP 422 "Branch cannot be merged" when the
+  // field is present but blank (notably on the squash path, where the commit
+  // message is derived from the MR title).  Omit the field entirely when the
+  // caller did not supply one so GitLab applies its own default.
+  if (commit_message) payload.merge_commit_message = commit_message;
   if (sha) payload.sha = sha;
   const res = await send("PUT", config.host, `/api/v4/projects/${pid}/merge_requests/${pr_number}/merge`, token, payload);
   if (res.status !== 200) throw new Error(`gitlab_merge_failed: HTTP ${res.status} ${res.raw?.slice(0, 200)}`);
