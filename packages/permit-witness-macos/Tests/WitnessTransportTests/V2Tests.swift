@@ -26,9 +26,13 @@ private final class V2TestConnection: CandidateConnection, @unchecked Sendable {
         if autoReady { queue.async { state(true) } }
     }
     func send(_ data: Data, completion: @escaping @Sendable (Bool) -> Void) {
-        let queue = lock.withLock { sent.append(data); sendCompletion = completion; return queue! }
+        // The local must not shadow the stored property: naming it `queue`
+        // makes the closure reference the binding that is still being
+        // declared, which the Swift 6 compiler rejects as an invalid
+        // declaration. `self.queue` names the stored property explicitly.
+        let target = lock.withLock { sent.append(data); sendCompletion = completion; return self.queue! }
         onSend?()
-        if autoSend { queue.async { completion(true) } }
+        if autoSend { target.async { completion(true) } }
     }
     func receive(maximum: Int, completion: @escaping Reader) {
         lock.withLock {
