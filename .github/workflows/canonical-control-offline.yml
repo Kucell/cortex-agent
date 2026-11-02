@@ -191,8 +191,8 @@ jobs:
               const bytes=Buffer.from(file.content,'base64');assert.equal(bytes.length,file.size);assert.ok(bytes.length<=2097152);const blob=crypto.createHash('sha1').update('blob '+bytes.length+'\0').update(bytes).digest('hex');assert.equal(blob,entry.sha);return {bytes,blob};
             }
             const manifestPath='tests/dispatch/phase-zero-source-manifest.json',manifest=JSON.parse((await bytesFor(manifestPath)).bytes);
-            assert.equal(manifest.sources.length,270);assert.equal(new Set(manifest.sources).size,270);assert.equal(manifest.sources.filter(x=>x.endsWith('.js')).length,260);
-            const tests=['inbox','cli','multiprocess','redact','nudge'].map(x=>'tests/feedback/'+x+'.test.js'),files=[...new Set([...manifest.sources,'lib/feedback/nudge.js',...tests,manifestPath])];assert.equal(files.length,277);
+            assert.equal(manifest.sources.length,271);assert.equal(new Set(manifest.sources).size,271);assert.equal(manifest.sources.filter(x=>x.endsWith('.js')).length,261);
+            const tests=['inbox','cli','multiprocess','redact','nudge'].map(x=>'tests/feedback/'+x+'.test.js'),files=[...new Set([...manifest.sources,'lib/feedback/nudge.js',...tests,manifestPath])];assert.equal(files.length,278);
             for(const relative of files){const {bytes,blob}=await bytesFor(relative),file=path.join(root,'source',relative);assert.ok(file.startsWith(path.join(root,'source')+path.sep));fs.mkdirSync(path.dirname(file),{recursive:true});fs.writeFileSync(file,bytes,{flag:'wx',mode:0o444});proof.sources.push({path:relative,blob,sha256:crypto.createHash('sha256').update(bytes).digest('hex')});}
             fs.writeFileSync(path.join(root,'source-proof.json'),JSON.stringify(proof)+'\n',{flag:'wx',mode:0o444});core.info(JSON.stringify(proof));
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
@@ -296,9 +296,9 @@ jobs:
                   raise OSError(ctypes.get_errno(), 'seccomp containment unavailable')
           assert os.uname().machine=='x86_64';assert E.is_absolute() and E.resolve()==E and NODE.is_absolute()
           for name in ['home','tmp','cwd','audit']: (root/name).mkdir(mode=0o700)
-          proof=json.loads((E/'source-proof.json').read_text());before=snapshot(SOURCE);assert len(proof['sources'])==277 and sum(v[1]!='DIRECTORY' for v in before.values())==277
+          proof=json.loads((E/'source-proof.json').read_text());before=snapshot(SOURCE);assert len(proof['sources'])==278 and sum(v[1]!='DIRECTORY' for v in before.values())==278
           for item in proof['sources']:assert before[item['path']][1]==item['sha256']
-          report={'status':'NOT_RUN','source_head':proof['source_head'],'reviewed_head':proof['reviewed_head'],'source_tree':proof['tree'],'source_count':277,'boundary':'TRUSTED_SYNTHETIC_RUNNER_NO_KERNEL_FILE_CONFINEMENT'}
+          report={'status':'NOT_RUN','source_head':proof['source_head'],'reviewed_head':proof['reviewed_head'],'source_tree':proof['tree'],'source_count':278,'boundary':'TRUSTED_SYNTHETIC_RUNNER_NO_KERNEL_FILE_CONFINEMENT'}
           p=None
           try:
            loader=root/'cwd'/'feedback.test.cjs';loader.write_text('\n'.join('require('+json.dumps(str(SOURCE/'tests'/'feedback'/(name+'.test.js')))+');' for name in ['inbox','cli','multiprocess','redact','nudge'])+'\n')

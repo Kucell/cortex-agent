@@ -81,7 +81,7 @@ jobs:
             return { bytes, entry };
           }
           const manifest = JSON.parse(bytesFor(manifestPath).bytes.toString("utf8"));
-          assert.equal(manifest.sources.length, 270);
+          assert.equal(manifest.sources.length, 271);
           assert.equal(new Set(manifest.sources).size, manifest.sources.length);
           const proof = { source_head: head, source_manifest_blob: tree.get(manifestPath).blob,
             test_blob: tree.get(testPath).blob, blobs: {} };
