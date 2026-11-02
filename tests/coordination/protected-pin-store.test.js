@@ -10,6 +10,13 @@ const { spawn } = require("node:child_process");
 const readline = require("node:readline");
 const coordination = require("../../lib/coordination/protected-store-lock");
 
+// See the matching note in tests/coordination/protected-store-lock.test.js.
+// The busy handler's `timeout` is a nominal budget; the observed wall clock
+// adds the host's own scheduling delay to every sleep, which is why a fixed
+// magic ceiling reports a false failure on a loaded macOS runner. The ceiling
+// is derived from the budget the lock implementation declares.
+const CONTENTION_CEILING_MS = coordination.TIMEOUT_MS * 3;
+
 const {
   ProtectedPinStore,
   publicKeyFingerprint,
@@ -688,7 +695,7 @@ test("contention times out without running business work or deleting either lock
   await writer.wait("paused");
   const contender = f.child("write"), started = Date.now();
   assert.deepEqual(await contender.wait("result"), { event: "result", ok: false, code: "ERR_COORDINATION_BUSY" });
-  assert.ok(Date.now() - started < 10000);
+  assert.ok(Date.now() - started < CONTENTION_CEILING_MS);
   assert.equal(fs.statSync(lockPath).ino, inode);
   assert.equal(fs.existsSync(path.join(f.pinDir, ".pin-critical-section.lock")), true);
   f.release(); assert.equal((await writer.wait("result")).ok, true);
