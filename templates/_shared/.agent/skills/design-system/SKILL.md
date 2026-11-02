@@ -95,7 +95,7 @@ cascade is what you expect.
 
 ## References
 
-- T-OD-001 architecture: `docs/architecture/design-system.md`
+- T-OD-001 architecture: https://github.com/Kucell/cortex-agent/blob/main/docs/architecture/design-system.md
 - Upstream: https://github.com/nexu-io/open-design
 - Catalog: https://open-design.ai/zh/plugins/systems/
 - Cascade: 4 levels (project root → .agent → install LIFO → starter)
