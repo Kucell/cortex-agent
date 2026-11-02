@@ -1,5 +1,7 @@
 "use strict";
 
+const { testRuntime } = require("../helpers/runtime-sandbox");
+
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
@@ -7,13 +9,11 @@ const path = require("node:path");
 const vm = require("node:vm");
 const { createRequire } = require("node:module");
 const { spawnSync } = require("node:child_process");
-const { resolveGovernanceRoot } = require("../../lib/governance/root");
 const { LIMITS, parsePermitStoreDeclaration } = require("../../lib/coordination/permit-store-declaration");
 const { loadPermitStoreDeclaration: load, PermitStoreDeclarationLoadError } = require("../../lib/coordination/permit-store-declaration-loader");
 const supported = ["darwin", "linux"].includes(process.platform);
 const localTest = (name, fn) => test(name, { skip: !supported }, fn);
-const repo = path.resolve(__dirname, "../..");
-const runtime = path.join(resolveGovernanceRoot(repo).agent_root, "runtime");
+const runtime = testRuntime();
 
 function declaration() {
   return { format_version: 1, project_id: "project-a", revision: 7, stores: [{

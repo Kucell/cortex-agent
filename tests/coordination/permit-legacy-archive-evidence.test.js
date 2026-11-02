@@ -1,5 +1,9 @@
 "use strict";
 
+// @runner-timeout 600
+// The archive evidence rehearsal spawns real producer subprocesses and
+// performs durable writes, so it needs more than the default hang window.
+
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
@@ -10,8 +14,20 @@ const core = require("../../lib/coordination/permit-legacy-migration-core");
 const api = require("../../lib/coordination/permit-legacy-archive-evidence");
 const supported = Number(process.versions.node.split(".")[0]) >= 24 && process.platform !== "win32";
 const opts = { skip: supported ? false : "Requires Node >=24 SQLite and POSIX legacy fixture", timeout: 240000 };
+// The fixture captures its project/runtime roots at load time, so the
+// disposable sandbox has to exist before the require. Writing into the
+// repository working copy would break the strict-hermetic gate
+// (`.agent/rules/test-policy.md` §2.4).
+const { createRuntimeSandboxWithEnv } = require("../helpers/runtime-sandbox");
+const sandbox = supported ? createRuntimeSandboxWithEnv({ prefix: "cortex-legacy-archive-" }) : null;
+if (sandbox) process.env.CORTEX_PERMIT_TEST_PROJECT_ROOT = sandbox.root;
 const f = supported ? require("./fixtures/permit-legacy-archive-evidence") : null;
 let report, small;
+test.after(() => {
+  if (!sandbox) return;
+  delete process.env.CORTEX_PERMIT_TEST_PROJECT_ROOT;
+  sandbox.cleanup();
+});
 const copy = value => JSON.parse(JSON.stringify(value));
 function prepare(snapshot, project = f.PROJECT) { return api.prepareLegacyArchiveEvidence(JSON.stringify(snapshot), project); }
 function reject(snapshot, code) { assert.throws(() => prepare(snapshot), { code }); }
@@ -117,7 +133,8 @@ test("P2 read and close dual failure and SQLite close failure also prevent prepa
 test("P2 default logs redact raw errors and recursive cleanup while explicit diagnostics retain exact failures", opts, () => {
   const open = fs.openSync, read = fs.readFileSync, close = fs.closeSync;
   const { DatabaseSync } = require("node:sqlite"), dbClose = DatabaseSync.prototype.close;
-  const markers = ["SECRET_PRIMARY_7e96", "BODY_CLEANUP_a81d", "/private/diagnostic-only/path-901f", f.PROJECT];
+  const sourceProject = path.resolve(__dirname, "../..");
+  const markers = ["SECRET_PRIMARY_7e96", "BODY_CLEANUP_a81d", "/private/diagnostic-only/path-901f", f.PROJECT, sourceProject];
   const raw = markers.slice(0, 3).map((m, i) => Object.assign(Error(m), { body: m, path: markers[2], secret: markers[0],
     cause: Error("nested " + m), stack: "Error: " + m + "\n at " + markers[2] + ":1:1" }));
   let targetFd, caught;
@@ -175,7 +192,7 @@ test("P2 default logs redact raw errors and recursive cleanup while explicit dia
   assert.equal(rejection.code, "ERR_LEGACY_MIGRATION_EVIDENCE");
   assert.equal(inspect(rejection, { showHidden: true }).includes(f.PROJECT), false);
   assert.equal(inspect(rejection).includes("relativePath"), false);
-  assert.ok(api.getLegacyArchiveErrorDiagnostics(rejection).cause.stack.includes(f.PROJECT));
+  assert.ok(api.getLegacyArchiveErrorDiagnostics(rejection).cause.stack.includes(sourceProject));
   f.save(report, "default-error-log-safety.json", { renderings: rendered, exactRawIdentityRetained: true, authority: false });
 });
 

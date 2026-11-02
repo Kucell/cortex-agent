@@ -1,5 +1,7 @@
 "use strict";
 
+const { testRuntime } = require("../helpers/runtime-sandbox");
+
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
@@ -11,7 +13,7 @@ const root = path.resolve(__dirname, "../..");
 const source = path.join(root, "packages/permit-sqlite-observer");
 const peer = path.join(__dirname, "fixtures/permit-sqlite-observer-peer.c");
 const hooks = path.join(__dirname, "fixtures/permit-sqlite-observer-hooks.h");
-const runtime = path.join(root, ".agent/runtime");
+const runtime = testRuntime();
 const SECRET = "observer-fixture-private-body-never-report";
 const state = { observed: 0, missing: 1, input: 2, identity: 3, unsafe: 4, changed: 5, permission: 6, io: 7, close: 8 };
 const format = { unproven: 0, missing: 1, corrupt: 2, schema1: 3, schema2: 4, schema3: 5, unknown: 6 };

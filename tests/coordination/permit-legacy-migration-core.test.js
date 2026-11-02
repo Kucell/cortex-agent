@@ -1,5 +1,7 @@
 "use strict";
 
+const { testRuntime } = require("../helpers/runtime-sandbox");
+
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
@@ -36,7 +38,7 @@ test.before(() => {
   const source = fs.readFileSync(path.join(__dirname, "fixtures/protected-permit-store-v1-source.txt"), "utf8");
   assert.equal(hash(source), core.FROZEN_SOURCE_SHA256);
   rawV1 = compile(source);
-  const runtime = path.resolve(__dirname, "../../.agent/runtime/test-tmp"); fs.mkdirSync(runtime, { recursive: true });
+  const runtime = testRuntime("test-tmp"); fs.mkdirSync(runtime, { recursive: true });
   dir = fs.mkdtempSync(path.join(runtime, "permit-legacy-core-"));
   const dbDir = path.join(dir, "db"), anchorDir = path.join(dir, "anchor"); fs.mkdirSync(dbDir); fs.mkdirSync(anchorDir);
   const file = path.join(dbDir, "state.sqlite"); let now = 1000;

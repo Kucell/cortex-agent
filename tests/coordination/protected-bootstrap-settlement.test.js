@@ -1,5 +1,7 @@
 "use strict";
 
+const { testRuntime } = require("../helpers/runtime-sandbox");
+
 // Contract tests for the settlement of a bootstrap that failed after it had
 // started producing objects. The tests use a disposable anchor directory and
 // a disposable SQLite database, and they never touch a real service, a key
@@ -13,7 +15,7 @@ const anchorModule = require("../../lib/coordination/protected-anchor");
 const bootstrapModule = require("../../lib/coordination/protected-bootstrap");
 const { ProtectedPermitStore: Store } = require("../../lib/coordination/protected-permit-store");
 
-const root = path.resolve(__dirname, "../../.agent/runtime/test-tmp");
+const root = testRuntime("test-tmp");
 
 function fixture(t) {
   fs.mkdirSync(root, { recursive: true });

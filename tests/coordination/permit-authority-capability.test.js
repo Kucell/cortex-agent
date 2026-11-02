@@ -1,5 +1,7 @@
 "use strict";
 
+const { testRuntime } = require("../helpers/runtime-sandbox");
+
 // Actual store + anchor integration with disposable local SQLite. No authority,
 // execution permission, deployed key, Windows flush or power-loss claim.
 const test = require("node:test");
@@ -21,7 +23,7 @@ function authority() {
     signPermit: () => { throw Error("must not sign"); }, pullRevocation: () => { throw Error("must not pull"); } };
 }
 function fixture(t, { initialize = true, legacy = false } = {}) {
-  const root = path.resolve(__dirname, "../../.agent/runtime/test-tmp"); fs.mkdirSync(root, { recursive: true });
+  const root = testRuntime("test-tmp"); fs.mkdirSync(root, { recursive: true });
   const dir = fs.mkdtempSync(path.join(root, "permit-authority-capability-"));
   const dbDir = path.join(dir, "db"), anchorDir = path.join(dir, "anchor");
   fs.mkdirSync(dbDir); fs.mkdirSync(anchorDir, { mode: 0o700 });

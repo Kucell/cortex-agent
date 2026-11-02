@@ -1,11 +1,13 @@
 "use strict";
+
+const { testRuntime } = require("../helpers/runtime-sandbox");
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs"), path = require("node:path");
 const childProcess = require("node:child_process"), crypto = require("node:crypto"), { EventEmitter } = require("node:events");
 const { SessionBudget, startBoundedSession } = require("../../lib/coordination/permit-witness-bounded-session");
 const { OVERHEAD } = require("../../lib/coordination/permit-witness-bounded-session-wire");
-const root = path.resolve(__dirname, "../../.agent/runtime/bounded-session-tests");
+const root = testRuntime("bounded-session-tests");
 fs.mkdirSync(root, { recursive: true });
 const supported = { skip: process.platform === "win32" || Number(process.versions.node.split(".")[0]) !== 24, timeout: 15000 };
 const deadline = (ms = 4000) => process.hrtime.bigint() + BigInt(ms) * 1000000n;

@@ -1,5 +1,7 @@
 "use strict";
 
+const { testRuntime } = require("../helpers/runtime-sandbox");
+
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const crypto = require("node:crypto");
@@ -185,7 +187,7 @@ test("real ProtectedPinStore initialize/registerPin state forms a complete check
     ...historicalCases,
   ]) {
     await t.test(label, () => {
-      const root = path.resolve(__dirname, "../../.agent/runtime/test-tmp");
+      const root = testRuntime("test-tmp");
       fs.mkdirSync(root, { recursive: true });
       const dir = fs.mkdtempSync(path.join(root, "permit-witness-contract-pin-"));
       try {
@@ -468,7 +470,7 @@ test("stale proposals conflict after advance; derivation alone provides no concu
 });
 
 test("a full checkpoint round-trips across a process without hidden reconstruction state", (t) => {
-  const root = path.resolve(__dirname, "../../.agent/runtime/test-tmp");
+  const root = testRuntime("test-tmp");
   fs.mkdirSync(root, { recursive: true });
   const dir = fs.mkdtempSync(path.join(root, "permit-witness-contract-"));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
@@ -490,7 +492,7 @@ test("a full checkpoint round-trips across a process without hidden reconstructi
 });
 
 function migrationRoot(t) {
-  const root = path.resolve(__dirname, "../../.agent/runtime/test-tmp");
+  const root = testRuntime("test-tmp");
   fs.mkdirSync(root, { recursive: true });
   const dir = fs.mkdtempSync(path.join(root, "permit-witness-migration-"));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));

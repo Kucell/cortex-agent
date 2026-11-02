@@ -1,4 +1,8 @@
 "use strict";
+// @runner-timeout 600
+// The compaction rehearsal forks producers and performs the full legacy
+// migration with real directory fsync, so its normal runtime is minutes.
+const { testProject } = require("../helpers/runtime-sandbox");
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
@@ -15,7 +19,7 @@ function produce(kind) {
   const run = f.newRun();
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [path.join(__dirname, "fixtures/permit-legacy-highwater-compaction.js"), kind, run], {
-      env: { ...process.env, TMPDIR: f.ROOT, TMP: f.ROOT, TEMP: f.ROOT }, stdio: ["ignore", "pipe", "pipe"] });
+      env: { ...process.env, CORTEX_PERMIT_TEST_PROJECT: testProject(), TMPDIR: f.ROOT, TMP: f.ROOT, TEMP: f.ROOT }, stdio: ["ignore", "pipe", "pipe"] });
     let stdout = "", stderr = "";
     const timeout = setTimeout(() => { child.kill(); }, 220000);
     child.stdout.on("data", b => { stdout += b; }); child.stderr.on("data", b => { stderr += b; });

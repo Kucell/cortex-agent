@@ -1,5 +1,7 @@
 "use strict";
 
+const { testRuntime } = require("../helpers/runtime-sandbox");
+
 // The store has to judge the COMPLETE protected entry namespace, not only
 // the entry name it happens to assemble. A second record of the same
 // logical slot under a different name makes the outcome of that slot
@@ -13,7 +15,7 @@ const path = require("node:path");
 const { ProtectedPermitStore } = require("../../lib/coordination/protected-permit-store");
 const anchorModule = require("../../lib/coordination/protected-anchor");
 
-const root = path.resolve(__dirname, "../../.agent/runtime/test-tmp");
+const root = testRuntime("test-tmp");
 
 // The digest an anchor entry carries over its own fields. It is recomputed
 // here instead of imported, so the test does not depend on the module

@@ -1,4 +1,6 @@
 "use strict";
+
+const { testRuntime } = require("../helpers/runtime-sandbox");
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs"), path = require("node:path");
@@ -7,7 +9,7 @@ const { admit, rawIO, limits } = require("../../lib/coordination/permit-witness-
 const wire = require("../../lib/coordination/permit-witness-bounded-session-wire");
 const appFrame = require("../../lib/coordination/permit-witness-v2-frame");
 const P = 1048599, F = 1048697, HELLO = wire.OVERHEAD + 32, BOOT = 56;
-const root = path.resolve(__dirname, "../../.agent/runtime/bounded-session-capacity-tests");
+const root = testRuntime("bounded-session-capacity-tests");
 fs.mkdirSync(root, { recursive: true });
 const supported = { skip: process.platform === "win32" || Number(process.versions.node.split(".")[0]) !== 24, timeout: 20000 };
 const deadline = ms => process.hrtime.bigint() + BigInt(ms) * 1000000n;

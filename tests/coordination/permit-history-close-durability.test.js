@@ -1,5 +1,7 @@
 "use strict";
 
+const { testRuntime } = require("../helpers/runtime-sandbox");
+
 // Disposable local SQLite/FS only. A simulated throw before close deliberately
 // leaves an open resource: production must neither retry its numeric fd nor
 // claim it was released. The fixture cleans up its own retained fd afterward.
@@ -13,7 +15,7 @@ const delivery = require("../../lib/coordination/permit-delivery");
 const supported = { skip: Number(process.versions.node.split(".")[0]) < 24 || !["darwin", "linux"].includes(process.platform) };
 
 function fixture(t, existing = false) {
-  const runtime = path.resolve(__dirname, "../../.agent/runtime/test-tmp"); fs.mkdirSync(runtime, { recursive: true });
+  const runtime = testRuntime("test-tmp"); fs.mkdirSync(runtime, { recursive: true });
   const dir = fs.mkdtempSync(path.join(runtime, "permit-history-close-"));
   const dbDir = path.join(dir, "db"), anchorDir = path.join(dir, "anchor");
   fs.mkdirSync(dbDir); fs.mkdirSync(anchorDir, { mode: 0o700 });

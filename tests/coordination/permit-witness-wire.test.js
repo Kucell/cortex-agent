@@ -1,5 +1,7 @@
 "use strict";
 
+const { testRuntime } = require("../helpers/runtime-sandbox");
+
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
@@ -309,7 +311,7 @@ test("exchange waits for clean EOF, tolerates segmentation, and latches unknown 
 test("real development host performs register/issue/consume with independent context and atomic store state", {
   skip: Number(process.versions.node.split(".")[0]) < 24 || process.platform === "win32",
 }, t => {
-  const base = path.resolve(__dirname, "../../.agent/runtime/test-tmp");
+  const base = testRuntime("test-tmp");
   fs.mkdirSync(base, { recursive: true });
   const root = fs.mkdtempSync(path.join(base, "permit-witness-wire-"));
   fs.mkdirSync(path.join(root, "db")); fs.mkdirSync(path.join(root, "anchor"));

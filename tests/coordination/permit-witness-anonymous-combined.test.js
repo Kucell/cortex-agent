@@ -1,4 +1,6 @@
 "use strict";
+
+const { testRuntime } = require("../helpers/runtime-sandbox");
 const test=require("node:test"),assert=require("node:assert/strict"),fs=require("node:fs"),path=require("node:path"),os=require("node:os");
 const {spawnSync}=require("node:child_process");
 const root=path.resolve(__dirname,"../.."),native=path.join(root,"packages/permit-witness-macos/native-anonymous"),fixtures=path.join(__dirname,"fixtures");
@@ -7,7 +9,7 @@ const supported=process.platform==="darwin"&&process.arch==="arm64"&&os.release(
 const gate=process.env.PERMIT_WITNESS_REQUIRE_ANONYMOUS_NATIVE==="1";
 function run(file,args){const r=spawnSync(file,args,{encoding:"utf8",timeout:15000,maxBuffer:4*1024*1024,env:{...process.env,ASAN_OPTIONS:"detect_leaks=0:abort_on_error=1"}});assert.ifError(r.error);assert.equal(r.signal,null,r.stderr);assert.equal(r.status,0,r.stdout+r.stderr);assert.doesNotMatch(r.stderr,/AddressSanitizer|UndefinedBehaviorSanitizer|runtime error:|Assertion failed/,"child sanitizer/assertion failure must not be hidden by parent exit 0");return r.stdout;}
 test("native fixture composition uses real state HELLO and exactly one length frame",{timeout:120000,skip:!supported&&!gate?"only verified macOS arm64 is supported":false},async t=>{
- assert.ok(supported);const build=fs.mkdtempSync(path.join(root,".agent/runtime/permit-witness-combined-"));t.diagnostic(build);
+ assert.ok(supported);const build=fs.mkdtempSync(testRuntime("permit-witness-combined-"));t.diagnostic(build);
  const flags=["-std=c11","-D_DARWIN_C_SOURCE","-Wall","-Wextra","-Werror","-Wno-unused-function","-Wno-unused-parameter","-Wframe-larger-than=16384","-O1","-g","-fsanitize=address,undefined","-fno-sanitize-recover=undefined","-fno-omit-frame-pointer","-I",native];
  const shared=[path.join(native,"session-wire.c"),path.join(native,"session-state.c"),path.join(native,"combined-session.c")];
  for(const mode of ["normal","maximum","concurrent","paused","stall","eof","exit","close-eof","oversize","bad-mac","default"])await t.test(mode,()=>{

@@ -1,5 +1,7 @@
 "use strict";
 
+const { testRuntime } = require("../helpers/runtime-sandbox");
+
 // All fixtures live under this project's .agent/runtime. These are syscall and
 // process-local failure tests, NOT power-cut, device-cache or service evidence.
 const test = require("node:test");
@@ -21,7 +23,7 @@ const STORE_ID = "synthetic-store";
 const A = "a".repeat(64);
 
 function fixture(t) {
-  const runtime = path.resolve(__dirname, "../../.agent/runtime");
+  const runtime = testRuntime();
   fs.mkdirSync(runtime, { recursive: true });
   const root = fs.mkdtempSync(path.join(runtime, "permit-anchor-durability-"));
   const dir = path.join(root, "anchor"); fs.mkdirSync(dir, { mode: 0o700 });

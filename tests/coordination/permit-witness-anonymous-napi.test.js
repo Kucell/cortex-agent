@@ -1,4 +1,6 @@
 "use strict";
+
+const { testRuntime } = require("../helpers/runtime-sandbox");
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
@@ -23,7 +25,7 @@ test("independent N-API candidate uses opaque capabilities and a native owner", 
 }, async t=> {
   assert.equal(process.platform,"darwin"); assert.equal(process.arch,"arm64"); assert.equal(os.release(),"27.0.0");
   assert.equal(process.version,"v24.11.0","only this Node patch is validated by this test");
-  const runtime = path.join(root,".agent/runtime"); fs.mkdirSync(runtime,{recursive:true});
+  const runtime = testRuntime(); fs.mkdirSync(runtime,{recursive:true});
   const build = fs.mkdtempSync(path.join(runtime,"permit-witness-anonymous-napi-"));
   const includes = path.resolve(process.execPath,"../../include/node");
   assert.ok(fs.existsSync(path.join(includes,"node_api.h")));

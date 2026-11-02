@@ -1,5 +1,7 @@
 "use strict";
 
+const { testRuntime } = require("../helpers/runtime-sandbox");
+
 // Wiring tests for the candidate bootstrap protocol inside the store.
 //
 // The property under test is the ordering: the bootstrap-pending record must
@@ -10,7 +12,7 @@ const test = require("node:test");
 const assert = require("node:assert");
 const fs = require("node:fs");
 const path = require("node:path");
-const testRoot = path.resolve(__dirname, "../../.agent/runtime/test-tmp");
+const testRoot = testRuntime("test-tmp");
 fs.mkdirSync(testRoot, { recursive: true });
 const { ProtectedPermitStore } = require("../../lib/coordination/protected-permit-store");
 const anchorModule = require("../../lib/coordination/protected-anchor");

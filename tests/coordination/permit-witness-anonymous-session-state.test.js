@@ -1,4 +1,6 @@
 "use strict";
+
+const { testRuntime } = require("../helpers/runtime-sandbox");
 const test=require("node:test"),assert=require("node:assert/strict"),fs=require("node:fs"),path=require("node:path"),os=require("node:os"),crypto=require("node:crypto");
 const {spawnSync}=require("node:child_process");
 const root=path.resolve(__dirname,"../.."),native=path.join(root,"packages/permit-witness-macos/native-anonymous"),fixtures=path.join(__dirname,"fixtures");
@@ -14,8 +16,8 @@ test("native session-state standalone: exact JS semantics and terminal boundarie
 },async t=>{
  assert.equal(process.platform,"darwin");assert.equal(process.arch,"arm64");assert.equal(productVersion,"27.0.1");
  assert.equal(process.version,"v24.11.0","real JS endpoint validation uses this verified Node patch");
- fs.mkdirSync(path.join(root,".agent/runtime"),{recursive:true});
- const build=fs.mkdtempSync(path.join(root,".agent/runtime/permit-witness-session-state-"));t.diagnostic(build);
+ fs.mkdirSync(testRuntime(),{recursive:true});
+ const build=fs.mkdtempSync(testRuntime("permit-witness-session-state-"));t.diagnostic(build);
  const flags=["-std=c11","-D_DARWIN_C_SOURCE","-Wall","-Wextra","-Werror","-Wframe-larger-than=16384","-O1","-g","-fsanitize=address,undefined","-fno-sanitize-recover=undefined","-fno-omit-frame-pointer","-I",native];
  const object=path.join(build,"state.o"),binary=path.join(build,"state-test");
  run("/usr/bin/xcrun",["clang",...flags,"-Dmalloc=pw_ss_test_malloc","-Dcalloc=pw_ss_test_calloc","-Darc4random_buf=pw_ss_fixed_random","-Dclock_gettime=pw_ss_test_clock","-c",path.join(native,"session-state.c"),"-o",object]);

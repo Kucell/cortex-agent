@@ -1,4 +1,6 @@
 "use strict";
+
+const { testRuntime } = require("../helpers/runtime-sandbox");
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
@@ -30,7 +32,7 @@ test("native anonymous candidate: compile and exercise real macOS children", {
   assert.equal(process.arch, "arm64", "UNSUPPORTED: arm64 only");
   assert.equal(os.release(), "27.0.0", "UNSUPPORTED: Darwin patch not verified");
   assert.equal(command("/usr/bin/sw_vers", ["-productVersion"]).trim(), "27.0.1");
-  const build = fs.mkdtempSync(path.join(root,".agent/runtime/pw-anonymous-build-"));
+  const build = fs.mkdtempSync(testRuntime("pw-anonymous-build-"));
   executionLog=path.join(build,"commands.jsonl");t.diagnostic(executionLog);
   const base = ["clang", "-std=c11", "-D_DARWIN_C_SOURCE", "-Wall", "-Wextra", "-Werror", "-Wno-unused-function",
     "-Wno-unused-parameter", "-O1", "-g", "-fsanitize=address,undefined", "-fno-sanitize-recover=undefined", "-fno-omit-frame-pointer", "-I", native];

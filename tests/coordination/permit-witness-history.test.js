@@ -1,5 +1,7 @@
 "use strict";
 
+const { testRuntime } = require("../helpers/runtime-sandbox");
+
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
@@ -18,7 +20,7 @@ const { signRevocationList } = require("../../lib/coordination/permit-revocation
 const supported = { skip: Number(process.versions.node.split(".")[0]) < 24 || process.platform === "win32" };
 const WRITER = Object.freeze({}), READER = Object.freeze({});
 function fixture(t, { history = true } = {}) {
-  const base = path.resolve(__dirname, "../../.agent/runtime/test-tmp");
+  const base = testRuntime("test-tmp");
   fs.mkdirSync(base, { recursive: true });
   const root = fs.mkdtempSync(path.join(base, "witness-history-"));
   const dbDir = path.join(root, "db"), anchorDir = path.join(root, "anchor");

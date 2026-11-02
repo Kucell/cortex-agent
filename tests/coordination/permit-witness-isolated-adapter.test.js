@@ -1,5 +1,11 @@
 "use strict";
 
+// @runner-timeout 600
+// The isolated adapter drives a real host process over the wire, so its
+// normal runtime is well beyond the default hang-detection window.
+
+const { testRuntime } = require("../helpers/runtime-sandbox");
+
 const { test, after } = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
@@ -16,7 +22,7 @@ const { IsolationBudget, IsolatedHistoryAdapter, LIMITS } = require("../../lib/c
 childProcess.fork = realFork;
 const fixture = require("./fixtures/permit-witness-v2-history");
 const { environment } = require("../../lib/coordination/permit-witness-isolated-contract");
-const base = path.resolve(__dirname, "../../.agent/runtime/test-tmp");
+const base = testRuntime("test-tmp");
 fs.mkdirSync(base, { recursive: true });
 const scratch = fs.mkdtempSync(path.join(base, "isolated-adapter-"));
 const saved = Object.fromEntries(["TMPDIR", "TMP", "TEMP"].map(key => [key, process.env[key]]));

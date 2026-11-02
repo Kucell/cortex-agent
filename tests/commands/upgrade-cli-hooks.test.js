@@ -1,5 +1,7 @@
 "use strict";
 
+const { testRuntime } = require("../helpers/runtime-sandbox");
+
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
@@ -7,7 +9,7 @@ const path = require("node:path");
 const { spawnSync } = require("node:child_process");
 
 const repo = path.resolve(__dirname, "../..");
-const runtime = path.join(repo, ".agent", "runtime");
+const runtime = testRuntime();
 const cli = path.join(repo, "bin", "cli.js");
 
 test("CLI installs upgrade hooks only after success, never on partial, failure or dry-run", t => {

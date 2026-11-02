@@ -40,11 +40,18 @@ const AGENT_DIR = fs.realpathSync(path.join(REPO_ROOT, ".agent"));
 // symlinks that escape the repository. None of them are read by the scripts
 // under test, and keeping them out is what prevents writes from leaking back
 // into the real tree (or into the developer's home directory).
+//
+// `runtime` holds per-project runtime state (coordination journal, leases,
+// per-run artifacts). It is not part of the governance template a sandbox
+// replicates: the scripts under test create the state they need inside the
+// sandbox, and copying the live runtime tree only races with whatever else is
+// writing it — a torn copy then fails the sandbox cleanup with ENOTEMPTY.
 const EXCLUDED_TOP_LEVEL = new Set([
   ".git",
   "artifacts",
   "global",
   "global-shared-skills",
+  "runtime",
   "token-attempts",
   "shadow-observations",
 ]);
@@ -104,7 +111,13 @@ function createAgentSandbox(options = {}) {
     root,
     agentRoot,
     cleanup() {
-      fs.rmSync(root, { recursive: true, force: true });
+      // A sandbox copy can be torn: a file that was being written when the
+      // copy ran may reappear or be rewritten while the tree is removed, and
+      // `rmSync` without retries fails the whole suite on ENOTEMPTY. The
+      // sandbox is disposable, so retrying the removal is the correct
+      // response — it must never turn a transient filesystem race into a
+      // test failure.
+      fs.rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
     },
   };
 }

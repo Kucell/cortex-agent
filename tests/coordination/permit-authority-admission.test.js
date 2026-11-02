@@ -1,5 +1,14 @@
 "use strict";
 
+// @runner-timeout 600
+// The 1024-attempt capacity test performs ~1024 durable transactions, each
+// with its own intent/commit/high-water fsync cycle, so the file legitimately
+// needs several minutes. The runner's default 60s is a hang detector for
+// ordinary files; this file declares its real budget instead of weakening
+// the capacity assertions.
+
+const { testRuntime } = require("../helpers/runtime-sandbox");
+
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
@@ -14,7 +23,7 @@ const helper = require("./fixtures/permit-authority-admission");
 const childFile = require.resolve("./fixtures/permit-authority-admission");
 const supported = { skip: Number(process.versions.node.split(".")[0]) < 24 || !["darwin", "linux"].includes(process.platform) };
 function fixture(t, { initialize = true, ...override } = {}) {
-  const root = path.resolve(__dirname, "../../.agent/runtime/test-tmp"); fs.mkdirSync(root, { recursive: true });
+  const root = testRuntime("test-tmp"); fs.mkdirSync(root, { recursive: true });
   const dir = fs.mkdtempSync(path.join(root, "permit-authority-admission-"));
   const dbDir = path.join(dir, "db"), anchorDir = path.join(dir, "anchor");
   fs.mkdirSync(dbDir); fs.mkdirSync(anchorDir, { mode: 0o700 });

@@ -1,5 +1,7 @@
 "use strict";
 
+const { testRuntime } = require("../helpers/runtime-sandbox");
+
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
@@ -35,7 +37,7 @@ const lock = require("../../lib/coordination/protected-store-lock");
 childProcess.execFileSync = execFileSync;
 
 function fixture(t) {
-  const tmp = path.resolve(__dirname, "../../.agent/runtime/test-tmp");
+  const tmp = testRuntime("test-tmp");
   fs.mkdirSync(tmp, { recursive: true });
   const root = fs.realpathSync(fs.mkdtempSync(path.join(tmp, "pin-windows-")));
   const dir = path.join(root, "pin");

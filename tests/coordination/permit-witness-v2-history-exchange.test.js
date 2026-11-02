@@ -1,5 +1,7 @@
 "use strict";
 
+const { testRuntime } = require("../helpers/runtime-sandbox");
+
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
@@ -437,7 +439,7 @@ test("history observation cannot alter the original format1 unknown or clear its
 
 const supported = { skip: Number(process.versions.node.split(".")[0]) < 24 || process.platform === "win32" };
 function realHost(t) {
-  const base = path.resolve(__dirname, "../../.agent/runtime/test-tmp"); fs.mkdirSync(base, { recursive: true });
+  const base = testRuntime("test-tmp"); fs.mkdirSync(base, { recursive: true });
   const root = fs.mkdtempSync(path.join(base, "history-exchange-"));
   const db = path.join(root, "db"), anchorDir = path.join(root, "anchor"); fs.mkdirSync(db); fs.mkdirSync(anchorDir);
   const file = path.join(db, "authority.sqlite"), q = query();

@@ -1,5 +1,13 @@
 "use strict";
 
+// @runner-timeout 600
+// This file drives real supervised child processes and real OS fact probes,
+// so its normal runtime is minutes rather than seconds. The runner's default
+// 60s is a hang detector for ordinary files; this file declares its real
+// budget instead of dropping the real-subprocess coverage.
+
+const { testRuntime } = require("../helpers/runtime-sandbox");
+
 const { test, after } = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
@@ -11,7 +19,7 @@ const { signRevocationList } = require("../../lib/coordination/permit-revocation
 
 // Includes the existing macOS OS-fact helper's compiler scratch. No fact source
 // replacements: successful binding below must use real kernel/process facts.
-const base = path.resolve(__dirname, "../../.agent/runtime/test-tmp");
+const base = testRuntime("test-tmp");
 fs.mkdirSync(base, { recursive: true });
 const scratch = fs.mkdtempSync(path.join(base, "permit-witness-managed-"));
 const originalTemp = Object.fromEntries(["TMPDIR", "TMP", "TEMP"].map(key => [key, process.env[key]]));

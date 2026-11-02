@@ -7,7 +7,8 @@ const crypto = require("node:crypto");
 const os = require("node:os");
 const {spawn} = require("node:child_process");
 const {realUserHome,childEnvironment,directoryIdentity,cleanupResiduals,cleanupAfterExit} = require("./runtime.cjs");
-const root=path.resolve(__dirname,"../../../.."),base=path.join(root,".agent/runtime/permit-witness-isolated-tls");
+const { testProject } = require("../../../../helpers/runtime-sandbox");
+const root=testProject(),base=path.join(root,".agent/runtime/permit-witness-isolated-tls");
 fs.mkdirSync(base,{recursive:true});
 const evidence=fs.mkdtempSync(path.join(base,"run-safety-"));
 function directory() {
@@ -16,7 +17,7 @@ function directory() {
   return run;
 }
 function launch(command,args,env,onLine) {
-  const child=spawn(command,args,{cwd:root,env,stdio:["ignore","pipe","pipe"]});
+  const child=spawn(command,command===process.execPath ? [...args, "--project", root] : args,{cwd:root,env,stdio:["ignore","pipe","pipe"]});
   let stdout="",stderr="",pending="";
   child.stdout.on("data",data=>{
     stdout+=data;pending+=data;let index;
@@ -142,5 +143,5 @@ test("isolated TLS environment and termination safety",{skip:process.platform!==
     assert.equal(fs.readFileSync(canary,"utf8"),"unrelated sentinel");fs.unlinkSync(canary);
     fs.writeFileSync(path.join(evidence,"scope-check.json"),JSON.stringify({status:"pass",result},null,2));
   });
-  t.diagnostic(`retained safety evidence: ${evidence}`);
+  t.diagnostic(`safety evidence (removed on exit): ${evidence}`);
 });

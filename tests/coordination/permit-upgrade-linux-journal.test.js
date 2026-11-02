@@ -1,4 +1,6 @@
 "use strict";
+
+const { testRuntime, relocatedTestRuntime } = require("../helpers/runtime-sandbox");
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
@@ -17,7 +19,7 @@ async function until(fn, message) {
   assert.fail(message());
 }
 function withinRuntime(input) {
-  const name = fs.realpathSync(input), runtime = fs.realpathSync(path.join(root, ".agent/runtime"));
+  const name = fs.realpathSync(input), runtime = fs.realpathSync(testRuntime());
   assert.ok(name.startsWith(`${runtime}/`), "evidence and fixtures must be under runtime");
   return name;
 }
@@ -66,8 +68,8 @@ test("Linux control journal: real IO, processes, recovery boundaries (not qualif
   skip: process.platform !== "linux" && process.env.PERMIT_LINUX_JOURNAL_REQUIRE !== "1" ? "requires Linux" : false,
 }, async t => {
   assert.equal(process.platform, "linux");
-  const output = withinRuntime(process.env.PERMIT_LINUX_JOURNAL_BUILD_ROOT);
-  const storage = withinRuntime(process.env.PERMIT_LINUX_JOURNAL_TEST_ROOT);
+  const output = withinRuntime(relocatedTestRuntime(process.env.PERMIT_LINUX_JOURNAL_BUILD_ROOT, "journal-build"));
+  const storage = withinRuntime(relocatedTestRuntime(process.env.PERMIT_LINUX_JOURNAL_TEST_ROOT, "journal-data"));
   const build = fs.mkdtempSync(path.join(output, "journal-build-"));
   const binary = path.join(build, "peer"), object = path.join(build, "journal-fault.o");
   const compile = args => {

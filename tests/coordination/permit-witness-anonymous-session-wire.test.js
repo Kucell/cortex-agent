@@ -1,4 +1,6 @@
 "use strict";
+
+const { testRuntime } = require("../helpers/runtime-sandbox");
 const test=require("node:test"),assert=require("node:assert/strict"),fs=require("node:fs"),path=require("node:path"),os=require("node:os"),crypto=require("node:crypto");
 const {spawnSync}=require("node:child_process");
 const root=path.resolve(__dirname,"../.."),native=path.join(root,"packages/permit-witness-macos/native-anonymous"),fixtures=path.join(__dirname,"fixtures");
@@ -19,7 +21,7 @@ test("standalone session wire: JS/C exact bytes, authentication and bounded allo
 },async t=>{
  assert.equal(process.platform,"darwin");assert.equal(process.arch,"arm64");assert.equal(os.release(),"27.0.0");
  assert.equal(productVersion,"27.0.1");
- const build=fs.mkdtempSync(path.join(root,".agent/runtime/permit-witness-session-wire-"));t.diagnostic(build);
+ const build=fs.mkdtempSync(testRuntime("permit-witness-session-wire-"));t.diagnostic(build);
  const flags=["-std=c11","-D_DARWIN_C_SOURCE","-Wall","-Wextra","-Werror","-Wframe-larger-than=8192","-O2","-g","-fsanitize=address,undefined","-fno-sanitize-recover=undefined","-fno-omit-frame-pointer","-I",native];
  const object=path.join(build,"wire.o"),binary=path.join(build,"wire-test");
  run("/usr/bin/xcrun",["clang",...flags,"-Dmalloc=pw_sw_test_malloc","-c",path.join(native,"session-wire.c"),"-o",object]);

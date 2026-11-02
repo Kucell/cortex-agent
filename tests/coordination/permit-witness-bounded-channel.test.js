@@ -1,11 +1,13 @@
 "use strict";
 
+const { testRuntime } = require("../helpers/runtime-sandbox");
+
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
 const net = require("node:net");
 const fs = require("node:fs"), path = require("node:path"), { spawn } = require("node:child_process");
 const { connectBounded, ByteBudget } = require("../../lib/coordination/permit-witness-bounded-channel");
-const base = path.resolve(__dirname, "../../.agent/runtime/bounded-tests");
+const base = testRuntime("bounded-tests");
 fs.mkdirSync(base, { recursive: true });
 const supported = { skip: Number(process.versions.node.split(".")[0]) !== 24, timeout: 15000 };
 const untilDeadline = ms => process.hrtime.bigint() + BigInt(ms) * 1000000n;

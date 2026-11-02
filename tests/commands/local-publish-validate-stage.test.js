@@ -1,5 +1,7 @@
 'use strict';
 
+const { testRuntime } = require("../helpers/runtime-sandbox");
+
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -13,7 +15,7 @@ const CLI = path.join(ROOT, 'bin/cli.js');
 const PRELOAD = path.join(__dirname, 'fixtures/local-publish-validate-stage-child.cjs');
 
 function fixture(t) {
-  const base = path.join(ROOT, '.agent/runtime/test-tmp'); fs.mkdirSync(base, { recursive: true });
+  const base = testRuntime("test-tmp"); fs.mkdirSync(base, { recursive: true });
   const root = fs.mkdtempSync(path.join(base, 'local publish stage '));
   const project = path.join(root, 'source with spaces'), target = path.join(root, 'target with spaces');
   fs.mkdirSync(project); fs.mkdirSync(target); fs.mkdirSync(path.join(target, '.agent'));

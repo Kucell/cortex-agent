@@ -9,7 +9,14 @@ const { createHash } = require("node:crypto");
 const { DatabaseSync, constants: SQL } = require("node:sqlite");
 const { parse } = require("../../../lib/offline-migration/json");
 const core = require("../../../lib/coordination/permit-legacy-migration-core");
-const ROOT = path.resolve(__dirname, "../../../.agent/runtime");
+// The rehearsal root must be a disposable project `.agent/runtime/`, never the
+// repository working copy: `.agent/rules/test-policy.md` §2.4 forbids a test
+// from writing the real `.agent/` tree, and the strict-hermetic gate in
+// `scripts/test-runner.cjs` fails the suite on any write under `.agent/`.
+// The parent test injects the sandbox root; a subprocess spawned by the parent
+// inherits it through the environment so both use the same tree.
+const ROOT = process.env.CORTEX_PERMIT_TEST_RUNTIME_ROOT
+  || require("../../helpers/runtime-sandbox").testRuntime();
 const SOURCES = path.join(__dirname, "permit-legacy-sqlite-sources");
 const manifest = require("./permit-legacy-sqlite-sources/manifest.json");
 const DDL = "CREATE TABLE protected_state (id INTEGER PRIMARY KEY CHECK (id = 1), body TEXT NOT NULL, sha256 TEXT NOT NULL)";

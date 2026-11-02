@@ -1,5 +1,7 @@
 "use strict";
 
+const { testRuntime } = require("../helpers/runtime-sandbox");
+
 // Development authority audit barrier; legacy append semantics stay unchanged.
 // Windows is explicitly refused, not claimed verified by these POSIX fixtures.
 // Only disposable fixture databases/logs under .agent/runtime are touched.
@@ -14,7 +16,7 @@ const posix = process.platform !== "win32";
 const { spawnSync } = require("node:child_process");
 
 function fixture(t, existing = false, authority = true) {
-  const root = path.resolve(__dirname, "../../.agent/runtime/test-tmp"); fs.mkdirSync(root, { recursive: true });
+  const root = testRuntime("test-tmp"); fs.mkdirSync(root, { recursive: true });
   const dir = fs.mkdtempSync(path.join(root, "permit-audit-durability-"));
   const dbDir = path.join(dir, "db"), anchorDir = path.join(dir, "anchor"); fs.mkdirSync(dbDir); fs.mkdirSync(anchorDir, { mode: 0o700 });
   const file = path.join(dbDir, "state.sqlite"), log = path.join(anchorDir, "protected-anchor-audit.log");
@@ -103,7 +105,7 @@ function instrument(f, fault = null) {
 }
 
 test("host POSIX can sync file and directory; this is not Windows or power-loss evidence", { skip: !posix }, t => {
-  const root = path.resolve(__dirname, "../../.agent/runtime/test-tmp"); fs.mkdirSync(root, { recursive: true });
+  const root = testRuntime("test-tmp"); fs.mkdirSync(root, { recursive: true });
   const dir = fs.mkdtempSync(path.join(root, "audit-sync-capability-")), file = path.join(dir, "probe");
   const fd = fs.openSync(file, "wx", 0o600);
   try { const bytes = Buffer.from("synthetic\n"); assert.equal(fs.writeSync(fd, bytes), bytes.length); fs.fsyncSync(fd); }

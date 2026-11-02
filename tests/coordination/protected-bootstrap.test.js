@@ -1,5 +1,7 @@
 "use strict";
 
+const { testRuntime } = require("../helpers/runtime-sandbox");
+
 // Contract tests for the candidate bootstrap protocol. The tests use a
 // temporary anchor directory and never touch a business database, a
 // certificate, a key or a real service.
@@ -7,7 +9,7 @@ const test = require("node:test");
 const assert = require("node:assert");
 const fs = require("node:fs");
 const path = require("node:path");
-const testRoot = path.resolve(__dirname, "../../.agent/runtime/test-tmp");
+const testRoot = testRuntime("test-tmp");
 fs.mkdirSync(testRoot, { recursive: true });
 const crypto = require("node:crypto");
 const bootstrap = require("../../lib/coordination/protected-bootstrap");

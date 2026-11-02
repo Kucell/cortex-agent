@@ -1,5 +1,7 @@
 "use strict";
 
+const { testRuntime } = require("../helpers/runtime-sandbox");
+
 const { test, after } = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
@@ -11,7 +13,7 @@ const { environment, SENTINELS } = require("./fixtures/permit-witness-isolation-
 // Development process-boundary evidence only. Real supervisor/session + OS
 // audits, no replacement fact source or credentials. Not an OS sandbox, tree
 // reaper, transport proof or production-safety validation.
-const base = path.resolve(__dirname, "../../.agent/runtime/test-tmp");
+const base = testRuntime("test-tmp");
 fs.mkdirSync(base, { recursive: true });
 const scratch = fs.mkdtempSync(path.join(base, "worker-isolation-"));
 const originalTemp = Object.fromEntries(["TMPDIR", "TMP", "TEMP"].map(key => [key, process.env[key]]));

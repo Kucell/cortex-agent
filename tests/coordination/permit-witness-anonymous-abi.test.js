@@ -1,4 +1,6 @@
 "use strict";
+
+const { testRuntime } = require("../helpers/runtime-sandbox");
 const test=require("node:test"),assert=require("node:assert/strict"),fs=require("node:fs"),path=require("node:path"),os=require("node:os");
 const {spawnSync}=require("node:child_process");
 const root=path.resolve(__dirname,"../.."),native=path.join(root,"packages/permit-witness-macos/native-anonymous"),fixtures=path.join(__dirname,"fixtures");
@@ -12,7 +14,7 @@ test("versioned snapshot ABI rejects mismatched caller size without writes",{
   timeout:30000,skip:!locallyVerified&&!requireVerifiedPlatform?"only the verified Darwin arm64 runtime is supported":false,
 },t=>{
   assert.equal(process.platform,"darwin");assert.equal(process.arch,"arm64");
-  const build=fs.mkdtempSync(path.join(root,".agent/runtime/permit-witness-abi-"));t.diagnostic(build);
+  const build=fs.mkdtempSync(testRuntime("permit-witness-abi-"));t.diagnostic(build);
   const flags=["-std=c11","-D_DARWIN_C_SOURCE","-Wall","-Wextra","-Werror","-Wno-unused-function","-O1","-g",
     "-fsanitize=address,undefined","-fno-sanitize-recover=undefined","-fno-omit-frame-pointer","-I",native];
   const object=path.join(build,"core.o"),library=path.join(build,"core.dylib"),binary=path.join(build,"abi");

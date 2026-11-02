@@ -7,9 +7,16 @@ const path = require("node:path");
 const { spawn, spawnSync } = require("node:child_process");
 const supported = Number(process.versions.node.split(".")[0]) >= 24 && process.platform !== "win32";
 const opts = { skip: supported ? false : "Requires Node >=24 with node:sqlite and POSIX directory fsync; no platform gate claim" };
+// The fixture captures its runtime root at load time, so the disposable
+// sandbox has to exist before the require. Writing into the repository
+// working copy would break the strict-hermetic gate
+// (`.agent/rules/test-policy.md` §2.4).
+const { createRuntimeSandboxWithEnv } = require("../helpers/runtime-sandbox");
+const sandbox = supported ? createRuntimeSandboxWithEnv({ prefix: "cortex-legacy-rehearsal-" }) : null;
 const driver = supported ? require("./fixtures/permit-legacy-sqlite-rehearsal") : null;
 const child = path.join(__dirname, "fixtures/permit-legacy-sqlite-rehearsal.js");
 let report;
+test.after(() => { if (sandbox) sandbox.cleanup(); });
 test.before(() => {
   if (!supported) return;
   report = driver.newRoot();

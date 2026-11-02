@@ -8,7 +8,8 @@ const { EventEmitter } = require("node:events");
 const { PassThrough } = require("node:stream");
 const { spawn } = require("node:child_process");
 const test = require("node:test");
-const { runOne, runParallel, printResult, summarizeResults } = require("../../scripts/test-runner.cjs");
+const { runOne, runParallel, printResult, summarizeResults,
+  effectiveIdleTimeoutSec, effectiveTimeoutSec, readDeclaredTimeout } = require("../../scripts/test-runner.cjs");
 
 function fixture(t, body, name = "probe.test.js", dir) {
   if (!dir) {
@@ -36,6 +37,41 @@ function failedSpawn(code, started = false) {
 }
 
 const passBody = "require('node:test')('passes', () => { console.log('real child ran'); });";
+
+test("a file may declare a longer budget for itself without changing any other file", (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "runner-budget-"));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const declared = path.join(dir, "declared.test.js");
+  const plain = path.join(dir, "plain.test.js");
+  fs.writeFileSync(declared, '"use strict";\n// @runner-timeout 600\nrequire("node:test")("x", () => {});\n');
+  fs.writeFileSync(plain, '"use strict";\nrequire("node:test")("x", () => {});\n');
+
+  assert.equal(readDeclaredTimeout(declared), 600);
+  assert.equal(readDeclaredTimeout(plain), 0);
+  // The declared budget only ever raises the ceiling.
+  assert.equal(effectiveTimeoutSec(declared, 60), 600);
+  assert.equal(effectiveTimeoutSec(declared, 900), 900);
+  assert.equal(effectiveTimeoutSec(plain, 60), 60);
+  // A file without a declaration keeps the default hang detector untouched.
+  assert.equal(effectiveIdleTimeoutSec(plain, 45, 60), 45);
+  assert.equal(effectiveIdleTimeoutSec(plain, 45, 900), 45);
+  // For a declared file the idle timeout may not fire before the file
+  // timeout: `node --test` prints only when a test finishes, so one long
+  // test would otherwise be mistaken for a hang.
+  // The third argument is the operator's DEFAULT per-file ceiling. A file
+  // that raised its own budget past that ceiling also gets the idle window
+  // raised, so a single long test inside it is not mistaken for a hang.
+  assert.equal(effectiveIdleTimeoutSec(declared, 45, 60), 600);
+});
+
+test("a malformed or non-positive budget directive is ignored", (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "runner-budget-bad-"));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const bad = path.join(dir, "bad.test.js");
+  fs.writeFileSync(bad, '"use strict";\n// @runner-timeout zero\n');
+  assert.equal(readDeclaredTimeout(bad), 0);
+  assert.equal(effectiveTimeoutSec(bad, 60), 60);
+});
 
 test("ordinary assertion fails once even if a second invocation would pass", async (t) => {
   const file = fixture(t, `const fs=require('node:fs'),path=require('node:path');

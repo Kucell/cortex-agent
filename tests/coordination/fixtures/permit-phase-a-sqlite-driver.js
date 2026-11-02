@@ -25,7 +25,7 @@ const TABLES = Object.freeze([
   "CREATE TABLE fixture_barriers(attempt_id TEXT PRIMARY KEY,version INTEGER NOT NULL,owner_epoch INTEGER NOT NULL,binding TEXT NOT NULL,binding_digest TEXT NOT NULL,intent_status TEXT NOT NULL CHECK(intent_status='committed-unpublishable'),evidence TEXT NOT NULL,eligibility TEXT,synthetic_claim TEXT,original_delivery TEXT NOT NULL CHECK(original_delivery='unknown'),time_domain TEXT NOT NULL CHECK(time_domain='synthetic-wall-ms'),time_highwater INTEGER NOT NULL CHECK(time_highwater>=0),terminal_reason TEXT CHECK(terminal_reason IN('expired','wall-rollback')),FOREIGN KEY(attempt_id) REFERENCES fixture_sign_records(attempt_id))",
   "CREATE TABLE fixture_barrier_commits(version INTEGER PRIMARY KEY,body_digest TEXT NOT NULL,attempt_id TEXT NOT NULL,operation TEXT NOT NULL,cas_changes INTEGER NOT NULL CHECK(cas_changes=1))",
 ]);
-const RUNTIME = path.resolve(__dirname, "../../../.agent/runtime");
+const RUNTIME = require("../../helpers/runtime-sandbox").testRuntime();
 const FAILURES = Object.freeze(["none", "exit-before-commit", "exit-after-commit", "throw-before-commit-call", "throw-after-commit-call", "engine-commit-reject", "zero-row-cas", "zero-row-after-accept"]);
 const sessions = new WeakMap(), capabilities = new WeakMap(), signCapabilities = new WeakMap();
 function fail(code) { throw Object.assign(new Error(code), { code }); }

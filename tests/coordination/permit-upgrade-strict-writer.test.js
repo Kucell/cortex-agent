@@ -1,5 +1,7 @@
 "use strict";
 
+const { testRuntime } = require("../helpers/runtime-sandbox");
+
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
@@ -12,7 +14,7 @@ const {
 } = require("../../lib/coordination/permit-upgrade-strict-writer");
 const supported = ["darwin", "linux"].includes(process.platform);
 const localTest = (name, fn) => test(name, { skip: !supported }, fn);
-const runtime = path.resolve(__dirname, "../../.agent/runtime");
+const runtime = testRuntime();
 const exact = Buffer.from([0, 255, 128, 13, 10, 65, 0]);
 const hash = b => createHash("sha256").update(b).digest("hex");
 const statId = name => {

@@ -1,5 +1,7 @@
 "use strict";
 
+const { testRuntime } = require("../helpers/runtime-sandbox");
+
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
@@ -9,7 +11,7 @@ const anchor = require("../../lib/coordination/protected-anchor");
 const { ProtectedPermitStore: Store } = require("../../lib/coordination/protected-permit-store");
 
 function fixture(t, crash = false) {
-  const root = path.resolve(__dirname, "../../.agent/runtime/test-tmp");
+  const root = testRuntime("test-tmp");
   fs.mkdirSync(root, { recursive: true });
   const dir = fs.mkdtempSync(path.join(root, "recovery-namespace-"));
   const anchorDir = path.join(dir, "anchor"), dbDir = path.join(dir, "db");

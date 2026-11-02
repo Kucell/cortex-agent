@@ -1,9 +1,11 @@
 "use strict";
+
+const { testRuntime } = require("../helpers/runtime-sandbox");
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
-const testRoot = path.resolve(__dirname, "../../.agent/runtime/test-tmp");
+const testRoot = testRuntime("test-tmp");
 fs.mkdirSync(testRoot, { recursive: true });
 const { spawn } = require("node:child_process");
 const readline = require("node:readline");

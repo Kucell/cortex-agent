@@ -1,4 +1,10 @@
 "use strict";
+
+// @runner-timeout 600
+// The signing gate drives real durable transactions through the protected
+// store, so this file needs more than the default hang-detection window.
+
+const { testRuntime } = require("../helpers/runtime-sandbox");
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs"), path = require("node:path"), crypto = require("node:crypto");
@@ -11,7 +17,7 @@ const delivery = require("../../lib/coordination/permit-delivery");
 const helper = require("./fixtures/permit-authority-signing-gate");
 const supported = { skip: Number(process.versions.node.split(".")[0]) < 24 || !["darwin", "linux"].includes(process.platform) };
 function fixture(t, override = {}) {
-  const root = path.resolve(__dirname, "../../.agent/runtime/test-tmp"); fs.mkdirSync(root, { recursive: true });
+  const root = testRuntime("test-tmp"); fs.mkdirSync(root, { recursive: true });
   const dir = fs.mkdtempSync(path.join(root, "permit-authority-signing-gate-"));
   const dbDir = path.join(dir, "db"), anchorDir = path.join(dir, "anchor"); fs.mkdirSync(dbDir); fs.mkdirSync(anchorDir, { mode: 0o700 });
   const a = helper.authority(override), file = path.join(dbDir, "state.sqlite"), options = helper.options(anchorDir, a.providers), stores = [];

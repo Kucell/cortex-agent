@@ -1,4 +1,11 @@
 "use strict";
+
+// @runner-timeout 600
+// The synthetic publication rehearsal drives many durable SQLite/anchor
+// transactions with real fsync cycles, so this file legitimately needs more
+// than the runner's default hang-detection window.
+
+const { testRuntime, testProject } = require("../helpers/runtime-sandbox");
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
@@ -11,7 +18,7 @@ const { BARRIER_PARTS, canonicalEffectTuple } = require("../../lib/coordination/
 const supported = Number(process.versions.node.split(".")[0]) >= 24;
 const driver = supported ? require("./fixtures/permit-phase-a-sqlite-driver") : {};
 const childFile = path.join(__dirname, "fixtures/permit-phase-a-sqlite-child.js");
-const runtime = path.resolve(__dirname, "../../.agent/runtime/test-tmp");
+const runtime = testRuntime("test-tmp");
 const A = "a".repeat(64), B = "b".repeat(64);
 const clock = (m = 1, w = 1000 + m) => ({ monotonicNow: m, wallClockNow: w });
 const delta = (n = 1, revoked = []) => ({ previous: n - 1, sequence: n, revoked, clockPoisoned: false });
@@ -32,7 +39,7 @@ function fixture(t, lane) {
   fs.mkdirSync(runtime, { recursive: true });
   const dir = fs.mkdtempSync(path.join(runtime, "permit-phase-a-sqlite-")), file = path.join(dir, "fixture.sqlite");
   const db = driver.SqliteFixture.initialize(file, config(lane));
-  t.after(() => db.close()); // Keep runtime DBs for independent inspection.
+  t.after(() => db.close()); // Keep DBs through this file's cross-process checks; sandbox cleanup follows.
   return { db, dir, file };
 }
 function attempt(s, id = "attempt-1") { return s.attempts.find(a => a.request.attemptId === id); }
@@ -41,12 +48,12 @@ function stage(db, r = request(db.inspect().state), observation = delta()) {
   return db.command(command("enter", { attemptId: r.attemptId, version: 2, clocks: clock(), observation }));
 }
 function fresh(file) {
-  const out = spawnSync(process.execPath, [childFile, file], { input: "", encoding: "utf8", timeout: 5000 });
+  const out = spawnSync(process.execPath, [childFile, file], { env: { ...process.env, CORTEX_PERMIT_TEST_PROJECT: testProject() }, input: "", encoding: "utf8", timeout: 5000 });
   assert.equal(out.status, 0, out.stderr);
   return JSON.parse(out.stdout.trim()).snapshot;
 }
 async function child(t, file) {
-  const p = spawn(process.execPath, [childFile, file], { stdio: ["pipe", "pipe", "pipe"] });
+  const p = spawn(process.execPath, [childFile, file], { env: { ...process.env, CORTEX_PERMIT_TEST_PROJECT: testProject() }, stdio: ["pipe", "pipe", "pipe"] });
   const queue = [], pending = []; let stderr = "", ended = false;
   p.stderr.on("data", b => { stderr += b; });
   const lines = readline.createInterface({ input: p.stdout });
@@ -81,7 +88,7 @@ function signRequest(fixed = false) {
     effect: { target: "synthetic-counter", params: { delta: 1 } }, businessVersion: 1, actionFingerprint: "fixture-label", finalCheckpoint: "no-real-checkpoint" };
 }
 function inspectSignFresh(file, id = "sign-1") {
-  const output = spawnSync(process.execPath, [childFile, file], { input: JSON.stringify({ op: "sign-inspect", id }) + "\n", encoding: "utf8", timeout: 5000 });
+  const output = spawnSync(process.execPath, [childFile, file], { env: { ...process.env, CORTEX_PERMIT_TEST_PROJECT: testProject() }, input: JSON.stringify({ op: "sign-inspect", id }) + "\n", encoding: "utf8", timeout: 5000 });
   assert.equal(output.status, 0, output.stderr); return JSON.parse(output.stdout.trim().split("\n")[1]);
 }
 function rawSigning(file) {
@@ -102,7 +109,7 @@ function fillEvidence(db, scope, omit = null, validUntil = 190) {
 function qualified(t) { const f = business(t); fillEvidence(f.db, "business"); f.db.qualifySynthetic("sign-1", 112); return f; }
 function readyBarrier(t) { const f = qualified(t); fillEvidence(f.db, "eligibility"); return f; }
 function freshBarrier(file) {
-  const output = spawnSync(process.execPath, [childFile, file], { input: JSON.stringify({ op: "barrier-inspect", id: "sign-1" }) + "\n", encoding: "utf8", timeout: 5000 });
+  const output = spawnSync(process.execPath, [childFile, file], { env: { ...process.env, CORTEX_PERMIT_TEST_PROJECT: testProject() }, input: JSON.stringify({ op: "barrier-inspect", id: "sign-1" }) + "\n", encoding: "utf8", timeout: 5000 });
   assert.equal(output.status, 0, output.stderr); return JSON.parse(output.stdout.trim().split("\n")[1]);
 }
 

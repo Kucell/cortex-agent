@@ -1,5 +1,7 @@
 "use strict";
 
+const { testRuntime } = require("../helpers/runtime-sandbox");
+
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
@@ -9,7 +11,7 @@ const test = require("node:test");
 const { writeVersionFile, readVersionFile } = require("../../lib/commands/patches");
 const { version } = require("../../package.json");
 const repo = path.resolve(__dirname, "../..");
-const runtime = path.join(require("../../lib/governance/root").resolveGovernanceRoot(repo).agent_root, "runtime");
+const runtime = testRuntime();
 
 function fixture(t) {
   fs.mkdirSync(runtime, { recursive: true });

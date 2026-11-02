@@ -1,10 +1,12 @@
 "use strict";
+
+const { testRuntime } = require("../helpers/runtime-sandbox");
 const test=require("node:test"),assert=require("node:assert/strict"),fs=require("node:fs"),path=require("node:path"),os=require("node:os"),{spawnSync}=require("node:child_process");
 const root=path.resolve(__dirname,"../.."),native=path.join(root,"packages/permit-witness-macos/native-anonymous"),fixture=path.join(__dirname,"fixtures");
 const supported=process.platform==="darwin"&&process.arch==="arm64"&&os.release()==="27.0.0"&&spawnSync("/usr/bin/sw_vers",["-productVersion"],{encoding:"utf8"}).stdout?.trim()==="27.0.1";
 function run(args){const r=spawnSync(args[0],args.slice(1),{encoding:"utf8",timeout:15000,env:{...process.env,ASAN_OPTIONS:"detect_leaks=0:abort_on_error=1"}});assert.ifError(r.error);assert.equal(r.signal,null,r.stdout+r.stderr);assert.equal(r.status,0,r.stdout+r.stderr);return r.stdout;}
 test("zero-timeout readiness avoids idle trace consumption and retains real syscall evidence",{timeout:90000,skip:!supported&&process.env.PERMIT_WITNESS_REQUIRE_ANONYMOUS_NATIVE!=="1"?"only verified macOS arm64":false},async t=>{
- assert.ok(supported);const build=fs.mkdtempSync(path.join(root,".agent/runtime/permit-witness-readiness-"));t.diagnostic(build);
+ assert.ok(supported);const build=fs.mkdtempSync(testRuntime("permit-witness-readiness-"));t.diagnostic(build);
  const flags=["-std=c11","-D_DARWIN_C_SOURCE","-Wall","-Wextra","-Werror","-Wno-unused-function","-Wno-unused-parameter","-Wframe-larger-than=16384","-O1","-g","-fsanitize=address,undefined","-fno-sanitize-recover=undefined","-fno-omit-frame-pointer","-I",native];
  const peer=path.join(build,"peer"),object=path.join(build,"native.o"),binary=path.join(build,"probe");
  run(["/usr/bin/xcrun","clang",...flags,path.join(fixture,"permit-witness-anonymous-peer.c"),"-o",peer]);

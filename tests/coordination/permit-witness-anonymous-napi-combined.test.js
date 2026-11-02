@@ -1,4 +1,6 @@
 "use strict";
+
+const { testRuntime } = require("../helpers/runtime-sandbox");
 const test=require("node:test"),assert=require("node:assert/strict"),fs=require("node:fs"),path=require("node:path"),os=require("node:os"),crypto=require("node:crypto");
 const {spawnSync,execFile}=require("node:child_process"),{promisify}=require("node:util"),exec=promisify(execFile);
 const root=path.resolve(__dirname,"../.."),native=path.join(root,"packages/permit-witness-macos/native-anonymous"),fixtures=path.join(__dirname,"fixtures");
@@ -8,7 +10,7 @@ const supported=process.platform==="darwin"&&process.arch==="arm64"&&os.release(
 const required=process.env.PERMIT_WITNESS_REQUIRE_ANONYMOUS_NATIVE==="1";
 test("fixture-only combined N-API uses real owner, full v2 frames and charged delivery",{timeout:240000,skip:!supported&&!required},async t=>{
   assert.ok(supported,`unsupported native runtime: ${process.platform}/${process.arch}/${os.release()}/${product}/${process.version}`);
-  const build=fs.mkdtempSync(path.join(root,".agent/runtime/permit-witness-napi-combined-"));t.diagnostic(build);
+  const build=fs.mkdtempSync(testRuntime("permit-witness-napi-combined-"));t.diagnostic(build);
   const sanitize=["-fsanitize=address,undefined","-fno-sanitize-recover=undefined","-fno-omit-frame-pointer"];
   const flags=["-D_DARWIN_C_SOURCE","-Wall","-Wextra","-Werror","-Wno-unused-function","-Wno-unused-parameter","-Wframe-larger-than=16384","-O1","-g",...sanitize,"-I",native];
   const resource=spawnSync("/usr/bin/xcrun",["clang","--print-resource-dir"],{encoding:"utf8"});assert.equal(resource.status,0);

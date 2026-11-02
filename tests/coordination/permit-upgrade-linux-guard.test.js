@@ -1,5 +1,7 @@
 "use strict";
 
+const { testRuntime, relocatedTestRuntime } = require("../helpers/runtime-sandbox");
+
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
@@ -10,7 +12,7 @@ const { createHash } = require("node:crypto");
 
 const root = path.resolve(__dirname, "../..");
 const source = path.join(root, "packages/permit-upgrade-linux-guard");
-const runtime = path.join(root, ".agent/runtime");
+const runtime = testRuntime();
 const phases = ["configuration", "final-verification", "stamp-marker", "report-marker"];
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 async function until(action, message) {
@@ -100,8 +102,8 @@ test("Linux native scoped controller: real locks, FD lifetimes and fail-closed s
 }, async t => {
   assert.equal(process.platform, "linux", "required native evidence cannot be skipped");
   fs.mkdirSync(runtime, { recursive: true });
-  const buildBase = insideRuntime(process.env.PERMIT_LINUX_GUARD_BUILD_ROOT || runtime + "/linux-guard-build");
-  const fixtureBase = insideRuntime(process.env.PERMIT_LINUX_GUARD_TEST_ROOT || runtime + "/linux-guard-fixtures");
+  const buildBase = insideRuntime(relocatedTestRuntime(process.env.PERMIT_LINUX_GUARD_BUILD_ROOT, "linux-guard-build"));
+  const fixtureBase = insideRuntime(relocatedTestRuntime(process.env.PERMIT_LINUX_GUARD_TEST_ROOT, "linux-guard-fixtures"));
   const build = fs.mkdtempSync(path.join(buildBase, "build-"));
   const binary = path.join(build, "lifecycle-peer");
   const flags = ["-std=c11", "-Wall", "-Wextra", "-Werror", "-Wpedantic", "-O2", "-g",

@@ -1,4 +1,6 @@
 "use strict";
+
+const { testRuntime } = require("../helpers/runtime-sandbox");
 const test=require("node:test"), assert=require("node:assert/strict"), fs=require("node:fs"), path=require("node:path");
 const os=require("node:os");
 const {spawnSync,execFile}=require("node:child_process"), {promisify}=require("node:util");
@@ -11,7 +13,7 @@ test("N-API controlled lifetime, arbitration, wait and reentry regressions",{
   skip:!locallyVerified && !requireVerifiedPlatform ? "only the verified Darwin arm64 and Node runtime is supported" : false,
 },async t=>{
   assert.equal(process.platform,"darwin"); assert.equal(process.arch,"arm64"); assert.equal(process.version,"v24.11.0");
-  const build=fs.mkdtempSync(path.join(root,".agent/runtime/permit-witness-napi-regression-"));t.diagnostic(build);
+  const build=fs.mkdtempSync(testRuntime("permit-witness-napi-regression-"));t.diagnostic(build);
   const base=["-D_DARWIN_C_SOURCE","-Wall","-Wextra","-Werror","-Wno-unused-function","-g","-O1","-I",native];
   const sanitized=process.env.PERMIT_WITNESS_NAPI_SANITIZERS==="1";
   const instrumentation=sanitized ? ["-fsanitize=address,undefined","-fno-sanitize-recover=undefined","-fno-omit-frame-pointer"] : [];

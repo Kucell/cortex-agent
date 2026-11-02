@@ -9,7 +9,19 @@ const childProcess = require("node:child_process");
 const legacy = require("./permit-legacy-highwater-compaction");
 const rehearsal = require("./permit-legacy-sqlite-rehearsal");
 const api = require("../../../lib/coordination/permit-legacy-archive-evidence");
-const PROJECT = path.resolve(__dirname, "../../.."), ROOT = path.join(PROJECT, ".agent/runtime");
+// The archive-evidence fixture writes a captured database, journal, audit and
+// high-water evidence set into a disposable project runtime root. That root
+// must never be the repository working copy: `.agent/rules/test-policy.md`
+// §2.4 forbids a test from writing the real `.agent/` tree, and the
+// strict-hermetic gate in `scripts/test-runner.cjs` fails the suite on any
+// write under `.agent/`. The parent test injects the sandbox root through the
+// environment; the fixture keeps the same project/runtime relationship the
+// production code expects (a project root whose `.agent/runtime` holds the
+// scratch artifacts).
+const PROJECT = process.env.CORTEX_PERMIT_TEST_PROJECT_ROOT
+  || require("../../helpers/runtime-sandbox").testProject();
+const ROOT = process.env.CORTEX_PERMIT_TEST_RUNTIME_ROOT
+  || path.join(PROJECT, ".agent/runtime");
 function run() { return fs.mkdtempSync(path.join(ROOT, "permit-legacy-archive-evidence-")); }
 function installedAvailability() {
   // An explicitly absent installation is optional. An existing but incomplete

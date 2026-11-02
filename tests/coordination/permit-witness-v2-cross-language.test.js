@@ -1,5 +1,7 @@
 "use strict";
 
+const { testRuntime } = require("../helpers/runtime-sandbox");
+
 // Dedicated Stage A offline test. Source implementations are imported/compiled
 // directly, never copied or rewritten. All outputs/caches stay under .agent/runtime.
 const test = require("node:test");
@@ -66,7 +68,7 @@ function child(command, args, context, label) {
   assert.equal(result.status, 0, `${label}: ${output.slice(-3000)}`);
 }
 function setup() {
-  const base = path.join(root, ".agent/runtime/permit-witness-v2-interop");
+  const base = testRuntime("permit-witness-v2-interop");
   fs.mkdirSync(base, { recursive: true });
   const run = fs.mkdtempSync(path.join(base, "run-"));
   const dirs = ["logs", "tmp", "dotnet-home", "nuget", "nuget-http", "nuget-plugins", "xdg-cache", "xdg-config", "swift-cache"];

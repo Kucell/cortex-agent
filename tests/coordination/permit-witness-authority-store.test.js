@@ -1,5 +1,7 @@
 "use strict";
 
+const { testRuntime } = require("../helpers/runtime-sandbox");
+
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const crypto = require("node:crypto");
@@ -26,7 +28,7 @@ function testKey() {
 const supported = { skip: Number(process.versions.node.split(".")[0]) < 24 || process.platform === "win32" };
 const PEER = Object.freeze({ principal: "test-host" });
 function fixture(t, overrides = {}) {
-  const base = path.resolve(__dirname, "../../.agent/runtime/test-tmp");
+  const base = testRuntime("test-tmp");
   fs.mkdirSync(base, { recursive: true });
   const root = fs.mkdtempSync(path.join(base, "witness-authority-"));
   const dbDir = path.join(root, "db"), anchorDir = path.join(root, "anchor");

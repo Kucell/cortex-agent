@@ -1,5 +1,7 @@
 "use strict";
 
+const { testRuntime } = require("../helpers/runtime-sandbox");
+
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
@@ -12,7 +14,7 @@ const { once } = require("node:events");
 const { preflightPermitSqlite: preflight } = require("../../lib/coordination/permit-sqlite-preflight");
 const supported = Number(process.versions.node.split(".")[0]) >= 24 && ["darwin", "linux"].includes(process.platform);
 const localTest = (name, fn) => test(name, { skip: !supported, timeout: 15000 }, fn);
-const runtime = path.resolve(__dirname, "../../.agent/runtime/permit-sqlite-preflight");
+const runtime = testRuntime("permit-sqlite-preflight");
 const peer = path.join(__dirname, "fixtures/permit-sqlite-preflight-peer.js");
 const modulePath = require.resolve("../../lib/coordination/permit-sqlite-preflight");
 const SECRET = "fixture-private-body-do-not-echo";

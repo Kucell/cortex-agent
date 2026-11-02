@@ -1,5 +1,7 @@
 "use strict";
 
+const { testRuntime } = require("../helpers/runtime-sandbox");
+
 // Contract tests for the legacy migration executor. The executor applies the
 // PREPARED bytes of a schema-1 migration to a real store and proves that the
 // old writer loses its authority.
@@ -54,7 +56,7 @@ test.before(() => {
   oldReaderSource = fs.readFileSync(path.join(__dirname, "fixtures/protected-permit-store-v1-source.txt"), "utf8");
   assert.equal(hash(oldReaderSource), core.FROZEN_SOURCE_SHA256);
   rawV1 = compile(oldReaderSource);
-  const runtime = path.resolve(__dirname, "../../.agent/runtime/test-tmp");
+  const runtime = testRuntime("test-tmp");
   fs.mkdirSync(runtime, { recursive: true });
   dir = fs.mkdtempSync(path.join(runtime, "permit-legacy-executor-"));
   const dbDir = path.join(dir, "db");

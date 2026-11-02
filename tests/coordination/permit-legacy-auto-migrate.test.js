@@ -1,5 +1,7 @@
 "use strict";
 
+const { testRuntime } = require("../helpers/runtime-sandbox");
+
 // Contract tests for the automatic legacy repair. The repair is what makes
 // an upgrade from 1.15.7 work without manual intervention, so it has to be
 // automatic AND safe: it only runs when the deployment declares it, and it
@@ -32,7 +34,7 @@ test.before(() => {
   oldReaderSource = fs.readFileSync(path.join(__dirname, "fixtures/protected-permit-store-v1-source.txt"), "utf8");
   assert.equal(hash(oldReaderSource), core.FROZEN_SOURCE_SHA256);
   rawV1 = compile(oldReaderSource);
-  runtime = path.resolve(__dirname, "../../.agent/runtime/test-tmp");
+  runtime = testRuntime("test-tmp");
   fs.mkdirSync(runtime, { recursive: true });
 });
 

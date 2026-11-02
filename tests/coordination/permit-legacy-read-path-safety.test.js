@@ -1,5 +1,7 @@
 "use strict";
 
+const { testRuntime } = require("../helpers/runtime-sandbox");
+
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
@@ -16,7 +18,7 @@ let runtime, source;
 
 test.before(() => {
   if (supported.skip) return;
-  runtime = path.resolve(__dirname, "../../.agent/runtime/test-tmp");
+  runtime = testRuntime("test-tmp");
   fs.mkdirSync(runtime, { recursive: true });
   source = fs.readFileSync(path.join(__dirname, "fixtures/protected-permit-store-v1-source.txt"), "utf8");
   assert.equal(crypto.createHash("sha256").update(source).digest("hex"),

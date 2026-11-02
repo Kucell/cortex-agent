@@ -1,5 +1,7 @@
 "use strict";
 
+const { testRuntime } = require("../helpers/runtime-sandbox");
+
 // Offline framing interoperability only: no certificates, native TLS, sockets,
 // witness authorization, or production startup. All generated files are under
 // .agent/runtime. On macOS this can run all six directions; Windows can run
@@ -19,7 +21,7 @@ const vectors = require("./fixtures/permit-witness-frames.json");
 
 const root = path.resolve(__dirname, "../..");
 const fixture = path.join(__dirname, "fixtures/permit-witness-cross-language");
-const runtimeBase = path.join(root, ".agent/runtime/permit-witness-cross-language");
+const runtimeBase = testRuntime("permit-witness-cross-language");
 const hash = bytes => crypto.createHash("sha256").update(bytes).digest("hex");
 const chunks = [1, 3, 16384];
 const required = (process.env.PERMIT_WITNESS_REQUIRE_TOOLCHAINS || "").split(",").map(x => x.trim()).filter(Boolean);

@@ -1,5 +1,7 @@
 "use strict";
 
+const { testRuntime } = require("../helpers/runtime-sandbox");
+
 // Safety closure: built-in Node modules, runtime-layout-migration and report.
 // upgrade/verify are evaluated with an exhaustive require allowlist and inert
 // setup, management and subprocess dependencies. All writes stay in new temp
@@ -22,7 +24,7 @@ const oldMarker = JSON.stringify({ layout_version: "1", activated_at: "2026-01-0
   plan_id: "fixture-existing", source: "fixture" });
 
 function fixture(body) {
-  const runtime = path.resolve(__dirname, "../../.agent/runtime");
+  const runtime = testRuntime();
   fs.mkdirSync(runtime, { recursive: true });
   const root = fs.mkdtempSync(path.join(runtime, "cortex-upgrade-failure-"));
   try { return body(root); } finally { fs.rmSync(root, { recursive: true, force: true }); }
