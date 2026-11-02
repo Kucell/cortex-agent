@@ -102,6 +102,34 @@ test("a call cannot be confirmed without first declaring it possible", () => {
   );
 });
 
+// Declaring one side effect and then reporting the outcome of a DIFFERENT
+// one would let the ledger confirm an effect that was never declared, while
+// the declared effect stayed pending. The record would contradict its own
+// declaration order, so the outcome must name the declared effect.
+test("a declaration cannot be confirmed as a different side effect", () => {
+  let state = ledger.createLedger(registration(), HEAD);
+  state = ledger.advance(state, phase());
+  state = ledger.advance(state, phase({ phase: ledger.PHASES.CALL_POSSIBLE, side_effect: ledger.SIDE_EFFECTS.OPERATION_AUDIT }));
+  assert.throws(
+    () => ledger.advance(state, phase({ phase: ledger.PHASES.CONFIRMED, side_effect: ledger.SIDE_EFFECTS.OPERATION_DATABASE_COMMIT })),
+    (error) => error.code === "ERR_CONTROL_LEDGER_TRANSITION",
+  );
+  // The rejected transition must not have mutated the ledger.
+  assert.strictEqual(ledger.lastPhase(state), ledger.PHASES.CALL_POSSIBLE);
+  assert.deepStrictEqual([...ledger.recoveryView(state).pending_side_effects], [ledger.SIDE_EFFECTS.OPERATION_AUDIT]);
+});
+
+test("a declaration cannot be marked unknown as a different side effect", () => {
+  let state = ledger.createLedger(registration(), HEAD);
+  state = ledger.advance(state, phase());
+  state = ledger.advance(state, phase({ phase: ledger.PHASES.CALL_POSSIBLE, side_effect: ledger.SIDE_EFFECTS.OPERATION_AUDIT }));
+  assert.throws(
+    () => ledger.advance(state, phase({ phase: ledger.PHASES.CALLED_UNKNOWN, side_effect: ledger.SIDE_EFFECTS.OPERATION_DATABASE_COMMIT })),
+    (error) => error.code === "ERR_CONTROL_LEDGER_TRANSITION",
+  );
+  assert.strictEqual(ledger.lastPhase(state), ledger.PHASES.CALL_POSSIBLE);
+});
+
 test("an unknown call is never silently confirmed and never auto-aborted", () => {
   let state = ledger.createLedger(registration(), HEAD);
   state = ledger.advance(state, phase());
