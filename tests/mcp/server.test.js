@@ -245,6 +245,35 @@ test("design/install refuses reinstall without force", async () => {
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
 
+test("design/install accepts a local directory through `from`", async () => {
+  const root = makeFixture();
+  try {
+    const calls = [];
+    const h = makeHandler(root, {
+      installSystem: async (id, opts) => { calls.push({ id, opts }); return { status: "installed", message: "ok" }; },
+    });
+    const result = await call(h, { jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "design/install", arguments: { from: "/tmp/local-system", confirm: true } } });
+    assert.equal(result.isError, false);
+    assert.equal(result.structuredContent.status, "installed");
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].opts.from, "/tmp/local-system");
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test("design/install still requires an id or from", async () => {
+  const root = makeFixture();
+  try {
+    const calls = [];
+    const h = makeHandler(root, {
+      installSystem: async (id, opts) => { calls.push({ id, opts }); return { status: "installed" }; },
+    });
+    const result = await call(h, { jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "design/install", arguments: { confirm: true } } });
+    assert.equal(result.isError, true);
+    assert.match(result.content[0].text, /id or from required/);
+    assert.equal(calls.length, 0);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
 test("design/resolved returns the 4-level cascade chain", async () => {
   const root = makeFixture();
   try {

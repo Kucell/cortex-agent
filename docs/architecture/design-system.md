@@ -118,12 +118,13 @@ flowchart LR
   AGENT -->|read DESIGN.md| RSV
 ```
 
-### 5.4 工具层(5 个 lib 模块)
+### 5.4 工具层(6 个 lib 模块)
 
 ```
 lib/design/
 ├── registry.js   # 拉上游 catalog(API/CLI 探测),生成 catalog index
 ├── fetch.js      # content-addressed fetch(SHA-256 校验,MITM 防)
+├── local.js      # 本地目录 design system 的 content-addressed 安装
 ├── lockfile.js   # .agent/design-systems.lock 读写 + atomic write
 ├── license.js    # license 显示 / ack gate / category warning
 └── resolve.js    # 4 级 cascade 解析 + LIFO 排序
@@ -133,6 +134,7 @@ lib/design/
 |---|---|---|
 | `registry.js` | 拉上游 catalog,生成 `{id, name, category, license, source, sha256, path}[]` | 24h TTL 缓存,`refresh-catalog` 主动刷新 |
 | `fetch.js` | content-addressed fetch | 纯 `https` / `http` / `node:fs`,hash 不匹配拒绝写入(防 MITM) |
+| `local.js` | 从本地目录安装 design system | `manifest.json` 可选(兼容 legacy DESIGN.md-only)、`DESIGN.md` 必填、`tokens.css` 可选;SHA-256 与上游路径同一套契约;写入前清空目标目录,不留旧文件 |
 | `lockfile.js` | `.agent/design-systems.lock` 读写 | atomic write(tmp + rename),`read / write / add / remove / upgrade` |
 | `license.js` | license ack gate | 缺失 fail-closed(可 `--force`);brand category 警示 |
 | `resolve.js` | 4 级 cascade + LIFO | 返回 `Array<{layer, source, sha256, weight}>` |
@@ -142,6 +144,7 @@ lib/design/
 ```bash
 cortex-agent design list [--available | --installed] [--json]
 cortex-agent design install <id>... [--yes] [--no-cache]
+cortex-agent design install --from <dir> [<id>] [--yes] [--force] [--json]
 cortex-agent design upgrade [<id>] [--yes]
 cortex-agent design remove <id>...
 cortex-agent design show <id>
@@ -156,6 +159,35 @@ cortex-agent design refresh-catalog
 | 2 | 用户错误(invalid args) |
 | 3 | 网络错误 |
 | 4 | license 拒绝 |
+
+### 5.7 本地设计系统 / Project-local design systems
+
+上游 catalog 之外,项目自己的视觉契约也需要能进 cascade。`design install --from <dir>`
+从本地目录安装一个 design system:`manifest.json` 可选(缺省时合成一份最小 manifest,
+id 取目录名),`DESIGN.md` 必填,`tokens.css` 可选。
+
+```bash
+cortex-agent design install --from ./design/system        # id 取 manifest.id
+cortex-agent design install --from ./design/system wb-ui  # 显式指定 id
+```
+
+除 fetch 步骤外,其余契约与上游安装完全一致:同样的 SHA-256 content-addressing、
+同样的 lockfile 写入、同样的 license ack gate。lock 条目的 `source` 记为
+`{ "type": "local", "origin": "<绝对路径>" }`。
+
+**license 语义不变**:本地包未声明 license 时同样 fail-closed,需要显式 ack 或
+`--force`。来源是本地目录并不放松这道门。
+
+**为什么需要这一条**:项目的视觉契约常常就在自己的代码里(例如
+`src/ui/styles/tokens.css`)。在此之前它只能手工写进 `.agent/DESIGN.md` —— 一个
+starter 模板填了占位内容的散装 markdown,既没有 manifest 也没有 lock 记录。
+结果是 `design resolved` 以及编码 agent 通过 MCP `design/resolved` 读到的生效规范
+与代码实际使用的 token 可能完全不相交,agent 产出就无法追溯到真实规范。
+
+**starter 遮蔽提示**:`.agent/DESIGN.md` 是 cascade 第 2 层,优先级高于任何已安装
+system(第 3 层)。刚 `init` 出来的项目里它还是 starter 占位模板,此时装上真实
+system 也不会生效。install 成功后会检测这一状态并提示:替换或删除
+`.agent/DESIGN.md`,让装好的 system 成为生效规范。
 
 ### 5.6 Lock file 格式
 
@@ -185,6 +217,9 @@ cortex-agent design refresh-catalog
 - **commit-friendly**:lock file 应提交到 git,确保 team 共享同一份已 install system
 - **content-addressed**:相同 SHA-256 不重复 fetch
 - **upgrade 主动动作**:`cortex-agent design upgrade` 拉新 hash 与 lock 对比,显示 delta
+- **source 区分来源**:`source.type` 为 `upstream`(来自 catalog)或 `local`(来自
+  `--from` 目录);`local` 的 `origin` 是安装时的绝对路径,升级语义与上游不同
+  (上游 `upgrade` 重新拉取,本地包由项目自己重新安装)
 
 ## 6. 跟现有架构的关系 / Relationships
 
