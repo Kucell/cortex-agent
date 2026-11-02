@@ -211,7 +211,11 @@ def main():
             mode, kind, oid = metadata.split()
             tree[name] = {"mode": mode, "type": kind, "blob": oid}
         require(tree[".agent"]["mode"] == "160000", "governance must remain a gitlink")
-        require(tree[".agent"]["blob"] == args.expected_gitlink, "governance gitlink drift")
+        require(tree[".agent"]["blob"] == args.expected_gitlink,
+                "governance gitlink drift: tree has " + tree[".agent"]["blob"]
+                + " but EXPECTED_GITLINK pins " + args.expected_gitlink
+                + " -- advance EXPECTED_GITLINK in .github/workflows/offline-package-acceptance.yml"
+                + " and .github/workflows/registry-upgrade-acceptance.yml to match the tree")
         require(not any(name == "skills" or name.startswith("skills/") for name in tree),
                 "default root skills would duplicate the explicit plugin skills path")
         pkg = read_json(source / "package.json")
