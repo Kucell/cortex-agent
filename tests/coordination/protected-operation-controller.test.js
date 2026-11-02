@@ -140,6 +140,43 @@ test("late evidence may confirm the same effect but not introduce another", () =
   op.close();
 });
 
+// A declared side effect may only be confirmed or marked unknown as THAT
+// effect. Reporting the outcome of a different effect would let the backend
+// record a confirmation the declaration never covered, while the declared
+// effect stayed pending. The refusal must happen before the backend is asked
+// to persist anything, and must not advance the in-memory state.
+test("a declaration cannot be confirmed as a different side effect", () => {
+  const backend = recordingBackend();
+  const op = controller.TEST_ONLY.begin(backend, plan(), 1000);
+  op.declare(ledger.SIDE_EFFECTS.OPERATION_AUDIT, 1001);
+  const persistedBefore = backend.appended.length;
+  assert.throws(
+    () => op.confirm(ledger.SIDE_EFFECTS.OPERATION_DATABASE_COMMIT, 1002),
+    (error) => error.code === "ERR_CONTROL_LEDGER_TRANSITION",
+  );
+  // The rejection happened before any persistence and did not change state.
+  assert.strictEqual(backend.appended.length, persistedBefore);
+  assert.strictEqual(op.phase, ledger.PHASES.CALL_POSSIBLE);
+  const view = op.view();
+  assert.deepStrictEqual([...view.pending_side_effects], [ledger.SIDE_EFFECTS.OPERATION_AUDIT]);
+  assert.deepStrictEqual([...view.confirmed_side_effects], []);
+  op.close();
+});
+
+test("a declaration cannot be marked unknown as a different side effect", () => {
+  const backend = recordingBackend();
+  const op = controller.TEST_ONLY.begin(backend, plan(), 1000);
+  op.declare(ledger.SIDE_EFFECTS.OPERATION_AUDIT, 1001);
+  const persistedBefore = backend.appended.length;
+  assert.throws(
+    () => op.markUnknown(ledger.SIDE_EFFECTS.OPERATION_DATABASE_COMMIT, 1002, "wrong effect"),
+    (error) => error.code === "ERR_CONTROL_LEDGER_TRANSITION",
+  );
+  assert.strictEqual(backend.appended.length, persistedBefore);
+  assert.strictEqual(op.phase, ledger.PHASES.CALL_POSSIBLE);
+  op.close();
+});
+
 test("a closed controller refuses further transitions", () => {
   const backend = recordingBackend();
   const op = controller.TEST_ONLY.begin(backend, plan(), 1000);
