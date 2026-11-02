@@ -122,6 +122,12 @@ test("directory-FD SQLite observer: real POSIX confinement and fail-closed obser
   await t.test("real unscheduled cross-process replacement race never reads another inode", t => {
     const r = observe(fixture(t), "race");
     assert.equal(r.iterations, 300); assert.ok(r.unknown > 0); assert.equal(r.wrongReads, 0);
+    // The observer can only refuse a replacement it actually saw. The racer
+    // reports how many exchanges it completed, so a race that never ran is
+    // distinguishable from an observer that refused every replacement -- and
+    // a failure to exchange is reported as such instead of being reported as
+    // a successful observation.
+    assert.ok(r.raceSwaps > 0, "the replacement race never ran");
     assert.ok(r.bytesRead <= 30000);
   });
   await t.test("same inode modified between final pre-read check and pread: changed header IS read, then hints cleared and blocked", t => {

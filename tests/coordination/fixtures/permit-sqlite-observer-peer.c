@@ -11,6 +11,8 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
+#include <sys/mman.h>
+#include <time.h>
 #include <unistd.h>
 
 /* Exclusive test instrumentation. Observer is separately compiled with syscall
@@ -182,19 +184,39 @@ int main(int argc, char **argv) {
     if (is_mode("at-fdcwd")) base = AT_FDCWD;
     if (is_mode("closed-fd")) { base = dup(3); assert(base >= 0); checked(close(base)); }
     pid_t racer = -1;
-    int ready[2] = {-1, -1};
+    long race_swaps = 0;
+    /* The exchange counter lives in shared memory: the racer counts every
+     * completed exchange exactly, and the parent reads the final value after
+     * the racer is stopped. A pipe would only carry the bytes that happened to
+     * be buffered, which is not an exact count. */
+    long *swap_counter = mmap(NULL, sizeof(long), PROT_READ | PROT_WRITE,
+        MAP_ANONYMOUS | MAP_SHARED, -1, 0);
+    assert(swap_counter != MAP_FAILED);
+    *swap_counter = 0;
     if (is_mode("race")) {
-        checked(pipe(ready)); racer = fork(); assert(racer >= 0);
+        racer = fork(); assert(racer >= 0);
         if (!racer) {
-            checked(close(ready[0])); assert(write(ready[1], "x", 1) == 1);
             for (;;) {
                 checked(renameat(3, db_name, 3, "parked"));
                 checked(renameat(3, "replacement.sqlite", 3, db_name));
                 checked(renameat(3, db_name, 3, "replacement.sqlite"));
                 checked(renameat(3, "parked", 3, db_name));
+                /* Count one completed exchange. The parent must be able to
+                 * tell a race that really ran apart from a race that never
+                 * happened, otherwise a missing race is indistinguishable from
+                 * an observer that refused every replacement. */
+                (*swap_counter)++;
             }
         }
-        checked(close(ready[1])); char byte; assert(read(ready[0], &byte, 1) == 1); checked(close(ready[0]));
+        /* The race has to be running before the observation loop starts. The
+         * wait is bounded: a racer that cannot exchange at all must be
+         * reported as a race that never ran, not wedge the whole case. */
+        struct timespec poll = { .tv_sec = 0, .tv_nsec = 1000000 };
+        long waited_ns = 0;
+        while (*swap_counter == 0 && waited_ns < 5000000000L) {
+            nanosleep(&poll, NULL);
+            waited_ns += 1000000L;
+        }
     }
     struct pso_result result;
     int rc = -1, unknown = 0, iterations = racer > 0 ? 300 : 1;
@@ -206,15 +228,19 @@ int main(int argc, char **argv) {
         if (rc) assert(!result.header_valid && !result.page_size && !result.user_version);
     }
     if (racer > 0) { checked(kill(racer, SIGKILL)); int status; assert(waitpid(racer, &status, 0) == racer); }
+    /* The racer is stopped: the shared counter now holds the exact number of
+     * completed exchanges. */
+    race_swaps = *swap_counter;
+    checked(munmap(swap_counter, sizeof(long)));
     if (reused >= 0) { struct stat st; checked(fstat(reused, &st)); checked(close(reused)); }
     for (int i = 0; i < leak_count; i++) checked(close(leaked[i]));
     struct stat final; checked(fstat(3, &final));
     assert(original.st_dev == final.st_dev && original.st_ino == final.st_ino);
-    printf("{\"rc\":%d,\"state\":%d,\"format\":%d,\"headerValid\":%d,\"version\":%d,\"pageSize\":%u,"
+    printf("{\"rc\":%d,\"state\":%d,\"format\":%d,\"headerValid\":%d,\"version\":%d,\"pageSize\":%u,\"raceSwaps\":%ld,"
            "\"sidecars\":[%d,%d,%d],\"cleanupUnknown\":%d,\"opens\":%d,\"stats\":%d,\"reads\":%d,"
            "\"bytesRead\":%d,\"wrongReads\":%d,\"changedHeaderRead\":%d,\"closes\":%d,\"iterations\":%d,\"unknown\":%d,"
            "\"blocked\":true,\"executionAuthorized\":false,\"snapshotUnproven\":true,\"pathBindingUnproven\":true}\n",
-           rc, result.state, result.format, result.header_valid, result.user_version, result.page_size,
+           rc, result.state, result.format, result.header_valid, result.user_version, result.page_size, race_swaps,
            result.sidecars[0], result.sidecars[1], result.sidecars[2], result.cleanup_unknown,
            open_count, stat_count, read_count, bytes_read, wrong_reads, changed_header_read, close_count, iterations, unknown);
     return 0;
