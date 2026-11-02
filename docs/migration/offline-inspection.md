@@ -4,7 +4,7 @@
 
 This first reader requires Linux `/proc/self/fd`, to retain directory handles while reading and reject symlink/hardlink/path-replacement attacks. Other platforms return `MIGRATION_SAFE_READER_UNSUPPORTED`; no unsafe fallback is used. Project roots must be canonical, without symlink ancestors. Files are bounded to 8 MiB, the inventory to 64 MiB and 20,000 entries. Unsupported trees fail closed. Output includes relative paths, file modes and hashes, not record bodies.
 
-The `.cortex-version` marker is provenance only, not a data schema version or proof of origin. Recognized product markers are 1.15.4, 1.15.6 and candidate 1.16.0; record schemas are checked separately against release-owned schemas, never project scripts. Unknown markers, records, fields and references remain unresolved. Data already in a recognized format does not require rewriting just because the product version changed.
+The `.cortex-version` marker is provenance only, not a data schema version or proof of origin. Recognized product markers are 1.15.4, 1.15.6, 1.15.7 and candidate 1.16.0; record schemas are checked separately against release-owned schemas, never project scripts. Unknown markers, records, fields and references remain unresolved. Data already in a recognized format does not require rewriting just because the product version changed.
 
 All legacy Mission directories and table references are inventoried. A missing mission.json is unresolved; percentages do not become statuses. In the reported 43-directory/26-row shape all 43 require individual evidence. No schema, approval or owner field is invented. Fixed-path schemas/samples must match shipped bytes; indexes are validated and cross-checked.
 

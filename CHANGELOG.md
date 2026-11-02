@@ -56,6 +56,31 @@ Advisor-only development candidate; not published. This release scope covers rea
 > **版本线**：本版沿用 1.15.x 补丁线发布，与已发布的 1.15.6 同线，向后兼容。
 > **升级**：安装新版即生效；已有项目运行 `cortex-agent update` 同步模板，并迁移项目本地的协调事件 schema 事件类型白名单（只增不减，幂等）。
 
+### 阶段 A：机器外见证权威与受保护事务
+
+阶段 A 在同一 1.15.7 补丁线内交付，范围与上面的 LEASE 续接条目相互独立。
+
+#### Added
+
+- **受保护许可存储与跨机见证契约**：新增受保护的许可存储、受保护事务的恢复路径、bootstrap 与受控控制账本，使许可的授予、消费与结算在一个跨进程互斥的协调域内完成，并可对接机器外权威见证。
+- **旧项目的自动迁移路径**：已有 1.15.x 项目在升级后可把旧版 schema-1 存储迁移到受保护结构；迁移是前向唯一的，未开始的注册只能凭一份可验证的撤销证明显式退出，不能被自动接管。
+- **受管许可 CLI 入口**：新增 `cortex-agent` 的受管许可命令入口，许可的申请、授权与查询在受管边界内完成。
+
+#### Fixed
+
+- **协调库在 WAL 模式下的互斥可被 `-shm` 替换打破**：协调库的写锁原本落在可被替换的共享内存里，替换 `-shm` 即可让两个写入者同时进入。协调库改为在 WAL 模式下取排他锁，锁落在稳定的主库文件上，直到连接原生关闭才释放；取得事务后再复核模式，若在检查与开始之间切入 WAL 则以 `ERR_COORDINATION_BUSY` 拒绝。
+- **撤销审计的历史集合僵化**：撤销证明原本要求与历史快照逐字节相等，因此一旦有第二个撤销记录出现，先前的计划就永久无法再次撤销。现在审计外层身份（计划、库、撤销人、原因）与对象集合分别比较：外层必须完全一致，对象集合只允许新增经完整校验的撤销审计。
+- **撤销证明的协调库附属文件被误判为未知对象**：协调库的 `-wal` / `-shm` / `-journal` 属于锁域而非迁移证据，白名单遗漏它们会让 WAL 协调库上的合法撤销被误阻断。现在按精确文件名准入，其瞬时字节不进入历史证据，主库仍按身份绑定。
+- **撤销审计的审计人/原因篡改未被拦截**：历史集合放宽曾连带放过审计外层字段的改写，使被篡改的审计仍能解除 pending。现在外层一致性是独立必要条件，改写撤销人或原因一律以 `abort-audit-conflict` 拒绝并保留 pending。
+- **受保护锚点的祖先别名误拒与副作用链接未复核**：锚点目录解析改为返回真实路径，解析期间对设备/ inode 变化做比对；协调库的附属文件在打开前与锁内都要复核，外部硬链接目标不再被改写。
+
+#### 阶段 A 已知边界
+
+- 外部见证服务尚未配置，生产准入保持关闭。
+- WAL 与排他锁方案尚未在真实 Windows 上验证（当前仅 macOS 验证）。
+- 真实断电持久性、设备写缓存与跨主机回滚未验证。
+- 此前中止的 SQLite schema 安全反例验收仍未完成。
+
 ### Added
 
 - **同 Owner 过期 LEASE 的 Task 续接**：新增 `ownership.rebound` 事件与 `cortex-agent task rebind-ownership` 命令。Task 停在 `WAITING_FOR_INPUT` 期间其 ownership 引用的 LEASE 过期后，`task.progress` 会被 `ERR_LEASE_CONFLICT` 拒绝——而这是把 Task 推回 `EXECUTING` 的唯一事件，同 Owner 重新 acquire 也不会更新 Task 上的引用，结果是没有受支持出路的死锁。rebind 是纯 bookkeeping 自转换：状态不变，只把 `ownership[]` 换成新 LEASE 引用；授权校验对 rebound 用**新引用**校验（旧引用正是要摆脱的），并强制同 scope 的 owner 不变、fencing token 严格递增、scope 不可被换掉，因此它是恢复路径而不是夺取路径。新引用从持久化 lease 状态读取，调用方无法伪造 fencing token。
@@ -65,6 +90,7 @@ Advisor-only development candidate; not published. This release scope covers rea
 
 ### Fixed
 
+- **只读迁移检视拒绝本产品自己的版本戳**：`.agent/.cortex-version` 记录的是产品来源，`offline-migration` 的来源白名单只接受 1.15.4 / 1.15.6 / 1.16.0，本补丁线随产品版本升到 1.15.7 后，新写入版本戳的项目会被判为 `UNSUPPORTED_PRODUCT_PROVENANCE` 而无法通过只读迁移检视。现在白名单纳入当前产品版本，并新增一条以 `package.json` 版本为输入的回归，避免以后再次漂移；来源标记仍然只是来源证据，不会因此被当作数据格式证据。
 - **分发模板的事件类型白名单漏项**：随模板分发的 `coordination-event.schema.json` 未包含 `ownership.rebound`，受管项目升级后会拿到一份拒绝该合法事件类型的 schema。已补齐并由上一条的回归测试长期绑定。
 - **rebind 可更换 scope、可接受伪造引用元数据**：原实现的授权循环按 scope 查找被替换的旧引用，scope 一旦不同就找不到旧引用，于是「同 scope、owner 不变、fencing 严格递增」三项检查全部落空——同 Owner 拿着另一份合法 lease 就能把 Task 从一个 scope 迁到另一个 scope。事件本身携带的 `scope` / `owner` 也只与 lease 的 `leaseId` 和 fencing token 核对，手写事件可以给真实 lease 配上伪造的 scope/owner，伪造元数据会进入 snapshot。现在 rebind 必须命中一条**已存在的同 scope 引用**，引用的 scope/owner 必须与持久化 lease 一致，两者都通过持久化记录判定，调用方无法伪造。
 - **rebind 单项恢复会丢弃任务其余 ownership 引用**：reducer 原先对 rebound 整体替换 `ownership[]`，只重绑一个 scope 时其余 scope 的过期引用一并消失，任务相当于被解除了对那些 scope 的约束，而它们本应继续阻止 progress 直到逐项恢复。现在 rebound 按 scope 替换对应项并保留其余引用；其余已过期 scope 仍然阻止 `task.progress`，必须逐项恢复。`--lease-id` 支持逗号分隔的多个 lease，一次即可恢复多个 scope。

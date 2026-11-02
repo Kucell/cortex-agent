@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../src/ProvisionedServiceIdentity.cs" Link="ProvisionedServiceIdentity.cs" />
+  </ItemGroup>
+</Project>

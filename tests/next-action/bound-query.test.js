@@ -1,5 +1,9 @@
 "use strict";
 
+// @runner-timeout 600
+// The bound query builds and scans a real corpus; under the parallel
+// runner's load it exceeds the default hang-detection window.
+
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");

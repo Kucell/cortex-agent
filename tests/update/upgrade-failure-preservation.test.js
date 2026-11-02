@@ -22,8 +22,19 @@ const CANDIDATE = ".agent/runtime/layout.candidate.json";
 const oldMarker = JSON.stringify({ layout_version: "1", activated_at: "2026-01-01T00:00:00.000Z",
   plan_id: "fixture-existing", source: "fixture" });
 
+// This file is materialized standalone by .github/workflows/migration-preservation.yml
+// (a fixed list of source files, no repository checkout), so it must not
+// require a shared test helper that workflow does not fetch. The scratch root
+// is still a disposable project-local `.agent/runtime`, never the working
+// copy's own runtime tree.
+const scratchRoot = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-upgrade-failure-preservation-"));
+process.once("exit", () => fs.rmSync(scratchRoot, { recursive: true, force: true }));
+function testRuntime() { return path.join(scratchRoot, ".agent", "runtime"); }
+
 function fixture(body) {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-upgrade-failure-"));
+  const runtime = testRuntime();
+  fs.mkdirSync(runtime, { recursive: true });
+  const root = fs.mkdtempSync(path.join(runtime, "cortex-upgrade-failure-"));
   try { return body(root); } finally { fs.rmSync(root, { recursive: true, force: true }); }
 }
 function put(root, relative, bytes) {
@@ -366,7 +377,7 @@ function upgradeHarness(root, overrides) {
     "./management/api-helpers": { printManagementPayload: (value) => payloads.push(value) },
     "../script/manifest": { reconcileScripts: () => ({ updates: [], applied: [], failed: [], skipped: [] }) },
     "../registry/index": { PLATFORM_REGISTRY: {} },
-    "./patches": { applyPatches: call("applyPatches"), writeVersionFile: call("writeVersionFile") },
+    "./patches": { applyPatches: call("applyPatches"), writeVersionFile: call("writeVersionFile", { ok: true, outcome: "written" }) },
     "./migrate-legacy-memory": { detectLegacyFiles: call("detectLegacyFiles", { found: 0 }) },
     "../memory-validate": { validateMemory: call("validateMemory", { issues: [] }) },
     "../platform/index": { getInstalledPlatforms: call("getInstalledPlatforms", []) },

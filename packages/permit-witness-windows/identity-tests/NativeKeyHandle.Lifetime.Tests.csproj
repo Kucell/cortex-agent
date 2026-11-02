@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <DefineConstants>$(DefineConstants);NATIVE_KEY_HANDLE_TESTING</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../src/NativeKeyHandle.cs" Link="NativeKeyHandle.cs" />
+    <Compile Include="NativeKeyHandle.Tests.cs" />
+  </ItemGroup>
+</Project>

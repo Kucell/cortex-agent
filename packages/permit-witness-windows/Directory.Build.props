@@ -1,0 +1,21 @@
+<Project>
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <Deterministic>true</Deterministic>
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+    <!-- The repository root is two levels above this directory
+         (packages/permit-witness-windows). Runtime
+         artifacts must land in the project .agent/ tree, never under
+         packages/ or a host-private temporary directory. -->
+    <!-- Resolve the artifact root from the project directory instead of
+         relying on a fixed number of `..` segments: the same relative depth
+         resolved to different roots on Windows and macOS. The artifact root
+         is the repository root, two levels above packages/permit-witness-windows. -->
+    <PermitWitnessRepositoryRoot Condition="'$(PermitWitnessRepositoryRoot)' == ''">$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../..'))</PermitWitnessRepositoryRoot>
+    <BaseIntermediateOutputPath>$(PermitWitnessRepositoryRoot)/.agent/runtime/permit-witness-windows/artifacts/obj/$(MSBuildProjectName)/</BaseIntermediateOutputPath>
+    <BaseOutputPath>$(PermitWitnessRepositoryRoot)/.agent/runtime/permit-witness-windows/artifacts/bin/$(MSBuildProjectName)/</BaseOutputPath>
+  </PropertyGroup>
+</Project>

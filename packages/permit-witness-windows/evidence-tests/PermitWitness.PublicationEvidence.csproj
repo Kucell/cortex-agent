@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>PermitWitness.PublicationEvidence</AssemblyName>
+    <RootNamespace>PermitWitness.PublicationEvidence</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup><ProjectReference Include="../src/PermitWitness.Windows.csproj" /></ItemGroup>
+</Project>

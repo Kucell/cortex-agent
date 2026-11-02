@@ -145,6 +145,80 @@ function toRel(p) {
   return path.relative(TESTS_DIR, p).replace(/\\/g, '/');
 }
 
+// ---- Per-file long budget -------------------------------------------------
+//
+// The default per-file timeout (60s) is a hang detector, not a performance
+// budget: it exists so one wedged file cannot stall the whole suite. Some
+// files are legitimately slower than that — a durability test that performs
+// thousands of fsync-ed transactions, or one that drives a real supervised
+// child process — and those files already declare their own intent through
+// `timeout:` on the `node:test` options.
+//
+// Without a way to express that, such a file is killed by the runner before
+// its own declared timeout can apply, and the only ways out are to weaken
+// the assertions (losing coverage) or to raise the global timeout for every
+// file (losing the hang detector). Neither is acceptable, so a file may
+// declare its real budget in a first-line directive:
+//
+//   // @runner-timeout 300
+//
+// The directive is read from the file's own source, so the budget lives next
+// to the test that needs it and is reviewed with it. The effective per-file
+// timeout becomes the maximum of the global default and the declared value;
+// a file can therefore only ever raise its own ceiling, never lower anyone
+// else's. The global `--max-time` cap still bounds the whole run.
+const RUNNER_TIMEOUT_DIRECTIVE = /@runner-timeout\s+(\d+)/;
+
+function readDeclaredTimeout(file) {
+  let head;
+  try {
+    // The directive must be in the file's leading comment block, so only the
+    // first 8 KiB are read. A test file never puts its directive after that.
+    const fd = fs.openSync(file, 'r');
+    try {
+      const buf = Buffer.alloc(8192);
+      const read = fs.readSync(fd, buf, 0, buf.length, 0);
+      head = buf.subarray(0, read).toString('utf8');
+    } finally {
+      fs.closeSync(fd);
+    }
+  } catch {
+    return 0;
+  }
+  const match = RUNNER_TIMEOUT_DIRECTIVE.exec(head);
+  if (!match) return 0;
+  const seconds = Number.parseInt(match[1], 10);
+  return Number.isFinite(seconds) && seconds > 0 ? seconds : 0;
+}
+
+// The effective per-file timeout in seconds. A declared budget only ever
+// raises the ceiling; it can never make the runner more patient than the
+// operator asked for on files that do not ask.
+function effectiveTimeoutSec(file, defaultSec) {
+  const declared = readDeclaredTimeout(file);
+  return declared > defaultSec ? declared : defaultSec;
+}
+
+// The idle timeout is a hang detector for files whose normal runtime is far
+// below it: if a child prints nothing for N seconds it is wedged. That
+// inference is wrong for a file that has declared a long budget — the child
+// may simply be inside one long test, and `node --test` prints a result only
+// when a test finishes, so a single 100-second test looks exactly like a
+// hang. For such a file the idle timeout must therefore never fire before
+// the declared budget does; the file timeout remains the bound, so no
+// unbounded run is possible.
+//
+// `defaultTimeoutSec` is the operator's per-file ceiling, not the effective
+// one: only a file that RAISED its own budget gets the idle window raised
+// with it. A file that stayed within the default keeps the default idle
+// detector, which is what lets the idle timeout fire before the file timeout.
+function effectiveIdleTimeoutSec(file, defaultIdleSec, defaultTimeoutSec) {
+  if (defaultIdleSec <= 0) return 0;
+  const effective = effectiveTimeoutSec(file, defaultTimeoutSec);
+  if (effective <= defaultTimeoutSec) return defaultIdleSec;
+  return defaultIdleSec > effective ? defaultIdleSec : effective;
+}
+
 function filterFiles(files, opts) {
   if (opts.file) {
     const abs = path.resolve(TESTS_DIR, opts.file);
@@ -189,6 +263,10 @@ function runAttempt(file, timeoutSec, perTestTimeoutMs, idleTimeoutSec, spawnPro
   return new Promise((resolve) => {
     const start = Date.now();
     const rel = toRel(file);
+    // A file may declare a longer budget for itself; the default stays a
+    // hang detector for every other file.
+    const fileTimeoutSec = effectiveTimeoutSec(file, timeoutSec);
+    const fileIdleSec = effectiveIdleTimeoutSec(file, idleTimeoutSec, timeoutSec);
     // Build child argv. Node 24+ supports --test-timeout for per-test
     // granularity (independent of the file-level timeout we set below).
     const childArgv = ['--test'];
@@ -212,21 +290,21 @@ function runAttempt(file, timeoutSec, perTestTimeoutMs, idleTimeoutSec, spawnPro
 
     const timer = setTimeout(() => {
       killed = true;
-      killReason = `file-timeout(${timeoutSec}s)`;
+      killReason = `file-timeout(${fileTimeoutSec}s)`;
       try { child.kill('SIGKILL'); } catch (_) {}
-    }, timeoutSec * 1000);
+    }, fileTimeoutSec * 1000);
 
     // Idle timeout: if the child hasn't printed anything for N seconds,
     // it is almost certainly hung (e.g. deadlocked subprocess, infinite
     // poll). Kill it so the suite doesn't drag on.
     let idleTimer = null;
-    if (idleTimeoutSec > 0) {
+    if (fileIdleSec > 0) {
       idleTimer = setInterval(() => {
-        if (Date.now() - lastActivity < idleTimeoutSec * 1000) return;
+        if (Date.now() - lastActivity < fileIdleSec * 1000) return;
         killed = true;
-        killReason = `idle-timeout(${idleTimeoutSec}s-no-stdout)`;
+        killReason = `idle-timeout(${fileIdleSec}s-no-stdout)`;
         try { child.kill('SIGKILL'); } catch (_) {}
-      }, Math.max(250, Math.floor(idleTimeoutSec * 1000 / 4)));
+      }, Math.max(250, Math.floor(fileIdleSec * 1000 / 4)));
       if (idleTimer.unref) idleTimer.unref();
     }
 
@@ -651,10 +729,13 @@ if (require.main === module) {
 }
 
 module.exports = {
+  effectiveIdleTimeoutSec,
+  effectiveTimeoutSec,
   filterFiles,
   listTestFiles,
   parseArgs,
   printResult,
+  readDeclaredTimeout,
   runOne,
   runParallel,
   runSerial,
