@@ -184,6 +184,9 @@ starter 模板填了占位内容的散装 markdown,既没有 manifest 也没有 
 结果是 `design resolved` 以及编码 agent 通过 MCP `design/resolved` 读到的生效规范
 与代码实际使用的 token 可能完全不相交,agent 产出就无法追溯到真实规范。
 
+已 init 的项目升级到带这条命令的版本后,直接对本仓库的 `tokens.css` 与一份
+项目自有的 `DESIGN.md` 组装一个 system 目录再安装即可,不需要额外的手工步骤。
+
 **starter 遮蔽提示**:`.agent/DESIGN.md` 是 cascade 第 2 层,优先级高于任何已安装
 system(第 3 层)。刚 `init` 出来的项目里它还是 starter 占位模板,此时装上真实
 system 也不会生效。install 成功后会检测这一状态并提示:替换或删除
