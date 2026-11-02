@@ -13,8 +13,9 @@ const crypto = require("node:crypto");
 const { ProtectedPermitStore: Store } = require("../../lib/coordination/protected-permit-store");
 const delivery = require("../../lib/coordination/permit-delivery");
 const supported = { skip: Number(process.versions.node.split(".")[0]) < 24 || !["darwin", "linux"].includes(process.platform) };
+const posix = process.platform !== "win32";
 
-function fixture(t, existing = false) {
+function fixture(t, existing = false, onAuthorize = null) {
   const runtime = testRuntime("test-tmp"); fs.mkdirSync(runtime, { recursive: true });
   const dir = fs.mkdtempSync(path.join(runtime, "permit-history-close-"));
   const dbDir = path.join(dir, "db"), anchorDir = path.join(dir, "anchor");
@@ -25,7 +26,10 @@ function fixture(t, existing = false) {
     witnessAuthority: { mode: "development-only", authorityId: "history-close", authorize: () => false,
       observeTarget: () => { throw Error("must not observe"); }, signPermit: () => { throw Error("must not sign"); },
       pullRevocation: () => { throw Error("must not pull"); },
-      authorizeHistory: () => ({ principal: "fixture-reader", resources: query }) } };
+      authorizeHistory: () => {
+        if (onAuthorize) onAuthorize();
+        return { principal: "fixture-reader", resources: query };
+      } } };
   const store = Store.initialize(file, options); t.after(() => store.close());
   const publicKey = crypto.generateKeyPairSync("ed25519").publicKey.export({ format: "pem", type: "spki" });
   const fingerprint = delivery.publicKeyFingerprint(publicKey), state = store.snapshot();
@@ -158,3 +162,41 @@ for (const existing of [false, true]) {
     assert.deepEqual(raw(f), before); assert.equal(f.store.snapshot().anchor_sequence, result.boundary.anchorSequence);
   });
 }
+
+// The history audit and the transaction audit must agree about platforms that
+// cannot provide a durable directory barrier. The transaction audit refuses
+// before writing; the history audit used to write the file, fail the
+// directory fsync, and only then report the failure — so a real Windows host
+// read protected history and left no durable audit of it.
+//
+// This is a simulated-platform test on a POSIX host: it proves the refusal
+// happens before any byte is written, not that Windows behaves this way.
+test("simulated Windows history audit refuses before writing; not a native Windows test", { skip: !supported || !posix }, t => {
+  const platform = Object.getOwnPropertyDescriptor(process, "platform");
+  let error, result, authorizations = 0;
+  // The history audit is reached after the third re-authorization: the first
+  // authorizes the read, the second runs inside the coordination lock, and
+  // the third runs immediately before the audit. Switching the platform
+  // there keeps the lock's own Windows permission adapter out of the way, so
+  // the assertion is about the audit barrier alone.
+  const f = fixture(t, false, () => {
+    authorizations++;
+    if (authorizations === 3) {
+      Object.defineProperty(process, "platform", { value: "win32", configurable: true });
+    }
+  });
+  const before = raw(f);
+  try { result = f.lookup(); } catch (e) { error = e; }
+  finally {
+    Object.defineProperty(process, "platform", platform);
+  }
+  assert.equal(result, undefined);
+  assert.equal(authorizations, 3);
+  assert.equal(error.code, "ERR_AUDIT_WRITE_FAILED");
+  assert.equal(error.cause.code, "ERR_AUDIT_DURABILITY_UNSUPPORTED");
+  // The refusal happens before the audit file is created or opened.
+  assert.equal(fs.existsSync(f.log), false);
+  assert.deepEqual(raw(f), before);
+  // The handle is poisoned, so a second lookup cannot retry the observation.
+  assert.throws(() => f.lookup(), { code: "ERR_COMMIT_OUTCOME_UNKNOWN" });
+});
