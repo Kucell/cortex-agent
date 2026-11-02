@@ -6,6 +6,7 @@ const { test } = require("node:test");
 const assert = require("node:assert/strict");
 const net = require("node:net");
 const fs = require("node:fs"), path = require("node:path"), { spawn } = require("node:child_process");
+const vm = require("node:vm");
 const { connectBounded, ByteBudget } = require("../../lib/coordination/permit-witness-bounded-channel");
 const base = testRuntime("bounded-tests");
 fs.mkdirSync(base, { recursive: true });
@@ -358,4 +359,66 @@ test("deadline remains absolute under progressing fragments, not an inactivity t
   await assert.rejects(channel.result, { code: "ERR_BOUNDED_DEADLINE" }); await channel.closed;
   assert.ok(process.hrtime.bigint() >= deadlineNs);
   assert.equal(channel.snapshot().receivedBytes, 4);
+});
+
+test("continuous progress before the deadline does not postpone it", supported, async t => {
+  // The lower bound asserted above cannot tell an absolute deadline apart from
+  // an inactivity timeout: an inactivity timer that is refreshed on every
+  // fragment still fails eventually, and it still fails after the original
+  // deadline. This case keeps the peer progressing across the whole window,
+  // so only an absolute deadline terminates it at the original instant.
+  const p = await peer(t, "drip"), deadlineNs = untilDeadline(600), channel = p.connect({ deadlineNs });
+  await until(() => p.events.includes("CONNECTED"), "progressing peer connected");
+  const rejectedAt = await channel.result.then(() => null, error => {
+    assert.equal(error.code, "ERR_BOUNDED_DEADLINE");
+    return process.hrtime.bigint();
+  });
+  await channel.closed;
+  assert.ok(rejectedAt !== null, "the channel must not have completed");
+  // The peer really was making progress across the whole window.
+  assert.ok(channel.snapshot().receivedBytes > 0, "the peer made no progress");
+  // The rejection itself must not have happened before the deadline, and it
+  // must not have been postponed past it either: an inactivity timer refreshed
+  // by the feeding above would reject far later than the original deadline.
+  assert.ok(rejectedAt >= deadlineNs, "rejected before the deadline");
+  const overshootNs = rejectedAt - deadlineNs;
+  assert.ok(overshootNs < 200000000n, "rejected long after the deadline: the deadline was extended");
+});
+
+test("a deadline reached during initialization never connects to the peer", supported, async t => {
+  // The deadline can pass between the admission check and the timer being
+  // armed. A channel that has already failed must not then connect: Node
+  // re-initializes a destroyed socket, so an unconditional connect would open
+  // a connection to the peer AFTER the channel reached its terminal state.
+  const modulePath = require.resolve("../../lib/coordination/permit-witness-bounded-channel");
+  const source = fs.readFileSync(modulePath, "utf8");
+  const server = net.createServer({ allowHalfOpen: true }, socket => { socket.on("error", () => {}); });
+  const peers = [];
+  server.on("connection", socket => peers.push(socket));
+  await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
+  t.after(() => new Promise(resolve => { for (const peer of peers) peer.destroy(); server.close(resolve); }));
+
+  let target, connects = 0, reads = 0;
+  function Socket(options) {
+    target = new net.Socket(options);
+    const connect = target.connect;
+    target.connect = function (...args) { connects++; return connect.apply(this, args); };
+    return target;
+  }
+  const sandbox = {
+    module: { exports: {} }, exports: {}, Buffer, setTimeout, clearTimeout,
+    require: name => name === "node:net" ? { Socket } : require("node:module").createRequire(modulePath)(name),
+    // The clock reports a time before the deadline for the admission checks and
+    // a time past it once the channel starts initializing.
+    process: { versions: process.versions, env: {}, hrtime: { bigint: () => (++reads <= 2 ? 0n : 10000000n) } },
+  };
+  vm.runInNewContext(source, sandbox, { filename: modulePath });
+  const channel = sandbox.module.exports.connectBounded({ port: server.address().port,
+    budget: new sandbox.module.exports.ByteBudget(), deadlineNs: 10000000n });
+  await assert.rejects(channel.result, { code: "ERR_BOUNDED_DEADLINE" });
+  await new Promise(resolve => setTimeout(resolve, 30));
+  assert.equal(connects, 0, "the channel connected after it had already failed");
+  assert.equal(channel.snapshot().state, "DEADLINE");
+  assert.equal(channel.snapshot().budget.active, 0);
+  if (target) target.destroy();
 });

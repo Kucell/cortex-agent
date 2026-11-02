@@ -33,6 +33,19 @@ const server = net.createServer({ allowHalfOpen: true }, socket => {
     return;
   }
   if (mode === "valid") socket.end(packet);
+  if (mode === "drip") {
+    // Drip the frame one byte at a time so the receiver keeps making progress
+    // for the whole window without ever completing the frame. A deadline that
+    // is extended by progress would never fire here; an absolute deadline has
+    // to end the channel at the original instant.
+    let sent = 0;
+    const timer = setInterval(() => {
+      if (sent >= packet.length || socket.destroyed) { clearInterval(timer); return; }
+      socket.write(packet.subarray(sent, sent + 1));
+      sent++;
+    }, 20);
+    socket.on("close", () => clearInterval(timer));
+  }
   if (mode === "oversize") { const b = Buffer.alloc(4); b.writeUInt32BE(0xffffffff); socket.end(b); }
   if (mode === "zero") socket.end(Buffer.alloc(4));
   if (mode === "truncated-header") socket.end(packet.subarray(0, 2));
