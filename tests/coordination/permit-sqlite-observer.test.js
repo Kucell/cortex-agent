@@ -84,6 +84,10 @@ test("directory-FD SQLite observer: real POSIX confinement and fail-closed obser
     assert.doesNotMatch(run.stderr, /runtime error:|AddressSanitizer|LeakSanitizer/);
     assert.ok(!run.stdout.includes(SECRET) && !run.stdout.includes(f.bound));
     const r = JSON.parse(run.stdout);
+    // The observer's own verdict is the primary evidence of this contract.
+    // Print it for every mode so a platform-specific divergence is visible in
+    // the job log instead of only as an opaque assertion mismatch.
+    t.diagnostic(JSON.stringify({ mode, ...r }));
     assert.equal(r.blocked, true); assert.equal(r.executionAuthorized, false);
     assert.equal(r.snapshotUnproven, true); assert.equal(r.pathBindingUnproven, true);
     assert.equal(r.wrongReads, 0);
