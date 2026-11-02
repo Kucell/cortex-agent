@@ -1,5 +1,10 @@
 "use strict";
 
+// @runner-timeout 600
+// The rehearsal spawns real producer subprocesses and performs durable
+// writes with directory fsync. Under the parallel runner's load it can take
+// well over the default hang-detection window.
+
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");

@@ -1,5 +1,9 @@
 "use strict";
 
+// @runner-timeout 600
+// The settlement scenarios drive real bootstrap locks and durable writes;
+// under the parallel runner's load the file exceeds the default window.
+
 const { testRuntime } = require("../helpers/runtime-sandbox");
 
 // Contract tests for the settlement of a bootstrap that failed after it had

@@ -1,5 +1,9 @@
 "use strict";
 
+// @runner-timeout 600
+// The lifecycle ticket cases drive real supervised children; under the
+// parallel runner's load they exceed the default hang-detection window.
+
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const path = require("node:path");

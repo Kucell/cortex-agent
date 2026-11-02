@@ -1,5 +1,9 @@
 "use strict";
 
+// @runner-timeout 600
+// The authority store cases perform durable transactions with real fsync
+// cycles; under the parallel runner's load they exceed the default window.
+
 const { testRuntime } = require("../helpers/runtime-sandbox");
 
 const test = require("node:test");

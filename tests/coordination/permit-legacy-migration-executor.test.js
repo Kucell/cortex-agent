@@ -1,5 +1,10 @@
 "use strict";
 
+// @runner-timeout 600
+// The migration executor performs durable writes with real directory fsync;
+// under the parallel runner's load it exceeds the default hang-detection
+// window.
+
 const { testRuntime } = require("../helpers/runtime-sandbox");
 
 // Contract tests for the legacy migration executor. The executor applies the

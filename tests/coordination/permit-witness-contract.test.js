@@ -1,5 +1,9 @@
 "use strict";
 
+// @runner-timeout 600
+// The contract cases build and compare large canonical payloads; under the
+// parallel runner's load they exceed the default hang-detection window.
+
 const { testRuntime } = require("../helpers/runtime-sandbox");
 
 const test = require("node:test");

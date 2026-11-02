@@ -1,5 +1,9 @@
 "use strict";
 
+// @runner-timeout 600
+// The combined N-API case compiles and drives real macOS native children;
+// under the parallel runner's load that takes well over the default window.
+
 const { testRuntime } = require("../helpers/runtime-sandbox");
 const test=require("node:test"),assert=require("node:assert/strict"),fs=require("node:fs"),path=require("node:path"),os=require("node:os"),crypto=require("node:crypto");
 const {spawnSync,execFile}=require("node:child_process"),{promisify}=require("node:util"),exec=promisify(execFile);

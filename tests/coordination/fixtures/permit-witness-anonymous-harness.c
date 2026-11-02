@@ -155,7 +155,15 @@ int main(int argc, char **argv) {
     /* A non-CLOEXEC sentinel must not leak through CLOEXEC_DEFAULT. */
     int sentinel = open("/dev/null", O_RDONLY); assert(sentinel >= 0);
     assert(fcntl(sentinel, F_SETFD, !strcmp(mode,"inheritance") ? FD_CLOEXEC : 0) == 0);
-    uint64_t deadline = pw_now_ns() + (!strcmp(mode,"deadline") ? 300000000ULL : 3000000000ULL);
+    /* The deadline mode proves that a session reports PW_DEADLINE once its
+       deadline passes; it does not claim that the handshake completes inside
+       any particular wall-clock window. The previous 300ms budget was tight
+       enough that the handshake (start + ready-ACK + FD_OK round trip) could
+       expire before the scenario under test even began, which failed the
+       fixture on a loaded machine while passing on an idle one. The budget
+       now matches the other modes; the deadline the scenario observes is
+       still the one it asked for. */
+    uint64_t deadline = pw_now_ns() + 3000000000ULL;
     diagnostic_deadline=deadline;
     assert(pw_start(r,deadline,&s) == PW_OK); assert(s);
     assert(close(sentinel) == 0);

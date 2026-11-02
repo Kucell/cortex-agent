@@ -1,5 +1,9 @@
 "use strict";
 
+// @runner-timeout 600
+// This case compiles a native addon and exercises real macOS children, so its
+// runtime depends on the machine and on the parallel runner's load.
+
 const { testRuntime } = require("../helpers/runtime-sandbox");
 const test = require("node:test");
 const assert = require("node:assert/strict");

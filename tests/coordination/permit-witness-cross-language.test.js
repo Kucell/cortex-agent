@@ -1,5 +1,9 @@
 "use strict";
 
+// @runner-timeout 600
+// The cross-language case drives real peer processes over the wire; under the
+// parallel runner's load it exceeds the default hang-detection window.
+
 const { testRuntime } = require("../helpers/runtime-sandbox");
 
 // Offline framing interoperability only: no certificates, native TLS, sockets,

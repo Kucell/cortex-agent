@@ -1,7 +1,5 @@
 "use strict";
 
-const { testRuntime } = require("../helpers/runtime-sandbox");
-
 // Safety closure: built-in Node modules, runtime-layout-migration and report.
 // upgrade/verify are evaluated with an exhaustive require allowlist and inert
 // setup, management and subprocess dependencies. All writes stay in new temp
@@ -9,6 +7,7 @@ const { testRuntime } = require("../helpers/runtime-sandbox");
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
+const os = require("node:os");
 const path = require("node:path");
 const vm = require("node:vm");
 const migration = require("../../lib/commands/update/runtime-layout-migration");
@@ -22,6 +21,15 @@ const MARKER = ".agent/runtime/layout.json";
 const CANDIDATE = ".agent/runtime/layout.candidate.json";
 const oldMarker = JSON.stringify({ layout_version: "1", activated_at: "2026-01-01T00:00:00.000Z",
   plan_id: "fixture-existing", source: "fixture" });
+
+// This file is materialized standalone by .github/workflows/migration-preservation.yml
+// (a fixed list of source files, no repository checkout), so it must not
+// require a shared test helper that workflow does not fetch. The scratch root
+// is still a disposable project-local `.agent/runtime`, never the working
+// copy's own runtime tree.
+const scratchRoot = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-upgrade-failure-preservation-"));
+process.once("exit", () => fs.rmSync(scratchRoot, { recursive: true, force: true }));
+function testRuntime() { return path.join(scratchRoot, ".agent", "runtime"); }
 
 function fixture(body) {
   const runtime = testRuntime();

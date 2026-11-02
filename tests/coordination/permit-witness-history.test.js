@@ -1,5 +1,9 @@
 "use strict";
 
+// @runner-timeout 600
+// The history queries read a durable witness store; under the parallel
+// runner's load the file exceeds the default hang-detection window.
+
 const { testRuntime } = require("../helpers/runtime-sandbox");
 
 const test = require("node:test");
