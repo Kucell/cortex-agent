@@ -22,7 +22,7 @@ TEST_BLOBS = {
     "tests/cli/reconcile-entrypoint.test.js": "517259058790010d69220315df524d76697c20a5",
     "tests/cli/cli-contract.test.js": "fe8d027fdfe6fef1b7b12f7d154305e8a201c7a3",
 }
-GITLINK = "180e71b5dca13ae38a64cecfd59897125240cc34"
+GITLINK = "3f42bb49cc705675c143f66a9759f6e3eab8ba62"
 EXPECTED_TESTS = 9
 # Reviewed aliases outside these nine cases; never follow or recreate them.
 OMITTED_LINKS = {
@@ -166,7 +166,10 @@ def main():
                     "unsafe source member: " + name)
             require(name not in rows, "duplicate source member")
             rows[name] = (mode, kind, blob)
-        require(rows.get(".agent") == ("160000", "commit", GITLINK), "governance gitlink drift")
+        require(rows.get(".agent") == ("160000", "commit", GITLINK),
+                "governance gitlink drift: tree has " + str(rows.get(".agent"))
+                + " but GITLINK pins " + GITLINK
+                + " -- advance GITLINK in scripts/release/targeted-cli-validation.py to match the tree")
         require(not any(name.startswith(".agent/") for name in rows), "embedded governance data")
         for name, blob in TEST_BLOBS.items():
             require(rows.get(name) == ("100644", "blob", blob),
