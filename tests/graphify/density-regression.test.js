@@ -499,23 +499,21 @@ test("regression: the hook's early returns leave no claim behind", () => {
   }
 });
 
-test("regression: a stamp under a stale lock generation is refused", () => {
-  // The fence used to be a CHECK: "is this still my lock?". The lock can
-  // be taken away between the check and the write, and no amount of
-  // re-checking closes that window -- it is the same ABA shape as a
-  // judgement followed by a removal.
+test("regression: a reclaim fences the displaced holder by its token", () => {
+  // The reclaim of a DEAD holder's lock must NOT advance the epoch. The
+  // epoch is shared by every holder, and advancing it would also
+  // invalidate a healthy holder that took the lock in the window between
+  // the judgement and the takeover -- a holder that never lost anything.
   //
-  // The generation is a VALUE that travels with the artifact: a reclaim
-  // advances it, so a holder that was displaced publishes artifacts that
-  // carry an older generation, and the stamp refuses them.
-  const root = mkProject("generation-fence");
+  // The fence that IS precise is the TOKEN: the holder that lost the lock
+  // is registered by its token, and only its own publications are dropped.
+  const root = mkProject("token-fence");
   try {
     const lock = density.acquireRebuildLock(root);
     assert.ok(lock);
     const generation = lock.generation;
-    // A reclaim advances the generation: the holder that was displaced
-    // keeps its OLD generation. The reclaim needs a lock whose holder is
-    // gone, so the record of a dead process is written over the lock.
+    // A reclaim needs a lock whose holder is gone, so the record of a dead
+    // process is written over the lock.
     fs.writeFileSync(density.rebuildLockPath(root), JSON.stringify({
       token: "dead-token",
       pid: 999999,
@@ -526,18 +524,35 @@ test("regression: a stamp under a stale lock generation is refused", () => {
       onStaleJudged: () => {},
     });
     assert.ok(reclaimed, "the stale lock must be reclaimable");
-    assert.ok(reclaimed.generation > generation,
-      "a reclaim must advance the generation");
-    const stale = density.stampBaseline(root, {
+    assert.equal(reclaimed.generation, generation,
+      "a reclaim must not advance the shared epoch: it would fence a healthy holder too");
+
+    // The holder that lost the lock is fenced by its token: it may not
+    // publish any more.
+    const fenced = density.stampBaseline(root, {
       nodes: 100,
       edges: 200,
       buildKind: "full",
       lockGeneration: generation,
+      lockToken: "dead-token",
     });
-    assert.equal(stale.ok, false, "a stamp under a stale generation must be refused");
-    assert.equal(stale.reason, "lock_generation_stale");
+    assert.equal(fenced.ok, false, "a displaced holder must not publish");
+    assert.equal(fenced.reason, "lock_displaced");
     assert.equal(density.readBaselineSidecar(root), null,
       "the refused stamp must not reach the disk");
+
+    // The healthy holder that took the lock in the meantime keeps its
+    // authority: the coarse epoch fence did not touch it.
+    const healthy = density.stampBaseline(root, {
+      nodes: 100,
+      edges: 500,
+      buildKind: "full",
+      lockGeneration: reclaimed.generation,
+      lockToken: reclaimed.token,
+    });
+    assert.equal(healthy.ok, true,
+      "the healthy holder must still be able to publish");
+    assert.equal(density.readBaselineSidecar(root).edge_node_ratio, 5);
     reclaimed.release();
   } finally {
     cleanup(root);
@@ -1111,11 +1126,17 @@ test("regression: a legacy claim keeps the retry budget of its body", () => {
   }
 });
 
-test("regression: the artifacts of a displaced holder are dropped", () => {
+test("regression: only the records a displaced holder published AFTER the loss are dropped", () => {
   // A holder that LOST the lock may still be alive and may still publish.
   // Its artifacts are fenced by its TOKEN, so only that holder is
   // distrusted -- a healthy holder that took the lock in the meantime
   // keeps its authority.
+  //
+  // The fence is PRECISE in time as well: everything the holder published
+  // BEFORE it lost the lock was published while it still had the
+  // authority, so it stays valid. Only what it publishes after the loss is
+  // dropped -- otherwise the registration would delete the one baseline the
+  // guard needs.
   const root = mkProject("displaced-holder");
   try {
     const lock = density.acquireRebuildLock(root);
@@ -1141,8 +1162,12 @@ test("regression: the artifacts of a displaced holder are dropped", () => {
     const released = lock.release();
     assert.equal(released, false, "the release must report that the lock was not ours");
 
-    assert.equal(density.readBaselineSidecar(root), null,
-      "the record of a displaced holder must be dropped by the readers");
+    // The publication that happened while the holder still owned the lock
+    // is still valid: the guard must not lose its only baseline.
+    assert.equal(density.readBaselineSidecar(root).edge_node_ratio, 5,
+      "a record published before the loss must survive the registration");
+
+    // A displaced holder may not publish any more.
     const after = density.stampBaseline(root, {
       nodes: 100,
       edges: 250,
@@ -1151,37 +1176,88 @@ test("regression: the artifacts of a displaced holder are dropped", () => {
     });
     assert.equal(after.ok, false, "a displaced holder must not publish");
     assert.equal(after.reason, "lock_displaced");
+
+    // A record the displaced holder managed to append AFTER the loss -- it
+    // passed the check before the loss and landed on disk after it -- is
+    // dropped by the readers. It carries a publication sequence that is
+    // higher than the one the holder had when it lost the lock.
+    fs.appendFileSync(density.baselinePath(root), JSON.stringify({
+      schemaVersion: "1.0",
+      kind: "stamp",
+      priority: 1,
+      build_kind: "full",
+      edge_node_ratio: 9,
+      nodes: 100,
+      edges: 900,
+      baseline_locked_at: new Date(Date.now() + 60_000).toISOString(),
+      lock_generation: lock.generation,
+      lock_token: lock.token,
+      sequence: 999,
+    }) + "\n");
+    assert.equal(density.readBaselineSidecar(root).edge_node_ratio, 5,
+      "a record published after the loss must be dropped by the readers");
   } finally {
     cleanup(root);
   }
 });
 
-test("regression: the lock epoch never goes backwards", () => {
+test("regression: the coarse epoch fence advances when the token fence cannot be persisted", () => {
   // The epoch used to be a counter that was READ, incremented and written
   // back. Two publishers that read the same value wrote the same value
   // back, so the epoch went backwards -- and an epoch that goes backwards
   // is no fence at all.
+  //
+  // The epoch is now the COARSE fallback fence: it advances only when the
+  // precise token fence cannot be persisted, because a holder that cannot
+  // be fenced by its token has to be fenced by something. It is allocated
+  // by an exclusive create, so it never goes backwards.
   const root = mkProject("epoch-monotonic");
   try {
+    // The token fence needs a DIRECTORY it can write into. A regular file
+    // in its place makes every registration fail, so the coarse fence is
+    // the only one left.
+    fs.mkdirSync(path.join(root, ".agent", "plugins", "graphify"), { recursive: true });
+    fs.writeFileSync(
+      path.join(root, ".agent", "plugins", "graphify", ".density-displaced"),
+      "not a directory\n",
+    );
+
     const generations = [];
     for (let round = 0; round < 3; round += 1) {
-      // A lock whose holder is gone: the reclaim takes it over.
-      fs.mkdirSync(path.dirname(density.rebuildLockPath(root)), { recursive: true });
-      fs.writeFileSync(density.rebuildLockPath(root), JSON.stringify({
-        token: "stale-" + round,
-        pid: 999999,
-        acquiredAt: new Date(Date.now() - 7 * 60 * 60 * 1000).toISOString(),
-        generation: 0,
-      }));
       const lock = density.acquireRebuildLock(root);
-      assert.ok(lock, "the stale lock must be reclaimed: round " + round);
+      assert.ok(lock, "the lock must be acquired: round " + round);
       generations.push(lock.generation);
-      lock.release();
+      // This holder is displaced: somebody else owns the path now. The
+      // release cannot fence it by its token, so the coarse epoch advances.
+      fs.writeFileSync(density.rebuildLockPath(root), JSON.stringify({
+        token: "other-holder-" + round,
+        pid: process.pid,
+        acquiredAt: new Date().toISOString(),
+        generation: lock.generation,
+      }));
+      assert.equal(lock.release(), false,
+        "the release must report that the lock was not ours");
+      // The other holder's record is still on disk. The test owns the
+      // directory, so it clears it to let the next round acquire the lock.
+      fs.rmSync(density.rebuildLockPath(root), { force: true });
     }
     for (let index = 1; index < generations.length; index += 1) {
       assert.ok(generations[index] > generations[index - 1],
         "the epoch must advance: " + generations.join(","));
     }
+
+    // A holder that publishes under the OLD epoch is refused: the coarse
+    // fence is the one that is left when the token fence failed.
+    const stale = density.stampBaseline(root, {
+      nodes: 100,
+      edges: 200,
+      buildKind: "full",
+      lockGeneration: generations[0],
+    });
+    assert.equal(stale.ok, false, "a stamp under a stale epoch must be refused");
+    assert.equal(stale.reason, "lock_generation_stale");
+    assert.equal(density.readBaselineSidecar(root), null,
+      "the refused stamp must not reach the disk");
   } finally {
     cleanup(root);
   }
