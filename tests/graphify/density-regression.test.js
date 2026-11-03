@@ -765,6 +765,11 @@ test("regression: the hook never clears a marker a consumer wrote meanwhile", ()
   // consumer that wrote a NEW marker in the meantime -- for a deferred
   // semantic change -- lost its reminder, and its request had already been
   // confirmed.
+  //
+  // The reminder that was there BEFORE the hook ran is not answered by an
+  // incremental update either: the update rebuilds the code corpus only.
+  // So both reminders have to survive: the one the consumer published and
+  // the one that is still unanswered.
   const root = mkProject("marker-generation");
   const oldPath = process.env.PATH;
   try {
@@ -810,8 +815,9 @@ test("regression: the hook never clears a marker a consumer wrote meanwhile", ()
     assert.equal(result.result, "incremental_ok", "the hook must report success");
     const after = markers.readMarker(graphDir);
     assert.ok(after.ok, "the consumer's marker must survive");
-    assert.deepEqual(after.marker.changedPaths, ["docs/queued.md"],
-      "the marker of the concurrent consumer must not be deleted");
+    assert.deepEqual(after.marker.changedPaths, ["docs/old.md", "docs/queued.md"],
+      "neither reminder may be deleted: the consumer published one, and the " +
+      "one that was there before is still unanswered");
   } finally {
     process.env.PATH = oldPath;
     cleanup(root);
@@ -904,15 +910,16 @@ test("regression: a broken sidecar does not block the migration for ever", () =>
 
 // ─── Round 10: the fences that survived the ninth review ───────────────────
 
-test("regression: a marker that is replaced right before the clear is never deleted", () => {
+test("regression: a reminder published while another one is cleared is never deleted", () => {
   // The clear used to CHECK the marker and then DELETE it by path. A
-  // consumer that published a new marker between the two steps lost its
+  // consumer that published a new reminder between the two steps lost its
   // reminder for good: the request it belonged to had already been
   // confirmed, so nothing would ever publish it again.
   //
-  // The clear now moves the file aside with an atomic rename and compares
-  // the content that was moved with the content it read. The concurrent
-  // marker is detected and put back.
+  // Every reminder lives in its OWN record now, so the clear removes the
+  // records that were answered -- never "the file at the path". A reminder
+  // that a consumer publishes while the clear runs is a DIFFERENT record,
+  // and it survives.
   const root = mkProject("marker-replace-race");
   try {
     const graphDir = path.join(root, "graphify-out");
@@ -924,12 +931,13 @@ test("regression: a marker that is replaced right before the clear is never dele
     });
     const before = markers.readMarker(graphDir);
     assert.equal(before.ok, true, "the marker must be readable");
-    const markerPath = path.join(graphDir, markers.MARKER_FILENAME);
-    const realRename = fs.renameSync;
-    fs.renameSync = function patched(from, to) {
-      // A concurrent consumer publishes a NEW marker right before the clear
-      // takes the file away.
-      if (String(from) === markerPath) {
+    // A concurrent consumer publishes a NEW reminder while the clear is
+    // removing the record it read.
+    const realUnlink = fs.unlinkSync;
+    let published = false;
+    fs.unlinkSync = function patched(file) {
+      if (!published && String(file).includes(markers.MARKER_RECORDS_DIRNAME)) {
+        published = true;
         markers.writeMarker({
           graphDir,
           kind: markers.KIND.SEMANTIC,
@@ -937,7 +945,7 @@ test("regression: a marker that is replaced right before the clear is never dele
           changedPaths: ["docs/concurrent.md"],
         });
       }
-      return realRename.call(fs, from, to);
+      return realUnlink.call(fs, file);
     };
     let cleared;
     try {
@@ -945,12 +953,13 @@ test("regression: a marker that is replaced right before the clear is never dele
         kinds: markers.CLEARABLE_BY_INCREMENTAL,
       });
     } finally {
-      fs.renameSync = realRename;
+      fs.unlinkSync = realUnlink;
     }
-    assert.equal(cleared.cleared, false,
-      "the clear must not claim a marker it did not read");
+    assert.ok(published, "the concurrent reminder must have been published");
+    assert.equal(cleared.cleared, true,
+      "the reminder that was read is answered and cleared");
     const after = markers.readMarker(graphDir);
-    assert.equal(after.ok, true, "the concurrent marker must survive");
+    assert.equal(after.ok, true, "the concurrent reminder must survive");
     assert.equal(after.marker.kind, markers.KIND.SEMANTIC);
     assert.deepEqual(after.marker.changedPaths, ["docs/concurrent.md"]);
   } finally {
@@ -1295,3 +1304,257 @@ test("regression: a short baseline append is reported as a failure", () => {
   }
 });
 
+// ─── Round 11: the reminders and the budgets that could still be lost ─────
+
+test("regression: a reminder survives a writer that overwrites the derived file", () => {
+  // The derived file is what the Graphify CLI reads. A writer that
+  // overwrites it -- another tool, or a stale version of the framework --
+  // must not be able to ERASE a reminder: the records are the truth, and
+  // the file is only a view of them.
+  const root = mkProject("marker-derived-overwrite");
+  try {
+    const graphDir = path.join(root, "graphify-out");
+    markers.writeMarker({
+      graphDir,
+      kind: markers.KIND.SEMANTIC,
+      reason: "semantic_changes_only",
+      changedPaths: ["docs/keep.md"],
+    });
+    // Something overwrites the derived file with content of its own.
+    fs.writeFileSync(
+      path.join(graphDir, markers.MARKER_FILENAME),
+      JSON.stringify({ kind: "semantic", changedPaths: [] }),
+    );
+    const after = markers.readMarker(graphDir);
+    assert.equal(after.ok, true, "the reminder must still be readable");
+    assert.deepEqual(after.marker.changedPaths, ["docs/keep.md"],
+      "the reminder must survive the overwrite of the derived file");
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("regression: a crash between the record and the derived file loses no reminder", () => {
+  // A process that dies after it published the record but before it
+  // published the derived file leaves the reminder in its record only. The
+  // reader derives the marker from the records, so the gap cannot become a
+  // permanent loss -- and the derived file is restored.
+  const root = mkProject("marker-derived-missing");
+  try {
+    const graphDir = path.join(root, "graphify-out");
+    markers.writeMarker({
+      graphDir,
+      kind: markers.KIND.SEMANTIC,
+      reason: "semantic_changes_only",
+      changedPaths: ["docs/crash.md"],
+    });
+    fs.unlinkSync(path.join(graphDir, markers.MARKER_FILENAME));
+    const after = markers.readMarker(graphDir);
+    assert.equal(after.ok, true, "the reminder must survive the gap");
+    assert.deepEqual(after.marker.changedPaths, ["docs/crash.md"]);
+    assert.ok(fs.existsSync(path.join(graphDir, markers.MARKER_FILENAME)),
+      "the derived file must be restored");
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("regression: a failed update does not downgrade an unanswered semantic reminder", () => {
+  // The failed update used to write an `update_failed` marker that
+  // REPLACED the semantic one. The next successful code-only update
+  // cleared the `update_failed` marker -- and the semantic change lost the
+  // only persistent trace of itself.
+  //
+  // The failure and the semantic reminder are two records now, so the
+  // failure cannot take the semantic reminder's place.
+  const root = mkProject("hook-failure-keeps-semantic");
+  const oldPath = process.env.PATH;
+  try {
+    const stub = installStub(root, { updateExit: 1 });
+    process.env.PATH = stub.bin + ":" + oldPath;
+    writeGraph(root, { nodes: 200, edges: 400 });
+    fs.writeFileSync(
+      path.join(root, ".agent", "plugins", "graphify", "config.yml"),
+      "enabled: true\n",
+    );
+    const graphDir = path.join(root, "graphify-out");
+    markers.writeMarker({
+      graphDir,
+      kind: markers.KIND.SEMANTIC,
+      reason: "semantic_changes_only",
+      changedPaths: ["docs/important.md"],
+    });
+    const failed = hook.runPostCommit({ cwd: root, changedPaths: ["src/module.js"] });
+    assert.equal(failed.result, "incremental_failed",
+      "the hook must report the failure: " + JSON.stringify(failed));
+    const after = markers.readMarker(graphDir);
+    assert.equal(after.ok, true, "the semantic reminder must still be there");
+    assert.equal(after.marker.kind, markers.KIND.SEMANTIC,
+      "the failure must not downgrade the semantic reminder");
+    assert.ok(after.marker.changedPaths.includes("docs/important.md"),
+      "the semantic paths must survive the failure");
+  } finally {
+    process.env.PATH = oldPath;
+    cleanup(root);
+  }
+});
+
+test("regression: a failed baseline migration keeps the _meta baseline", () => {
+  // `graphify update .` rewrites graph.json and drops every key the CLI
+  // does not own -- `_meta` included. So an incremental update that runs
+  // after a FAILED migration destroys the only baseline the project has,
+  // and the density guard can never fire again.
+  //
+  // The migration is fail-closed: when it fails, the update does not run.
+  const root = mkProject("hook-migration-failure");
+  const oldPath = process.env.PATH;
+  try {
+    const stub = installStub(root);
+    process.env.PATH = stub.bin + ":" + oldPath;
+    writeGraph(root, {
+      nodes: 100,
+      edges: 500,
+      meta: { edge_node_ratio: 5, nodes: 100, edges: 500, build_kind: "full" },
+    });
+    fs.writeFileSync(
+      path.join(root, ".agent", "plugins", "graphify", "config.yml"),
+      "enabled: true\n",
+    );
+    // The ticket directory cannot be created: a FILE is in its place, so
+    // the migration cannot allocate the publication sequence it needs.
+    fs.writeFileSync(
+      path.join(root, ".agent", "plugins", "graphify", ".density-tickets"),
+      "not a directory\n",
+    );
+    // The lock is held by this process, so the deferred drain that the hook
+    // schedules cannot run an update behind the assertions.
+    const lock = density.acquireRebuildLock(root);
+    assert.ok(lock, "the test must hold the rebuild lock");
+    const result = hook.runPostCommit({ cwd: root, changedPaths: ["src/module.js"] });
+    assert.equal(result.ok, false, "the hook must report the failure");
+    assert.equal(result.reason, "baseline_migration_failed");
+    const calls = fs.existsSync(stub.log) ? fs.readFileSync(stub.log, "utf8") : "";
+    assert.equal(calls.trim(), "",
+      "the update must not run: it would delete the only baseline");
+    const graph = JSON.parse(
+      fs.readFileSync(path.join(root, "graphify-out", "graph.json"), "utf8"),
+    );
+    assert.equal(graph._meta.edge_node_ratio, 5, "the baseline must survive");
+    lock.release();
+  } finally {
+    process.env.PATH = oldPath;
+    cleanup(root);
+  }
+});
+
+test("regression: a group that was never attempted keeps its retry budget", () => {
+  // The drain hands a group back when it cannot publish. A group whose
+  // update was never INVOKED -- because the lock was gone before the
+  // attempt -- must not spend an attempt: five such losses would drop a
+  // request that never ran once.
+  const root = mkProject("drain-unattempted-budget");
+  try {
+    const stub = installStub(root);
+    // The stub announces that it runs and then waits, so the thief below
+    // can take the lock away WHILE the first group is being attempted --
+    // no timing guess is involved.
+    const signal = path.join(root, "update-started");
+    const stubPath = path.join(stub.bin, "graphify");
+    const stubBody = fs.readFileSync(stubPath, "utf8");
+    fs.writeFileSync(stubPath, stubBody.replace(
+      '  update) echo "update $@" >> "$LOG"; exit 0 ;;',
+      '  update) echo "update $@" >> "$LOG"; touch "' + signal + '"; sleep 1; exit 0 ;;',
+    ));
+    fs.chmodSync(stubPath, 0o755);
+    // Two groups: the first one is attempted, the second one finds the
+    // lock gone.
+    density.writePendingUpdate(root, {
+      changedPaths: ["src/first.js"],
+      semanticPaths: [],
+      attempts: 0,
+    });
+    density.writePendingUpdate(root, {
+      changedPaths: ["src/second.js"],
+      semanticPaths: [],
+      attempts: 1,
+    });
+    // The thief: it takes the lock away as soon as the first group is
+    // running.
+    const thief = path.join(root, "thief.js");
+    fs.writeFileSync(thief, [
+      "const fs = require('node:fs');",
+      "const signal = process.argv[2];",
+      "const lockPath = process.argv[3];",
+      "const deadline = Date.now() + 30000;",
+      "while (Date.now() < deadline) {",
+      "  if (fs.existsSync(signal)) {",
+      "    fs.writeFileSync(lockPath, JSON.stringify({",
+      "      token: 'foreign-token',",
+      "      pid: process.pid,",
+      "      acquiredAt: new Date().toISOString(),",
+      "      generation: 1,",
+      "    }));",
+      "    process.exit(0);",
+      "  }",
+      "  const buffer = new Int32Array(new SharedArrayBuffer(4));",
+      "  Atomics.wait(buffer, 0, 0, 5);",
+      "}",
+    ].join("\n"));
+    const thiefProcess = spawn(process.execPath, [thief, signal, density.rebuildLockPath(root)], {
+      stdio: "ignore",
+      detached: true,
+    });
+    thiefProcess.unref();
+    const runner = path.join(ROOT, "lib", "graphify", "full-rebuild-runner.js");
+    const run = spawnSync(process.execPath, [runner, "--drain-pending"], {
+      cwd: root,
+      encoding: "utf8",
+      env: stubEnv(stub),
+      timeout: 60_000,
+    });
+    assert.notEqual(run.status, 0, "the drain must report the failure");
+    const names = pendingNames(root);
+    assert.equal(names.length, 1,
+      "the group that was not attempted must stay queued: " + names.join(","));
+    const attempts = /-a(\d+)-/.exec(names[0]);
+    assert.ok(attempts, "the request must carry its counter: " + names.join(","));
+    assert.equal(Number(attempts[1]), 1,
+      "a group that was never attempted must not spend its retry budget");
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("regression: a new semantic reminder subsumes the older one", () => {
+  // Every reminder lives in its own record, so a queue of reminders would
+  // grow without bound: a mixed commit publishes a semantic record every
+  // time. A record that the new one SUBSUMES -- the same kind, and every
+  // one of its paths among the new one's paths -- is removed, so the queue
+  // stays at the reminders that are still outstanding.
+  const root = mkProject("marker-compaction");
+  try {
+    const graphDir = path.join(root, "graphify-out");
+    markers.writeMarker({
+      graphDir,
+      kind: markers.KIND.SEMANTIC,
+      reason: "semantic_changes_only",
+      changedPaths: ["docs/old.md"],
+    });
+    const recordsDir = path.join(graphDir, markers.MARKER_RECORDS_DIRNAME);
+    assert.equal(fs.readdirSync(recordsDir).length, 1,
+      "the first reminder is a record of its own");
+    markers.writeMarker({
+      graphDir,
+      kind: markers.KIND.SEMANTIC,
+      reason: "semantic_changes_in_mixed_commit",
+      changedPaths: ["docs/old.md", "docs/new.md"],
+    });
+    assert.equal(fs.readdirSync(recordsDir).length, 1,
+      "the record that the new one subsumes must be removed");
+    const after = markers.readMarker(graphDir);
+    assert.deepEqual(after.marker.changedPaths, ["docs/new.md", "docs/old.md"],
+      "the subsumed paths must survive in the new record");
+  } finally {
+    cleanup(root);
+  }
+});
