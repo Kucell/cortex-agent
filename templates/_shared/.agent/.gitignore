@@ -7,3 +7,9 @@ runtime-continuity/guard/
 token-attempts/receipts/
 token-attempts/ledger-index.json
 token-attempts/recovery-events.jsonl
+
+# Graphify plugin runtime state. The shared implementation under
+# plugins/graphify/lib/ IS framework-owned and tracked; the marker files
+# beside it are local runtime state and must never enter the source tree.
+plugins/graphify/.hook-installed
+plugins/graphify/.hook-unwired.json

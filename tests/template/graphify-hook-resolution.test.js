@@ -22,19 +22,35 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
+const { spawnSync } = require("node:child_process");
 
 const ROOT = path.resolve(__dirname, "..", "..");
 const SHARED_HOOK = path.join(
   ROOT, "templates", "_shared", ".agent", "plugins", "graphify", "scripts", "post-commit-update.js"
 );
 const GRAPHIFY_LIB_DIR = path.join(ROOT, "lib", "graphify");
+const graphifyHook = require("../../lib/setup/graphify-hook");
 
-// The wrapper's own candidate list, mirrored from the template. Keeping it in
-// sync with the template is itself part of what this test verifies.
-function wrapperCandidates(scriptPath) {
+// Resolve the shared implementation the way the SHIPPED wrapper does.
+//
+// The wrapper resolves relative to its own directory (__dirname), which in
+// a consumer project is <project>/.agent/plugins/graphify/scripts. The
+// implementation is installed next to the plugin, at
+// <project>/.agent/plugins/graphify/lib/graphify/hook.js.
+//
+// Deriving the candidates here from the script DIRECTORY (not from the
+// script file path) is what makes this test check the same thing the
+// wrapper checks. An earlier version of this test derived them from the
+// file path, which pointed at <project>/.agent/lib/... -- a location the
+// wrapper never looks at, so the test could not have passed even with a
+// correct fix.
+function wrapperCandidates(scriptsDir) {
   return [
-    path.join(scriptPath, "..", "..", "..", "..", "lib", "graphify", "hook.js"),
-    path.join(scriptPath, "..", "..", "lib", "graphify", "hook.js"),
+    path.join(scriptsDir, "..", "lib", "graphify", "hook.js"),
+    path.join(scriptsDir, "..", "..", "lib", "graphify", "hook.js"),
+    path.join(scriptsDir, "..", "..", "..", "node_modules", "cortex-agent", "lib", "graphify", "hook.js"),
+    path.join(scriptsDir, "..", "..", "..", "..", "lib", "graphify", "hook.js"),
+    path.join(scriptsDir, "..", "..", "lib", "graphify", "hook.js"),
   ];
 }
 
@@ -52,16 +68,90 @@ test("shipped graphify hook resolves its shared implementation inside a consumer
     const installedHook = path.join(scriptsDir, "post-commit-update.js");
     fs.copyFileSync(SHARED_HOOK, installedHook);
 
-    const resolved = wrapperCandidates(installedHook).find((c) => fs.existsSync(c));
+    // The framework installs the shared implementation into the project, so
+    // the shipped wrapper can resolve it without depending on where the
+    // framework itself is installed (npm global, npx, or a checkout).
+    const runtime = graphifyHook.installGraphifyRuntime(project);
+    assert.equal(runtime.ok, true, "runtime install failed: " + (runtime.reason || "unknown"));
+
+    const resolved = wrapperCandidates(scriptsDir).find((c) => fs.existsSync(c));
     assert.ok(resolved,
       "the installed hook must resolve lib/graphify/hook.js from a consumer project; " +
-      `candidates tried: ${wrapperCandidates(installedHook).join(", ")}`);
+      "candidates tried: " + wrapperCandidates(scriptsDir).join(", "));
 
     // The resolved module must expose the entry point the wrapper calls.
     const hookLib = require(resolved);
     assert.equal(typeof hookLib.runPostCommit, "function",
       "resolved hook module must export runPostCommit");
     assert.ok(hookLib.HOOK_RESULT, "resolved hook module must export HOOK_RESULT");
+  } finally {
+    fs.rmSync(project, { recursive: true, force: true });
+  }
+});
+
+test("shipped graphify hook reports a diagnostic marker when its implementation is missing", () => {
+  // The silent no-op is the actual damage of issue #152: an inert hook is
+  // indistinguishable from a healthy one, so the knowledge graph stops
+  // updating with no error, no log line and no differing exit code. The
+  // hook must leave a durable marker and warn instead.
+  const project = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-graphify-unwired-"));
+  try {
+    const scriptsDir = path.join(project, ".agent", "plugins", "graphify", "scripts");
+    fs.mkdirSync(scriptsDir, { recursive: true });
+    const installedHook = path.join(scriptsDir, "post-commit-update.js");
+    fs.copyFileSync(SHARED_HOOK, installedHook);
+
+    // No runtime is installed, so the wrapper cannot resolve its shared
+    // implementation. Run it and assert the failure is reported.
+    const result = spawnSync(process.execPath, [installedHook], {
+      cwd: project,
+      encoding: "utf8",
+    });
+    assert.equal(result.status, 0, "the hook must never block the commit");
+    assert.match(result.stderr, /NOT wired/,
+      "an unwired hook must warn on stderr instead of failing silently");
+
+    const markerPath = path.join(project, ".agent", "plugins", "graphify", ".hook-unwired.json");
+    assert.equal(fs.existsSync(markerPath), true,
+      "an unwired hook must leave a durable diagnostic marker");
+    const marker = JSON.parse(fs.readFileSync(markerPath, "utf8"));
+    assert.equal(marker.kind, "hook_unwired");
+    assert.equal(marker.reason, "shared_implementation_not_found");
+
+    // The doctor must be able to report the condition.
+    const unwired = graphifyHook.readUnwiredMarker(project);
+    assert.equal(unwired.recorded, true);
+    assert.equal(unwired.marker.kind, "hook_unwired");
+  } finally {
+    fs.rmSync(project, { recursive: true, force: true });
+  }
+});
+
+test("the installed git post-commit hook reaches the wrapper", () => {
+  // The git hook installed by `doctor --fix` runs the wrapper by a path
+  // relative to `.git/hooks/`. That path has to climb out of `.git/hooks`
+  // and back into `.agent/`; the previous form resolved to
+  // `<project>/plugins/...`, which does not exist, so the installed hook
+  // never reached the wrapper at all.
+  const project = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-graphify-githook-"));
+  try {
+    const scriptsDir = path.join(project, ".agent", "plugins", "graphify", "scripts");
+    fs.mkdirSync(scriptsDir, { recursive: true });
+    fs.copyFileSync(SHARED_HOOK, path.join(scriptsDir, "post-commit-update.js"));
+    fs.mkdirSync(path.join(project, ".git", "hooks"), { recursive: true });
+
+    const installed = require("../../lib/graphify").hook.installHook({ projectRoot: project });
+    assert.equal(installed.ok, true, "hook install failed: " + (installed.reason || "unknown"));
+
+    const hookScript = fs.readFileSync(path.join(project, ".git", "hooks", "post-commit"), "utf8");
+    const match = hookScript.match(/node\s+"\$\(dirname \"\$0\"\)([^"]+)"/);
+    assert.ok(match, "installed hook must invoke the wrapper by a resolvable path");
+
+    const resolved = path.resolve(path.join(project, ".git", "hooks", match[1]));
+    // The hook script uses $(dirname "$0"), which is the directory the
+    // hook itself lives in.
+    assert.equal(fs.existsSync(resolved), true,
+      "installed hook must point at an existing wrapper; resolved to " + resolved);
   } finally {
     fs.rmSync(project, { recursive: true, force: true });
   }
