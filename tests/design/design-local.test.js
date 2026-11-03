@@ -70,6 +70,30 @@ async function captureStderrAsync(fn) {
 
 // -- readLocalSystem ---------------------------------------------------------
 
+test('local install rejects path traversal and does not follow destination symlinks', () => {
+  const root = makeTmpDir('cortex-design-local-');
+  try {
+    const dir = writeSystem(path.join(root, 'source'));
+    assert.throws(() => local.readLocalSystem({ dir, id: '../escape' }), /Invalid design system id/);
+    const target = path.join(root, 'outside');
+    fs.mkdirSync(target);
+    fs.writeFileSync(path.join(target, 'keep'), 'safe');
+    const dest = path.join(root, 'dest');
+    fs.mkdirSync(dest);
+    fs.symlinkSync(target, path.join(dest, 'link'), 'dir');
+    local.installLocalSystem({ dir, destDir: dest });
+    assert.equal(fs.readFileSync(path.join(target, 'keep'), 'utf8'), 'safe');
+    const link = path.join(root, 'dest-link');
+    fs.symlinkSync(target, link, 'dir');
+    assert.throws(() => local.installLocalSystem({ dir, destDir: link }), /symlink/);
+    const nested = writeSystem(path.join(dest, 'nested'));
+    assert.throws(() => local.installLocalSystem({ dir: nested, destDir: dest }), /source directory/);
+    assert.ok(fs.existsSync(path.join(nested, 'DESIGN.md')));
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('readLocalSystem: reads manifest, DESIGN.md and tokens.css', () => {
   const dir = writeSystem(path.join(makeTmpDir('cortex-design-local-'), 'workbench'));
   try {

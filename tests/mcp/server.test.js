@@ -248,15 +248,18 @@ test("design/install refuses reinstall without force", async () => {
 test("design/install accepts a local directory through `from`", async () => {
   const root = makeFixture();
   try {
+    const localDir = path.join(root, "local-system");
+    fs.mkdirSync(localDir);
+    fs.writeFileSync(path.join(localDir, "DESIGN.md"), "# Local\n");
     const calls = [];
     const h = makeHandler(root, {
       installSystem: async (id, opts) => { calls.push({ id, opts }); return { status: "installed", message: "ok" }; },
     });
-    const result = await call(h, { jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "design/install", arguments: { from: "/tmp/local-system", confirm: true } } });
+    const result = await call(h, { jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "design/install", arguments: { from: localDir, confirm: true } } });
     assert.equal(result.isError, false);
     assert.equal(result.structuredContent.status, "installed");
     assert.equal(calls.length, 1);
-    assert.equal(calls[0].opts.from, "/tmp/local-system");
+    assert.equal(calls[0].opts.from, localDir);
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
 
@@ -271,6 +274,25 @@ test("design/install still requires an id or from", async () => {
     assert.equal(result.isError, true);
     assert.match(result.content[0].text, /id or from required/);
     assert.equal(calls.length, 0);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test("design/install guards a local system whose manifest names an installed id", async () => {
+  const root = makeFixture();
+  try {
+    const dir = path.join(root, "local-system");
+    fs.mkdirSync(dir);
+    fs.writeFileSync(path.join(dir, "DESIGN.md"), "# Local\n");
+    fs.writeFileSync(path.join(dir, "manifest.json"), JSON.stringify({ id: "acme" }));
+    let calls = 0;
+    const h = makeHandler(root, { installSystem: async () => { calls++; return { status: "installed" }; } });
+    const invoke = (force) => call(h, { jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "design/install", arguments: { from: dir, confirm: true, force } } });
+    const rejected = await invoke(false);
+    assert.equal(rejected.isError, true);
+    assert.match(rejected.content[0].text, /already installed/);
+    assert.equal(calls, 0);
+    assert.equal((await invoke(true)).isError, false);
+    assert.equal(calls, 1);
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
 
