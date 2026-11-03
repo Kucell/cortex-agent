@@ -7,6 +7,15 @@ const facts = require("../../lib/governed/windows-identity-facts");
 const holders = require("../../lib/governed/windows-channel-holders");
 
 describe("governed/windows-identity-facts - CIM facts", () => {
+  test("a live Windows process has precise CIM facts", { skip: process.platform !== "win32" }, () => {
+    const current = facts.readCimFacts(process.pid);
+    assert.ok(current);
+    assert.match(current.creationTicks, /^\d+$/);
+    assert.ok(current.commandLine && current.commandLine.trim());
+    assert.equal(facts.readWindowsStartToken(process.pid), `win32:${current.creationTicks}`);
+    assert.match(facts.readWindowsCommandDigest(process.pid), /^sha256:[0-9a-f]{64}$/);
+  });
+
   test("successful CIM output returns creation ticks and command line", (t) => {
     const childProcess = require("node:child_process");
     const modulePath = require.resolve("../../lib/governed/windows-identity-facts");
