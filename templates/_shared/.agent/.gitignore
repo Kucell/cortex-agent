@@ -21,6 +21,15 @@ plugins/graphify/.hook-unwired.json
 plugins/graphify/.density-baseline.json
 plugins/graphify/.density-rebuild-state.json
 
+# The atomic-write temp files. Each writer uses an exclusive name
+# (`.NAME.tmp-<pid>-<random>`) so concurrent writers cannot publish each
+# other's half-written file; they exist only for the duration of the write.
+plugins/graphify/.*.tmp-*
+
+# The rebuild lock is a transient, machine-local mutex. It exists only while a
+# rebuild is running, so it must never be shared between machines.
+plugins/graphify/.density-rebuild.lock
+
 # Graphify detached full-rebuild logs. The runtime-artifact convention puts
 # every artifact under .agent/, never in the temp directory; the logs are
 # local-only and must not enter the source tree.
