@@ -7,6 +7,26 @@ const facts = require("../../lib/governed/windows-identity-facts");
 const holders = require("../../lib/governed/windows-channel-holders");
 
 describe("governed/windows-identity-facts - CIM facts", () => {
+  test("successful CIM output returns creation ticks and command line", (t) => {
+    const childProcess = require("node:child_process");
+    const modulePath = require.resolve("../../lib/governed/windows-identity-facts");
+    const original = require.cache[modulePath];
+    t.mock.method(childProcess, "spawnSync", () => ({
+      status: 0,
+      stdout: "CIM_FACTS=OK\nCIM_TICKS=638000000000000000\nCIM_CMDLINE_B64=bm9kZSBob3N0Lmpz\n",
+      stderr: "",
+    }));
+    try {
+      delete require.cache[modulePath];
+      const fresh = require(modulePath);
+      assert.deepEqual(fresh.readCimFacts(123), {
+        creationTicks: "638000000000000000", commandLine: "node host.js",
+      });
+    } finally {
+      require.cache[modulePath] = original;
+    }
+  });
+
   test("an invalid pid yields no facts", () => {
     assert.equal(facts.readCimFacts(0), null);
     assert.equal(facts.readCimFacts(-1), null);
@@ -37,6 +57,27 @@ describe("governed/windows-identity-facts - CIM facts", () => {
 });
 
 describe("governed/windows-channel-holders - kernel object enumeration", () => {
+  test("a valid pid invokes the stdin-backed helper and fails closed on execution failure", (t) => {
+    const childProcess = require("node:child_process");
+    const factsPath = require.resolve("../../lib/governed/windows-identity-facts");
+    const holdersPath = require.resolve("../../lib/governed/windows-channel-holders");
+    const originalFacts = require.cache[factsPath];
+    const originalHolders = require.cache[holdersPath];
+    const spawn = t.mock.method(childProcess, "spawnSync", () => ({ status: 1, stdout: "", stderr: "" }));
+    try {
+      delete require.cache[factsPath];
+      delete require.cache[holdersPath];
+      const fresh = require(holdersPath);
+      const result = fresh.readWindowsChannelHolders(123, 456);
+      assert.deepEqual(result, { ok: false, pids: [], reason: "powershell-failed:1" });
+      assert.equal(spawn.mock.callCount(), 1);
+      assert.match(spawn.mock.calls[0].arguments[2].input, /NtQuerySystemInformation/);
+    } finally {
+      require.cache[factsPath] = originalFacts;
+      require.cache[holdersPath] = originalHolders;
+    }
+  });
+
   test("an invalid child pid is rejected before anything is executed", () => {
     const result = holders.readWindowsChannelHolders(0, process.pid);
     assert.equal(result.ok, false);
