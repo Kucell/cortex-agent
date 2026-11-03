@@ -175,6 +175,7 @@
     "lib/governed/launcher.js",
     "lib/governed/pi-launch.js",
     "lib/graphify/density.js",
+    "lib/graphify/full-rebuild-runner.js",
     "lib/graphify/hook.js",
     "lib/graphify/index.js",
     "lib/graphify/manifest.js",
