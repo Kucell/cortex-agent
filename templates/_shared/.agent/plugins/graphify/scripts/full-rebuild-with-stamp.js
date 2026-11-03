@@ -75,12 +75,34 @@ console.log(
 // whole rebuild. This process OWNS that lock and releases it when it ends --
 // including on failure, so a failed rebuild does not wedge the project.
 const lockPath = process.env.GRAPHIFY_REBUILD_LOCK_PATH || null;
+let released = false;
 function releaseLock() {
-  if (!lockPath) return;
+  if (released || !lockPath) return;
+  released = true;
+  // Only remove the lock when it is still OURS. A lock that was reclaimed
+  // as stale belongs to somebody else now, and removing it would break the
+  // mutual exclusion for the new holder.
+  try {
+    const current = JSON.parse(fs.readFileSync(lockPath, "utf8"));
+    const token = process.env.GRAPHIFY_REBUILD_LOCK_TOKEN || null;
+    if (token && current && current.token && current.token !== token) return;
+  } catch (err) {
+    if (err && err.code === "ENOENT") return;
+    // A corrupt lock cannot be attributed to a holder; removing it keeps the
+    // project usable.
+  }
   try { fs.unlinkSync(lockPath); } catch (_) { /* already released */ }
 }
 
-// Release the lock on every exit path, including an uncaught exception.
+// Release the lock on every exit path, including an uncaught exception and
+// a termination signal. A lock leaked by a killed rebuild would skip every
+// incremental update until the stale reaper ran.
+for (const signal of ["SIGTERM", "SIGINT", "SIGHUP"]) {
+  process.on(signal, () => {
+    releaseLock();
+    process.exit(143);
+  });
+}
 process.on("exit", releaseLock);
 process.on("uncaughtException", (err) => {
   console.error(`[graphify-full] FAILED: ${err && err.message ? err.message : String(err)}`);

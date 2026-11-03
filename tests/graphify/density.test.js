@@ -58,6 +58,21 @@ function cleanup(root) {
   try { fs.rmSync(root, { recursive: true, force: true }); } catch (_) { /* best-effort */ }
 }
 
+// A spawn stand-in that records the call and never launches anything.
+// `startFullRebuild` spawns the framework's runner DETACHED, which would
+// otherwise start a real `graphify extract . --force` in the test's
+// working directory.
+function stubSpawn(record) {
+  return (command, args, options) => {
+    record.push({ command, args, options });
+    return {
+      pid: 424242,
+      on() { return this; },
+      unref() {},
+    };
+  };
+}
+
 test("density: low density triggers the full rebuild", () => {
   const root = mkProject("low-density");
   try {
@@ -275,7 +290,8 @@ test("density: the rebuild cooldown suppresses a burst of rebuilds", () => {
       JSON.stringify({ startedAt: new Date().toISOString(), pid: 1, logPath: "x" }),
     );
     const config = density.readThresholdConfig(root);
-    const result = density.startFullRebuild({ projectRoot: root, config });
+    const spawnCalls = [];
+    const result = density.startFullRebuild({ projectRoot: root, config, spawnImpl: stubSpawn(spawnCalls) });
     assert.equal(result.started, false);
     assert.equal(result.reason, "rebuild_cooldown");
     assert.ok(result.retryAfterSeconds > 0);
@@ -353,7 +369,8 @@ test("density: a concurrent rebuild start is refused instead of spawning a secon
     // Hold the lock the way a running rebuild would.
     const held = density.acquireRebuildLock(root);
     assert.ok(held);
-    const result = density.startFullRebuild({ projectRoot: root, config });
+    const spawnCalls = [];
+    const result = density.startFullRebuild({ projectRoot: root, config, spawnImpl: stubSpawn(spawnCalls) });
     assert.equal(result.started, false);
     assert.equal(result.reason, "rebuild_in_progress");
     held.release();
@@ -481,18 +498,29 @@ test("density: the full rebuild uses a command that really rebuilds from scratch
       full_rebuild_timeout_seconds: 60,
     });
     const config = density.readThresholdConfig(root);
-    const result = density.startFullRebuild({ projectRoot: root, config });
+    const spawnCalls = [];
+    const result = density.startFullRebuild({ projectRoot: root, config, spawnImpl: stubSpawn(spawnCalls) });
     assert.equal(result.started, true);
-    assert.equal(result.wrapper, null, "the fallback path is used when no wrapper is installed");
+    assert.ok(result.runner, "the rebuild is driven by the framework's own runner");
+    assert.ok(fs.existsSync(result.runner), "the runner must exist");
+    // The runner must invoke the command that really rebuilds from scratch.
+    const source = fs.readFileSync(result.runner, "utf8");
+    assert.match(source, /"extract", "\.", "--force"/,
+      "the runner must force a full extraction");
+    assert.match(source, /GRAPHIFY_FORCE/,
+      "the runner must also set the env-var form of the same switch");
   } finally {
     cleanup(root);
   }
 });
 
-test("density: the fallback rebuild starts a watchdog that bounds the rebuild", () => {
-  // The fallback path spawns graphify directly, so nothing applies the
-  // timeout. Without a watchdog a stuck rebuild would live forever.
-  const root = mkProject("watchdog");
+test("density: the rebuild runner bounds the rebuild in the process that owns it", () => {
+  // The timeout, the lock and the stamp all belong to the runner process.
+  // An external watchdog would have to track the child's liveness across
+  // process boundaries, and every such mechanism has a failure mode of
+  // its own: an unreferenced timer lets it exit early, a mis-indexed
+  // argument slot passes the timeout where the PID belongs.
+  const root = mkProject("runner");
   try {
     writeGraph(root, { nodes: 200, edges: 100 });
     writeThreshold(root, {
@@ -503,9 +531,18 @@ test("density: the fallback rebuild starts a watchdog that bounds the rebuild", 
       full_rebuild_timeout_seconds: 60,
     });
     const config = density.readThresholdConfig(root);
-    const result = density.startFullRebuild({ projectRoot: root, config });
+    const spawnCalls = [];
+    const result = density.startFullRebuild({ projectRoot: root, config, spawnImpl: stubSpawn(spawnCalls) });
     assert.equal(result.started, true);
     assert.ok(result.lockPath, "the rebuild must record the lock it holds");
+    assert.equal(spawnCalls.length, 1);
+    assert.ok(spawnCalls[0].args[0].endsWith("full-rebuild-runner.js"),
+      "the rebuild must be driven by the framework's own runner");
+    const runnerSource = fs.readFileSync(result.runner, "utf8");
+    assert.match(runnerSource, /timeout: timeoutMs/,
+      "the runner must apply the timeout to the build it runs");
+    assert.match(runnerSource, /releaseLock/,
+      "the runner must release the lock it owns");
   } finally {
     cleanup(root);
   }
@@ -532,6 +569,109 @@ test("density: the baseline is not stamped over a graph that changed under it", 
     });
     assert.equal(refused.ok, false);
     assert.equal(refused.reason, "graph_changed_during_rebuild");
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("density: a lock release never removes somebody else's lock", () => {
+  // A holder whose lock was reclaimed as stale must not delete the NEW
+  // holder's lock when it finally cleans up.
+  const root = mkProject("lock-ownership");
+  try {
+    const first = density.acquireRebuildLock(root);
+    assert.ok(first);
+    // Simulate the stale reclaim: somebody else takes the lock over.
+    fs.writeFileSync(density.rebuildLockPath(root), JSON.stringify({
+      token: "someone-else",
+      pid: process.pid,
+      acquiredAt: new Date().toISOString(),
+    }));
+    first.release();
+    assert.equal(fs.existsSync(density.rebuildLockPath(root)), true,
+      "a release must not remove a lock it does not own");
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("density: a lock whose holder is gone is reclaimed", () => {
+  // A lock left behind by a crashed process would otherwise block every
+  // incremental update until the age-based reaper runs.
+  const root = mkProject("lock-stale-pid");
+  try {
+    fs.mkdirSync(path.join(root, ".agent", "plugins", "graphify"), { recursive: true });
+    fs.writeFileSync(density.rebuildLockPath(root), JSON.stringify({
+      token: "dead",
+      pid: 999999999,
+      acquiredAt: new Date().toISOString(),
+    }));
+    const acquired = density.acquireRebuildLock(root);
+    assert.ok(acquired, "a lock whose holder is gone must be reclaimed");
+    acquired.release();
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("density: the pending update queue records and replays a deferred request", () => {
+  // A commit that arrives while the rebuild lock is busy must not be lost.
+  const root = mkProject("pending-queue");
+  try {
+    const written = density.writePendingUpdate(root, {
+      changedPaths: ["src/a.js"],
+      sourceHead: "abc123",
+      branch: "main",
+    });
+    assert.equal(written.ok, true);
+    assert.equal(fs.existsSync(density.pendingPath(root)), true);
+
+    const pending = density.takePendingUpdate(root);
+    assert.ok(pending);
+    assert.deepEqual(pending.changedPaths, ["src/a.js"]);
+    assert.equal(pending.sourceHead, "abc123");
+    // Taking the record clears it, so it is replayed exactly once.
+    assert.equal(fs.existsSync(density.pendingPath(root)), false);
+    assert.equal(density.takePendingUpdate(root), null);
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("density: the baseline migration never overwrites a newer baseline", () => {
+  // The migration publishes a CREATE. A full rebuild that finished in the
+  // meantime may already have published a newer baseline; replacing it
+  // with the older _meta value would lower the threshold.
+  const root = mkProject("migration-no-clobber");
+  try {
+    writeGraph(root, { nodes: 200, edges: 400, meta: { edge_node_ratio: 2 } });
+    // A newer baseline already exists.
+    density.writeFileAtomic(density.baselinePath(root), JSON.stringify({ edge_node_ratio: 4 }) + "\n");
+    const migrated = density.migrateMetaBaseline(root);
+    assert.equal(migrated.migrated, false);
+    assert.equal(density.readBaselineSidecar(root).edge_node_ratio, 4,
+      "the newer baseline must survive the migration");
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("density: the runner releases the lock on every exit path", () => {
+  // A lock leaked by a failed rebuild would skip every incremental update
+  // until the stale reaper ran.
+  const root = mkProject("runner-release");
+  try {
+    const runner = path.join(ROOT, "lib", "graphify", "full-rebuild-runner.js");
+    const source = fs.readFileSync(runner, "utf8");
+    const releaseCalls = (source.match(/releaseLock\(\)/g) || []).length;
+    assert.ok(releaseCalls >= 5,
+      "the runner must release the lock on every exit path");
+    assert.match(source, /process\.on\("exit", releaseLock\)/,
+      "the lock must be released even on an abnormal exit");
+    for (const signal of ["SIGTERM", "SIGINT", "SIGHUP"]) {
+      assert.ok(source.includes(signal),
+        "the runner must handle " + signal);
+    }
   } finally {
     cleanup(root);
   }
