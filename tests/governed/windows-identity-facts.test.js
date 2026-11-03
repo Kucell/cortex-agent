@@ -69,6 +69,30 @@ describe("governed/windows-identity-facts - CIM facts", () => {
 });
 
 describe("governed/windows-channel-holders - kernel object enumeration", () => {
+  test("reads the types of real Windows process and file handles", { skip: process.platform !== "win32" }, () => {
+    const { spawnSync } = require("node:child_process");
+    const script = [
+      "$ErrorActionPreference = 'Stop'",
+      "$source = [Console]::In.ReadToEnd()",
+      "Add-Type -TypeDefinition $source -Language CSharp",
+      "$method = [CortexWindowsChannelHolders].GetMethod('QueryTypeName', [Reflection.BindingFlags] 'NonPublic,Static')",
+      "$handle = [Diagnostics.Process]::GetCurrentProcess().Handle",
+      "$name = $method.Invoke($null, @($handle))",
+      "[Console]::Out.WriteLine('TYPE_PROCESS=' + $name)",
+      "$file = [IO.File]::OpenRead([Diagnostics.Process]::GetCurrentProcess().MainModule.FileName)",
+      "try { $name = $method.Invoke($null, @($file.SafeFileHandle.DangerousGetHandle())); [Console]::Out.WriteLine('TYPE_FILE=' + $name) } finally { $file.Dispose() }",
+    ].join("; ");
+    const result = spawnSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script], {
+      input: holders.HOLDER_HELPER_SOURCE,
+      encoding: "utf8",
+      timeout: 15000,
+    });
+    assert.equal(result.error, undefined);
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /TYPE_PROCESS=Process\s/i);
+    assert.match(result.stdout, /TYPE_FILE=File\s*$/i);
+  });
+
   test("a valid pid invokes the stdin-backed helper and fails closed on execution failure", (t) => {
     const childProcess = require("node:child_process");
     const factsPath = require.resolve("../../lib/governed/windows-identity-facts");
