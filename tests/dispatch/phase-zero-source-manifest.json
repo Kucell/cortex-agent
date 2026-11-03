@@ -140,6 +140,7 @@
     "lib/design/cli.js",
     "lib/design/fetch.js",
     "lib/design/license.js",
+    "lib/design/local.js",
     "lib/design/lockfile.js",
     "lib/design/registry.js",
     "lib/design/resolve.js",
