@@ -319,17 +319,27 @@ test("density: checkAndMaybeRebuild never throws and reports the decision", () =
   }
 });
 
-test("density: stamping the baseline mirrors the value into graph.json _meta", () => {
+test("density: stamping the baseline never rewrites graph.json", () => {
+  // The framework used to MIRROR the baseline into `graph.json._meta`. The
+  // mirror is a read-modify-write of the WHOLE graph file: it publishes the
+  // snapshot it read, so a graph that was replaced in the meantime is
+  // silently reverted -- a newer, larger graph replaced by an older one.
+  //
+  // The sidecar is the durable copy, so the framework does not write the
+  // graph at all: the graph belongs to the Graphify CLI alone.
   const root = mkProject("meta-mirror");
   try {
     writeGraph(root, { nodes: 100, edges: 250 });
+    const before = fs.readFileSync(density.graphPath(root), "utf8");
     const stamp = density.stampBaseline(root, { nodes: 100, edges: 250, buildKind: "full" });
     assert.equal(stamp.ok, true);
-    assert.equal(stamp.metaStamped, true);
-    const graph = JSON.parse(fs.readFileSync(density.graphPath(root), "utf8"));
-    assert.equal(graph._meta.edge_node_ratio, 2.5);
-    assert.equal(graph._meta.build_kind, "full");
-    assert.ok(graph._meta.baseline_locked_at);
+    assert.equal(stamp.metaStamped, false, "the framework must not write the graph");
+    const after = fs.readFileSync(density.graphPath(root), "utf8");
+    assert.equal(after, before, "graph.json must be byte-identical after the stamp");
+    const sidecar = density.readBaselineSidecar(root);
+    assert.equal(sidecar.edge_node_ratio, 2.5, "the sidecar carries the baseline");
+    assert.equal(sidecar.build_kind, "full");
+    assert.ok(sidecar.baseline_locked_at);
   } finally {
     cleanup(root);
   }
@@ -398,14 +408,16 @@ test("density: the sidecar is written with an exclusive temp name", () => {
   }
 });
 
-test("density: the _meta mirror never rolls a newer graph back", () => {
-  // The mirror is a read-modify-write of the WHOLE graph. If the graph was
-  // replaced between the read and the write, publishing the snapshot reverts
-  // the newer graph. The mirror must refuse in that case.
+test("density: a stamp never rolls a newer graph back", () => {
+  // The baseline used to be mirrored into `graph.json._meta`, and the
+  // mirror was a read-modify-write of the whole graph: a graph that was
+  // replaced between the read and the write was reverted -- a newer, larger
+  // graph replaced by an older one.
   //
-  // The race window is BETWEEN the read and the write inside the mirror, so
-  // the test injects the concurrent publisher exactly there: the graph is
-  // replaced after the mirror has parsed it but before it publishes.
+  // The framework does not write the graph at all any more, so the race is
+  // gone by construction. The test injects a concurrent publisher exactly
+  // where the mirror used to publish -- between the comparison and the
+  // publication -- and asserts that the newer graph survives the stamp.
   const root = mkProject("meta-no-rollback");
   try {
     writeGraph(root, { nodes: 100, edges: 250 });
@@ -415,35 +427,22 @@ test("density: the _meta mirror never rolls a newer graph back", () => {
       nodes: Array.from({ length: 150 }, (_, i) => ({ id: `n${i}` })),
       links: [],
     };
-    const realReadFileSync = fs.readFileSync;
     let injected = false;
-    // Replace the graph right AFTER the mirror read it and BEFORE it
-    // publishes. The mirror compares the file identity it parsed with the
-    // identity on disk, so the replacement is detected.
-    fs.readFileSync = function patched(target, ...rest) {
-      const result = realReadFileSync.call(fs, target, ...rest);
-      if (!injected && String(target) === file) {
+    let stamp;
+    stamp = density.stampBaseline(root, {
+      nodes: 100,
+      edges: 250,
+      buildKind: "full",
+      onBeforeAppend: () => {
         injected = true;
         fs.writeFileSync(file, JSON.stringify(newer, null, 2));
-      }
-      return result;
-    };
-
-    const payload = {
-      build_kind: "full",
-      edge_node_ratio: 2.5,
-      baseline_locked_at: new Date().toISOString(),
-    };
-    let stamped;
-    try {
-      stamped = density.stampGraphMeta(root, payload);
-    } finally {
-      fs.readFileSync = realReadFileSync;
-    }
+      },
+    });
     assert.equal(injected, true, "the concurrent publisher must have been injected");
-    assert.equal(stamped, false, "the mirror must refuse to publish over a changed graph");
+    assert.equal(stamp.ok, true, "the stamp itself must still succeed");
     const after = JSON.parse(fs.readFileSync(file, "utf8"));
     assert.equal(after.nodes.length, 150, "the newer graph must survive");
+    assert.equal(after._meta, undefined, "the framework must not add _meta to the graph");
   } finally {
     cleanup(root);
   }

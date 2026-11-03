@@ -17,6 +17,7 @@ const { spawn, spawnSync } = require("node:child_process");
 
 const density = require("../../lib/graphify/density");
 const hook = require("../../lib/graphify/hook");
+const markers = require("../../lib/graphify/markers");
 
 const ROOT = path.resolve(__dirname, "..", "..");
 const WORK_ROOT = path.join(ROOT, ".agent-work", "test-density-regression");
@@ -881,6 +882,338 @@ test("regression: a broken sidecar does not block the migration for ever", () =>
     assert.equal(migrated.migrated, true,
       "an invalid sidecar must not block the migration: " + migrated.reason);
     assert.equal(density.readBaselineSidecar(root).edge_node_ratio, 2);
+  } finally {
+    cleanup(root);
+  }
+});
+
+// ─── Round 10: the fences that survived the ninth review ───────────────────
+
+test("regression: a marker that is replaced right before the clear is never deleted", () => {
+  // The clear used to CHECK the marker and then DELETE it by path. A
+  // consumer that published a new marker between the two steps lost its
+  // reminder for good: the request it belonged to had already been
+  // confirmed, so nothing would ever publish it again.
+  //
+  // The clear now moves the file aside with an atomic rename and compares
+  // the content that was moved with the content it read. The concurrent
+  // marker is detected and put back.
+  const root = mkProject("marker-replace-race");
+  try {
+    const graphDir = path.join(root, "graphify-out");
+    markers.writeMarker({
+      graphDir,
+      kind: markers.KIND.UPDATE_FAILED,
+      reason: "graphify_update_failed:1",
+      changedPaths: ["src/a.js"],
+    });
+    const before = markers.readMarker(graphDir);
+    assert.equal(before.ok, true, "the marker must be readable");
+    const markerPath = path.join(graphDir, markers.MARKER_FILENAME);
+    const realRename = fs.renameSync;
+    fs.renameSync = function patched(from, to) {
+      // A concurrent consumer publishes a NEW marker right before the clear
+      // takes the file away.
+      if (String(from) === markerPath) {
+        markers.writeMarker({
+          graphDir,
+          kind: markers.KIND.SEMANTIC,
+          reason: "semantic_changes_only",
+          changedPaths: ["docs/concurrent.md"],
+        });
+      }
+      return realRename.call(fs, from, to);
+    };
+    let cleared;
+    try {
+      cleared = markers.clearMarkerIfUnchanged(graphDir, before.identity, {
+        kinds: markers.CLEARABLE_BY_INCREMENTAL,
+      });
+    } finally {
+      fs.renameSync = realRename;
+    }
+    assert.equal(cleared.cleared, false,
+      "the clear must not claim a marker it did not read");
+    const after = markers.readMarker(graphDir);
+    assert.equal(after.ok, true, "the concurrent marker must survive");
+    assert.equal(after.marker.kind, markers.KIND.SEMANTIC);
+    assert.deepEqual(after.marker.changedPaths, ["docs/concurrent.md"]);
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("regression: a code-only hook never clears a semantic marker", () => {
+  // A successful incremental update used to clear whatever marker it found.
+  // An incremental update rebuilds the CODE corpus only, so it does not
+  // answer a SEMANTIC reminder -- clearing it dropped the only persistent
+  // trace of a semantic change that nothing had rebuilt.
+  const root = mkProject("hook-semantic-marker");
+  const oldPath = process.env.PATH;
+  try {
+    const stub = installStub(root);
+    process.env.PATH = stub.bin + ":" + oldPath;
+    writeGraph(root, { nodes: 200, edges: 400 });
+    fs.writeFileSync(
+      path.join(root, ".agent", "plugins", "graphify", "config.yml"),
+      "enabled: true\n",
+    );
+    const graphDir = path.join(root, "graphify-out");
+    markers.writeMarker({
+      graphDir,
+      kind: markers.KIND.SEMANTIC,
+      reason: "semantic_changes_only",
+      changedPaths: ["docs/concurrent.md"],
+    });
+    const result = hook.runPostCommit({ cwd: root, changedPaths: ["src/module.js"] });
+    assert.equal(result.result, "incremental_ok",
+      "the hook must report success: " + JSON.stringify(result));
+    const after = markers.readMarker(graphDir);
+    assert.equal(after.ok, true, "the semantic marker must survive a code-only update");
+    assert.equal(after.marker.kind, markers.KIND.SEMANTIC);
+    assert.deepEqual(after.marker.changedPaths, ["docs/concurrent.md"]);
+  } finally {
+    process.env.PATH = oldPath;
+    cleanup(root);
+  }
+});
+
+test("regression: a mixed commit leaves a semantic reminder", () => {
+  // A commit that carries code AND semantic changes leaves the semantic
+  // corpus stale: the incremental update does not rebuild it. The reminder
+  // has to be written, or the semantic part of the commit has no trace at
+  // all.
+  const root = mkProject("hook-mixed-commit");
+  const oldPath = process.env.PATH;
+  try {
+    const stub = installStub(root);
+    process.env.PATH = stub.bin + ":" + oldPath;
+    writeGraph(root, { nodes: 200, edges: 400 });
+    fs.writeFileSync(
+      path.join(root, ".agent", "plugins", "graphify", "config.yml"),
+      "enabled: true\n",
+    );
+    const graphDir = path.join(root, "graphify-out");
+    const result = hook.runPostCommit({
+      cwd: root,
+      changedPaths: ["src/module.js", "docs/spec.md"],
+    });
+    assert.equal(result.result, "incremental_ok",
+      "the hook must report success: " + JSON.stringify(result));
+    const after = markers.readMarker(graphDir);
+    assert.equal(after.ok, true, "the semantic part of the commit needs a reminder");
+    assert.equal(after.marker.kind, markers.KIND.SEMANTIC);
+    assert.deepEqual(after.marker.changedPaths, ["docs/spec.md"]);
+  } finally {
+    process.env.PATH = oldPath;
+    cleanup(root);
+  }
+});
+
+test("regression: a drain hands back the groups it never reached", () => {
+  // The drain CLAIMS the requests it takes: a claimed request is not in the
+  // queue any more. A drain that stopped early -- because it could not
+  // publish its marker -- used to leave the groups it had not reached
+  // claimed: they were invisible to every other consumer and only the
+  // abandoned-claim window (hours) could recover them.
+  const root = mkProject("drain-unreached-groups");
+  try {
+    const stub = installStub(root);
+    // The marker path is occupied by a directory, so the rename that
+    // publishes the marker fails and the drain stops.
+    const graphDir = path.join(root, "graphify-out");
+    fs.mkdirSync(path.join(graphDir, ".graphify-stale.json"), { recursive: true });
+    density.writePendingUpdate(root, {
+      changedPaths: ["docs/first.md"],
+      semanticPaths: ["docs/first.md"],
+      attempts: 0,
+    });
+    density.writePendingUpdate(root, {
+      changedPaths: ["docs/second.md"],
+      semanticPaths: ["docs/second.md"],
+      attempts: 1,
+    });
+    const runner = path.join(ROOT, "lib", "graphify", "full-rebuild-runner.js");
+    const run = spawnSync(process.execPath, [runner, "--drain-pending"], {
+      cwd: root,
+      encoding: "utf8",
+      env: stubEnv(stub),
+      timeout: 60_000,
+    });
+    assert.notEqual(run.status, 0, "the drain must report the failure");
+    const names = pendingNames(root);
+    assert.equal(names.filter((n) => n.startsWith(".claimed-")).length, 0,
+      "no claim may stay claimed: " + names.join(","));
+    assert.equal(names.length, 2,
+      "BOTH requests must be visible for the next attempt: " + names.join(","));
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("regression: the legacy single-object sidecar is still read", () => {
+  // The version that published the baseline by REPLACING the file wrote one
+  // pretty-printed JSON object. A reader that only understands the log
+  // format would silently lose the baseline, and the guard would stop
+  // firing without a word.
+  const root = mkProject("legacy-sidecar");
+  try {
+    writeGraph(root, { nodes: 200, edges: 400 });
+    fs.mkdirSync(path.dirname(density.baselinePath(root)), { recursive: true });
+    fs.writeFileSync(density.baselinePath(root), JSON.stringify({
+      schemaVersion: "1.0",
+      kind: "stamp",
+      priority: 1,
+      build_kind: "full",
+      edge_node_ratio: 2.5,
+      nodes: 100,
+      edges: 250,
+      baseline_locked_at: "2026-11-03T00:00:00.000Z",
+    }, null, 2) + "\n");
+    const sidecar = density.readBaselineSidecar(root);
+    assert.ok(sidecar, "the legacy sidecar must be read");
+    assert.equal(sidecar.edge_node_ratio, 2.5);
+    assert.equal(sidecar.build_kind, "full");
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("regression: a legacy claim keeps the retry budget of its body", () => {
+  // A claim of the older format carries no attempt suffix: its counter
+  // lives in the body. A recovery that read the suffix -- or that reset
+  // the counter -- gave a request that had already failed several times a
+  // fresh budget.
+  const root = mkProject("legacy-claim");
+  try {
+    const dir = density.pendingDir(root);
+    fs.mkdirSync(dir, { recursive: true });
+    const stale = Date.now() - 7 * 60 * 60 * 1000;
+    fs.writeFileSync(
+      path.join(dir, ".claimed-999999-" + stale + "-abcdef123456.json"),
+      JSON.stringify({
+        changedPaths: ["src/legacy.js"],
+        semanticPaths: [],
+        sourceHead: null,
+        branch: null,
+        attempts: 3,
+      }),
+    );
+    const taken = density.takePendingUpdate(root);
+    assert.ok(taken, "the legacy claim must be recovered");
+    assert.equal(taken.attempts, 3,
+      "the budget of the body must survive the recovery");
+    const names = pendingNames(root);
+    assert.ok(names.some((n) => /-a3[.-]/.test(n)),
+      "the recovered request must carry its budget: " + names.join(","));
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("regression: the artifacts of a displaced holder are dropped", () => {
+  // A holder that LOST the lock may still be alive and may still publish.
+  // Its artifacts are fenced by its TOKEN, so only that holder is
+  // distrusted -- a healthy holder that took the lock in the meantime
+  // keeps its authority.
+  const root = mkProject("displaced-holder");
+  try {
+    const lock = density.acquireRebuildLock(root);
+    assert.ok(lock, "the lock must be acquired");
+    const stamp = density.stampBaseline(root, {
+      nodes: 100,
+      edges: 500,
+      buildKind: "full",
+      lockGeneration: lock.generation,
+      lockToken: lock.token,
+    });
+    assert.equal(stamp.ok, true, "the stamp must succeed while the holder owns the lock");
+    assert.equal(density.readBaselineSidecar(root).edge_node_ratio, 5);
+
+    // Another holder owns the path now: this holder was displaced without
+    // knowing it.
+    fs.writeFileSync(density.rebuildLockPath(root), JSON.stringify({
+      token: "other-holder",
+      pid: process.pid,
+      acquiredAt: new Date().toISOString(),
+      generation: lock.generation,
+    }));
+    const released = lock.release();
+    assert.equal(released, false, "the release must report that the lock was not ours");
+
+    assert.equal(density.readBaselineSidecar(root), null,
+      "the record of a displaced holder must be dropped by the readers");
+    const after = density.stampBaseline(root, {
+      nodes: 100,
+      edges: 250,
+      buildKind: "full",
+      lockToken: lock.token,
+    });
+    assert.equal(after.ok, false, "a displaced holder must not publish");
+    assert.equal(after.reason, "lock_displaced");
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("regression: the lock epoch never goes backwards", () => {
+  // The epoch used to be a counter that was READ, incremented and written
+  // back. Two publishers that read the same value wrote the same value
+  // back, so the epoch went backwards -- and an epoch that goes backwards
+  // is no fence at all.
+  const root = mkProject("epoch-monotonic");
+  try {
+    const generations = [];
+    for (let round = 0; round < 3; round += 1) {
+      // A lock whose holder is gone: the reclaim takes it over.
+      fs.mkdirSync(path.dirname(density.rebuildLockPath(root)), { recursive: true });
+      fs.writeFileSync(density.rebuildLockPath(root), JSON.stringify({
+        token: "stale-" + round,
+        pid: 999999,
+        acquiredAt: new Date(Date.now() - 7 * 60 * 60 * 1000).toISOString(),
+        generation: 0,
+      }));
+      const lock = density.acquireRebuildLock(root);
+      assert.ok(lock, "the stale lock must be reclaimed: round " + round);
+      generations.push(lock.generation);
+      lock.release();
+    }
+    for (let index = 1; index < generations.length; index += 1) {
+      assert.ok(generations[index] > generations[index - 1],
+        "the epoch must advance: " + generations.join(","));
+    }
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("regression: a short baseline append is reported as a failure", () => {
+  // A write that lands only PART of the record leaves a fragment on disk.
+  // Reporting that as a publication would tell the caller that the
+  // baseline moved when it did not.
+  const root = mkProject("short-append");
+  try {
+    const realWriteSync = fs.writeSync;
+    fs.writeSync = function patched(fd, ...rest) {
+      const first = rest[0];
+      if (first && typeof first === "object" && typeof first.subarray === "function"
+        && first.length > 8) {
+        // The write lands SHORT: the tail of the record never reaches the
+        // disk, so the file carries a fragment instead of a record.
+        return realWriteSync.call(fs, fd, first.subarray(0, first.length - 8), ...rest.slice(1));
+      }
+      return realWriteSync.call(fs, fd, ...rest);
+    };
+    let stamp;
+    try {
+      stamp = density.stampBaseline(root, { nodes: 100, edges: 500, buildKind: "full" });
+    } finally {
+      fs.writeSync = realWriteSync;
+    }
+    assert.equal(stamp.ok, false, "a short write must not be reported as a publication");
+    assert.equal(stamp.reason, "sidecar_write_failed");
+    // The fragment is skipped by the reader instead of poisoning it.
+    assert.equal(density.readBaselineSidecar(root), null);
   } finally {
     cleanup(root);
   }

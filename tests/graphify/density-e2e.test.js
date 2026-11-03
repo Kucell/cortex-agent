@@ -303,6 +303,10 @@ test("e2e: the runtime install makes the plugin's runtime state ignored", () => 
     assert.equal(result.ok, true);
     assert.ok(result.added.includes("plugins/graphify/.density-baseline.json"));
     assert.ok(result.added.includes("plugins/graphify/.density-rebuild-state.json"));
+    // The monotonic counters and the registry of the displaced lock
+    // holders are local runtime state as well: they describe THIS machine.
+    assert.ok(result.added.includes("plugins/graphify/.density-tickets/"));
+    assert.ok(result.added.includes("plugins/graphify/.density-displaced/"));
     assert.ok(result.added.includes("logs/graphify/"));
 
     const after = fs.readFileSync(ignorePath, "utf8");

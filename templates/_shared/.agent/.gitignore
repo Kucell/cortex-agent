@@ -21,6 +21,19 @@ plugins/graphify/.hook-unwired.json
 plugins/graphify/.density-baseline.json
 plugins/graphify/.density-rebuild-state.json
 
+# The monotonic counters of the density guard. Every number that was
+# handed out is a file of its own, so the counters can never go backwards;
+# they are local runtime state and must not be shared between machines.
+plugins/graphify/.density-tickets/
+
+# The registry of the lock holders that LOST the lock. It is keyed by the
+# lock token, and the readers drop everything a displaced holder published.
+plugins/graphify/.density-displaced/
+
+# The counter of an older version of the guard. It is superseded by the
+# ticket directory above, but a project that ran it still has the file.
+plugins/graphify/.density-generation
+
 # The atomic-write temp files. Each writer uses an exclusive name
 # (`.NAME.tmp-<pid>-<random>`) so concurrent writers cannot publish each
 # other's half-written file; they exist only for the duration of the write.
