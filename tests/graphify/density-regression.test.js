@@ -95,6 +95,14 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+// A synchronous wait, for the tests that drive a child process.
+function sleepSync(ms) {
+  try {
+    const buffer = new Int32Array(new SharedArrayBuffer(4));
+    Atomics.wait(buffer, 0, 0, ms);
+  } catch (_) { /* a host without Atomics.wait */ }
+}
+
 test("regression: a live lock that is moved aside is never put back on top of a new holder", () => {
   // The reclaim used to MOVE the lock file aside and then put it back with
   // a rename. The rename REPLACES whatever is at the path, so a holder that
@@ -486,6 +494,394 @@ test("regression: the hook's early returns leave no claim behind", () => {
       "the queued request must still be visible: " + names.join(","));
   } finally {
     process.env.PATH = oldPath;
+    cleanup(root);
+  }
+});
+
+test("regression: a stamp under a stale lock generation is refused", () => {
+  // The fence used to be a CHECK: "is this still my lock?". The lock can
+  // be taken away between the check and the write, and no amount of
+  // re-checking closes that window -- it is the same ABA shape as a
+  // judgement followed by a removal.
+  //
+  // The generation is a VALUE that travels with the artifact: a reclaim
+  // advances it, so a holder that was displaced publishes artifacts that
+  // carry an older generation, and the stamp refuses them.
+  const root = mkProject("generation-fence");
+  try {
+    const lock = density.acquireRebuildLock(root);
+    assert.ok(lock);
+    const generation = lock.generation;
+    // A reclaim advances the generation: the holder that was displaced
+    // keeps its OLD generation. The reclaim needs a lock whose holder is
+    // gone, so the record of a dead process is written over the lock.
+    fs.writeFileSync(density.rebuildLockPath(root), JSON.stringify({
+      token: "dead-token",
+      pid: 999999,
+      acquiredAt: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
+    }));
+    const reclaimed = density.acquireRebuildLock(root, {
+      staleMs: 0,
+      onStaleJudged: () => {},
+    });
+    assert.ok(reclaimed, "the stale lock must be reclaimable");
+    assert.ok(reclaimed.generation > generation,
+      "a reclaim must advance the generation");
+    const stale = density.stampBaseline(root, {
+      nodes: 100,
+      edges: 200,
+      buildKind: "full",
+      lockGeneration: generation,
+    });
+    assert.equal(stale.ok, false, "a stamp under a stale generation must be refused");
+    assert.equal(stale.reason, "lock_generation_stale");
+    assert.equal(density.readBaselineSidecar(root), null,
+      "the refused stamp must not reach the disk");
+    reclaimed.release();
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("regression: a late publication cannot roll the baseline back", () => {
+  // The baseline used to be published by comparing the timestamp and then
+  // renaming over the file. That is a read followed by a write, and two
+  // real runners could roll the baseline back through it: the slower one
+  // passed the comparison, the faster one published the new value, and the
+  // slower one then replaced it with its older one.
+  //
+  // The publication appends instead, and the reader picks the record that
+  // wins the order. A late publication therefore cannot destroy the record
+  // that won it.
+  const root = mkProject("append-only-baseline");
+  try {
+    const newer = density.stampBaseline(root, {
+      nodes: 100,
+      edges: 500,
+      buildKind: "full",
+      now: "2026-11-03T00:01:00.000Z",
+    });
+    assert.equal(newer.ok, true, "the first publication must succeed");
+    // The slow publisher arrives late with an older measurement. It is
+    // refused, and even a publication that slips through must not win.
+    const older = density.stampBaseline(root, {
+      nodes: 100,
+      edges: 200,
+      buildKind: "full",
+      now: "2026-11-03T00:00:00.000Z",
+    });
+    assert.equal(older.ok, false, "the older publication must be refused");
+    assert.equal(older.reason, "baseline_is_newer");
+    const sidecar = density.readBaselineSidecar(root);
+    assert.equal(sidecar.edge_node_ratio, 5,
+      "the baseline in effect must still be the newer one");
+    assert.equal(sidecar.baseline_locked_at, "2026-11-03T00:01:00.000Z");
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("regression: the reader prefers the newest lock generation", () => {
+  // The generation is the trustworthy order: it only advances when a live
+  // holder can be displaced, so it never depends on the wall clock. A
+  // record of a newer generation wins, even when its timestamp is older.
+  const root = mkProject("generation-order");
+  try {
+    density.stampBaseline(root, {
+      nodes: 100,
+      edges: 200,
+      buildKind: "full",
+      now: "2026-11-03T00:05:00.000Z",
+      lockGeneration: 7,
+    });
+    density.stampBaseline(root, {
+      nodes: 100,
+      edges: 500,
+      buildKind: "full",
+      now: "2026-11-03T00:01:00.000Z",
+      lockGeneration: 8,
+    });
+    const sidecar = density.readBaselineSidecar(root);
+    assert.equal(sidecar.edge_node_ratio, 5,
+      "the record of the newer generation must win");
+    assert.equal(sidecar.lock_generation, 8);
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("regression: a migrated baseline never displaces a measured one", () => {
+  // The migration takes the ratio out of the graph meta data -- a snapshot
+  // of an older graph. It must never become the baseline of a project that
+  // has already measured one: a lower baseline lowers the threshold and
+  // weakens the guard.
+  const root = mkProject("migration-priority");
+  try {
+    // The migration runs first: the project carried the consumer-side
+    // convention and no baseline yet.
+    writeGraph(root, { nodes: 200, edges: 400, meta: { edge_node_ratio: 2 } });
+    const migrated = density.migrateMetaBaseline(root);
+    assert.equal(migrated.migrated, true,
+      "the migration must publish the meta baseline: " + migrated.reason);
+    // A full build measures a higher ratio afterwards, with an older
+    // timestamp than the migration carried.
+    const stamp = density.stampBaseline(root, {
+      nodes: 200,
+      edges: 1000,
+      buildKind: "full",
+      now: "2026-11-02T00:00:00.000Z",
+    });
+    assert.equal(stamp.ok, true, "the measured baseline must be published");
+    const sidecar = density.readBaselineSidecar(root);
+    assert.equal(sidecar.edge_node_ratio, 5,
+      "the measured baseline must win over the migrated one");
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("regression: an interrupted publication cannot roll the baseline back", async () => {
+  // The publication reads the log, compares, and then writes. A publisher
+  // that is interrupted between the read and the write used to replace the
+  // file with its own -- OLDER -- record, and the baseline was rolled back.
+  // Two real runners could do exactly that.
+  //
+  // The publication appends, so the interrupted publisher cannot destroy
+  // the record that won the order: the reader still sees the newer one.
+  const root = mkProject("interrupted-publication");
+  try {
+    const ready = path.join(root, "publisher-ready");
+    const go = path.join(root, "publisher-go");
+    const child = path.join(root, "publisher.js");
+    fs.writeFileSync(child, [
+      "const fs = require('node:fs');",
+      "const density = require(process.argv[2]);",
+      "const root = process.argv[3];",
+      "const ready = process.argv[4];",
+      "const go = process.argv[5];",
+      "const result = density.stampBaseline(root, {",
+      "  nodes: 100,",
+      "  edges: 200,",
+      "  buildKind: 'full',",
+      "  now: '2026-11-03T00:00:00.000Z',",
+      "  onBeforeAppend: () => {",
+      "    fs.writeFileSync(ready, '1');",
+      "    const until = Date.now() + 30000;",
+      "    while (!fs.existsSync(go) && Date.now() < until) {",
+      "      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20);",
+      "    }",
+      "  },",
+      "});",
+      "process.stdout.write(JSON.stringify(result));",
+    ].join("\n"));
+    const run = spawn(process.execPath, [
+      child,
+      path.join(ROOT, "lib", "graphify", "density.js"),
+      root,
+      ready,
+      go,
+    ], { cwd: root, stdio: ["ignore", "pipe", "pipe"] });
+    let stdout = "";
+    run.stdout.on("data", (chunk) => { stdout += chunk.toString(); });
+    const closed = new Promise((resolve) => run.on("close", (code) => resolve(code)));
+    const until = Date.now() + 30000;
+    while (!fs.existsSync(ready) && Date.now() < until) await sleep(20);
+    assert.ok(fs.existsSync(ready), "the publisher must reach the seam");
+    // The second publisher writes its newer record while the first one is
+    // suspended between its read and its write.
+    const newer = density.stampBaseline(root, {
+      nodes: 100,
+      edges: 500,
+      buildKind: "full",
+      now: "2026-11-03T00:01:00.000Z",
+    });
+    assert.equal(newer.ok, true, "the second publication must succeed");
+    fs.writeFileSync(go, "1");
+    const status = await closed;
+    assert.equal(status, 0, "the suspended publisher must finish");
+    const sidecar = density.readBaselineSidecar(root);
+    assert.equal(sidecar.edge_node_ratio, 5,
+      "the interrupted publication must not roll the baseline back");
+    assert.equal(sidecar.baseline_locked_at, "2026-11-03T00:01:00.000Z");
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("regression: a semantic marker that cannot be written keeps the request queued", () => {
+  // The drain confirmed the claim BEFORE it wrote the marker. A marker that
+  // failed to land therefore left an empty queue and no reminder at all:
+  // the semantic change lost every persistent trace of itself.
+  const root = mkProject("marker-write-failure");
+  try {
+    const stub = installStub(root);
+    // The marker path is occupied by a directory, so the rename that
+    // publishes the marker fails.
+    const graphDir = path.join(root, "graphify-out");
+    fs.mkdirSync(path.join(graphDir, ".graphify-stale.json"), { recursive: true });
+    density.writePendingUpdate(root, {
+      changedPaths: ["docs/queued.md"],
+      semanticPaths: ["docs/queued.md"],
+    });
+    const runner = path.join(ROOT, "lib", "graphify", "full-rebuild-runner.js");
+    const run = spawnSync(process.execPath, [runner, "--drain-pending"], {
+      cwd: root,
+      encoding: "utf8",
+      env: stubEnv(stub),
+      timeout: 60_000,
+    });
+    assert.notEqual(run.status, 0, "the drain must report the failure");
+    const names = pendingNames(root);
+    assert.equal(names.filter((n) => n.startsWith(".claimed-")).length, 0,
+      "the claim must not stay claimed forever: " + names.join(","));
+    assert.equal(names.length, 1,
+      "the request must stay visible for the next attempt: " + names.join(","));
+    const attempts = /-a(\d+)-/.exec(names[0]);
+    assert.ok(attempts && Number(attempts[1]) >= 1,
+      "the failed attempt must be counted: " + names.join(","));
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("regression: the hook never clears a marker a consumer wrote meanwhile", () => {
+  // The hook cleared the stale marker unconditionally after its update. A
+  // consumer that wrote a NEW marker in the meantime -- for a deferred
+  // semantic change -- lost its reminder, and its request had already been
+  // confirmed.
+  const root = mkProject("marker-generation");
+  const oldPath = process.env.PATH;
+  try {
+    const stub = installStub(root);
+    process.env.PATH = stub.bin + ":" + oldPath;
+    writeGraph(root, { nodes: 200, edges: 400 });
+    fs.writeFileSync(
+      path.join(root, ".agent", "plugins", "graphify", "config.yml"),
+      "enabled: true\n",
+    );
+    // The marker that exists before the hook runs.
+    const markers = require("../../lib/graphify/markers");
+    const graphDir = path.join(root, "graphify-out");
+    markers.writeMarker({
+      graphDir,
+      kind: markers.KIND.SEMANTIC,
+      reason: "semantic_changes_only",
+      changedPaths: ["docs/old.md"],
+    });
+    // The consumer writes a NEW marker while the hook is updating: the stub
+    // stands in for a concurrent drain.
+    const consumerMarker = path.join(root, "consumer-marker.js");
+    fs.writeFileSync(consumerMarker, [
+      "const fs = require('node:fs');",
+      "const path = require('node:path');",
+      // argv[1] is this script; the markers module and the graph
+      // directory follow it.
+      "const markers = require(process.argv[2]);",
+      "markers.writeMarker({",
+      "  graphDir: process.argv[3],",
+      "  kind: markers.KIND.SEMANTIC,",
+      "  reason: 'semantic_changes_only',",
+      "  changedPaths: ['docs/queued.md'],",
+      "});",
+    ].join("\n"));
+    const stubBody = fs.readFileSync(path.join(stub.bin, "graphify"), "utf8");
+    fs.writeFileSync(path.join(stub.bin, "graphify"), stubBody.replace(
+      '  update) echo "update $@" >> "$LOG"; exit 0 ;;',
+      '  update) node "' + consumerMarker + '" "' + path.join(ROOT, "lib", "graphify", "markers.js") + '" "' + graphDir + '" >> "$LOG"; exit 0 ;;',
+    ));
+    fs.chmodSync(path.join(stub.bin, "graphify"), 0o755);
+    const result = hook.runPostCommit({ cwd: root, changedPaths: ["src/a.js"] });
+    assert.equal(result.result, "incremental_ok", "the hook must report success");
+    const after = markers.readMarker(graphDir);
+    assert.ok(after.ok, "the consumer's marker must survive");
+    assert.deepEqual(after.marker.changedPaths, ["docs/queued.md"],
+      "the marker of the concurrent consumer must not be deleted");
+  } finally {
+    process.env.PATH = oldPath;
+    cleanup(root);
+  }
+});
+
+test("regression: a request that cannot be queued is reported as a failure", () => {
+  // The hook reported "safely deferred" even when the queue write itself
+  // failed: the commit's changes were then recorded nowhere, and no marker
+  // pointed at them either.
+  const root = mkProject("queue-publish-failure");
+  const oldPath = process.env.PATH;
+  try {
+    const stub = installStub(root);
+    process.env.PATH = stub.bin + ":" + oldPath;
+    writeGraph(root, { nodes: 200, edges: 400 });
+    fs.writeFileSync(
+      path.join(root, ".agent", "plugins", "graphify", "config.yml"),
+      "enabled: true\n",
+    );
+    // The queue directory cannot be written.
+    const dir = density.pendingDir(root);
+    fs.mkdirSync(dir, { recursive: true });
+    fs.chmodSync(dir, 0o500);
+    const lock = density.acquireRebuildLock(root);
+    assert.ok(lock);
+    const result = hook.runPostCommit({ cwd: root, changedPaths: ["src/lost.js"] });
+    fs.chmodSync(dir, 0o700);
+    assert.equal(result.ok, false, "the hook must report the failure");
+    assert.equal(result.reason, "pending_publish_failed");
+    const markers = require("../../lib/graphify/markers");
+    const marker = markers.readMarker(path.join(root, "graphify-out"));
+    assert.ok(marker.ok, "a failure marker must point at the lost change");
+    lock.release();
+  } finally {
+    process.env.PATH = oldPath;
+    cleanup(root);
+  }
+});
+
+test("regression: the crash recovery keeps the retry budget", () => {
+  // The claim name carried no attempt counter and the body still carried
+  // the counter the request was CREATED with, so a recovery that read the
+  // body reset the budget of a request that had already failed four times.
+  // Every crash could then refresh the budget for ever.
+  const root = mkProject("recovery-budget");
+  try {
+    const dir = density.pendingDir(root);
+    fs.mkdirSync(dir, { recursive: true });
+    const stale = Date.now() - 24 * 60 * 60 * 1000;
+    fs.writeFileSync(
+      path.join(dir, ".claimed-999999-" + stale + "-abcdef123456-a4.json"),
+      JSON.stringify({
+        changedPaths: ["src/retry.js"],
+        semanticPaths: [],
+        sourceHead: null,
+        branch: null,
+        attempts: 0,
+      }),
+    );
+    const taken = density.takePendingUpdate(root);
+    assert.ok(taken, "the abandoned claim must be recovered");
+    assert.equal(taken.attempts, 4, "the retry budget must survive the recovery");
+    const names = pendingNames(root);
+    assert.ok(names.some((n) => /-a4[.-]/.test(n)),
+      "the recovered request must carry its budget: " + names.join(","));
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("regression: a broken sidecar does not block the migration for ever", () => {
+  // A publication that failed half-way used to leave an empty file at the
+  // fixed sidecar name. The next migration saw the name and reported
+  // "sidecar_present", so the guard stayed without a baseline until a
+  // human cleaned the file up.
+  const root = mkProject("broken-sidecar");
+  try {
+    writeGraph(root, { nodes: 200, edges: 400, meta: { edge_node_ratio: 2 } });
+    fs.mkdirSync(path.dirname(density.baselinePath(root)), { recursive: true });
+    fs.writeFileSync(density.baselinePath(root), "");
+    const migrated = density.migrateMetaBaseline(root);
+    assert.equal(migrated.migrated, true,
+      "an invalid sidecar must not block the migration: " + migrated.reason);
+    assert.equal(density.readBaselineSidecar(root).edge_node_ratio, 2);
+  } finally {
     cleanup(root);
   }
 });
