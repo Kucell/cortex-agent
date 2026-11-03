@@ -18,6 +18,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
+const { spawn, spawnSync } = require("node:child_process");
 
 const density = require("../../lib/graphify/density");
 
@@ -729,15 +730,353 @@ test("density: the runner releases the lock on every exit path", () => {
   try {
     const runner = path.join(ROOT, "lib", "graphify", "full-rebuild-runner.js");
     const source = fs.readFileSync(runner, "utf8");
-    const releaseCalls = (source.match(/releaseLock\(\)/g) || []).length;
-    assert.ok(releaseCalls >= 5,
-      "the runner must release the lock on every exit path");
+    assert.match(source, /function finish\([^)]*\)\s*\{\s*releaseLock\(\);/,
+      "the shared exit path must release the lock first");
     assert.match(source, /process\.on\("exit", releaseLock\)/,
       "the lock must be released even on an abnormal exit");
     for (const signal of ["SIGTERM", "SIGINT", "SIGHUP"]) {
       assert.ok(source.includes(signal),
         "the runner must handle " + signal);
     }
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("density: a runner that fails to build releases the lock it took", () => {
+  // A lock leaked by a failed rebuild would skip every incremental update
+  // until the stale reaper ran. This test runs the runner FOR REAL against
+  // a project whose `graphify` binary does not exist, so the build fails
+  // and the runner takes its own exit path.
+  //
+  // A source-level assertion cannot prove this: the number of
+  // `releaseLock()` call sites says nothing about whether the failing path
+  // actually reaches one. Running it does.
+  const root = mkProject("runner-real-failure");
+  try {
+    // A PATH with no `graphify` on it, so the build genuinely fails.
+    const emptyBin = path.join(root, "empty-bin");
+    fs.mkdirSync(emptyBin, { recursive: true });
+    const result = spawnSync(process.execPath, [
+      path.join(ROOT, "lib", "graphify", "full-rebuild-runner.js"),
+    ], {
+      cwd: root,
+      encoding: "utf8",
+      env: Object.assign({}, process.env, {
+        PATH: emptyBin,
+        GRAPHIFY_FULL_REBUILD_TIMEOUT_MS: "5000",
+      }),
+    });
+    assert.notEqual(result.status, 0, "the runner must fail when the build fails");
+    assert.equal(fs.existsSync(density.rebuildLockPath(root)), false,
+      "a failed rebuild must not leak the lock");
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("density: a drain that finds the lock busy leaves the request queued", () => {
+  // The drain takes the lock itself. When somebody else holds it, the
+  // request must stay queued -- the drain must not publish a degraded
+  // graph in parallel with the rebuild that holds the lock.
+  const root = mkProject("drain-lock-busy");
+  try {
+    const emptyBin = path.join(root, "empty-bin");
+    fs.mkdirSync(emptyBin, { recursive: true });
+    density.writePendingUpdate(root, { changedPaths: ["src/a.js"] });
+    // Somebody else holds the lock.
+    const holder = density.acquireRebuildLock(root);
+    assert.ok(holder);
+
+    const result = spawnSync(process.execPath, [
+      path.join(ROOT, "lib", "graphify", "full-rebuild-runner.js"),
+      "--drain-pending",
+    ], {
+      cwd: root,
+      encoding: "utf8",
+      env: Object.assign({}, process.env, {
+        PATH: emptyBin,
+        GRAPHIFY_FULL_REBUILD_TIMEOUT_MS: "5000",
+        // The drain waits for the lock; the test does not want to wait for
+        // the production timeout.
+        GRAPHIFY_DRAIN_LOCK_WAIT_MS: "0",
+      }),
+    });
+    assert.notEqual(result.status, 0, "the drain must report that it could not run");
+    assert.equal(fs.existsSync(density.rebuildLockPath(root)), true,
+      "the drain must not remove somebody else's lock");
+    assert.ok(density.hasPendingUpdate(root),
+      "the deferred request must stay queued while the lock is busy");
+    holder.release();
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("density: two writers reclaiming the same stale lock never both win", async () => {
+  // The stale reclaim must be ATOMIC with the judgement that produced it.
+  // A plain unlink is a check-then-act: two writers can both read the same
+  // dead lock, both conclude it is stale, and the second one then removes
+  // the NEW lock the first one took -- so both believe they hold the lock
+  // and the mutual exclusion is gone.
+  //
+  // The two writers are REAL processes started at the same time, so the
+  // interleaving is genuine rather than a scripted sequence.
+  const root = mkProject("stale-reclaim-race");
+  try {
+    fs.mkdirSync(path.join(root, ".agent", "plugins", "graphify"), { recursive: true });
+    // A lock whose holder is gone and which is older than the stale window.
+    const old = Date.now() - 24 * 60 * 60 * 1000;
+    fs.writeFileSync(density.rebuildLockPath(root), JSON.stringify({
+      token: "dead",
+      pid: 999999999,
+      acquiredAt: new Date(old).toISOString(),
+    }));
+
+    // A helper that tries to take the lock and reports whether it won.
+    const helper = path.join(root, "try-lock.js");
+    fs.writeFileSync(helper, [
+      '"use strict";',
+      'const density = require(' + JSON.stringify(path.join(ROOT, "lib", "graphify", "density.js")) + ');',
+      'const lock = density.acquireRebuildLock(process.argv[2], { staleMs: 1000 });',
+      'if (!lock) { process.stdout.write("lost"); process.exit(0); }',
+      'process.stdout.write("won");',
+      '// Hold the lock for a while, so a second writer has to fight for it.',
+      'setTimeout(() => { lock.release(); }, 1500);',
+    ].join("\n") + "\n");
+
+    // Both writers start at the SAME time and run concurrently. A
+    // sequential run would not be a race at all: the first writer would
+    // finish and release before the second one even started, and the
+    // second would legitimately win.
+    const [first, second] = await Promise.all([
+      spawnAsync(process.execPath, [helper, root], root),
+      spawnAsync(process.execPath, [helper, root], root),
+    ]);
+    const winners = [first.stdout, second.stdout].filter((s) => s === "won").length;
+    assert.equal(winners, 1,
+      "exactly one writer may hold the reclaimed lock, got " +
+      JSON.stringify([first.stdout, second.stdout]));
+  } finally {
+    cleanup(root);
+  }
+});
+
+// Spawn a child and collect its stdout. Used where the test needs two
+// processes to run CONCURRENTLY -- a sequential run cannot express a race.
+function spawnAsync(command, args, cwd) {
+  return new Promise((resolve) => {
+    const child = spawn(command, args, { cwd, stdio: ["ignore", "pipe", "pipe"] });
+    let out = "";
+    child.stdout.on("data", (chunk) => { out += chunk.toString(); });
+    child.on("close", () => resolve({ stdout: out }));
+  });
+}
+
+test("density: a consumer never removes a request it did not read", () => {
+  // The pending queue used to derive the file name from the request's paths
+  // only. A consumer that read the file and was then interrupted, while a
+  // writer removed and RECREATED the same name, would delete the NEW
+  // request while replaying the OLD content -- the new request is lost.
+  //
+  // The file names are unique now, and the consumer claims a file by an
+  // atomic rename, so a request can only ever be removed by the consumer
+  // that read exactly that file.
+  const root = mkProject("pending-generation");
+  try {
+    density.writePendingUpdate(root, { changedPaths: ["src/a.js"] });
+    const dir = density.pendingDir(root);
+    const first = fs.readdirSync(dir).filter((n) => n.endsWith(".json") && !n.startsWith("."));
+    assert.equal(first.length, 1);
+
+    // A second request for the SAME paths must get a DIFFERENT file: the
+    // name identifies the generation, not just the content.
+    density.writePendingUpdate(root, { changedPaths: ["src/a.js"] });
+    const second = fs.readdirSync(dir).filter((n) => n.endsWith(".json") && !n.startsWith("."));
+    assert.equal(second.length, 2,
+      "two requests for the same paths must occupy two files");
+    assert.notEqual(second[0], second[1]);
+
+    // Consuming removes exactly the files that were there; a request
+    // written afterwards survives.
+    const taken = density.takePendingUpdate(root);
+    assert.ok(taken);
+    assert.deepEqual(taken.changedPaths, ["src/a.js"]);
+    density.writePendingUpdate(root, { changedPaths: ["src/b.js"] });
+    const after = density.takePendingUpdate(root);
+    assert.ok(after, "a request written after the consume must survive it");
+    assert.deepEqual(after.changedPaths, ["src/b.js"]);
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("density: a stale reclaim never deletes the lock a new holder took", () => {
+  // The exact interleaving the review described:
+  //   A reads the stale lock and judges it reclaimable;
+  //   B removes it and takes a NEW lock;
+  //   A resumes and -- with a plain unlink -- removes B's NEW lock.
+  // A then acquires the lock as well, so both believe they hold it.
+  //
+  // The window between the judgement and the reclaim is far too narrow to
+  // hit by racing two processes, so the test injects it through the
+  // `onStaleJudged` hook: B's takeover happens exactly inside that window.
+  const root = mkProject("stale-reclaim-interleaving");
+  try {
+    fs.mkdirSync(path.join(root, ".agent", "plugins", "graphify"), { recursive: true });
+    const old = Date.now() - 24 * 60 * 60 * 1000;
+    fs.writeFileSync(density.rebuildLockPath(root), JSON.stringify({
+      token: "dead",
+      pid: 999999999,
+      acquiredAt: new Date(old).toISOString(),
+    }));
+
+    // The takeover that happens inside A's judgement window.
+    let bToken = null;
+    const takeover = () => {
+      const file = density.rebuildLockPath(root);
+      try { fs.unlinkSync(file); } catch (_) { /* already gone */ }
+      bToken = "b-new-lock";
+      fs.writeFileSync(file, JSON.stringify({
+        token: bToken,
+        pid: process.pid + 1,
+        acquiredAt: new Date().toISOString(),
+      }));
+    };
+
+    const a = density.acquireRebuildLock(root, {
+      staleMs: 1000,
+      onStaleJudged: takeover,
+    });
+
+    assert.ok(a, "A must be able to reclaim the stale lock");
+    assert.equal(fs.existsSync(density.rebuildLockPath(root)), true,
+      "the lock must still exist after the reclaim");
+    const holder = JSON.parse(fs.readFileSync(density.rebuildLockPath(root), "utf8"));
+    assert.equal(holder.token, a.token,
+      "the lock must belong to A; B's lock must not have been deleted and re-taken");
+    assert.notEqual(holder.token, bToken,
+      "A must not have ended up holding the lock it deleted from B");
+    a.release();
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("density: the baseline is still published when hard links are unavailable", () => {
+  // `link()` is the primitive that makes an exclusive publish atomic, but
+  // it is not available on every filesystem (FAT32, some network mounts,
+  // some container volumes). When it is missing, the publication has to
+  // fall back to an exclusive create -- otherwise the baseline is never
+  // written and the pending queue is never filled, while the caller
+  // carries on as if it had worked.
+  const root = mkProject("no-hardlink");
+  try {
+    const original = fs.linkSync;
+    fs.linkSync = () => {
+      const err = new Error("operation not supported");
+      err.code = "EOPNOTSUPP";
+      throw err;
+    };
+    try {
+      // The pending queue must still record the request.
+      const written = density.writePendingUpdate(root, { changedPaths: ["src/a.js"] });
+      assert.equal(written.ok, true,
+        "the queue must fall back to an exclusive create when link() is unsupported");
+      const pending = density.takePendingUpdate(root);
+      assert.ok(pending, "the queued request must be readable");
+      assert.deepEqual(pending.changedPaths, ["src/a.js"]);
+
+      // The baseline migration must still publish the sidecar.
+      writeGraph(root, { nodes: 200, edges: 400, meta: { edge_node_ratio: 2 } });
+      const migrated = density.migrateMetaBaseline(root);
+      assert.equal(migrated.migrated, true,
+        "the migration must fall back to an exclusive create when link() is unsupported");
+      const sidecar = density.readBaselineSidecar(root);
+      assert.ok(sidecar, "the baseline must exist after the fallback publication");
+      assert.equal(sidecar.edge_node_ratio, 2);
+    } finally {
+      fs.linkSync = original;
+    }
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("density: a drain that waits for the lock consumes the deferred request", async () => {
+  // The drain used to give up the moment the lock was busy, which left the
+  // deferred request in the queue with nobody to consume it: the commit it
+  // describes would never reach the graph. The drain now waits for the
+  // holder to finish and then consumes the request.
+  //
+  // The `graphify` stub records the calls it received, so the test can see
+  // the deferred update actually ran.
+  const root = mkProject("drain-waits-for-lock");
+  try {
+    const binDir = path.join(root, "stub-bin");
+    fs.mkdirSync(binDir, { recursive: true });
+    const stub = path.join(binDir, "graphify");
+    fs.writeFileSync(stub, [
+      "#!/usr/bin/env node",
+      '"use strict";',
+      "const fs = require('fs');",
+      "const path = require('path');",
+      "fs.appendFileSync(path.join(process.cwd(), 'stub-calls.log'), JSON.stringify({ args: process.argv.slice(2) }) + '\\n');",
+      "process.exit(0);",
+      "",
+    ].join("\n"), { mode: 0o755 });
+
+    density.writePendingUpdate(root, { changedPaths: ["src/a.js"] });
+
+    // Somebody else holds the lock, and releases it shortly afterwards --
+    // exactly what a finishing rebuild does. The holder has to be a SEPARATE
+    // process: the test blocks in `spawnSync` while the drain runs, so a
+    // timer in this process would never fire.
+    const holderScript = path.join(root, "holder.js");
+    fs.writeFileSync(holderScript, [
+      '"use strict";',
+      'const density = require(' + JSON.stringify(path.join(ROOT, "lib", "graphify", "density.js")) + ');',
+      "const lock = density.acquireRebuildLock(process.argv[2]);",
+      "if (!lock) { process.exit(2); }",
+      'process.stdout.write("held\\n");',
+      "setTimeout(() => { lock.release(); }, 400);",
+      "setTimeout(() => process.exit(0), 800);",
+    ].join("\n") + "\n");
+    const holderChild = spawn(process.execPath, [holderScript, root], { cwd: root, stdio: ["ignore", "pipe", "inherit"] });
+    // Wait until the holder has actually taken the lock.
+    await new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error("the holder did not take the lock")), 5000);
+      holderChild.stdout.on("data", (chunk) => {
+        if (chunk.toString().includes("held")) {
+          clearTimeout(timer);
+          resolve();
+        }
+      });
+    });
+
+    const result = spawnSync(process.execPath, [
+      path.join(ROOT, "lib", "graphify", "full-rebuild-runner.js"),
+      "--drain-pending",
+    ], {
+      cwd: root,
+      encoding: "utf8",
+      env: Object.assign({}, process.env, {
+        PATH: binDir + path.delimiter + process.env.PATH,
+        GRAPHIFY_FULL_REBUILD_TIMEOUT_MS: "5000",
+        GRAPHIFY_DRAIN_LOCK_WAIT_MS: "10000",
+      }),
+    });
+    assert.equal(result.status, 0,
+      "the drain must succeed once the lock is free: " + (result.stderr || ""));
+    const calls = fs.existsSync(path.join(root, "stub-calls.log"))
+      ? fs.readFileSync(path.join(root, "stub-calls.log"), "utf8")
+        .split(/\r?\n/).filter(Boolean).map((l) => JSON.parse(l))
+      : [];
+    assert.ok(calls.some((c) => c.args[0] === "update"),
+      "the deferred update must have run");
+    assert.equal(density.hasPendingUpdate(root), false,
+      "the queue must be empty after the drain");
+    holderChild.kill();
   } finally {
     cleanup(root);
   }

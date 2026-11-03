@@ -117,10 +117,6 @@ function makeConsumerProject(name) {
     path.join(pluginDir, "scripts", "post-commit-update.js"),
   );
   fs.copyFileSync(
-    path.join(TEMPLATE_PLUGIN, "scripts", "full-rebuild-with-stamp.js"),
-    path.join(pluginDir, "scripts", "full-rebuild-with-stamp.js"),
-  );
-  fs.copyFileSync(
     path.join(TEMPLATE_PLUGIN, "config.yml"),
     path.join(pluginDir, "config.yml"),
   );
