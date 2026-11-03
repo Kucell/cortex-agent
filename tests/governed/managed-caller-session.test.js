@@ -129,6 +129,19 @@ async function expectHandshakeFailure(options, pattern) {
 }
 
 describe("governed/managed-caller-session - session lifecycle", () => {
+  test("Windows holder enumeration returns the supervised channel endpoints", {
+    skip: process.platform !== "win32",
+    timeout: 30000,
+  }, async () => {
+    const { readWindowsChannelHolders } = require("../../lib/governed/windows-channel-holders");
+    await withSession({ owner: "m044-test" }, async (_session, child) => {
+      const result = readWindowsChannelHolders(child.pid, process.pid);
+      assert.equal(result.ok, true, result.reason);
+      assert.ok(result.pids.includes(child.pid));
+      assert.ok(result.pids.includes(process.pid));
+    });
+  });
+
   test("establishes a session and exposes the supervised child identity", async () => {
     await withSession({ owner: "m044-test" }, async (session) => {
       assert.equal(session.established, true);

@@ -147,10 +147,18 @@ describe("governed/windows-channel-holders - kernel object enumeration", () => {
     assert.match(source, /DetectLayout/);
     assert.match(source, /offsetCandidates/);
     assert.match(source, /strideCandidates/);
-    // The pid slot is separated from the handle slot by REPETITION, not by
-    // alignment: Windows allocates pids as multiples of four, so a pid looks
-    // exactly like a handle value under an alignment test.
-    assert.match(source, /distinctValues/);
+    // The pid slot is separated from the handle slot by a property of the
+    // data, not by a magnitude threshold. The table is emitted in process
+    // order, so the pid column's maximal runs equal its distinct values.
+    assert.match(source, /ColumnIsPidColumn|distinct/);
+    // A process cannot hold the same handle value twice, so the
+    // (process id, handle value) pair is unique across the whole table.
+    assert.match(source, /PairsAreUnique/);
+    // The candidate must fit inside the length the KERNEL reported, not
+    // inside the allocation that holds it. Comparing against the
+    // allocation let a candidate overread the table and pair one record's
+    // handle with another record's object pointer.
+    assert.match(source, /tableLength/);
   });
 
   test("the channel is proven to be a File object, not merely something shared", () => {
