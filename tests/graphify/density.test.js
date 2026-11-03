@@ -535,7 +535,6 @@ test("density: the rebuild runner bounds the rebuild in the process that owns it
     const spawnCalls = [];
     const result = density.startFullRebuild({ projectRoot: root, config, spawnImpl: stubSpawn(spawnCalls) });
     assert.equal(result.started, true);
-    assert.ok(result.lockPath, "the rebuild must record the lock it holds");
     assert.equal(spawnCalls.length, 1);
     assert.ok(spawnCalls[0].args[0].endsWith("full-rebuild-runner.js"),
       "the rebuild must be driven by the framework's own runner");
@@ -544,6 +543,10 @@ test("density: the rebuild runner bounds the rebuild in the process that owns it
       "the runner must apply the timeout to the build it runs");
     assert.match(runnerSource, /releaseLock/,
       "the runner must release the lock it owns");
+    assert.match(runnerSource, /acquireRebuildLock/,
+      "the runner must take the rebuild lock itself");
+    assert.match(runnerSource, /isHeld\(\)/,
+      "the runner must check that it still owns the lock before it stamps");
   } finally {
     cleanup(root);
   }
@@ -668,18 +671,30 @@ test("density: a pending request for the same paths is not queued twice", () => 
   }
 });
 
-test("density: the lock is handed over to the rebuild process", () => {
-  // The hook that starts a detached rebuild exits immediately. A lock that
-  // still named the HOOK's pid would look abandoned while the rebuild is
-  // still running, and the next hook would reclaim it and race the rebuild.
+test("density: the rebuild lock is never handed over to another process", () => {
+  // The lock used to be handed from the hook to the detached runner through
+  // the environment: the hook validated the token and then REWROTE the lock
+  // file with the runner's pid. A runner that had already released the lock
+  // -- or exited -- saw the lock RECREATED by that write, so the lock looked
+  // held for the whole stale window and every drain was refused.
+  //
+  // The runner takes the lock itself now, so there is no handover at all.
   const root = mkProject("lock-handover");
   try {
     const lock = density.acquireRebuildLock(root);
     assert.ok(lock);
-    assert.equal(lock.transferTo(4242), true);
+    assert.equal(typeof lock.transferTo, "undefined",
+      "a lock must not offer a pid handover any more");
     const holder = JSON.parse(fs.readFileSync(density.rebuildLockPath(root), "utf8"));
-    assert.equal(holder.pid, 4242);
-    assert.equal(holder.token, lock.token, "the token must survive the handover");
+    assert.equal(holder.pid, process.pid);
+    assert.equal(holder.token, lock.token);
+    assert.equal(lock.isHeld(), true, "the holder must see its own lock");
+    const runnerSource = fs.readFileSync(
+      path.join(ROOT, "lib", "graphify", "full-rebuild-runner.js"),
+      "utf8",
+    );
+    assert.equal(runnerSource.includes("transferTo"), false,
+      "the runner must not inherit a lock through a handover");
     lock.release();
   } finally {
     cleanup(root);
@@ -730,18 +745,13 @@ test("density: the runner releases the lock on every exit path", () => {
   try {
     const runner = path.join(ROOT, "lib", "graphify", "full-rebuild-runner.js");
     const source = fs.readFileSync(runner, "utf8");
-    assert.match(source, /function finish\([^)]*\)\s*\{\s*releaseLock\(\);/,
-      "the shared exit path must release the lock first");
+    assert.match(source, /function finish\([^)]*\)\s*\{[\s\S]*?const hadLock = Boolean\(ownedLock\);[\s\S]*?releaseLock\(\);/,
+      "the exit path must record that it held the lock BEFORE it releases it");
     assert.match(source, /process\.on\("exit",/,
       "the locks must be released even on an abnormal exit");
-    // The exit handler has to release BOTH locks: the rebuild lock and the
-    // drain scheduler lock. A leaked scheduler lock would block every
-    // later drain, and the deferred request would never be replayed.
     const exitHandler = source.slice(source.indexOf('process.on("exit"'));
     assert.match(exitHandler.slice(0, 200), /releaseLock\(\)/,
       "the exit handler must release the rebuild lock");
-    assert.match(exitHandler.slice(0, 200), /releaseDrainLock\(\)/,
-      "the exit handler must release the drain scheduler lock");
     for (const signal of ["SIGTERM", "SIGINT", "SIGHUP"]) {
       assert.ok(source.includes(signal),
         "the runner must handle " + signal);
@@ -1225,18 +1235,34 @@ test("density: a claim left behind by a dead consumer is recovered", () => {
   }
 });
 
-test("density: only one drain may run at a time", () => {
-  // The drain is started from the hook, from the managed update and from the
-  // runner's own follow-up. Without a scheduler lock two drains can run at
-  // once, and a chain of follow-up drains has no upper bound.
-  const root = mkProject("drain-singleton");
+test("density: a drain serialises on the rebuild lock instead of a second lock", () => {
+  // The drain used to take a SECOND, dedicated "scheduler" lock that made
+  // the drain a singleton. It guarded nothing that the rebuild lock does
+  // not already guard, and its handover carried the same race as the
+  // rebuild lock's handover: the starter rewrote the lock file after the
+  // child had already released it, so the lock was RECREATED and every
+  // later drain was refused for the whole stale window.
+  //
+  // The drain takes the REBUILD lock now, so two drains can never write the
+  // graph at the same time, and a request is consumed exactly once because
+  // the claim is an atomic rename.
+  const root = mkProject("drain-serialised");
   try {
     density.writePendingUpdate(root, { changedPaths: ["src/a.js"] });
-    const first = density.startPendingDrain({ projectRoot: root });
-    assert.equal(first.started, true, "the first drain must start");
-    const second = density.startPendingDrain({ projectRoot: root });
-    assert.equal(second.started, false, "a second drain must not start");
-    assert.equal(second.reason, "drain_already_running");
+    const runnerSource = fs.readFileSync(
+      path.join(ROOT, "lib", "graphify", "full-rebuild-runner.js"),
+      "utf8",
+    );
+    assert.match(runnerSource, /acquireRebuildLock/,
+      "the drain must take the rebuild lock itself");
+    assert.equal(runnerSource.includes("acquireDrainSchedulerLock"), false,
+      "the separate scheduler lock must be gone");
+    // A request is consumed exactly once, no matter how many consumers see
+    // it: the claim is an atomic rename.
+    const first = density.takePendingUpdate(root);
+    assert.ok(first, "the request must be claimable");
+    const second = density.takePendingUpdate(root);
+    assert.equal(second, null, "a request must never be consumed twice");
   } finally {
     cleanup(root);
   }
