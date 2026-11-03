@@ -30,6 +30,12 @@ plugins/graphify/.*.tmp-*
 # rebuild is running, so it must never be shared between machines.
 plugins/graphify/.density-rebuild.lock
 
+# The trim mutex that serialises the reclaim of a stale rebuild lock, and
+# the scheduler lock that keeps two drains from running at the same time.
+# Both are transient, machine-local mutexes.
+plugins/graphify/.density-rebuild.lock.trim
+plugins/graphify/.density-drain.lock
+
 # The trim mutex that serialises the reclaim of a stale rebuild lock. It is
 # a transient, machine-local mutex next to the lock it protects.
 plugins/graphify/.density-rebuild.lock.trim

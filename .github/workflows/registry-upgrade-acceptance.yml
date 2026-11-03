@@ -36,7 +36,7 @@ jobs:
     env:
       BASELINE_VERSION: ${{ matrix.baseline }}
       SOURCE_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
-      EXPECTED_GITLINK: a7fb652b5531c6072373a2ea26bc3a59e327b605
+      EXPECTED_GITLINK: 4c6e95937da250128badb788c736f5de5e82d17f
       EXPECTED_CANDIDATE_VERSION: "1.15.7"
       DISPATCH_HEAD: ${{ inputs.expected_head }}
       DISPATCH_VERSION: ${{ inputs.expected_version }}

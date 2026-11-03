@@ -732,8 +732,16 @@ test("density: the runner releases the lock on every exit path", () => {
     const source = fs.readFileSync(runner, "utf8");
     assert.match(source, /function finish\([^)]*\)\s*\{\s*releaseLock\(\);/,
       "the shared exit path must release the lock first");
-    assert.match(source, /process\.on\("exit", releaseLock\)/,
-      "the lock must be released even on an abnormal exit");
+    assert.match(source, /process\.on\("exit",/,
+      "the locks must be released even on an abnormal exit");
+    // The exit handler has to release BOTH locks: the rebuild lock and the
+    // drain scheduler lock. A leaked scheduler lock would block every
+    // later drain, and the deferred request would never be replayed.
+    const exitHandler = source.slice(source.indexOf('process.on("exit"'));
+    assert.match(exitHandler.slice(0, 200), /releaseLock\(\)/,
+      "the exit handler must release the rebuild lock");
+    assert.match(exitHandler.slice(0, 200), /releaseDrainLock\(\)/,
+      "the exit handler must release the drain scheduler lock");
     for (const signal of ["SIGTERM", "SIGINT", "SIGHUP"]) {
       assert.ok(source.includes(signal),
         "the runner must handle " + signal);
@@ -920,7 +928,13 @@ test("density: a stale reclaim never deletes the lock a new holder took", () => 
   //
   // The window between the judgement and the reclaim is far too narrow to
   // hit by racing two processes, so the test injects it through the
-  // `onStaleJudged` hook: B's takeover happens exactly inside that window.
+  // `onStaleJudged` seam: B's takeover happens exactly inside that window.
+  //
+  // The assertion that matters is that B's lock is LEFT ALONE. An earlier
+  // version of this test asserted only that the surviving lock was A's and
+  // not B's -- which is satisfied by "A deleted B's lock and took a new
+  // one", i.e. by the very defect the test claims to prevent. The test has
+  // to distinguish the fix from the defect, not merely describe the outcome.
   const root = mkProject("stale-reclaim-interleaving");
   try {
     fs.mkdirSync(path.join(root, ".agent", "plugins", "graphify"), { recursive: true });
@@ -931,7 +945,8 @@ test("density: a stale reclaim never deletes the lock a new holder took", () => 
       acquiredAt: new Date(old).toISOString(),
     }));
 
-    // The takeover that happens inside A's judgement window.
+    // B's takeover, inside A's judgement window. B's holder is a RUNNING
+    // process, so its lock is live and must not be reclaimable at all.
     let bToken = null;
     const takeover = () => {
       const file = density.rebuildLockPath(root);
@@ -939,7 +954,7 @@ test("density: a stale reclaim never deletes the lock a new holder took", () => 
       bToken = "b-new-lock";
       fs.writeFileSync(file, JSON.stringify({
         token: bToken,
-        pid: process.pid + 1,
+        pid: process.pid,
         acquiredAt: new Date().toISOString(),
       }));
     };
@@ -949,15 +964,14 @@ test("density: a stale reclaim never deletes the lock a new holder took", () => 
       onStaleJudged: takeover,
     });
 
-    assert.ok(a, "A must be able to reclaim the stale lock");
+    assert.ok(bToken, "the takeover must have happened");
     assert.equal(fs.existsSync(density.rebuildLockPath(root)), true,
-      "the lock must still exist after the reclaim");
+      "B's lock must still exist");
     const holder = JSON.parse(fs.readFileSync(density.rebuildLockPath(root), "utf8"));
-    assert.equal(holder.token, a.token,
-      "the lock must belong to A; B's lock must not have been deleted and re-taken");
-    assert.notEqual(holder.token, bToken,
-      "A must not have ended up holding the lock it deleted from B");
-    a.release();
+    assert.equal(holder.token, bToken,
+      "B's lock must be untouched: A must not delete a LIVE lock");
+    assert.equal(a, null,
+      "A must not acquire the lock while B holds a live one");
   } finally {
     cleanup(root);
   }
@@ -1077,6 +1091,153 @@ test("density: a drain that waits for the lock consumes the deferred request", a
     assert.equal(density.hasPendingUpdate(root), false,
       "the queue must be empty after the drain");
     holderChild.kill();
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("density: a follow-up drain never inherits the lock it was started with", async () => {
+  // The follow-up drain is spawned by `finish()`, AFTER the runner released
+  // the lock. The child inherited the lock path through the environment, so
+  // it believed it already held the lock, skipped the acquire, and ran the
+  // incremental update without holding anything -- while another process
+  // could have taken the lock in the meantime. The mutual exclusion was
+  // broken again.
+  //
+  // The starter therefore clears the inherited lock variables, and the drain
+  // always acquires its own.
+  const root = mkProject("drain-no-inherited-lock");
+  try {
+    const binDir = path.join(root, "stub-bin");
+    fs.mkdirSync(binDir, { recursive: true });
+    const stub = path.join(binDir, "graphify");
+    fs.writeFileSync(stub, [
+      "#!/usr/bin/env node",
+      '"use strict";',
+      "const fs = require('fs');",
+      "const path = require('path');",
+      // Record the lock the process saw, and whether it was held by a live
+      // process at that moment.
+      "const lockFile = path.join(process.cwd(), '.agent', 'plugins', 'graphify', '.density-rebuild.lock');",
+      "let held = false;",
+      "try {",
+      "  const holder = JSON.parse(fs.readFileSync(lockFile, 'utf8'));",
+      "  held = typeof holder.pid === 'number' && holder.pid !== process.pid;",
+      "} catch (_) {}",
+      "fs.appendFileSync(path.join(process.cwd(), 'stub-calls.log'), JSON.stringify({ args: process.argv.slice(2), sawLiveLock: held }) + '\\n');",
+      "process.exit(0);",
+      "",
+    ].join("\n"), { mode: 0o755 });
+
+    density.writePendingUpdate(root, { changedPaths: ["src/a.js"] });
+
+    // A drain is started while a rebuild lock is held by somebody else.
+    const holder = density.acquireRebuildLock(root);
+    assert.ok(holder);
+    const started = density.startPendingDrain({ projectRoot: root });
+    assert.equal(started.started, true);
+
+    // The drain must not have run the update while the lock was held by
+    // another process. It waits for the lock instead.
+    const deadline = Date.now() + 4000;
+    while (Date.now() < deadline) {
+      const log = path.join(root, "stub-calls.log");
+      if (fs.existsSync(log)) {
+        const calls = fs.readFileSync(log, "utf8").split(/\r?\n/).filter(Boolean).map((l) => JSON.parse(l));
+        assert.ok(calls.every((c) => c.sawLiveLock === false),
+          "the drain must never run the update while another process holds the lock");
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    holder.release();
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("density: an exhausted request does not take a fresh one down with it", () => {
+  // The attempts counter is the maximum over the merged batch. When an
+  // exhausted request was merged with a fresh one, the fresh request
+  // inherited the exhausted counter and was dropped without ever being
+  // attempted -- the commit it described never reached the graph.
+  const root = mkProject("pending-attempt-isolation");
+  try {
+    // A request that has failed too often, and a fresh one.
+    const exhausted = density.writePendingUpdate(root, {
+      changedPaths: ["src/old.js"],
+      attempts: 99,
+    });
+    const fresh = density.writePendingUpdate(root, { changedPaths: ["src/new.js"] });
+    assert.equal(exhausted.ok, true);
+    assert.equal(fresh.ok, true);
+
+    const taken = density.takePendingUpdate(root);
+    assert.ok(taken);
+    // The fresh request must be replayed.
+    assert.deepEqual(taken.changedPaths, ["src/new.js"],
+      "the fresh request must not inherit the exhausted request's counter");
+    // The exhausted one is reported separately so the caller can drop it.
+    assert.equal(taken.exhausted.length, 1);
+    assert.deepEqual(taken.exhausted[0].changedPaths, ["src/old.js"]);
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("density: a claim left behind by a dead consumer is recovered", () => {
+  // A consumer claims a request by renaming it to a `.claimed-*` name. If
+  // it dies between the claim and the removal, the request stays in that
+  // name: invisible to the queue, and nothing would ever replay it.
+  const root = mkProject("pending-claim-recovery");
+  try {
+    const written = density.writePendingUpdate(root, { changedPaths: ["src/a.js"] });
+    assert.equal(written.ok, true);
+    const dir = density.pendingDir(root);
+    const source = fs.readdirSync(dir).find((n) => n.endsWith(".json") && !n.startsWith("."));
+    assert.ok(source);
+
+    // A consumer that claimed the request and then died: the claim names a
+    // process that is gone, and it is older than the stale window.
+    const claimName = ".claimed-999999999-deadbeef.json";
+    const claimPath = path.join(dir, claimName);
+    fs.renameSync(path.join(dir, source), claimPath);
+    fs.writeFileSync(claimPath, JSON.stringify({
+      schemaVersion: "1.0",
+      recordedAt: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
+      changedPaths: ["src/a.js"],
+      sourceHead: null,
+      branch: null,
+      attempts: 0,
+      pid: 999999999,
+      claimedAt: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
+    }, null, 2) + "\n");
+
+    assert.equal(density.hasPendingUpdate(root), false,
+      "an abandoned claim is invisible until it is recovered");
+
+    const taken = density.takePendingUpdate(root);
+    assert.ok(taken, "the abandoned claim must be recovered and replayed");
+    assert.deepEqual(taken.changedPaths, ["src/a.js"]);
+    assert.equal(fs.existsSync(claimPath), false,
+      "the recovered claim must be removed");
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("density: only one drain may run at a time", () => {
+  // The drain is started from the hook, from the managed update and from the
+  // runner's own follow-up. Without a scheduler lock two drains can run at
+  // once, and a chain of follow-up drains has no upper bound.
+  const root = mkProject("drain-singleton");
+  try {
+    density.writePendingUpdate(root, { changedPaths: ["src/a.js"] });
+    const first = density.startPendingDrain({ projectRoot: root });
+    assert.equal(first.started, true, "the first drain must start");
+    const second = density.startPendingDrain({ projectRoot: root });
+    assert.equal(second.started, false, "a second drain must not start");
+    assert.equal(second.reason, "drain_already_running");
   } finally {
     cleanup(root);
   }
