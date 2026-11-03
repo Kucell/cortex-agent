@@ -1558,3 +1558,70 @@ test("regression: a new semantic reminder subsumes the older one", () => {
     cleanup(root);
   }
 });
+
+test("regression: a marker of an older version is not lost when a new reminder is published", () => {
+  // The single marker file of an older version is a reminder too. When the
+  // next writer publishes its own reminder, the older one must not be
+  // overwritten: it becomes a record of its own.
+  const root = mkProject("marker-legacy-migration");
+  try {
+    const graphDir = path.join(root, "graphify-out");
+    fs.writeFileSync(
+      path.join(graphDir, markers.MARKER_FILENAME),
+      JSON.stringify({
+        schemaVersion: markers.MARKER_SCHEMA_VERSION,
+        markerId: "legacy-marker",
+        recordedAt: "2026-11-03T00:00:00.000Z",
+        kind: markers.KIND.SEMANTIC,
+        reason: "semantic_changes_only",
+        changedPaths: ["docs/legacy.md"],
+        sourceHead: null,
+        branch: null,
+      }, null, 2),
+    );
+    markers.writeMarker({
+      graphDir,
+      kind: markers.KIND.UPDATE_FAILED,
+      reason: "graphify_update_failed:1",
+      changedPaths: ["src/a.js"],
+    });
+    const after = markers.readMarker(graphDir);
+    assert.equal(after.ok, true, "the legacy reminder must still be readable");
+    assert.ok(after.marker.changedPaths.includes("docs/legacy.md"),
+      "the legacy reminder must survive the new one: "
+      + JSON.stringify(after.marker.changedPaths));
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("regression: a legacy sidecar with a fragment after it is still read", () => {
+  // A legacy sidecar that a later append left a FRAGMENT behind is
+  // neither valid JSON nor a valid log: the pretty-printed object is
+  // followed by a truncated line. The baseline it carries is still the
+  // baseline the project has, so it must be read.
+  const root = mkProject("legacy-sidecar-fragment");
+  try {
+    writeGraph(root, { nodes: 200, edges: 400 });
+    fs.mkdirSync(path.dirname(density.baselinePath(root)), { recursive: true });
+    fs.writeFileSync(
+      density.baselinePath(root),
+      JSON.stringify({
+        schemaVersion: "1.0",
+        kind: "stamp",
+        priority: 1,
+        build_kind: "full",
+        edge_node_ratio: 2.5,
+        nodes: 100,
+        edges: 250,
+        baseline_locked_at: "2026-11-03T00:00:00.000Z",
+      }, null, 2) + "\n" + '{"schemaVersion":"1.0","kind":"stamp","edge_node_ra',
+    );
+    const sidecar = density.readBaselineSidecar(root);
+    assert.ok(sidecar, "the legacy sidecar must be read");
+    assert.equal(sidecar.edge_node_ratio, 2.5);
+    assert.equal(sidecar.build_kind, "full");
+  } finally {
+    cleanup(root);
+  }
+});
