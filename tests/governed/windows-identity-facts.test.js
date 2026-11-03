@@ -7,6 +7,38 @@ const facts = require("../../lib/governed/windows-identity-facts");
 const holders = require("../../lib/governed/windows-channel-holders");
 
 describe("governed/windows-identity-facts - CIM facts", () => {
+  test("a live Windows process has precise CIM facts", { skip: process.platform !== "win32" }, () => {
+    const current = facts.readCimFacts(process.pid);
+    assert.ok(current);
+    assert.match(current.creationTicks, /^\d+$/);
+    assert.ok(current.commandLine && current.commandLine.trim());
+    assert.equal(facts.readWindowsStartToken(process.pid), `win32:${current.creationTicks}`);
+    assert.match(facts.readWindowsCommandDigest(process.pid), /^sha256:[0-9a-f]{64}$/);
+  });
+
+  test("successful CIM output returns creation ticks and command line", (t) => {
+    const childProcess = require("node:child_process");
+    const modulePath = require.resolve("../../lib/governed/windows-identity-facts");
+    const original = require.cache[modulePath];
+    const spawn = t.mock.method(childProcess, "spawnSync", () => ({
+      status: 0,
+      stdout: "CIM_FACTS=OK\nCIM_TICKS=638000000000000000\nCIM_CMDLINE_B64=bm9kZSBob3N0Lmpz\n",
+      stderr: "",
+    }));
+    try {
+      delete require.cache[modulePath];
+      const fresh = require(modulePath);
+      assert.deepEqual(fresh.readCimFacts(123), {
+        creationTicks: "638000000000000000", commandLine: "node host.js",
+      });
+      const argv = spawn.mock.calls[0].arguments[1];
+      assert.equal(argv.length, 4);
+      assert.match(argv[3], /FromBase64String\('MTIz'\)/);
+    } finally {
+      require.cache[modulePath] = original;
+    }
+  });
+
   test("an invalid pid yields no facts", () => {
     assert.equal(facts.readCimFacts(0), null);
     assert.equal(facts.readCimFacts(-1), null);
@@ -37,6 +69,30 @@ describe("governed/windows-identity-facts - CIM facts", () => {
 });
 
 describe("governed/windows-channel-holders - kernel object enumeration", () => {
+  test("a valid pid invokes the stdin-backed helper and fails closed on execution failure", (t) => {
+    const childProcess = require("node:child_process");
+    const factsPath = require.resolve("../../lib/governed/windows-identity-facts");
+    const holdersPath = require.resolve("../../lib/governed/windows-channel-holders");
+    const originalFacts = require.cache[factsPath];
+    const originalHolders = require.cache[holdersPath];
+    const spawn = t.mock.method(childProcess, "spawnSync", () => ({ status: 1, stdout: "", stderr: "" }));
+    try {
+      delete require.cache[factsPath];
+      delete require.cache[holdersPath];
+      const fresh = require(holdersPath);
+      const result = fresh.readWindowsChannelHolders(123, 456);
+      assert.deepEqual(result, { ok: false, pids: [], reason: "powershell-failed:1" });
+      assert.equal(spawn.mock.callCount(), 1);
+      assert.match(spawn.mock.calls[0].arguments[2].input, /NtQuerySystemInformation/);
+      const argv = spawn.mock.calls[0].arguments[1];
+      assert.equal(argv.length, 4);
+      assert.match(argv[3], /FromBase64String\('MTIz'\).*FromBase64String\('NDU2'\)/);
+    } finally {
+      require.cache[factsPath] = originalFacts;
+      require.cache[holdersPath] = originalHolders;
+    }
+  });
+
   test("an invalid child pid is rejected before anything is executed", () => {
     const result = holders.readWindowsChannelHolders(0, process.pid);
     assert.equal(result.ok, false);
