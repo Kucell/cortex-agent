@@ -200,6 +200,24 @@ test("the bridge host refuses a ticket that is presented twice", {
   }
 });
 
+test("the bridge host enforces its configured ticket lifetime", {
+  skip: process.platform === "win32" || Number(process.versions.node.split(".")[0]) < 24,
+  timeout: 30000,
+}, async (t) => {
+  t.mock.timers.enable({ apis: ["Date"] });
+  let bridge;
+  try {
+    bridge = await startBridge({ issue: () => grantFor() }, { ticketTtlMs: 10 });
+    const ticket = bridge.issueTicket();
+    t.mock.timers.tick(11);
+    const response = await post(bridge.address.port, productRequest(), ticket);
+    assert.equal(response.status, 401);
+  } finally {
+    t.mock.timers.reset();
+    if (bridge) await bridge.close();
+  }
+});
+
 test("the bridge host refuses a ticket that was never minted", {
   skip: process.platform === "win32" || Number(process.versions.node.split(".")[0]) < 24,
   timeout: 30000,
