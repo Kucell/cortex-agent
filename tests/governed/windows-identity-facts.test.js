@@ -1,0 +1,108 @@
+"use strict";
+
+const { test, describe } = require("node:test");
+const assert = require("node:assert/strict");
+
+const facts = require("../../lib/governed/windows-identity-facts");
+const holders = require("../../lib/governed/windows-channel-holders");
+
+describe("governed/windows-identity-facts - CIM facts", () => {
+  test("an invalid pid yields no facts", () => {
+    assert.equal(facts.readCimFacts(0), null);
+    assert.equal(facts.readCimFacts(-1), null);
+    assert.equal(facts.readCimFacts(999_999_999), null);
+  });
+
+  test("the start token is null when the process does not exist", () => {
+    // A pid that is not running has no creation date. The fact is
+    // unavailable, and unavailable must be null — never a guess.
+    assert.equal(facts.readWindowsStartToken(999_999_999), null);
+  });
+
+  test("the command digest is null when the process does not exist", () => {
+    assert.equal(facts.readWindowsCommandDigest(999_999_999), null);
+  });
+
+  test("the command digest is prefixed the same way the POSIX path prefixes it", () => {
+    // Both sides must agree on what is hashed, or a continuity check would
+    // compare two different things. The POSIX path produces
+    // `sha256:<hex>`; the Windows path must produce the same shape.
+    const digest = facts.readWindowsCommandDigest(process.pid);
+    if (digest === null) {
+      // Not a Windows host: the fact is legitimately unavailable.
+      return;
+    }
+    assert.match(digest, /^sha256:[0-9a-f]{64}$/);
+  });
+});
+
+describe("governed/windows-channel-holders - kernel object enumeration", () => {
+  test("an invalid child pid is rejected before anything is executed", () => {
+    const result = holders.readWindowsChannelHolders(0, process.pid);
+    assert.equal(result.ok, false);
+    assert.deepEqual(result.pids, []);
+    assert.equal(result.reason, "bad-child-pid");
+  });
+
+  test("the helper source is inlined, never read from disk", () => {
+    // The helper describes how to read process handle tables. It must not be
+    // a file a same-account process can read, and it must not be loaded from
+    // one either: the source travels on STDIN and is compiled in memory.
+    const source = holders.HOLDER_HELPER_SOURCE;
+    assert.ok(source.length > 0);
+    assert.match(source, /NtQuerySystemInformation/);
+    assert.match(source, /NtQueryObject/);
+
+    // The driver reads the source from STDIN, not from a path.
+    assert.match(holders.HOLDER_DRIVER_SOURCE, /Console\]::In\.ReadToEnd/);
+    assert.match(holders.HOLDER_DRIVER_SOURCE, /Add-Type -TypeDefinition/);
+  });
+
+  test("the helper measures the table layout instead of assuming it", () => {
+    // Hard-coding a struct offset is how a probe reports "enumeration is
+    // impossible" when it merely read the wrong bytes. The layout has to be
+    // measured, or the fact source silently stops working on the next
+    // Windows release.
+    const source = holders.HOLDER_HELPER_SOURCE;
+    assert.match(source, /DetectLayout/);
+    assert.match(source, /offsetCandidates/);
+    assert.match(source, /strideCandidates/);
+    // The pid slot is separated from the handle slot by REPETITION, not by
+    // alignment: Windows allocates pids as multiples of four, so a pid looks
+    // exactly like a handle value under an alignment test.
+    assert.match(source, /distinctValues/);
+  });
+
+  test("the channel is proven to be a File object, not merely something shared", () => {
+    // Parent and child share plenty of kernel objects. "Something is shared"
+    // is not the fact; "the shared object whose type is File" is.
+    const source = holders.HOLDER_HELPER_SOURCE;
+    assert.match(source, /ObjectTypeInformation/);
+    assert.match(source, /Contains\("file"\)/i);
+  });
+});
+
+describe("governed/managed-caller-identity - Windows branch selection", () => {
+  test("the Windows branches are present and the POSIX branches are intact", () => {
+    const source = require("node:fs").readFileSync(
+      require.resolve("../../lib/governed/managed-caller-identity"),
+      "utf8",
+    );
+
+    // Every platform has a fact source. A platform without one yields null,
+    // and null is a fact the audit refuses — which is fail-closed but means
+    // the continuity check can never run there.
+    assert.match(source, /process\.platform === "win32"/);
+    assert.match(source, /process\.platform === "linux"/);
+    assert.match(source, /process\.platform === "darwin"/);
+  });
+
+  test("a Windows start token is never marked coarse", () => {
+    // `isPreciseStartToken` refuses a `ps-coarse:` token. The Windows token
+    // comes from CIM's 100ns CreationDate, so it must NOT carry that prefix
+    // — otherwise the continuity audit would refuse a precise token.
+    const identity = require("../../lib/governed/managed-caller-identity");
+    assert.equal(identity.isPreciseStartToken("win32:638000000000000000"), true);
+    assert.equal(identity.isPreciseStartToken("ps-coarse:Mon Nov  2 13:46:51 2026"), false);
+  });
+});
