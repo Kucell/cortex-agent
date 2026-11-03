@@ -1625,3 +1625,35 @@ test("regression: a legacy sidecar with a fragment after it is still read", () =
     cleanup(root);
   }
 });
+
+test("regression: a full rebuild answers the semantic reminder", () => {
+  // A FULL rebuild rebuilds the semantic corpus as well -- that is what
+  // separates it from an incremental update. So it answers the reminder
+  // that says "the semantic corpus is stale". Without this the reminder
+  // would outlive every rebuild, and the graph would fail closed for good.
+  const root = mkProject("full-rebuild-clears-semantic");
+  try {
+    const stub = installStub(root);
+    writeGraph(root, { nodes: 200, edges: 400 });
+    const graphDir = path.join(root, "graphify-out");
+    markers.writeMarker({
+      graphDir,
+      kind: markers.KIND.SEMANTIC,
+      reason: "semantic_changes_only",
+      changedPaths: ["docs/spec.md"],
+    });
+    const runner = path.join(ROOT, "lib", "graphify", "full-rebuild-runner.js");
+    const run = spawnSync(process.execPath, [runner], {
+      cwd: root,
+      encoding: "utf8",
+      env: stubEnv(stub),
+      timeout: 60_000,
+    });
+    assert.equal(run.status, 0, "the rebuild must succeed: " + run.stderr);
+    const after = markers.readMarker(graphDir);
+    assert.equal(after.ok, false,
+      "the semantic reminder must be answered by the rebuild");
+  } finally {
+    cleanup(root);
+  }
+});
