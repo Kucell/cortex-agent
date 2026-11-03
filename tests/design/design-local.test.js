@@ -94,6 +94,19 @@ test('local install rejects path traversal and does not follow destination symli
   }
 });
 
+test('upgrade skips local systems without loading the catalog', async () => {
+  const root = makeTmpDir('cortex-design-local-');
+  try {
+    lockfile.addSystem(root, { id: 'workbench', source: { type: 'local', origin: root } });
+    const output = await captureStdoutAsync(() => designCommand({ args: ['design', 'upgrade'], cwd: root }));
+    assert.match(output, /local system \(reinstall to update\)/);
+    assert.equal(lockfile.getSystem(root, 'workbench').source.type, 'local');
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+    process.exitCode = undefined;
+  }
+});
+
 test('readLocalSystem: reads manifest, DESIGN.md and tokens.css', () => {
   const dir = writeSystem(path.join(makeTmpDir('cortex-design-local-'), 'workbench'));
   try {
