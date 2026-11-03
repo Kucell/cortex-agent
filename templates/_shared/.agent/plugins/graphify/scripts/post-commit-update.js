@@ -12,6 +12,9 @@
  *   - on code changes → runs `graphify update .`
  *   - on semantic-only changes → writes a stale marker
  *   - on update failure → writes an `update_failed` marker
+ *   - after a successful update → runs the edge-density guard; when the
+ *     incremental graph lost edge density, a detached full rebuild is
+ *     started (issue #154)
  *   - on IMPLEMENTATION MISSING → writes a diagnostic marker and warns,
  *     because a silently inert hook looks exactly like a healthy one
  *
@@ -147,6 +150,14 @@ try {
   if (result && result.result) {
     if (result.result === hookLib.HOOK_RESULT.INCREMENTAL_OK) {
       console.log("[graphify] incremental update ok");
+    } else if (result.result === hookLib.HOOK_RESULT.DENSITY_REBUILD_STARTED) {
+      const density = result.density || {};
+      const ratio = typeof density.ratio === "number" ? density.ratio.toFixed(3) : "n/a";
+      const threshold = typeof density.threshold === "number" ? density.threshold.toFixed(3) : "n/a";
+      console.warn(
+        `[graphify] edge density ${ratio} < baseline*${density.dropFactor || 0.85} (${threshold}); ` +
+        `a full rebuild was started in the background`
+      );
     } else if (result.result === hookLib.HOOK_RESULT.SEMANTIC_MARKED) {
       console.log("[graphify] semantic changes detected; stale marker written (queries will fail closed until next graph update)");
     } else if (result.result === hookLib.HOOK_RESULT.INCREMENTAL_FAILED) {

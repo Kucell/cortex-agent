@@ -174,6 +174,7 @@
     "lib/governed/launch-cli.js",
     "lib/governed/launcher.js",
     "lib/governed/pi-launch.js",
+    "lib/graphify/density.js",
     "lib/graphify/hook.js",
     "lib/graphify/index.js",
     "lib/graphify/manifest.js",

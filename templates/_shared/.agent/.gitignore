@@ -13,3 +13,15 @@ token-attempts/recovery-events.jsonl
 # beside it are local runtime state and must never enter the source tree.
 plugins/graphify/.hook-installed
 plugins/graphify/.hook-unwired.json
+
+# Graphify edge-density guard runtime state (issue #154). The density
+# baseline and the rebuild-cooldown marker are local runtime state: the
+# baseline describes THIS checkout's graph and must not be shared between
+# machines, and the cooldown marker is meaningless elsewhere.
+plugins/graphify/.density-baseline.json
+plugins/graphify/.density-rebuild-state.json
+
+# Graphify detached full-rebuild logs. The runtime-artifact convention puts
+# every artifact under .agent/, never in the temp directory; the logs are
+# local-only and must not enter the source tree.
+logs/graphify/
