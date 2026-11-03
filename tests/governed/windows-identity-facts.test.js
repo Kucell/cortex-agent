@@ -11,7 +11,7 @@ describe("governed/windows-identity-facts - CIM facts", () => {
     const childProcess = require("node:child_process");
     const modulePath = require.resolve("../../lib/governed/windows-identity-facts");
     const original = require.cache[modulePath];
-    t.mock.method(childProcess, "spawnSync", () => ({
+    const spawn = t.mock.method(childProcess, "spawnSync", () => ({
       status: 0,
       stdout: "CIM_FACTS=OK\nCIM_TICKS=638000000000000000\nCIM_CMDLINE_B64=bm9kZSBob3N0Lmpz\n",
       stderr: "",
@@ -22,6 +22,9 @@ describe("governed/windows-identity-facts - CIM facts", () => {
       assert.deepEqual(fresh.readCimFacts(123), {
         creationTicks: "638000000000000000", commandLine: "node host.js",
       });
+      const argv = spawn.mock.calls[0].arguments[1];
+      assert.equal(argv.length, 4);
+      assert.match(argv[3], /FromBase64String\('MTIz'\)/);
     } finally {
       require.cache[modulePath] = original;
     }
@@ -72,6 +75,9 @@ describe("governed/windows-channel-holders - kernel object enumeration", () => {
       assert.deepEqual(result, { ok: false, pids: [], reason: "powershell-failed:1" });
       assert.equal(spawn.mock.callCount(), 1);
       assert.match(spawn.mock.calls[0].arguments[2].input, /NtQuerySystemInformation/);
+      const argv = spawn.mock.calls[0].arguments[1];
+      assert.equal(argv.length, 4);
+      assert.match(argv[3], /FromBase64String\('MTIz'\).*FromBase64String\('NDU2'\)/);
     } finally {
       require.cache[factsPath] = originalFacts;
       require.cache[holdersPath] = originalHolders;
