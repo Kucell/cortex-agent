@@ -22,6 +22,7 @@ const {
   attachPermitBridgeEndpoint,
   pinPeerIdentity,
 } = require("../../lib/coordination/permit-bridge-assembly");
+const { createTicketRegistry } = require("../../lib/coordination/permit-bridge-ticket");
 
 // A verified identity as the managed session would produce it.
 const PEER = Object.freeze({
@@ -33,6 +34,21 @@ const PEER = Object.freeze({
 
 function issueRequest() {
   return { lease: { sessionId: "s" }, permit: { operation: "read" } };
+}
+
+// The endpoint authenticates its client by a ticket, so every test needs one.
+// The registry is created per endpoint and the ticket is minted for the same
+// peer the assembly pins, which is what the production host does.
+function ticketEndpoint(perform, extra = {}) {
+  const tickets = createTicketRegistry();
+  const endpoint = createPermitBridgeEndpoint({ perform, action: "issue", tickets, ...extra });
+  // A ticket is one-shot, so a test that issues several requests mints a
+  // fresh one for each of them.
+  return { endpoint, tickets, ticket: () => tickets.mint(PEER) };
+}
+
+function ticketHeaders(ticket) {
+  return { "x-permit-bridge-ticket": ticket };
 }
 
 test("the bridge policy authorizes only the pinned identity on an allowed action", () => {
@@ -187,11 +203,12 @@ test("the endpoint forwards one request to the managed session and returns the g
         signedPermit: { message: JSON.stringify(message), signature: "sig", sequence: 7, deadline: 1234 },
       };
   };
-  const endpoint = createPermitBridgeEndpoint({ perform, action: "issue" });
+  const { endpoint, ticket } = ticketEndpoint(perform);
   const address = await endpoint.listen();
   try {
     const response = await fetch("http://127.0.0.1:" + address.port + "/permit", {
       method: "POST",
+      headers: ticketHeaders(ticket()),
       body: JSON.stringify({ lease: { sessionId: "s" }, permit: { operation: "read" } }),
     });
     assert.equal(response.status, 200);
@@ -208,16 +225,16 @@ test("the endpoint forwards one request to the managed session and returns the g
 
 test("the endpoint answers non-2xx on every failure path and never degrades", async () => {
   const perform = async () => { throw new Error("managed operation rejected"); };
-  const endpoint = createPermitBridgeEndpoint({ perform, action: "issue" });
+  const { endpoint, ticket } = ticketEndpoint(perform);
   const address = await endpoint.listen();
   try {
     const failed = await fetch("http://127.0.0.1:" + address.port + "/permit", {
-      method: "POST", body: JSON.stringify({ lease: {} }),
+      method: "POST", headers: ticketHeaders(ticket()), body: JSON.stringify({ lease: {} }),
     });
     assert.equal(failed.status, 502);
 
     const unparsable = await fetch("http://127.0.0.1:" + address.port + "/permit", {
-      method: "POST", body: "{",
+      method: "POST", headers: ticketHeaders(ticket()), body: "{",
     });
     assert.equal(unparsable.status, 400);
 
@@ -225,7 +242,7 @@ test("the endpoint answers non-2xx on every failure path and never degrades", as
     assert.equal(wrongMethod.status, 405);
 
     const notAnObject = await fetch("http://127.0.0.1:" + address.port + "/permit", {
-      method: "POST", body: JSON.stringify([1, 2, 3]),
+      method: "POST", headers: ticketHeaders(ticket()), body: JSON.stringify([1, 2, 3]),
     });
     assert.equal(notAnObject.status, 400);
   } finally {
@@ -235,11 +252,11 @@ test("the endpoint answers non-2xx on every failure path and never degrades", as
 
 test("the endpoint refuses to build a grant whose dispatch result has no projection", async () => {
   const perform = async () => ({ fingerprint: "c".repeat(64), signedPermit: { message: "{", signature: "s" } });
-  const endpoint = createPermitBridgeEndpoint({ perform, action: "issue" });
+  const { endpoint, ticket } = ticketEndpoint(perform);
   const address = await endpoint.listen();
   try {
     const response = await fetch("http://127.0.0.1:" + address.port + "/permit", {
-      method: "POST", body: JSON.stringify({ lease: {} }),
+      method: "POST", headers: ticketHeaders(ticket()), body: JSON.stringify({ lease: {} }),
     });
     // Not 200: a 200 with a partial body would be a permission decision
     // dressed as a transport answer.
@@ -371,11 +388,13 @@ test("the attached endpoint forwards through the assembly's pinned peer", async 
     }) },
     peerIdentity: PEER,
   });
-  const endpoint = attachPermitBridgeEndpoint({ assembly, action: "issue" });
+  const tickets = createTicketRegistry();
+  const endpoint = attachPermitBridgeEndpoint({ assembly, action: "issue", tickets });
   const address = await endpoint.listen();
   try {
     const response = await fetch("http://127.0.0.1:" + address.port + "/permit", {
       method: "POST",
+      headers: ticketHeaders(tickets.mint(PEER)),
       body: JSON.stringify({ lease: { sessionId: "s" }, permit: { operation: "read" } }),
     });
     assert.equal(response.status, 200);

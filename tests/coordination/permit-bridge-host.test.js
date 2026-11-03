@@ -77,9 +77,12 @@ function startBridge(batchSession, extra = {}) {
   });
 }
 
-function post(port, body) {
+function post(port, body, ticket) {
+  const headers = {};
+  if (ticket) headers["x-permit-bridge-ticket"] = ticket;
   return fetch("http://127.0.0.1:" + port + "/permit", {
     method: "POST",
+    headers,
     body: JSON.stringify(body),
   });
 }
@@ -96,7 +99,7 @@ test("the bridge host serves a signed permit over the loopback endpoint", {
     },
   });
   try {
-    const response = await post(bridge.address.port, productRequest());
+    const response = await post(bridge.address.port, productRequest(), bridge.issueTicket());
     assert.equal(response.status, 200);
     const grant = await response.json();
     // The projection came from the SIGNED message, not from the request.
@@ -134,7 +137,7 @@ test("the bridge host refuses a request whose shape the issuing side cannot serv
     // filled it in would be issuing a permit for a binding nobody asked for.
     const incomplete = productRequest();
     delete incomplete.workerIdentity;
-    const response = await post(bridge.address.port, incomplete);
+    const response = await post(bridge.address.port, incomplete, bridge.issueTicket());
     assert.notEqual(response.status, 200);
   } finally {
     await bridge.close();
@@ -147,9 +150,64 @@ test("the bridge host answers non-2xx when the batch session refuses", {
 }, async () => {
   const bridge = await startBridge({ issue: () => { throw new Error("no lease"); } });
   try {
-    const response = await post(bridge.address.port, productRequest());
+    const response = await post(bridge.address.port, productRequest(), bridge.issueTicket());
     // A refused issuance must not degrade into a 200 with a partial body.
     assert.notEqual(response.status, 200);
+  } finally {
+    await bridge.close();
+  }
+});
+
+test("the bridge host refuses a client that presents no ticket", {
+  skip: process.platform === "win32" || Number(process.versions.node.split(".")[0]) < 24,
+  timeout: 30000,
+}, async () => {
+  // The loopback binding alone does not authenticate anything: every process
+  // of the interactive account shares the loopback interface. A bystander
+  // process that posts without a ticket must not obtain a signed permit.
+  const issued = [];
+  const bridge = await startBridge({
+    issue: (request) => {
+      issued.push(request);
+      return grantFor();
+    },
+  });
+  try {
+    const response = await post(bridge.address.port, productRequest());
+    assert.equal(response.status, 401);
+    // The request must not have reached the batch session at all.
+    assert.equal(issued.length, 0);
+  } finally {
+    await bridge.close();
+  }
+});
+
+test("the bridge host refuses a ticket that is presented twice", {
+  skip: process.platform === "win32" || Number(process.versions.node.split(".")[0]) < 24,
+  timeout: 30000,
+}, async () => {
+  // A ticket that could be replayed would make the endpoint's access control
+  // only as strong as the secrecy of one captured value.
+  const bridge = await startBridge({ issue: () => grantFor() });
+  try {
+    const ticket = bridge.issueTicket();
+    const first = await post(bridge.address.port, productRequest(), ticket);
+    assert.equal(first.status, 200);
+    const second = await post(bridge.address.port, productRequest(), ticket);
+    assert.equal(second.status, 401);
+  } finally {
+    await bridge.close();
+  }
+});
+
+test("the bridge host refuses a ticket that was never minted", {
+  skip: process.platform === "win32" || Number(process.versions.node.split(".")[0]) < 24,
+  timeout: 30000,
+}, async () => {
+  const bridge = await startBridge({ issue: () => grantFor() });
+  try {
+    const response = await post(bridge.address.port, productRequest(), "a".repeat(64));
+    assert.equal(response.status, 401);
   } finally {
     await bridge.close();
   }
