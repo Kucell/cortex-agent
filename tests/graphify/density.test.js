@@ -920,15 +920,16 @@ test("density: a consumer never removes a request it did not read", () => {
 });
 
 test("density: a stale reclaim never deletes the lock a new holder took", () => {
-  // The exact interleaving the review described:
-  //   A reads the stale lock and judges it reclaimable;
-  //   B removes it and takes a NEW lock;
-  //   A resumes and -- with a plain unlink -- removes B's NEW lock.
-  // A then acquires the lock as well, so both believe they hold it.
+  // The interleaving the review described:
+  //   A judges the stale lock reclaimable;
+  //   B -- a live holder -- takes the lock in that window;
+  //   A resumes and removes it.
+  // A then acquires the lock as well, so both believe they hold it and the
+  // mutual exclusion is silently gone.
   //
-  // The window between the judgement and the reclaim is far too narrow to
-  // hit by racing two processes, so the test injects it through the
-  // `onStaleJudged` seam: B's takeover happens exactly inside that window.
+  // The window is far too narrow to hit reliably by racing two processes,
+  // so the test injects it through the `onStaleJudged` seam: B's takeover
+  // happens exactly inside that window.
   //
   // The assertion that matters is that B's lock is LEFT ALONE. An earlier
   // version of this test asserted only that the surviving lock was A's and
@@ -1199,7 +1200,7 @@ test("density: a claim left behind by a dead consumer is recovered", () => {
 
     // A consumer that claimed the request and then died: the claim names a
     // process that is gone, and it is older than the stale window.
-    const claimName = ".claimed-999999999-deadbeef.json";
+    const claimName = ".claimed-999999999-" + (Date.now() - 24 * 60 * 60 * 1000) + "-deadbeef.json";
     const claimPath = path.join(dir, claimName);
     fs.renameSync(path.join(dir, source), claimPath);
     fs.writeFileSync(claimPath, JSON.stringify({
@@ -1209,8 +1210,6 @@ test("density: a claim left behind by a dead consumer is recovered", () => {
       sourceHead: null,
       branch: null,
       attempts: 0,
-      pid: 999999999,
-      claimedAt: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
     }, null, 2) + "\n");
 
     assert.equal(density.hasPendingUpdate(root), false,
