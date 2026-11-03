@@ -601,10 +601,11 @@ test("density: a lock whose holder is gone is reclaimed", () => {
   const root = mkProject("lock-stale-pid");
   try {
     fs.mkdirSync(path.join(root, ".agent", "plugins", "graphify"), { recursive: true });
+    const old = Date.now() - 24 * 60 * 60 * 1000;
     fs.writeFileSync(density.rebuildLockPath(root), JSON.stringify({
       token: "dead",
       pid: 999999999,
-      acquiredAt: new Date().toISOString(),
+      acquiredAt: new Date(old).toISOString(),
     }));
     const acquired = density.acquireRebuildLock(root);
     assert.ok(acquired, "a lock whose holder is gone must be reclaimed");
@@ -624,15 +625,80 @@ test("density: the pending update queue records and replays a deferred request",
       branch: "main",
     });
     assert.equal(written.ok, true);
-    assert.equal(fs.existsSync(density.pendingPath(root)), true);
+    assert.equal(fs.existsSync(density.pendingDir(root)), true);
 
     const pending = density.takePendingUpdate(root);
     assert.ok(pending);
     assert.deepEqual(pending.changedPaths, ["src/a.js"]);
     assert.equal(pending.sourceHead, "abc123");
     // Taking the record clears it, so it is replayed exactly once.
-    assert.equal(fs.existsSync(density.pendingPath(root)), false);
     assert.equal(density.takePendingUpdate(root), null);
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("density: two concurrent consumers never claim the same pending request", () => {
+  // The queue is one file per request. A consumer OWNS the request it
+  // removed, so a second consumer finds nothing left to claim.
+  const root = mkProject("pending-exclusive");
+  try {
+    density.writePendingUpdate(root, { changedPaths: ["src/a.js"] });
+    const first = density.takePendingUpdate(root);
+    const second = density.takePendingUpdate(root);
+    assert.ok(first);
+    assert.equal(second, null, "a request must not be consumed twice");
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("density: a pending request for the same paths is not queued twice", () => {
+  const root = mkProject("pending-dedupe");
+  try {
+    const first = density.writePendingUpdate(root, { changedPaths: ["src/a.js"] });
+    const second = density.writePendingUpdate(root, { changedPaths: ["src/a.js"] });
+    assert.equal(first.ok, true);
+    assert.equal(second.ok, true);
+    const pending = density.takePendingUpdate(root);
+    assert.deepEqual(pending.changedPaths, ["src/a.js"]);
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("density: the lock is handed over to the rebuild process", () => {
+  // The hook that starts a detached rebuild exits immediately. A lock that
+  // still named the HOOK's pid would look abandoned while the rebuild is
+  // still running, and the next hook would reclaim it and race the rebuild.
+  const root = mkProject("lock-handover");
+  try {
+    const lock = density.acquireRebuildLock(root);
+    assert.ok(lock);
+    assert.equal(lock.transferTo(4242), true);
+    const holder = JSON.parse(fs.readFileSync(density.rebuildLockPath(root), "utf8"));
+    assert.equal(holder.pid, 4242);
+    assert.equal(holder.token, lock.token, "the token must survive the handover");
+    lock.release();
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("density: a live lock holder is never reclaimed because of its age", () => {
+  // A rebuild can legitimately run for hours. Reclaiming its lock on age
+  // alone would let the next writer race it.
+  const root = mkProject("lock-age");
+  try {
+    fs.mkdirSync(path.join(root, ".agent", "plugins", "graphify"), { recursive: true });
+    const old = Date.now() - 24 * 60 * 60 * 1000;
+    fs.writeFileSync(density.rebuildLockPath(root), JSON.stringify({
+      token: "live",
+      pid: process.pid,
+      acquiredAt: new Date(old).toISOString(),
+    }));
+    const acquired = density.acquireRebuildLock(root);
+    assert.equal(acquired, null, "a live holder's lock must not be reclaimed");
   } finally {
     cleanup(root);
   }
