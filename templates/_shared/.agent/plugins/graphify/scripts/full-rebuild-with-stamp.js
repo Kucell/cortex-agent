@@ -67,23 +67,57 @@ function resolveTimeoutMs() {
 const timeoutMs = resolveTimeoutMs();
 const startedAt = Date.now();
 console.log(
-  `[graphify-full] start: graphify . (timeout=${Math.round(timeoutMs / 1000)}s, cwd=${cwd})`
+  `[graphify-full] start: graphify extract . --force (timeout=${Math.round(timeoutMs / 1000)}s, cwd=${cwd})`
 );
 
-const result = spawnSync("graphify", ["."], {
+// The spawning hook took the rebuild lock BEFORE spawning this process, so
+// the full build and the incremental update are mutually exclusive for the
+// whole rebuild. This process OWNS that lock and releases it when it ends --
+// including on failure, so a failed rebuild does not wedge the project.
+const lockPath = process.env.GRAPHIFY_REBUILD_LOCK_PATH || null;
+function releaseLock() {
+  if (!lockPath) return;
+  try { fs.unlinkSync(lockPath); } catch (_) { /* already released */ }
+}
+
+// Release the lock on every exit path, including an uncaught exception.
+process.on("exit", releaseLock);
+process.on("uncaughtException", (err) => {
+  console.error(`[graphify-full] FAILED: ${err && err.message ? err.message : String(err)}`);
+  releaseLock();
+  process.exit(1);
+});
+
+// The full build MUST be a real full build.
+//
+// `graphify .` is shorthand for `graphify extract .`, and extract ENTERS
+// INCREMENTAL MODE whenever a graph.json already exists -- only `--force`
+// turns that off (graphify 0.9.27, cli.py: `incremental_mode =
+// existing_graph_path.exists() and not force`). A "full" rebuild that
+// silently ran incrementally would stamp the DEGRADED ratio as the new
+// baseline, and the density guard would never fire again -- the exact
+// failure the guard exists to prevent.
+//
+// `GRAPHIFY_FORCE=1` is set as well, because that is the env-var form of
+// the same switch and keeps the behaviour identical for CLI versions that
+// only honour one of the two.
+const result = spawnSync("graphify", ["extract", ".", "--force"], {
   cwd,
   encoding: "utf8",
   stdio: ["ignore", "inherit", "inherit"],
   timeout: timeoutMs,
+  env: Object.assign({}, process.env, { GRAPHIFY_FORCE: "1" }),
 });
 
 const elapsed = ((Date.now() - startedAt) / 1000).toFixed(1);
 if (result.error) {
   console.error(`[graphify-full] FAILED: ${result.error.message} after ${elapsed}s`);
+  releaseLock();
   process.exit(1);
 }
 if (result.status !== 0) {
   console.error(`[graphify-full] FAILED: exit ${result.status} after ${elapsed}s`);
+  releaseLock();
   process.exit(result.status || 1);
 }
 
@@ -95,29 +129,27 @@ if (!densityLib) {
     `[graphify-full] done in ${elapsed}s, but the shared density module could not be resolved; ` +
     `no baseline was stamped.`
   );
+  releaseLock();
   process.exit(0);
 }
 
-const counts = densityLib.readGraphCounts(cwd);
-if (!counts.present) {
-  console.error(`[graphify-full] FAILED: ${densityLib.graphPath(cwd)} is missing after the rebuild`);
-  process.exit(1);
-}
-
-const stamp = densityLib.stampBaseline(cwd, {
-  nodes: counts.nodes,
-  edges: counts.edges,
-  buildKind: "full",
-});
+// Measure and stamp in ONE step, bound to the graph state on disk RIGHT NOW.
+// If an incremental update published a different graph in the meantime, the
+// stamp is refused and the previous baseline stays in place. Stamping the
+// degraded graph would drag the baseline down with it and the guard would
+// never fire again.
+const stamp = densityLib.stampBaselineFromGraph(cwd, { buildKind: "full" });
 if (!stamp.ok) {
   console.error(`[graphify-full] FAILED to stamp baseline: ${stamp.reason}`);
+  releaseLock();
   process.exit(1);
 }
 
 console.log(
-  `[graphify-full] done in ${elapsed}s: ${counts.nodes} nodes, ${counts.edges} edges, ` +
+  `[graphify-full] done in ${elapsed}s: ${stamp.nodes} nodes, ${stamp.edges} edges, ` +
   `ratio=${stamp.ratio.toFixed(3)}, baseline stamped into ` +
   `${path.relative(cwd, stamp.sidecarPath)}`
 );
 
+releaseLock();
 process.exit(0);

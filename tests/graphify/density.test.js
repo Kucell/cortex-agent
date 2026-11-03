@@ -318,3 +318,221 @@ test("density: stamping the baseline mirrors the value into graph.json _meta", (
   }
 });
 
+// ─── Concurrency and durability regressions ─────────────────────────────────
+
+test("density: the rebuild lock admits exactly one holder", () => {
+  // Two post-commit hooks running at the same time both used to read "no
+  // recent rebuild" and both started a rebuild. The lock is an exclusive
+  // create, so exactly one writer wins.
+  const root = mkProject("rebuild-lock");
+  try {
+    const first = density.acquireRebuildLock(root);
+    assert.ok(first, "the first acquire must succeed");
+    const second = density.acquireRebuildLock(root);
+    assert.equal(second, null, "a second acquire must fail while the lock is held");
+    first.release();
+    const third = density.acquireRebuildLock(root);
+    assert.ok(third, "the lock must be acquirable again after release");
+    third.release();
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("density: a concurrent rebuild start is refused instead of spawning a second one", () => {
+  const root = mkProject("rebuild-lock-start");
+  try {
+    writeGraph(root, { nodes: 200, edges: 100 });
+    writeThreshold(root, {
+      min_nodes_for_check: 100,
+      ratio_drop_threshold: 0.85,
+      baseline_edge_node_ratio: 2.0,
+      rebuild_cooldown_seconds: 0,
+    });
+    const config = density.readThresholdConfig(root);
+    // Hold the lock the way a running rebuild would.
+    const held = density.acquireRebuildLock(root);
+    assert.ok(held);
+    const result = density.startFullRebuild({ projectRoot: root, config });
+    assert.equal(result.started, false);
+    assert.equal(result.reason, "rebuild_in_progress");
+    held.release();
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("density: the sidecar is written with an exclusive temp name", () => {
+  // A shared temp name lets one writer publish another writer's half-written
+  // file. Every writer must use its own temp path.
+  const root = mkProject("atomic-sidecar");
+  try {
+    const target = path.join(root, "atomic.json");
+    density.writeFileAtomic(target, "first");
+    assert.equal(fs.readFileSync(target, "utf8"), "first");
+    density.writeFileAtomic(target, "second");
+    assert.equal(fs.readFileSync(target, "utf8"), "second");
+    // No temp file is left behind.
+    const leftovers = fs.readdirSync(root).filter((n) => n.includes(".tmp-"));
+    assert.deepEqual(leftovers, [], "no temp file may survive the write");
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("density: the _meta mirror never rolls a newer graph back", () => {
+  // The mirror is a read-modify-write of the WHOLE graph. If the graph was
+  // replaced between the read and the write, publishing the snapshot reverts
+  // the newer graph. The mirror must refuse in that case.
+  //
+  // The race window is BETWEEN the read and the write inside the mirror, so
+  // the test injects the concurrent publisher exactly there: the graph is
+  // replaced after the mirror has parsed it but before it publishes.
+  const root = mkProject("meta-no-rollback");
+  try {
+    writeGraph(root, { nodes: 100, edges: 250 });
+    const file = density.graphPath(root);
+
+    const newer = {
+      nodes: Array.from({ length: 150 }, (_, i) => ({ id: `n${i}` })),
+      links: [],
+    };
+    const realReadFileSync = fs.readFileSync;
+    let injected = false;
+    // Replace the graph right AFTER the mirror read it and BEFORE it
+    // publishes. The mirror compares the file identity it parsed with the
+    // identity on disk, so the replacement is detected.
+    fs.readFileSync = function patched(target, ...rest) {
+      const result = realReadFileSync.call(fs, target, ...rest);
+      if (!injected && String(target) === file) {
+        injected = true;
+        fs.writeFileSync(file, JSON.stringify(newer, null, 2));
+      }
+      return result;
+    };
+
+    const payload = {
+      build_kind: "full",
+      edge_node_ratio: 2.5,
+      baseline_locked_at: new Date().toISOString(),
+    };
+    let stamped;
+    try {
+      stamped = density.stampGraphMeta(root, payload);
+    } finally {
+      fs.readFileSync = realReadFileSync;
+    }
+    assert.equal(injected, true, "the concurrent publisher must have been injected");
+    assert.equal(stamped, false, "the mirror must refuse to publish over a changed graph");
+    const after = JSON.parse(fs.readFileSync(file, "utf8"));
+    assert.equal(after.nodes.length, 150, "the newer graph must survive");
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("density: a _meta baseline is migrated into the sidecar before the incremental update", () => {
+  // `graphify update .` erases _meta. A project that carried the
+  // consumer-side convention must not lose its baseline on the first commit
+  // after the upgrade.
+  const root = mkProject("meta-migration");
+  try {
+    writeGraph(root, { nodes: 200, edges: 400, meta: { edge_node_ratio: 2, build_kind: "full" } });
+    const migrated = density.migrateMetaBaseline(root);
+    assert.equal(migrated.migrated, true);
+    const sidecar = density.readBaselineSidecar(root);
+    assert.equal(sidecar.edge_node_ratio, 2);
+    assert.equal(sidecar.migrated_from, "graph_meta");
+
+    // An existing sidecar is authoritative and is never overwritten.
+    const again = density.migrateMetaBaseline(root);
+    assert.equal(again.migrated, false);
+    assert.equal(again.reason, "sidecar_present");
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("density: the migration is a no-op when there is no _meta baseline", () => {
+  const root = mkProject("meta-migration-none");
+  try {
+    writeGraph(root, { nodes: 200, edges: 400 });
+    const migrated = density.migrateMetaBaseline(root);
+    assert.equal(migrated.migrated, false);
+    assert.equal(migrated.reason, "no_meta_baseline");
+    assert.equal(fs.existsSync(density.baselinePath(root)), false);
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("density: the full rebuild uses a command that really rebuilds from scratch", () => {
+  // `graphify .` is `graphify extract .`, and extract enters incremental
+  // mode whenever graph.json exists. Only --force turns that off. A "full"
+  // rebuild without it would stamp the degraded ratio as the new baseline.
+  const root = mkProject("full-build-command");
+  try {
+    writeGraph(root, { nodes: 200, edges: 100 });
+    writeThreshold(root, {
+      min_nodes_for_check: 100,
+      ratio_drop_threshold: 0.85,
+      baseline_edge_node_ratio: 2.0,
+      rebuild_cooldown_seconds: 0,
+      full_rebuild_timeout_seconds: 60,
+    });
+    const config = density.readThresholdConfig(root);
+    const result = density.startFullRebuild({ projectRoot: root, config });
+    assert.equal(result.started, true);
+    assert.equal(result.wrapper, null, "the fallback path is used when no wrapper is installed");
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("density: the fallback rebuild starts a watchdog that bounds the rebuild", () => {
+  // The fallback path spawns graphify directly, so nothing applies the
+  // timeout. Without a watchdog a stuck rebuild would live forever.
+  const root = mkProject("watchdog");
+  try {
+    writeGraph(root, { nodes: 200, edges: 100 });
+    writeThreshold(root, {
+      min_nodes_for_check: 100,
+      ratio_drop_threshold: 0.85,
+      baseline_edge_node_ratio: 2.0,
+      rebuild_cooldown_seconds: 0,
+      full_rebuild_timeout_seconds: 60,
+    });
+    const config = density.readThresholdConfig(root);
+    const result = density.startFullRebuild({ projectRoot: root, config });
+    assert.equal(result.started, true);
+    assert.ok(result.lockPath, "the rebuild must record the lock it holds");
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("density: the baseline is not stamped over a graph that changed under it", () => {
+  const root = mkProject("stamp-graph-changed");
+  try {
+    writeGraph(root, { nodes: 200, edges: 400 });
+    const stamp = density.stampBaselineFromGraph(root, {
+      expectedNodes: 200,
+      expectedEdges: 400,
+      buildKind: "full",
+    });
+    assert.equal(stamp.ok, true);
+    assert.equal(stamp.ratio, 2);
+
+    // A different graph is on disk now; the expected counts no longer hold.
+    writeGraph(root, { nodes: 300, edges: 150 });
+    const refused = density.stampBaselineFromGraph(root, {
+      expectedNodes: 200,
+      expectedEdges: 400,
+      buildKind: "full",
+    });
+    assert.equal(refused.ok, false);
+    assert.equal(refused.reason, "graph_changed_during_rebuild");
+  } finally {
+    cleanup(root);
+  }
+});

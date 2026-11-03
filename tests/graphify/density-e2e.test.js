@@ -54,7 +54,13 @@ function installGraphifyStub(projectRoot) {
     "const stateFile = path.join(cwd, 'stub-state.json');",
     "let state = { nodes: 0, edges: 0 };",
     "try { state = JSON.parse(fs.readFileSync(stateFile, 'utf8')); } catch (_) {}",
-    "const full = process.argv[2] === '.';",
+    // A REAL full build. `graphify .` is shorthand for `graphify extract .`,
+    // and extract enters incremental mode whenever a graph.json exists --
+    // only --force turns that off. The stub mirrors that rule so the test
+    // exercises the same distinction the real CLI makes.
+    "const argv = process.argv.slice(2);",
+    "const forced = argv.includes('--force') || process.env.GRAPHIFY_FORCE === '1';",
+    "const full = argv[0] === 'extract' ? forced : (argv[0] === '.' && forced);",
     "const nodes = full ? state.fullNodes : state.nodes;",
     "const edges = full ? state.fullEdges : state.edges;",
     "const outDir = path.join(cwd, 'graphify-out');",
@@ -170,11 +176,17 @@ test("e2e: incremental update -> density drop -> detached full rebuild -> baseli
     // Step 1: a FULL build establishes the baseline.
     //   100 nodes / 200 edges -> ratio 2.0
     writeStubState(root, { nodes: 100, edges: 200, fullNodes: 100, fullEdges: 200 });
-    const full = spawnSync(path.join(binDir, "graphify"), ["."], { cwd: root, encoding: "utf8" });
+    const full = spawnSync(path.join(binDir, "graphify"), ["extract", ".", "--force"], { cwd: root, encoding: "utf8" });
     assert.equal(full.status, 0, "the full build stub must succeed");
     const stamped = density.stampBaseline(root, { nodes: 100, edges: 200, buildKind: "full" });
     assert.equal(stamped.ok, true);
     assert.equal(stamped.ratio, 2);
+
+    // Remember how many stub calls happened so far. The assertions below
+    // must prove that the rebuild the hook started is a NEW call -- the
+    // initialisation build above already left a call in the log, and
+    // matching "any full call" would be satisfied by that one.
+    const callsBefore = readStubCalls(root).length;
 
     // Step 2: the incremental update degrades the graph.
     //   100 nodes / 60 edges -> ratio 0.6, below baseline * 0.85 = 1.7
@@ -195,14 +207,24 @@ test("e2e: incremental update -> density drop -> detached full rebuild -> baseli
     const baselineFile = density.baselinePath(root);
     const rebuilt = await waitFor(() => {
       const callsNow = readStubCalls(root);
-      return callsNow.some((c) => c.args[0] === ".");
+      return callsNow.slice(callsBefore).some((c) => c.args[0] === "extract" && c.args.includes("--force"));
     }, 20000);
     assert.ok(rebuilt, "a detached full rebuild must have been started");
 
-    await waitFor(() => {
+    // The rebuild must be a REAL full build: the wrapper has to pass
+    // --force, otherwise the CLI would silently run incrementally and stamp
+    // the degraded ratio as the new baseline.
+    const rebuildCall = readStubCalls(root).slice(callsBefore)
+      .find((c) => c.args[0] === "extract");
+    assert.ok(rebuildCall, "the rebuild must invoke the extract command");
+    assert.ok(rebuildCall.args.includes("--force"),
+      "the rebuild must pass --force so the CLI really rebuilds from scratch");
+
+    const restamped = await waitFor(() => {
       const sidecar = density.readBaselineSidecar(root);
-      return sidecar && sidecar.edge_node_ratio === 2;
+      return sidecar && sidecar.edge_node_ratio === 2 && sidecar.baseline_locked_at !== stamped.payload.baseline_locked_at;
     }, 20000);
+    assert.ok(restamped, "the rebuild must write a NEW baseline");
     const sidecar = density.readBaselineSidecar(root);
     assert.ok(sidecar, "the full rebuild must write the baseline sidecar");
     assert.equal(sidecar.edge_node_ratio, 2, "the baseline must be restored to the full-build ratio");
