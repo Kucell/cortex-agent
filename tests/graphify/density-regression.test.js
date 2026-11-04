@@ -2130,6 +2130,48 @@ test("regression: an unreadable displacement registry keeps rejected baselines f
   }
 });
 
+test("regression: an unreadable baseline sidecar is not treated as missing", () => {
+  const root = mkProject("baseline-sidecar-read-failure");
+  try {
+    writeGraph(root, { nodes: 100, edges: 500 });
+    const lock = density.acquireRebuildLock(root);
+    assert.ok(lock);
+    const published = density.stampBaseline(root, {
+      nodes: 100,
+      edges: 500,
+      buildKind: "full",
+      lockGeneration: lock.generation,
+      lockToken: lock.token,
+    });
+    assert.equal(published.ok, true);
+    lock.release();
+
+    const sidecar = density.baselinePath(root);
+    const readFile = fs.readFileSync;
+    fs.readFileSync = function (file, ...args) {
+      if (String(file) === sidecar) {
+        throw Object.assign(new Error("injected baseline read failure"), { code: "EIO" });
+      }
+      return readFile.call(this, file, ...args);
+    };
+    let decision;
+    try {
+      assert.throws(() => density.readBaselineSidecar(root),
+        (error) => error.code === "baseline_sidecar_unreadable");
+      decision = density.checkAndMaybeRebuild({ projectRoot: root });
+    } finally {
+      fs.readFileSync = readFile;
+    }
+    assert.equal(decision.checked, false);
+    assert.equal(decision.reason, "density_check_failed",
+      "the guard must refuse to continue without reading the durable baseline");
+    assert.equal(density.readBaselineSidecar(root).edge_node_ratio, 5,
+      "the baseline remains readable when the transient failure clears");
+  } finally {
+    cleanup(root);
+  }
+});
+
 test("regression: a reclaim never takes the lock of a holder that took the path in the meantime", () => {
   // The reclaim MOVED the lock aside and looked at what it moved. The move
   // took the path away FIRST, so a holder that took the path in the window
