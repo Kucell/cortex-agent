@@ -1,0 +1,7 @@
+{
+  "min_nodes_for_check": 100,
+  "ratio_drop_threshold": 0.85,
+  "baseline_edge_node_ratio": null,
+  "full_rebuild_timeout_seconds": 1800,
+  "rebuild_cooldown_seconds": 1800
+}
