@@ -84,6 +84,20 @@ test("a ticket minted for another peer does not authorize the pinned peer", {
         return grantFor();
       },
     },
+    // The revocation list is signed by a separate batch; the host refuses
+    // to start without one because an issuer that cannot publish a
+    // revocation list has a dead revocation channel.
+    revocationBatchSession: {
+      signRevocation: ({ state, fingerprints }) => ({
+        revocation_sequence: state.appliedRevocationSequence + 1,
+        revoked_fingerprints: [...fingerprints].sort(),
+        issued_at_ms: 1000,
+        prev_revocation_sequence: state.appliedRevocationSequence,
+        batch_public_key_fingerprint: "d".repeat(64),
+        signature: "revocation-signature",
+      }),
+    },
+    revocationStateSource: () => ({ appliedRevocationSequence: 0, revokedFingerprints: new Set() }),
     leaseTtlMs: 60_000,
     permitTtlMs: 5_000,
   });

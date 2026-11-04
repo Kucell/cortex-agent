@@ -71,6 +71,21 @@ function startBridge(batchSession, extra = {}) {
   return startPermitBridgeHost({
     executorPath: EXECUTOR,
     batchSession,
+    // The revocation list is signed by a SEPARATE batch: a list signed by a
+    // revocable batch could revoke its own signer. The host refuses to
+    // start without it, because an issuer that cannot publish a revocation
+    // list has a revocation channel that is dead on arrival.
+    revocationBatchSession: {
+      signRevocation: ({ state, fingerprints }) => ({
+        revocation_sequence: state.appliedRevocationSequence + 1,
+        revoked_fingerprints: [...fingerprints].sort(),
+        issued_at_ms: 1000,
+        prev_revocation_sequence: state.appliedRevocationSequence,
+        batch_public_key_fingerprint: "d".repeat(64),
+        signature: "revocation-signature",
+      }),
+    },
+    revocationStateSource: () => ({ appliedRevocationSequence: 0, revokedFingerprints: new Set() }),
     leaseTtlMs: LEASE_TTL_MS,
     permitTtlMs: PERMIT_TTL_MS,
     ...extra,
