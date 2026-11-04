@@ -194,3 +194,83 @@ describe("governed/managed-caller-identity - Windows branch selection", () => {
     assert.equal(identity.isPreciseStartToken("ps-coarse:Mon Nov  2 13:46:51 2026"), false);
   });
 });
+
+describe("governed/windows-channel-holders - the inlined helper must compile", () => {
+  // The helper source is a JavaScript template literal that is piped to
+  // `Add-Type` on the Windows machine. Two things can silently corrupt it
+  // before the compiler ever sees it:
+  //
+  //   1. a backslash that the JS parser consumes. `LastIndexOf('\\')` in
+  //      the .js file reaches the C# compiler as `LastIndexOf('\')`, which
+  //      is not a char literal at all;
+  //   2. a BCL type used without its namespace imported.
+  //
+  // Both fail the same way: an opaque Add-Type failure on the real
+  // machine, minutes away from the edit that caused it. These checks are
+  // the cheap guard that catches them at the source.
+
+  test("no char literal is broken by the JavaScript template literal", () => {
+    const source = holders.HOLDER_HELPER_SOURCE;
+    // A single backslash inside a char literal is always a broken escape:
+    // the C# escape for a backslash is two of them.
+    assert.doesNotMatch(source, /'\\(?!\\)/);
+  });
+
+  test("every BCL type the helper uses is imported", () => {
+    const source = holders.HOLDER_HELPER_SOURCE;
+    const required = [
+      ["CultureInfo", "using System.Globalization;"],
+      ["Path", "using System.IO;"],
+    ];
+    for (const [type, directive] of required) {
+      if (!new RegExp("\\b" + type + "\\b").test(source)) continue;
+      assert.ok(
+        source.includes(directive),
+        `helper uses ${type} without ${directive}`,
+      );
+    }
+  });
+
+  test("the helper source compiles", { skip: !hasDotnet() }, () => {
+    // Where a .NET compiler exists, compile the source for real instead of
+    // trusting the static checks above. The scratch directory is transient
+    // compiler output and is removed again in the same test.
+    const fs = require("node:fs");
+    const os = require("node:os");
+    const path = require("node:path");
+    const { spawnSync } = require("node:child_process");
+
+    const scratch = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-holders-compile-"));
+    try {
+      fs.writeFileSync(path.join(scratch, "Helper.cs"), holders.HOLDER_HELPER_SOURCE);
+      fs.writeFileSync(
+        path.join(scratch, "Helper.csproj"),
+        [
+          "<Project Sdk=\"Microsoft.NET.Sdk\">",
+          "  <PropertyGroup>",
+          "    <TargetFramework>net10.0</TargetFramework>",
+          "    <OutputType>Library</OutputType>",
+          "    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>",
+          "  </PropertyGroup>",
+          "  <ItemGroup>",
+          "    <Compile Include=\"Helper.cs\" />",
+          "  </ItemGroup>",
+          "</Project>",
+        ].join("\n"),
+      );
+      const build = spawnSync("dotnet", ["build", "-v", "q", "--nologo"], {
+        cwd: scratch,
+        encoding: "utf8",
+      });
+      assert.equal(build.status, 0, `helper does not compile:\n${build.stdout || ""}${build.stderr || ""}`);
+    } finally {
+      fs.rmSync(scratch, { recursive: true, force: true });
+    }
+  });
+});
+
+function hasDotnet() {
+  const { spawnSync } = require("node:child_process");
+  const probe = spawnSync("dotnet", ["--version"], { encoding: "utf8" });
+  return probe.status === 0;
+}
