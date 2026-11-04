@@ -94,6 +94,24 @@ function cleanup(root) {
   try { fs.rmSync(root, { recursive: true, force: true }); } catch (_) { /* best-effort */ }
 }
 
+// The Git context the resolver is given: it never runs Git, so the context
+// is injected.
+function fakeGitContext({ head = "abc123", branch = "agent/test" } = {}) {
+  return {
+    ok: true,
+    isWorktree: false,
+    isPrimary: true,
+    worktreePath: "/current",
+    commonDir: "/.git",
+    head,
+    branch,
+    detached: false,
+    peers: [{ path: "/current", head, branch, detached: false }],
+    primary: null,
+    _dirtyCount: 0,
+  };
+}
+
 function pendingNames(root) {
   try {
     return fs.readdirSync(density.pendingDir(root)).sort();
@@ -3092,6 +3110,17 @@ test("regression: the legacy claim replays the reminder it claimed", () => {
       onAfterClaim: () => {
         // The concurrent writer publishes a NEW reminder at the path.
         fs.writeFileSync(legacyPath, JSON.stringify(newer));
+        // The claimed file is runtime state under `.agent/`, so the
+        // ignore rules of the project cover it.
+        const claimDir = path.join(
+          root, ".agent", "plugins", "graphify", ".density-claimed",
+        );
+        const claimed = fs.existsSync(claimDir) ? fs.readdirSync(claimDir) : [];
+        assert.equal(claimed.length, 1,
+          "the claimed reminder must be moved into the runtime state of the plugin");
+        const leftovers = fs.readdirSync(graphDir).filter((name) => name.includes(".claimed-"));
+        assert.deepEqual(leftovers, [],
+          "the claim must not leave a file in the source tree");
       },
     });
     assert.ok(result.ok, "the clear must not fail: " + result.reason);
@@ -3272,6 +3301,334 @@ test("regression: a reclaim that cannot register the fence does not release the 
     const onDisk = JSON.parse(fs.readFileSync(file, "utf8"));
     assert.equal(onDisk.token, "stale-token",
       "the lock at the path must still be the one that was there");
+  } finally {
+    cleanup(root);
+  }
+});
+
+// ─── The mechanisms the fifteenth round found under-constrained ────────────
+
+test("regression: a ticket that was used is not handed out a second time", () => {
+  // The gate orders its participants by ticket, and a ticket that was
+  // handed out must never be handed out again. A late participant that
+  // reuses the ticket of a participant that arrived earlier enters the
+  // protocol IN FRONT of it -- and two participants are then inside the
+  // mutual exclusion at the same time.
+  const root = mkProject("gate-ticket-not-reused");
+  try {
+    const gate = require("../../lib/graphify/density-gate");
+    const dir = gate.gateDir(root, "reuse");
+    const held = gate.acquireGate(root, "reuse", { timeoutMs: 0 });
+    assert.ok(held, "the first participant must take the gate");
+    held.release();
+    const slot = path.join(dir, "gate-" + held.ticket + ".json");
+    assert.ok(fs.existsSync(slot),
+      "the slot of a released participant must stay: the ticket is taken for ever");
+    assert.equal(gate.readGateEntry(slot).active, false,
+      "a released slot is not a participant any more");
+    const next = gate.registerParticipant(dir);
+    assert.ok(next, "the next participant must register");
+    assert.ok(next.ticket > held.ticket,
+      "a ticket that was used must not be handed out a second time");
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("regression: the registration of a ticket never overwrites the slot of another participant", () => {
+  // The registration is the step that takes the ticket. If it could
+  // OVERWRITE the slot of a participant that took the same number in the
+  // meantime, two participants would believe that they own one ticket --
+  // and the order of the participants would not be an order any more.
+  const root = mkProject("gate-registration-exclusive");
+  try {
+    const gate = require("../../lib/graphify/density-gate");
+    const dir = gate.gateDir(root, "exclusive");
+    fs.mkdirSync(dir, { recursive: true });
+    let injected = false;
+    const participant = gate.registerParticipant(dir, {
+      onBeforeCreate: ({ ticket, file }) => {
+        if (injected) return;
+        injected = true;
+        // Somebody else takes this ticket in the window between the
+        // decision and the create.
+        fs.writeFileSync(file, JSON.stringify({
+          ticket,
+          pid: 999999,
+          active: true,
+          at: new Date().toISOString(),
+        }));
+      },
+    });
+    assert.ok(participant, "the participant must register");
+    assert.ok(participant.ticket > 1,
+      "the participant must take the next ticket, not the one that was taken");
+    const competing = JSON.parse(fs.readFileSync(path.join(dir, "gate-1.json"), "utf8"));
+    assert.equal(competing.pid, 999999,
+      "the slot of the other participant must not be overwritten");
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("regression: the public graph is never absent while a publication runs", () => {
+  // The public graph is the file every reader of the project reads. A
+  // publication that MOVES it aside leaves a window in which the file is
+  // not there at all -- and a reader that looks into that window sees no
+  // graph, not the old one.
+  const root = mkProject("publish-graph-never-absent");
+  try {
+    const out = path.join(root, "graphify-out");
+    const staging = path.join(root, "staging");
+    fs.mkdirSync(out, { recursive: true });
+    fs.mkdirSync(staging, { recursive: true });
+    fs.writeFileSync(path.join(out, "graph.json"), JSON.stringify({ nodes: [{ id: "old" }], links: [] }));
+    fs.writeFileSync(path.join(out, "manifest.json"), JSON.stringify({ version: "old" }));
+    fs.writeFileSync(path.join(staging, "graph.json"), JSON.stringify({ nodes: [{ id: "new" }], links: [] }));
+    fs.writeFileSync(path.join(staging, "manifest.json"), JSON.stringify({ version: "new" }));
+    const ren = fs.renameSync;
+    let before = null;
+    let after = null;
+    fs.renameSync = function (from, to) {
+      const isGraph = String(to) === path.join(out, "graph.json") && String(from).includes(".publish-");
+      if (isGraph) before = fs.existsSync(path.join(out, "graph.json"));
+      const result = ren.apply(this, arguments);
+      if (isGraph) after = fs.existsSync(path.join(out, "graph.json"));
+      return result;
+    };
+    let published;
+    try {
+      published = updateLib.publishStagedOutput(root, staging, { isHeld: () => true });
+    } finally {
+      fs.renameSync = ren;
+    }
+    assert.equal(published.ok, true, "the publication must succeed");
+    assert.equal(before, true,
+      "the public graph must be there while it is replaced");
+    assert.equal(after, true,
+      "the public graph must be there right after it was replaced");
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("regression: a publication whose restore fails is reported and keeps the backup", () => {
+  // A publication that fails AND whose restore fails is a different fact
+  // from a publication that failed cleanly: the public directory may hold
+  // a file of the failed build, and the backup of the previous version is
+  // the only way back. The failure has to say so, and the backup has to
+  // survive.
+  const root = mkProject("publish-restore-failed");
+  try {
+    const out = path.join(root, "graphify-out");
+    const staging = path.join(root, "staging");
+    fs.mkdirSync(out, { recursive: true });
+    fs.mkdirSync(staging, { recursive: true });
+    fs.writeFileSync(path.join(out, "graph.json"), JSON.stringify({ nodes: [{ id: "old" }], links: [] }));
+    fs.writeFileSync(path.join(out, "manifest.json"), JSON.stringify({ version: "old" }));
+    fs.writeFileSync(path.join(staging, "graph.json"), JSON.stringify({ nodes: [{ id: "new" }], links: [] }));
+    fs.writeFileSync(path.join(staging, "manifest.json"), JSON.stringify({ version: "new" }));
+    const ren = fs.renameSync;
+    let failures = 0;
+    fs.renameSync = function (from, to) {
+      const fail = (String(to) === path.join(out, "graph.json") && failures === 0)
+        || String(from).endsWith("superseded-manifest.json");
+      if (fail) { failures += 1; throw Object.assign(new Error("injected"), { code: "EIO" }); }
+      return ren.apply(this, arguments);
+    };
+    let published;
+    try {
+      published = updateLib.publishStagedOutput(root, staging, { isHeld: () => true });
+    } finally {
+      fs.renameSync = ren;
+    }
+    assert.equal(published.ok, false, "the publication must fail");
+    assert.equal(published.restored, false,
+      "a restore that failed must not be reported as a restore that succeeded");
+    assert.equal(published.restoreReason, "restore_failed",
+      "the failure of the restore must be reported as its own fact");
+    assert.equal(published.preserveStaging, true,
+      "the staging area with the backup must be kept");
+    assert.ok(fs.existsSync(path.join(staging, "superseded-manifest.json")),
+      "the backup of the file that could not be restored must survive");
+    const marker = path.join(root, ".agent", "plugins", "graphify", ".density-commit.json");
+    const state = JSON.parse(fs.readFileSync(marker, "utf8")).state;
+    assert.equal(state, "publishing",
+      "a directory whose restore failed must be marked as in doubt");
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("regression: a reader fails closed while a publication is in flight", () => {
+  // The publication of several files is not one atomic step, so the
+  // reader and the writer have to agree on a version boundary. The commit
+  // marker is that boundary: a reader that finds a marker that says the
+  // publication did not finish must not read the directory.
+  const resolver = require("../../lib/graphify/resolver");
+  const root = mkProject("resolver-commit-marker");
+  try {
+    const pluginDir = path.join(root, ".agent", "plugins", "graphify");
+    const out = path.join(root, "graphify-out");
+    fs.mkdirSync(pluginDir, { recursive: true });
+    fs.mkdirSync(out, { recursive: true });
+    fs.writeFileSync(
+      path.join(pluginDir, "config.yml"),
+      "graphify:\n  version: '>=0.9.0'\n  map_path: 'graphify-out/graph.json'\n",
+    );
+    const graph = { schema_version: "1.0", nodes: [{ id: "n1" }], links: [] };
+    fs.writeFileSync(path.join(out, "graph.json"), JSON.stringify(graph));
+    const manifestLib = require("../../lib/graphify/manifest");
+    fs.writeFileSync(path.join(out, "manifest.json"), JSON.stringify(manifestLib.buildManifest({
+      graphifyVersion: "1.0.0",
+      generatedAt: new Date().toISOString(),
+      sourceHead: "abc123",
+      includedRoots: ["lib/"],
+      excludedRoots: [],
+      nodeCount: 1,
+      edgeCount: 0,
+      generationMode: "full",
+    }), null, 2));
+    const marker = path.join(pluginDir, ".density-commit.json");
+    fs.writeFileSync(marker, JSON.stringify({
+      schemaVersion: "1.0",
+      state: "publishing",
+      publishedAt: new Date().toISOString(),
+      graphRoot: fs.realpathSync(out),
+      files: {},
+    }));
+    const inFlight = resolver.resolveContext({
+      projectRoot: root,
+      gitContext: fakeGitContext(),
+      includeDirtyCheck: false,
+      now: new Date().toISOString(),
+    });
+    assert.equal(inFlight.available, false,
+      "a reader must not read a directory whose publication is in flight");
+    assert.ok(inFlight.staleReasons.includes("commit_incomplete"),
+      "the reader must say why the directory is not usable");
+
+    // The positive control: a marker that describes the files that are
+    // there lets the reader through.
+    const digest = (file) => require("node:crypto")
+      .createHash("sha256").update(fs.readFileSync(file)).digest("hex");
+    fs.writeFileSync(marker, JSON.stringify({
+      schemaVersion: "1.0",
+      state: "published",
+      publishedAt: new Date().toISOString(),
+      graphRoot: fs.realpathSync(out),
+      files: {
+        "graph.json": { sha256: digest(path.join(out, "graph.json")), mtimeMs: fs.statSync(path.join(out, "graph.json")).mtimeMs },
+        "manifest.json": { sha256: digest(path.join(out, "manifest.json")), mtimeMs: fs.statSync(path.join(out, "manifest.json")).mtimeMs },
+      },
+    }));
+    const published = resolver.resolveContext({
+      projectRoot: root,
+      gitContext: fakeGitContext(),
+      includeDirtyCheck: false,
+      now: new Date().toISOString(),
+    });
+    assert.equal(published.available, true,
+      "a directory whose marker describes its files must be readable");
+    assert.equal(published.staleReasons.length, 0,
+      "a consistent directory must not be reported as stale");
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("regression: a legacy reminder that cannot be imported is preserved and reported", () => {
+  // A reminder that a concurrent writer published at the path is a
+  // reminder in its own right. When it cannot be imported into the record
+  // model, it must STAY where it is -- and the caller has to be told that
+  // it is still pending.
+  const root = mkProject("legacy-reminder-pending");
+  try {
+    const dir = path.join(root, "graphify-out");
+    fs.mkdirSync(dir, { recursive: true });
+    const markerPath = path.join(dir, ".graphify-stale.json");
+    const reminder = (id) => ({
+      schemaVersion: "1.0",
+      markerId: id,
+      kind: "semantic",
+      changedPaths: [id + ".md"],
+    });
+    fs.writeFileSync(markerPath, JSON.stringify(reminder("old")));
+    const identity = markers.readLegacyMarker(dir).identity;
+    const write = fs.writeFileSync;
+    fs.writeFileSync = function (file, ...rest) {
+      if (String(file).endsWith("/new.json")) {
+        throw Object.assign(new Error("denied"), { code: "EACCES" });
+      }
+      return write.call(this, file, ...rest);
+    };
+    let result;
+    try {
+      result = markers.clearLegacyMarkerIfUnchanged(dir, identity, {
+        onBeforeClaim: () => write.call(fs, markerPath, JSON.stringify(reminder("middle"))),
+        onAfterClaim: () => write.call(fs, markerPath, JSON.stringify(reminder("new"))),
+      });
+    } finally {
+      fs.writeFileSync = write;
+    }
+    assert.equal(result.ok, true, "the clear itself must not fail");
+    assert.equal(result.pending, true,
+      "a reminder that could not be imported must be reported as pending");
+    const onDisk = JSON.parse(fs.readFileSync(markerPath, "utf8"));
+    assert.equal(onDisk.markerId, "new",
+      "the reminder that could not be imported must stay where it is");
+    const records = fs.readdirSync(path.join(dir, ".graphify-stale-records"));
+    assert.ok(records.includes("middle.json"),
+      "the reminder that was claimed must be in the record model");
+    assert.ok(!records.includes("new.json"),
+      "the reminder that could not be written must not be in the record model");
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("regression: a reminder that arrives while the view is written is not lost", () => {
+  // The derived view is published with an atomic create. A reminder that
+  // a writer publishes in that window must be FOUND -- and imported --
+  // instead of being overwritten by the view.
+  const root = mkProject("legacy-reminder-during-view");
+  try {
+    const dir = path.join(root, "graphify-out");
+    fs.mkdirSync(dir, { recursive: true });
+    const markerPath = path.join(dir, ".graphify-stale.json");
+    const reminder = (id) => ({
+      schemaVersion: "1.0",
+      markerId: id,
+      kind: "semantic",
+      changedPaths: [id + ".md"],
+    });
+    fs.writeFileSync(markerPath, JSON.stringify(reminder("old")));
+    const identity = markers.readLegacyMarker(dir).identity;
+    const write = fs.writeFileSync;
+    const link = fs.linkSync;
+    let injected = false;
+    fs.linkSync = function (from, to) {
+      if (!injected && String(to) === markerPath) {
+        injected = true;
+        write.call(fs, markerPath, JSON.stringify(reminder("third")));
+      }
+      return link.apply(this, arguments);
+    };
+    let result;
+    try {
+      result = markers.clearLegacyMarkerIfUnchanged(dir, identity, {
+        onBeforeClaim: () => write.call(fs, markerPath, JSON.stringify(reminder("middle"))),
+        onAfterClaim: () => write.call(fs, markerPath, JSON.stringify(reminder("new"))),
+      });
+    } finally {
+      fs.linkSync = link;
+      fs.writeFileSync = write;
+    }
+    assert.equal(injected, true, "the reminder must have arrived in the window");
+    assert.equal(result.ok, true, "the clear itself must not fail");
+    const records = fs.readdirSync(path.join(dir, ".graphify-stale-records"));
+    assert.ok(records.includes("third.json"),
+      "a reminder that arrives while the view is written must not be lost");
   } finally {
     cleanup(root);
   }

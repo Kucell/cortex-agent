@@ -66,9 +66,14 @@ plugins/graphify/.density-pending/
 # A legacy reminder that was CLAIMED by the rebuild: the single file is
 # moved aside with an atomic rename before it is answered, and a crash in
 # the window between the move and the cleanup can leave the claimed file
-# behind. It is local runtime state, and the reminder it holds is never
-# lost: the claim is replayed into the record model.
-graphify-out/.graphify-stale.json.claimed-*
+# behind. It is local runtime state of the plugin, and the reminder it
+# holds is never lost: the claim is replayed into the record model.
+plugins/graphify/.density-claimed/
+
+# The commit marker of a publication: it names the digests of the files
+# that were published, so a reader can tell whether the graph and the
+# manifest next to it belong together. It is runtime state of the plugin.
+plugins/graphify/.density-commit.json
 
 # Graphify detached full-rebuild logs. The runtime-artifact convention puts
 # every artifact under .agent/, never in the temp directory; the logs are
