@@ -2055,6 +2055,7 @@ test("regression: a record that a displaced holder published after its loss is n
 test("regression: an unreadable displacement registry keeps rejected baselines fenced", () => {
   const root = mkProject("displaced-registry-read-failure");
   try {
+    writeGraph(root, { nodes: 100, edges: 500 });
     const seedLock = density.acquireRebuildLock(root);
     assert.ok(seedLock, "the seed lock must be acquired");
     const published = density.stampBaseline(root, {
@@ -2094,14 +2095,35 @@ test("regression: an unreadable displacement registry keeps rejected baselines f
       }
       return readFile.call(this, file, ...args);
     };
-    let recovered;
+    let check;
     try {
-      recovered = density.readBaselineSidecar(root);
+      assert.throws(() => density.readBaselineSidecar(root),
+        (error) => error.code === "baseline_displacement_registry_unreadable");
+      check = density.checkAndMaybeRebuild({ projectRoot: root });
     } finally {
       fs.readFileSync = readFile;
     }
-    assert.equal(recovered.edge_node_ratio, 5,
-      "an unreadable displacement record must not make the rejected measurement win");
+    assert.equal(check.checked, false,
+      "the guard must refuse to run when it cannot verify the displacement fence");
+    assert.equal(check.reason, "density_check_failed");
+    const registryBytes = fs.readFileSync(registry);
+    fs.writeFileSync(registry, "  \n");
+    const corrupt = density.checkAndMaybeRebuild({ projectRoot: root });
+    assert.equal(corrupt.checked, false,
+      "an empty displacement record must not be interpreted as a zero threshold");
+    assert.equal(corrupt.reason, "density_check_failed");
+    for (const malformed of [
+      '{"offset":null,"sequence":null}',
+      '{"offset":[1000000],"sequence":[]}',
+      '{"offset":1}',
+    ]) {
+      fs.writeFileSync(registry, malformed);
+      assert.throws(() => density.readBaselineSidecar(root),
+        (error) => error.code === "baseline_displacement_registry_unreadable");
+    }
+    fs.writeFileSync(registry, registryBytes);
+    assert.equal(density.readBaselineSidecar(root).edge_node_ratio, 5,
+      "the legal baseline remains available when the registry can be read again");
     lock.release();
   } finally {
     cleanup(root);
@@ -2992,6 +3014,155 @@ test("regression: a staged graph changed after validation is not published", () 
       "the previously published graph must remain intact");
     assert.equal(fs.readFileSync(manifestFile, "utf8"), beforeManifest,
       "the previously published manifest must remain intact");
+    lock.release();
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("regression: staged digests bind the semantic validation snapshot", () => {
+  const root = mkProject("staged-bytes-change-before-digest");
+  try {
+    const graphFile = path.join(root, "graphify-out", "graph.json");
+    const manifestFile = path.join(root, "graphify-out", "manifest.json");
+    writeGraph(root, { nodes: 1, edges: 0 });
+    fs.writeFileSync(manifestFile, testManifest(1, 0, "old"));
+    const beforeGraph = fs.readFileSync(graphFile, "utf8");
+    const beforeManifest = fs.readFileSync(manifestFile, "utf8");
+    const staging = path.join(root, "staging");
+    fs.mkdirSync(staging, { recursive: true });
+    const stagedGraph = path.join(staging, "graph.json");
+    const stagedManifest = path.join(staging, "manifest.json");
+    fs.writeFileSync(stagedGraph, JSON.stringify({
+      nodes: [{ id: "new-a" }, { id: "new-b" }],
+      links: [{ source: "new-a", target: "new-b" }],
+    }));
+    fs.writeFileSync(stagedManifest, testManifest(2, 1, "new"));
+
+    const lock = density.acquireRebuildLock(root);
+    assert.ok(lock);
+    const readFile = fs.readFileSync;
+    let changed = false;
+    fs.readFileSync = function (file, ...args) {
+      const bytes = readFile.call(this, file, ...args);
+      if (String(file) === stagedGraph && !changed) {
+        changed = true;
+        fs.writeFileSync(stagedGraph, JSON.stringify({
+          nodes: [{ id: "new-a" }, { id: "new-b" }],
+          links: Array.from({ length: 9 }, () => ({ source: "new-a", target: "new-b" })),
+        }));
+      }
+      return bytes;
+    };
+    let result;
+    try {
+      result = updateLib.publishStagedOutput(root, staging, lock);
+    } finally {
+      fs.readFileSync = readFile;
+    }
+    assert.equal(changed, true);
+    assert.equal(result.ok, false);
+    assert.equal(result.reason, "staged_output_changed");
+    assert.equal(fs.readFileSync(graphFile, "utf8"), beforeGraph);
+    assert.equal(fs.readFileSync(manifestFile, "utf8"), beforeManifest);
+    lock.release();
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("regression: refusing changed staging preserves an existing publishing marker", () => {
+  const root = mkProject("staged-change-preserves-publishing-marker");
+  try {
+    const graphFile = path.join(root, "graphify-out", "graph.json");
+    const manifestFile = path.join(root, "graphify-out", "manifest.json");
+    const markerFile = path.join(root, ".agent", "plugins", "graphify", ".density-commit.json");
+    writeGraph(root, { nodes: 1, edges: 0 });
+    fs.writeFileSync(manifestFile, testManifest(1, 0, "old"));
+    const priorMarker = JSON.stringify({
+      schemaVersion: "1.0", state: "publishing", files: {}, graphRoot: path.dirname(graphFile),
+    });
+    fs.writeFileSync(markerFile, priorMarker);
+    const beforeGraph = fs.readFileSync(graphFile, "utf8");
+    const beforeManifest = fs.readFileSync(manifestFile, "utf8");
+
+    const staging = path.join(root, "staging");
+    fs.mkdirSync(staging, { recursive: true });
+    const stagedGraph = path.join(staging, "graph.json");
+    fs.writeFileSync(stagedGraph, JSON.stringify({ nodes: [{ id: "new" }], links: [] }));
+    fs.writeFileSync(path.join(staging, "manifest.json"), testManifest(1, 0, "new"));
+    const lock = density.acquireRebuildLock(root);
+    assert.ok(lock);
+    const copyFile = fs.copyFileSync;
+    let changed = false;
+    fs.copyFileSync = function (source, target, ...args) {
+      if (String(source) === stagedGraph && !changed) {
+        changed = true;
+        fs.writeFileSync(stagedGraph, JSON.stringify({
+          nodes: [{ id: "new-a" }, { id: "new-b" }],
+          links: Array.from({ length: 3 }, () => ({ source: "new-a", target: "new-b" })),
+        }));
+      }
+      return copyFile.call(this, source, target, ...args);
+    };
+    let result;
+    try {
+      result = updateLib.publishStagedOutput(root, staging, lock);
+    } finally {
+      fs.copyFileSync = copyFile;
+    }
+    assert.equal(result.ok, false);
+    assert.equal(result.reason, "staged_output_changed");
+    assert.equal(fs.readFileSync(markerFile, "utf8"), priorMarker,
+      "an early staging refusal must not delete the existing fail-closed marker");
+    assert.equal(fs.readFileSync(graphFile, "utf8"), beforeGraph);
+    assert.equal(fs.readFileSync(manifestFile, "utf8"), beforeManifest);
+    lock.release();
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("regression: an output-directory failure before publication preserves the old marker", () => {
+  const root = mkProject("mkdir-failure-preserves-marker");
+  try {
+    const out = path.join(root, "graphify-out");
+    const graphFile = path.join(out, "graph.json");
+    const manifestFile = path.join(out, "manifest.json");
+    const markerFile = path.join(root, ".agent", "plugins", "graphify", ".density-commit.json");
+    writeGraph(root, { nodes: 1, edges: 0 });
+    fs.writeFileSync(manifestFile, testManifest(1, 0, "old"));
+    const priorMarker = JSON.stringify({
+      schemaVersion: "1.0", state: "publishing", files: {}, graphRoot: out,
+    });
+    fs.writeFileSync(markerFile, priorMarker);
+    const beforeGraph = fs.readFileSync(graphFile, "utf8");
+    const beforeManifest = fs.readFileSync(manifestFile, "utf8");
+
+    const staging = path.join(root, "staging");
+    fs.mkdirSync(staging, { recursive: true });
+    fs.writeFileSync(path.join(staging, "graph.json"), JSON.stringify({ nodes: [{ id: "new" }], links: [] }));
+    fs.writeFileSync(path.join(staging, "manifest.json"), testManifest(1, 0, "new"));
+    const lock = density.acquireRebuildLock(root);
+    assert.ok(lock);
+    const mkdir = fs.mkdirSync;
+    fs.mkdirSync = function (target, ...args) {
+      if (String(target) === out) {
+        throw Object.assign(new Error("injected output directory failure"), { code: "EIO" });
+      }
+      return mkdir.call(this, target, ...args);
+    };
+    let result;
+    try {
+      result = updateLib.publishStagedOutput(root, staging, lock);
+    } finally {
+      fs.mkdirSync = mkdir;
+    }
+    assert.equal(result.ok, false);
+    assert.equal(result.reason, "EIO");
+    assert.equal(fs.readFileSync(markerFile, "utf8"), priorMarker);
+    assert.equal(fs.readFileSync(graphFile, "utf8"), beforeGraph);
+    assert.equal(fs.readFileSync(manifestFile, "utf8"), beforeManifest);
     lock.release();
   } finally {
     cleanup(root);
