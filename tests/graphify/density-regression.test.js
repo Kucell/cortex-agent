@@ -2052,6 +2052,62 @@ test("regression: a record that a displaced holder published after its loss is n
   }
 });
 
+test("regression: an unreadable displacement registry keeps rejected baselines fenced", () => {
+  const root = mkProject("displaced-registry-read-failure");
+  try {
+    const seedLock = density.acquireRebuildLock(root);
+    assert.ok(seedLock, "the seed lock must be acquired");
+    const published = density.stampBaseline(root, {
+      nodes: 100,
+      edges: 500,
+      buildKind: "full",
+      lockGeneration: seedLock.generation,
+      lockToken: seedLock.token,
+    });
+    assert.equal(published.ok, true);
+    seedLock.release();
+
+    const lock = density.acquireRebuildLock(root);
+    assert.ok(lock, "the next lock must be acquired");
+
+    const rejected = density.stampBaseline(root, {
+      nodes: 100,
+      edges: 200,
+      buildKind: "full",
+      lockGeneration: lock.generation,
+      lockToken: lock.token,
+      onBeforeAppend() {
+        assert.ok(lockLib.registerDisplaced(root, lock.token));
+      },
+    });
+    assert.equal(rejected.ok, false);
+    assert.equal(rejected.reason, "publication_rejected");
+    assert.equal(density.readBaselineSidecar(root).edge_node_ratio, 5);
+
+    const registry = path.join(
+      root, ".agent", "plugins", "graphify", ".density-displaced", lock.token,
+    );
+    const readFile = fs.readFileSync;
+    fs.readFileSync = function (file, ...args) {
+      if (String(file) === registry) {
+        throw Object.assign(new Error("injected registry read failure"), { code: "EIO" });
+      }
+      return readFile.call(this, file, ...args);
+    };
+    let recovered;
+    try {
+      recovered = density.readBaselineSidecar(root);
+    } finally {
+      fs.readFileSync = readFile;
+    }
+    assert.equal(recovered.edge_node_ratio, 5,
+      "an unreadable displacement record must not make the rejected measurement win");
+    lock.release();
+  } finally {
+    cleanup(root);
+  }
+});
+
 test("regression: a reclaim never takes the lock of a holder that took the path in the meantime", () => {
   // The reclaim MOVED the lock aside and looked at what it moved. The move
   // took the path away FIRST, so a holder that took the path in the window
@@ -2886,6 +2942,59 @@ test("regression: staged manifest validation rejects corrupt and mismatched pair
     } finally {
       cleanup(root);
     }
+  }
+});
+
+test("regression: a staged graph changed after validation is not published", () => {
+  const root = mkProject("staged-pair-mutated-after-validation");
+  try {
+    const graphFile = path.join(root, "graphify-out", "graph.json");
+    const manifestFile = path.join(root, "graphify-out", "manifest.json");
+    writeGraph(root, { nodes: 1, edges: 0 });
+    fs.writeFileSync(manifestFile, testManifest(1, 0, "old"));
+    const beforeGraph = fs.readFileSync(graphFile, "utf8");
+    const beforeManifest = fs.readFileSync(manifestFile, "utf8");
+
+    const staging = path.join(root, "staging");
+    fs.mkdirSync(staging, { recursive: true });
+    const stagedGraph = path.join(staging, "graph.json");
+    fs.writeFileSync(stagedGraph, JSON.stringify({
+      nodes: [{ id: "new-a" }, { id: "new-b" }],
+      links: [{ source: "new-a", target: "new-b" }],
+    }));
+    fs.writeFileSync(path.join(staging, "manifest.json"), testManifest(2, 1, "new"));
+
+    const lock = density.acquireRebuildLock(root);
+    assert.ok(lock, "the publication lock must be acquired");
+    const copyFile = fs.copyFileSync;
+    let changed = false;
+    fs.copyFileSync = function (source, target, ...args) {
+      if (!changed && String(source) === stagedGraph) {
+        changed = true;
+        fs.writeFileSync(stagedGraph, JSON.stringify({
+          nodes: [{ id: "new-a" }, { id: "new-b" }],
+          links: Array.from({ length: 9 }, () => ({ source: "new-a", target: "new-b" })),
+        }));
+      }
+      return copyFile.call(this, source, target, ...args);
+    };
+    let result;
+    try {
+      result = updateLib.publishStagedOutput(root, staging, lock);
+    } finally {
+      fs.copyFileSync = copyFile;
+    }
+    assert.equal(changed, true, "the mutation must happen after preflight");
+    assert.equal(result.ok, false,
+      "the publisher must reject staging bytes that changed after validation");
+    assert.equal(result.reason, "staged_output_changed");
+    assert.equal(fs.readFileSync(graphFile, "utf8"), beforeGraph,
+      "the previously published graph must remain intact");
+    assert.equal(fs.readFileSync(manifestFile, "utf8"), beforeManifest,
+      "the previously published manifest must remain intact");
+    lock.release();
+  } finally {
+    cleanup(root);
   }
 });
 

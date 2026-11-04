@@ -131,6 +131,64 @@ test("resolveContext: self-worktree graph is selected with kind=self", () => {
   assert.ok(out.manifestDigest && out.manifestDigest.startsWith("sha256:"));
 });
 
+test("resolveContext: an outstanding semantic reminder blocks old graph use without repairing state", () => {
+  const root = mkRoot();
+  fakePlugin(root);
+  const graphDir = writeGraph(root);
+  const written = markersLib.writeMarker({
+    graphDir,
+    kind: markersLib.KIND.SEMANTIC,
+    reason: "docs_changed",
+    changedPaths: ["docs/guide.md"],
+  });
+  assert.equal(written.ok, true);
+  const view = path.join(graphDir, markersLib.MARKER_FILENAME);
+  fs.unlinkSync(view);
+
+  const out = resolver.resolveContext({
+    projectRoot: root,
+    gitContext: fakeGitContext(),
+    includeDirtyCheck: false,
+  });
+  assert.equal(out.available, false,
+    "the resolver must not claim freshness while semantic inputs are pending");
+  assert.ok(out.staleReasons.includes("stale_marker_pending"));
+  assert.equal(fs.existsSync(view), false,
+    "the read-only resolver must not repair the marker cache");
+});
+
+test("resolveContext: an unreadable reminder store fails closed", () => {
+  const root = mkRoot();
+  fakePlugin(root);
+  const graphDir = writeGraph(root);
+  markersLib.writeMarker({
+    graphDir,
+    kind: markersLib.KIND.SEMANTIC,
+    reason: "docs_changed",
+    changedPaths: ["docs/guide.md"],
+  });
+  const recordsDir = path.join(graphDir, markersLib.MARKER_RECORDS_DIRNAME);
+  const readdir = fs.readdirSync;
+  fs.readdirSync = function (target, ...args) {
+    if (String(target) === recordsDir) {
+      throw Object.assign(new Error("injected reminder read failure"), { code: "EIO" });
+    }
+    return readdir.call(this, target, ...args);
+  };
+  let out;
+  try {
+    out = resolver.resolveContext({
+      projectRoot: root,
+      gitContext: fakeGitContext(),
+      includeDirtyCheck: false,
+    });
+  } finally {
+    fs.readdirSync = readdir;
+  }
+  assert.equal(out.available, false);
+  assert.ok(out.staleReasons.includes("stale_marker_unreadable"));
+});
+
 test("resolveContext: primary-worktree fallback fires when self missing and policy permits", () => {
   const root = mkRoot();
   fakePlugin(root);
