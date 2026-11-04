@@ -4464,6 +4464,30 @@ test("regression: a participant that remains unreadable during reclaim blocks la
   }
 });
 
+test("regression: invalid participant PIDs remain unknown and block reclaim", () => {
+  const gate = require("../../lib/graphify/density-gate");
+  const cases = [null, "", 0, false, 1.5, "not-a-pid", "legacy-name"];
+  for (const invalidPid of cases) {
+    const root = mkProject("gate-invalid-pid");
+    try {
+      const dir = gate.gateDir(root, "invalid-pid");
+      fs.mkdirSync(dir, { recursive: true });
+      const legacyName = invalidPid === "legacy-name";
+      const file = path.join(dir, legacyName ? "gate-1-0.json" : "gate-1.json");
+      fs.writeFileSync(file, legacyName ? "{}" : JSON.stringify({ ticket: 1, pid: invalidPid, active: true }));
+      fs.utimesSync(file, new Date(0), new Date(0));
+      assert.equal(gate.readGateEntry(file).pid, null,
+        "invalid PID data must remain unknown: " + String(invalidPid));
+      const contender = gate.acquireGate(root, "invalid-pid", { timeoutMs: 0, staleMs: 0 });
+      assert.equal(contender, null,
+        "a participant without a valid PID must not be reclaimed: " + String(invalidPid));
+      assert.equal(fs.existsSync(file), true, "the unknown participant slot must remain present");
+    } finally {
+      cleanup(root);
+    }
+  }
+});
+
 test("regression: published commit markers require both graph and manifest files", () => {
   const resolver = require("../../lib/graphify/resolver");
   for (const scenario of ["graph-only", "manifest-file-missing", "manifest-entry-and-file-missing"]) {
