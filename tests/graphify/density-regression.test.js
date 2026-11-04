@@ -3684,6 +3684,10 @@ test("regression: a participant whose slot was taken while it registered does no
   // was registering has to notice that its slot is no longer its own,
   // because a half-registered participant that enters the protocol is two
   // participants inside the mutual exclusion.
+  //
+  // The slot of that fallback carries the pid in its NAME, so a slot
+  // whose content was not written yet is still attributable: a
+  // participant that is alive is never reclaimed.
   const root = mkProject("gate-slot-taken-while-registering");
   try {
     const gate = require("../../lib/graphify/density-gate");
@@ -3731,8 +3735,8 @@ test("regression: a participant whose slot was taken while it registered does no
     assert.equal(held, null,
       "a participant whose slot was taken must not enter the protocol");
     const slots = fs.readdirSync(dir).filter((n) => n.startsWith("gate-"));
-    assert.ok(slots.includes("gate-1.json"),
-      "the reclaimed slot keeps its ticket");
+    assert.ok(slots.some((n) => /^gate-1-/.test(n)),
+      "the reclaimed slot keeps its ticket: " + slots.join(", "));
   } finally {
     cleanup(root);
   }
@@ -3900,9 +3904,12 @@ test("regression: a reminder that the guard captured is imported before the guar
 
 test("regression: the view is never published over a reminder when hard links are missing", () => {
   // Without hard links there is no atomic create that does not overwrite,
-  // so the name is reserved exclusively and the content is written into
-  // the file that was reserved. A reminder that a writer publishes in
-  // that window is never overwritten.
+  // so the name would have to be reserved first and the content written
+  // afterwards -- and a reminder that a writer publishes in that window
+  // is overwritten by the view. No check of the file before or after the
+  // write can tell that the reminder was there, so the view is NOT
+  // published on such a filesystem: the reminders stay in their records,
+  // and the file at the path is left alone.
   const root = mkProject("legacy-view-without-links");
   try {
     const dir = path.join(root, "graphify-out");
@@ -3917,21 +3924,9 @@ test("regression: the view is never published over a reminder when hard links ar
     fs.writeFileSync(markerPath, JSON.stringify(reminder("old")));
     const identity = markers.readLegacyMarker(dir).identity;
     const link = fs.linkSync;
-    const open = fs.openSync;
     const write = fs.writeFileSync;
-    let injected = false;
     fs.linkSync = function () {
       throw Object.assign(new Error("no links"), { code: "EOPNOTSUPP" });
-    };
-    fs.openSync = function (file, ...rest) {
-      const handle = open.call(this, file, ...rest);
-      if (!injected && String(file) === markerPath) {
-        injected = true;
-        // A writer publishes a reminder in the window between the
-        // reservation of the name and the writing of the content.
-        write.call(fs, markerPath, JSON.stringify(reminder("third")));
-      }
-      return handle;
     };
     let result = null;
     try {
@@ -3941,17 +3936,328 @@ test("regression: the view is never published over a reminder when hard links ar
       });
     } finally {
       fs.linkSync = link;
-      fs.openSync = open;
     }
-    assert.equal(injected, true, "the reminder must have arrived in the window");
     assert.equal(result.ok, true, "the clear itself must not fail");
     const records = fs.existsSync(path.join(dir, ".graphify-stale-records"))
       ? fs.readdirSync(path.join(dir, ".graphify-stale-records"))
       : [];
     const onDisk = fs.existsSync(markerPath) ? JSON.parse(fs.readFileSync(markerPath, "utf8")) : null;
-    const kept = (records.includes("third.json"))
-      || (onDisk && Array.isArray(onDisk.changedPaths) && onDisk.changedPaths.includes("third.md"));
-    assert.ok(kept, "a reminder must not be overwritten by the view");
+    assert.ok(records.includes("middle.json") || records.includes("new.json"),
+      "a reminder must not be lost: " + records.join(", "));
+    assert.ok(!onDisk || !Array.isArray(onDisk.recordIds),
+      "the file at the path must not be a view that was published over a reminder");
+  } finally {
+    cleanup(root);
+  }
+});
+
+// ─── The eighteenth round of the review (#154) ────────────────────────────
+
+test("regression: the view is not published without hard links, and the reminder survives it", () => {
+  // Without hard links there is no atomic create that publishes the
+  // content in the same step: the name would have to be reserved first,
+  // and the content is written afterwards. A reminder that a writer
+  // publishes in that window is overwritten by the view -- and no check
+  // of the file before or after the write can tell that the reminder was
+  // there. The view is therefore refused, and the reminder stays in its
+  // record.
+  //
+  // A refused publication must also leave nothing behind: a residue at
+  // the path would make every later publication fail as well.
+  const root = mkProject("view-without-links-refused");
+  try {
+    const dir = path.join(root, "graphify-out");
+    fs.mkdirSync(dir, { recursive: true });
+    const markerPath = path.join(dir, ".graphify-stale.json");
+    const link = fs.linkSync;
+    fs.linkSync = function () {
+      throw Object.assign(new Error("no links"), { code: "EOPNOTSUPP" });
+    };
+    let result = null;
+    try {
+      result = markers.writeMarker({ graphDir: dir, kind: "semantic", changedPaths: ["reminder.md"] });
+    } finally {
+      fs.linkSync = link;
+    }
+    assert.equal(result.ok, false, "the view must not be published without hard links");
+    assert.equal(result.reason, "no_hardlink_support",
+      "the refusal must say why the view was not published");
+    const records = fs.existsSync(path.join(dir, ".graphify-stale-records"))
+      ? fs.readdirSync(path.join(dir, ".graphify-stale-records"))
+      : [];
+    assert.equal(records.length, 1, "the reminder must be durable in its record");
+    const residue = fs.existsSync(markerPath) ? fs.readFileSync(markerPath, "utf8") : "";
+    assert.equal(residue, "", "a refused publication must not leave a residue at the path");
+    // The publication works again as soon as the filesystem can link.
+    const again = markers.writeMarker({ graphDir: dir, kind: "semantic", changedPaths: ["later.md"] });
+    assert.equal(again.ok, true, "a later publication must not be poisoned: " + again.reason);
+    const view = JSON.parse(fs.readFileSync(markerPath, "utf8"));
+    assert.ok(Array.isArray(view.recordIds) && view.recordIds.length === 2,
+      "the published view must describe every record: " + JSON.stringify(view));
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("regression: a published marker has to describe the graph and the manifest", () => {
+  // The marker of a publication is what says that the files next to it
+  // belong together. A marker that names the graph only -- or the
+  // manifest only, or a file that is not part of the publication at all
+  // -- does not say that: the file it leaves out is exactly the file a
+  // mismatch could hide in.
+  const resolver = require("../../lib/graphify/resolver");
+  const root = mkProject("resolver-marker-complete");
+  try {
+    const marker = publishFixture(root);
+    const original = JSON.parse(fs.readFileSync(marker, "utf8"));
+    const variants = [
+      {
+        name: "the graph is not described",
+        mutate: (record) => { delete record.files["graph.json"]; },
+      },
+      {
+        name: "the manifest is not described",
+        mutate: (record) => { delete record.files["manifest.json"]; },
+      },
+      {
+        name: "an unrelated file is described instead",
+        mutate: (record) => {
+          record.files = {
+            other: { sha256: "a".repeat(64), mtimeMs: Date.now() },
+          };
+        },
+      },
+    ];
+    for (const variant of variants) {
+      const record = JSON.parse(JSON.stringify(original));
+      variant.mutate(record);
+      fs.writeFileSync(marker, JSON.stringify(record));
+      const out = resolver.resolveContext({
+        projectRoot: root,
+        gitContext: fakeGitContext(),
+        includeDirtyCheck: false,
+        now: new Date().toISOString(),
+      });
+      assert.equal(out.available, false,
+        "a marker that does not describe the publication must fail the reader closed ("
+          + variant.name + ")");
+      assert.ok(out.staleReasons.includes("commit_invalid"),
+        "the reader must say why the directory is not usable (" + variant.name + ")");
+    }
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("regression: the re-entrant handle speaks for the handle that is really held", () => {
+  // The gate is re-entrant inside one process: the holder of the gate
+  // publishes the graph while it still holds it. The handle of that
+  // second acquisition speaks for the OUTER holder -- and it has to say
+  // that the gate is NOT held any more once the outer holder released
+  // it. A handle that cannot confirm its authorisation must not grant
+  // it.
+  const root = mkProject("gate-reentrant-handle");
+  try {
+    const gate = require("../../lib/graphify/density-gate");
+    const outer = gate.acquireGate(root, "rebuild", { timeoutMs: 0 });
+    assert.ok(outer, "the gate must be taken");
+    const nested = gate.acquireGate(root, "rebuild", { timeoutMs: 0 });
+    assert.equal(nested.reentrant, true, "the second acquisition must be re-entrant");
+    assert.equal(nested.isHeld(), true, "the nested handle speaks for the outer holder");
+    outer.release();
+    assert.equal(outer.isHeld(), false, "the gate is not held after the release");
+    assert.equal(nested.isHeld(), false,
+      "the nested handle must not keep granting the gate after the release");
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("regression: a failed legacy tombstone keeps the ticket taken", () => {
+  // The reclaim of a participant of the older protocol moves its slot to
+  // a tombstone, and the tombstone is what keeps the ticket taken: a
+  // ticket that was handed out is never handed out a second time. When
+  // the move fails, the ORIGINAL placeholder has to survive -- removing
+  // it would hand the number out again, and a participant that was
+  // delayed would enter the protocol with a ticket that is in use.
+  const root = mkProject("gate-legacy-tombstone-failure");
+  try {
+    const gate = require("../../lib/graphify/density-gate");
+    const dir = gate.gateDir(root, "x");
+    fs.mkdirSync(dir, { recursive: true });
+    const rename = fs.renameSync;
+    let injected = 0;
+    let other = null;
+    let afterFailure = null;
+    const handle = gate.acquireGate(root, "x", {
+      timeoutMs: 0,
+      staleMs: 0,
+      onBeforeCreate({ ticket, file }) {
+        if (ticket !== 1) return;
+        // A participant of the older protocol that is gone: its pid is
+        // not running any more, and its slot is older than the window.
+        const legacy = path.join(path.dirname(file), "gate-1-2147483647-ab.json");
+        fs.writeFileSync(legacy, "{}");
+        fs.utimesSync(legacy, new Date(0), new Date(0));
+        fs.renameSync = function (from, to) {
+          if (String(from) === legacy) {
+            injected += 1;
+            throw Object.assign(new Error("disk"), { code: "EIO" });
+          }
+          return rename.apply(this, arguments);
+        };
+        try {
+          other = gate.acquireGate(root, "x", { timeoutMs: 0, staleMs: 0 });
+        } finally {
+          fs.renameSync = rename;
+        }
+        afterFailure = fs.readdirSync(dir);
+      },
+    });
+    assert.equal(injected, 1, "the tombstone must have failed");
+    assert.ok(other, "the participant that reclaims a dead slot must take the gate");
+    assert.equal(other.ticket, 2, "the ticket of the dead participant must not be handed out");
+    assert.ok(afterFailure.includes("gate-1-2147483647-ab.json"),
+      "the placeholder of the ticket must survive a failed tombstone: " + afterFailure.join(", "));
+    assert.equal(handle, null,
+      "a participant that was delayed must not enter the protocol with a ticket that is in use");
+    if (other) other.release();
+    // The ticket is still taken: a participant that registers now is given
+    // a number of its own, not the number of the dead one.
+    const next = gate.acquireGate(root, "x", { timeoutMs: 0 });
+    if (next) {
+      assert.ok(next.ticket > 1,
+        "a ticket that was taken must not be handed out again: " + next.ticket);
+      next.release();
+    }
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("regression: the published view describes the reminder that the guard captured", () => {
+  // The file that is moved aside may hold a REMINDER: a writer that
+  // published one between the inspection of the path and the move. It is
+  // imported into the record model -- and the view that is published
+  // next has to describe it. A view that does not name it hides a
+  // reminder from the consumers that read ONE file, and that file is
+  // exactly what they read.
+  const root = mkProject("legacy-guard-view");
+  try {
+    const dir = path.join(root, "graphify-out");
+    fs.mkdirSync(dir, { recursive: true });
+    const markerPath = path.join(dir, ".graphify-stale.json");
+    const reminder = (id) => ({
+      schemaVersion: "1.0",
+      markerId: id,
+      kind: "semantic",
+      changedPaths: [id + ".md"],
+    });
+    markers.writeMarker({ graphDir: dir, kind: "semantic", changedPaths: ["seed.md"] });
+    const ren = fs.renameSync;
+    const write = fs.writeFileSync;
+    let captured = false;
+    fs.renameSync = function (from, to) {
+      if (!captured && from === markerPath && String(to).includes(".guard-")) {
+        captured = true;
+        write.call(fs, markerPath, JSON.stringify(reminder("middle")));
+        const result = ren.apply(this, arguments);
+        write.call(fs, markerPath, JSON.stringify(reminder("new")));
+        return result;
+      }
+      return ren.apply(this, arguments);
+    };
+    let result = null;
+    try {
+      result = markers.writeMarker({ graphDir: dir, kind: "semantic", changedPaths: ["another.md"] });
+    } finally {
+      fs.renameSync = ren;
+    }
+    assert.equal(captured, true, "the guard must have captured the reminder");
+    assert.equal(result.ok, true, "the write must succeed");
+    const records = fs.readdirSync(path.join(dir, ".graphify-stale-records"));
+    assert.ok(records.includes("middle.json"),
+      "the reminder that the guard captured must be imported");
+    const view = JSON.parse(fs.readFileSync(markerPath, "utf8"));
+    assert.ok(Array.isArray(view.changedPaths) && view.changedPaths.includes("middle.md"),
+      "the published view must describe the captured reminder: " + JSON.stringify(view));
+    assert.equal(view.recordIds.length, records.length,
+      "the published view must name every record: " + JSON.stringify(view));
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("regression: two publishers cannot both succeed when the filesystem has no hard links", async () => {
+  // The registration of a participant cannot publish its content in one
+  // step without hard links: the name is reserved first, and the content
+  // is written afterwards. A participant that scans the directory in that
+  // window finds a slot whose content it cannot read -- and a reclaim
+  // that judged that slot to be GONE takes the gate away from a
+  // participant that is alive and inside the protocol. Two publishers
+  // then publish, and the one that lost overwrites the one that won.
+  //
+  // The slot of that fallback carries the pid in its NAME: a slot whose
+  // content is not written yet is attributable, so it is never mistaken
+  // for a participant that is gone.
+  const root = mkProject("two-publishers-without-hard-links");
+  const gateModule = path.join(ROOT, "lib", "graphify", "density-gate.js");
+  const reserved = path.join(root, "reserved");
+  try {
+    const holderScript = [
+      "const fs = require('node:fs');",
+      "const gate = require(process.argv[1]);",
+      "const root = process.argv[2];",
+      "const reserved = process.argv[3];",
+      "fs.linkSync = function () { throw Object.assign(new Error('no links'), { code: 'EOPNOTSUPP' }); };",
+      "const open = fs.openSync;",
+      "fs.openSync = function (file, ...rest) {",
+      "  const handle = open.call(this, file, ...rest);",
+      "  if (typeof file === 'string' && require('node:path').basename(file).indexOf('gate-') === 0) {",
+      "    fs.writeFileSync(reserved, '1');",
+      "    const until = Date.now() + 800;",
+      "    while (Date.now() < until) {}",
+      "  }",
+      "  return handle;",
+      "};",
+      "const handle = gate.acquireGate(root, 'rebuild', { timeoutMs: 5000, staleMs: 0 });",
+      "process.stdout.write(JSON.stringify({ acquired: Boolean(handle), ticket: handle ? handle.ticket : null }));",
+      "if (handle) handle.release();",
+    ].join("\n");
+    const contenderScript = [
+      "const fs = require('node:fs');",
+      "const gate = require(process.argv[1]);",
+      "const root = process.argv[2];",
+      "fs.linkSync = function () { throw Object.assign(new Error('no links'), { code: 'EOPNOTSUPP' }); };",
+      "const handle = gate.acquireGate(root, 'rebuild', { timeoutMs: 300, staleMs: 0 });",
+      "process.stdout.write(JSON.stringify({ acquired: Boolean(handle), ticket: handle ? handle.ticket : null }));",
+      "if (handle) handle.release();",
+    ].join("\n");
+    const run = (script, args) => new Promise((resolve) => {
+      const child = spawn(process.execPath, ["-e", script, gateModule].concat(args), {
+        cwd: root,
+        stdio: ["ignore", "pipe", "ignore"],
+      });
+      let out = "";
+      child.stdout.on("data", (chunk) => { out += chunk; });
+      child.on("close", () => resolve(out.trim()));
+    });
+    const holderRun = run(holderScript, [root, reserved]);
+    // The slot of the holder is reserved and empty now: the content of
+    // the registration is written after the name was taken.
+    const until = Date.now() + 5000;
+    while (!fs.existsSync(reserved) && Date.now() < until) sleepSync(20);
+    assert.ok(fs.existsSync(reserved), "the holder must have reserved its slot");
+    const contenderRun = run(contenderScript, [root]);
+    const outputs = await Promise.all([holderRun, contenderRun]);
+    const holder = JSON.parse(outputs[0]);
+    const contender = JSON.parse(outputs[1]);
+    assert.equal(holder.acquired, true, "the first publisher must take the gate");
+    assert.equal(contender.acquired, false,
+      "a second publisher must not enter the protocol while the first one holds it: "
+        + JSON.stringify(contender));
+    assert.equal([holder.acquired, contender.acquired].filter(Boolean).length, 1,
+      "exactly one publisher may be inside the protocol");
   } finally {
     cleanup(root);
   }
