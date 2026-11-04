@@ -18,6 +18,7 @@ const { spawn, spawnSync } = require("node:child_process");
 const density = require("../../lib/graphify/density");
 const hook = require("../../lib/graphify/hook");
 const markers = require("../../lib/graphify/markers");
+const lockLib = require("../../lib/graphify/density-lock");
 
 const ROOT = path.resolve(__dirname, "..", "..");
 const WORK_ROOT = path.join(ROOT, ".agent-work", "test-density-regression");
@@ -1514,12 +1515,19 @@ test("regression: a group that was never attempted keeps its retry budget", () =
     });
     assert.notEqual(run.status, 0, "the drain must report the failure");
     const names = pendingNames(root);
-    assert.equal(names.length, 1,
-      "the group that was not attempted must stay queued: " + names.join(","));
-    const attempts = /-a(\d+)-/.exec(names[0]);
-    assert.ok(attempts, "the request must carry its counter: " + names.join(","));
-    assert.equal(Number(attempts[1]), 1,
-      "a group that was never attempted must not spend its retry budget");
+    // The group that WAS attempted loses its lock WHILE the update runs, so
+    // its result cannot be trusted: it is not confirmed and it goes back to
+    // the queue with its attempt counted. The group that was NEVER
+    // attempted stays queued with its counter UNCHANGED.
+    assert.equal(names.length, 2,
+      "both groups must stay queued: " + names.join(","));
+    for (const name of names) {
+      const attempts = /-a(\d+)-/.exec(name);
+      assert.ok(attempts, "the request must carry its counter: " + names.join(","));
+      assert.equal(Number(attempts[1]), 1,
+        "a group that was never attempted must not spend its retry budget: "
+        + names.join(","));
+    }
   } finally {
     cleanup(root);
   }
@@ -1653,6 +1661,455 @@ test("regression: a full rebuild answers the semantic reminder", () => {
     const after = markers.readMarker(graphDir);
     assert.equal(after.ok, false,
       "the semantic reminder must be answered by the rebuild");
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("regression: a reminder published after the identity was read survives the clear", () => {
+  // The compare-and-clear read the marker, checked its identity and then
+  // RE-ENUMERATED the record directory. A reminder that a concurrent
+  // writer published in that window was in the fresh enumeration, so it
+  // was deleted together with the reminder that was actually answered --
+  // and nothing would ever publish it again.
+  const root = mkProject("clear-concurrent-record");
+  try {
+    const graphDir = path.join(root, "graphify-out");
+    markers.writeMarker({
+      graphDir,
+      kind: markers.KIND.INCREMENTAL,
+      reason: "first",
+      changedPaths: ["src/a.js"],
+    });
+    const before = markers.readMarker(graphDir);
+    assert.ok(before.ok, "the reminder must be readable");
+    let concurrent = null;
+    const result = markers.clearMarkerIfUnchanged(graphDir, before.identity, {
+      kinds: markers.CLEARABLE_BY_INCREMENTAL,
+      // The concurrent publication happens between the identity check and
+      // the removal -- exactly the window the identity cannot see.
+      onAfterRead: () => {
+        concurrent = markers.writeMarker({
+          graphDir,
+          kind: markers.KIND.UPDATE_FAILED,
+          reason: "concurrent",
+          changedPaths: ["src/b.js"],
+        });
+      },
+    });
+    assert.ok(concurrent && concurrent.ok, "the concurrent reminder must be published");
+    assert.ok(result.ok);
+    const after = markers.readMarker(graphDir);
+    assert.ok(after.ok, "the concurrent reminder must still be readable");
+    assert.equal(after.records.length, 1,
+      "only the reminder that was answered may be removed");
+    assert.equal(after.records[0].kind, markers.KIND.UPDATE_FAILED);
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("regression: a semantic reminder published during the build survives the rebuild", async () => {
+  // A full rebuild answers the reminders that existed when it took its
+  // INPUT. A reminder that is published while the build runs describes a
+  // change the build did not see, so clearing "every semantic reminder"
+  // at the end of the build dropped a reminder that nothing answered.
+  const root = mkProject("rebuild-during-build-reminder");
+  try {
+    const graphDir = path.join(root, "graphify-out");
+    const stub = installStub(root);
+    const signal = path.join(root, "extract-started");
+    const graphFile = path.join(graphDir, "graph.json");
+    const stubPath = path.join(stub.bin, "graphify");
+    fs.writeFileSync(stubPath, [
+      "#!/bin/sh",
+      "LOG=\"" + stub.log + "\"",
+      "case \"$1\" in",
+      "  --version) echo 'graphify 0.9.27-stub'; exit 0 ;;",
+      "  extract)",
+      "    echo \"extract $@\" >> \"$LOG\";",
+      "    touch \"" + signal + "\";",
+      "    node -e \"const fs=require('fs');const n=200,e=400;const g={directed:true,multigraph:false,graph:{},nodes:Array.from({length:n},function(_,i){return {id:'n'+i};}),links:Array.from({length:e},function(_,i){return {source:'n'+(i%n),target:'n0'};}),hyperedges:[]};fs.writeFileSync(process.argv[1],JSON.stringify(g));\" \"" + graphFile + "\";",
+      "    sleep 1;",
+      "    exit 0 ;;",
+      "  update) echo \"update $@\" >> \"$LOG\"; exit 0 ;;",
+      "  *) echo \"$@\" >> \"$LOG\"; exit 0 ;;",
+      "esac",
+      "",
+    ].join("\n"));
+    fs.chmodSync(stubPath, 0o755);
+    // The reminder that the build DOES cover.
+    markers.writeMarker({
+      graphDir,
+      kind: markers.KIND.SEMANTIC,
+      reason: "before_build",
+      changedPaths: ["docs/before.md"],
+    });
+    // The reminder that is published WHILE the build runs.
+    const publisher = path.join(root, "publisher.js");
+    fs.writeFileSync(publisher, [
+      "const fs = require('node:fs');",
+      "const markers = require(" + JSON.stringify(path.join(ROOT, "lib", "graphify", "markers.js")) + ");",
+      "const signal = process.argv[2];",
+      "const graphDir = process.argv[3];",
+      "const deadline = Date.now() + 30000;",
+      "while (Date.now() < deadline) {",
+      "  if (fs.existsSync(signal)) {",
+      "    markers.writeMarker({ graphDir: graphDir, kind: markers.KIND.SEMANTIC, reason: 'during_build', changedPaths: ['docs/late.md'] });",
+      "    process.exit(0);",
+      "  }",
+      "  const buffer = new Int32Array(new SharedArrayBuffer(4));",
+      "  Atomics.wait(buffer, 0, 0, 10);",
+      "}",
+    ].join("\n"));
+    const publisherProcess = spawn(process.execPath, [publisher, signal, graphDir], {
+      cwd: root,
+      stdio: "ignore",
+      detached: true,
+    });
+    publisherProcess.unref();
+    const runner = path.join(ROOT, "lib", "graphify", "full-rebuild-runner.js");
+    const run = spawnSync(process.execPath, [runner], {
+      cwd: root,
+      encoding: "utf8",
+      env: stubEnv(stub),
+      timeout: 60_000,
+    });
+    assert.equal(run.status, 0, "the rebuild must succeed: " + run.stderr);
+    await sleep(500);
+    const after = markers.readMarker(graphDir);
+    assert.ok(after.ok, "the reminder of the running build must survive");
+    assert.equal(after.records.length, 1,
+      "only the reminder the build covered may be answered");
+    assert.deepEqual(after.records[0].changedPaths, ["docs/late.md"]);
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("regression: the hook does not confirm a request whose lock was lost during the update", () => {
+  // The lock can be taken away while the update runs. The request was then
+  // confirmed on the strength of a graph that another holder may have
+  // replaced -- and a confirmed request is never replayed.
+  const root = mkProject("hook-lock-lost-during-update");
+  const oldPath = process.env.PATH;
+  try {
+    const stub = installStub(root);
+    const signal = path.join(root, "update-started");
+    const stubPath = path.join(stub.bin, "graphify");
+    fs.writeFileSync(stubPath, [
+      "#!/bin/sh",
+      "LOG=\"" + stub.log + "\"",
+      "case \"$1\" in",
+      "  --version) echo 'graphify 0.9.27-stub'; exit 0 ;;",
+      "  update)",
+      "    echo \"update $@\" >> \"$LOG\";",
+      "    touch \"" + signal + "\";",
+      "    sleep 1;",
+      "    exit 0 ;;",
+      "  *) echo \"$@\" >> \"$LOG\"; exit 0 ;;",
+      "esac",
+      "",
+    ].join("\n"));
+    fs.chmodSync(stubPath, 0o755);
+    process.env.PATH = stub.bin + ":" + oldPath;
+    writeGraph(root, { nodes: 200, edges: 400 });
+    fs.writeFileSync(
+      path.join(root, ".agent", "plugins", "graphify", "config.yml"),
+      "enabled: true\n",
+    );
+    // The thief: it takes the lock away while the update runs.
+    const thief = path.join(root, "thief.js");
+    fs.writeFileSync(thief, [
+      "const fs = require('node:fs');",
+      "const signal = process.argv[2];",
+      "const lockPath = process.argv[3];",
+      "const deadline = Date.now() + 30000;",
+      "while (Date.now() < deadline) {",
+      "  if (fs.existsSync(signal)) {",
+      "    fs.writeFileSync(lockPath, JSON.stringify({",
+      "      token: 'foreign-token',",
+      "      pid: process.pid,",
+      "      acquiredAt: new Date().toISOString(),",
+      "      generation: 1,",
+      "    }));",
+      "    process.exit(0);",
+      "  }",
+      "  const buffer = new Int32Array(new SharedArrayBuffer(4));",
+      "  Atomics.wait(buffer, 0, 0, 5);",
+      "}",
+    ].join("\n"));
+    const thiefProcess = spawn(process.execPath, [thief, signal, density.rebuildLockPath(root)], {
+      stdio: "ignore",
+      detached: true,
+    });
+    thiefProcess.unref();
+    const result = hook.runPostCommit({
+      cwd: root,
+      changedPaths: ["src/module.js"],
+      sourceHead: "abc123",
+      branch: "main",
+    });
+    assert.equal(result.result, "incremental_failed",
+      "a request whose lock was lost must not be confirmed");
+    assert.equal(result.reason, "rebuild_lock_lost_during_update");
+    const names = pendingNames(root);
+    assert.equal(names.length, 1,
+      "the request must stay queued: " + names.join(","));
+  } finally {
+    process.env.PATH = oldPath;
+    cleanup(root);
+  }
+});
+
+test("regression: an older measurement published later does not win the baseline", () => {
+  // The order of the baselines used to be decided by the wall clock, so a
+  // build that measured an OLDER graph and was published LATE won -- and
+  // the baseline was dragged back while the graph on disk was newer.
+  const root = mkProject("baseline-input-order");
+  try {
+    const newer = density.stampBaseline(root, {
+      nodes: 200,
+      edges: 1000,
+      sequence: 2,
+      now: "2026-01-02T00:00:00.000Z",
+    });
+    assert.ok(newer.ok, "the newer measurement must be published");
+    const older = density.stampBaseline(root, {
+      nodes: 200,
+      edges: 400,
+      sequence: 1,
+      now: "2026-01-03T00:00:00.000Z",
+    });
+    assert.equal(older.ok, false,
+      "the older measurement must be refused");
+    assert.equal(older.reason, "baseline_is_newer");
+    const sidecar = density.readBaselineSidecar(root);
+    assert.equal(Number(sidecar.edge_node_ratio), 5,
+      "the baseline must stay at the newer measurement");
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("regression: a record that a displaced holder published after its loss is not trusted", () => {
+  // The displacement threshold was built from the sequences that were
+  // HANDED OUT. A holder that was allocated a sequence and lost the lock
+  // before it appended its record had that record counted as a publication
+  // that happened before the loss -- so the reader trusted a measurement
+  // that was made without the authority.
+  const root = mkProject("displaced-unpublished");
+  try {
+    const allocated = lockLib.allocateTicket(root, "seq");
+    assert.ok(lockLib.registerDisplaced(root, "token-1"));
+    assert.equal(
+      lockLib.isDisplacedRecord(root, { lock_token: "token-1", sequence: allocated }),
+      true,
+      "a sequence that was only allocated must not be trusted",
+    );
+    // A record that the holder REALLY published before the loss stays valid.
+    lockLib.registerPublishedSequence(root, "token-2", 7);
+    assert.ok(lockLib.registerDisplaced(root, "token-2"));
+    assert.equal(
+      lockLib.isDisplacedRecord(root, { lock_token: "token-2", sequence: 7 }),
+      false,
+      "a published record must stay valid",
+    );
+    assert.equal(
+      lockLib.isDisplacedRecord(root, { lock_token: "token-2", sequence: 8 }),
+      true,
+      "a record published after the loss must be dropped",
+    );
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("regression: the drain does not replay a request whose baseline cannot be migrated", () => {
+  // Every path that rewrites the graph must pass the migration
+  // precondition: `graphify update .` drops the `_meta` baseline, so a
+  // drain that updates without migrating destroys the only baseline the
+  // project has.
+  const root = mkProject("drain-migration-precondition");
+  try {
+    const stub = installStub(root);
+    writeGraph(root, { nodes: 200, edges: 400, meta: { edge_node_ratio: 5 } });
+    // The ticket directory cannot be created: the sequence of the
+    // migration cannot be allocated.
+    fs.writeFileSync(density.pluginDir(root) + "/.density-tickets", "blocked");
+    density.writePendingUpdate(root, { changedPaths: ["src/a.js"], attempts: 0 });
+    const runner = path.join(ROOT, "lib", "graphify", "full-rebuild-runner.js");
+    const run = spawnSync(process.execPath, [runner, "--drain-pending"], {
+      cwd: root,
+      encoding: "utf8",
+      env: stubEnv(stub),
+      timeout: 60_000,
+    });
+    assert.notEqual(run.status, 0, "the drain must report the failure");
+    const calls = fs.existsSync(stub.log)
+      ? fs.readFileSync(stub.log, "utf8").trim().split("\n").filter(Boolean)
+      : [];
+    assert.equal(calls.filter((line) => line.startsWith("update")).length, 0,
+      "the update must not run while the baseline cannot be migrated");
+    const names = pendingNames(root);
+    assert.equal(names.length, 1,
+      "the request must stay queued: " + names.join(","));
+    assert.ok(/-a0-/.test(names[0]),
+      "a request that was never attempted must not spend its budget: " + names.join(","));
+    const graph = JSON.parse(
+      fs.readFileSync(path.join(root, "graphify-out", "graph.json"), "utf8"),
+    );
+    assert.equal(Number(graph._meta.edge_node_ratio), 5,
+      "the baseline must survive");
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("regression: a graph that cannot be read is not a graph without a baseline", () => {
+  // A read failure used to be reported as "there is no baseline", so the
+  // incremental update ran and destroyed the only baseline the project had.
+  const root = mkProject("unreadable-graph");
+  const oldPath = process.env.PATH;
+  try {
+    const stub = installStub(root);
+    process.env.PATH = stub.bin + ":" + oldPath;
+    writeGraph(root, { nodes: 200, edges: 400, meta: { edge_node_ratio: 5 } });
+    // The graph cannot be read: the path is a directory.
+    const graphPath = path.join(root, "graphify-out", "graph.json");
+    fs.unlinkSync(graphPath);
+    fs.mkdirSync(graphPath);
+    fs.writeFileSync(
+      path.join(root, ".agent", "plugins", "graphify", "config.yml"),
+      "enabled: true\n",
+    );
+    const result = hook.runPostCommit({
+      cwd: root,
+      changedPaths: ["src/module.js"],
+      sourceHead: "abc123",
+      branch: "main",
+    });
+    assert.equal(result.result, "incremental_failed",
+      "the hook must fail closed when the graph cannot be read");
+    assert.equal(result.reason, "baseline_migration_failed");
+    const calls = fs.existsSync(stub.log)
+      ? fs.readFileSync(stub.log, "utf8").trim().split("\n").filter(Boolean)
+      : [];
+    assert.equal(calls.filter((line) => line.startsWith("update")).length, 0,
+      "the update must not run while the baseline cannot be read");
+  } finally {
+    process.env.PATH = oldPath;
+    cleanup(root);
+  }
+});
+
+test("regression: the derived view is repaired when it does not describe the records", () => {
+  // The derived file is a cache. Two writers can publish their records and
+  // their views in any order, so the file on disk can name fewer records
+  // than the ones that exist -- and a single-file consumer would miss a
+  // reminder that the records still hold.
+  const root = mkProject("derived-view-repair");
+  try {
+    const graphDir = path.join(root, "graphify-out");
+    const first = markers.writeMarker({
+      graphDir,
+      kind: markers.KIND.SEMANTIC,
+      reason: "first",
+      changedPaths: ["docs/a.md"],
+    });
+    assert.ok(first.ok);
+    // A second record that no view describes.
+    const secondId = "second-record";
+    fs.writeFileSync(
+      path.join(graphDir, ".graphify-stale-records", secondId + ".json"),
+      JSON.stringify({
+        schemaVersion: markers.MARKER_SCHEMA_VERSION,
+        markerId: secondId,
+        recordedAt: new Date().toISOString(),
+        kind: markers.KIND.SEMANTIC,
+        reason: "second",
+        changedPaths: ["docs/b.md"],
+        sourceHead: null,
+        branch: null,
+      }, null, 2),
+    );
+    const read = markers.readMarker(graphDir);
+    assert.ok(read.ok);
+    assert.equal(read.records.length, 2, "both records must be readable");
+    const view = JSON.parse(
+      fs.readFileSync(path.join(graphDir, ".graphify-stale.json"), "utf8"),
+    );
+    assert.equal(view.recordIds.length, 2,
+      "the derived view must describe every record");
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("regression: a derived view is never re-imported as a reminder", () => {
+  // The derived file outlives the records it describes. A writer that read
+  // it as if it were a LEGACY reminder re-created the reminder that the
+  // last clear had answered.
+  const root = mkProject("derived-view-reimport");
+  try {
+    const graphDir = path.join(root, "graphify-out");
+    const first = markers.writeMarker({
+      graphDir,
+      kind: markers.KIND.SEMANTIC,
+      reason: "answered",
+      changedPaths: ["docs/answered.md"],
+    });
+    assert.ok(first.ok);
+    // The reminder is answered: its record is gone, the derived view still
+    // names it.
+    fs.unlinkSync(
+      path.join(graphDir, ".graphify-stale-records", first.markerId + ".json"),
+    );
+    const next = markers.writeMarker({
+      graphDir,
+      kind: markers.KIND.INCREMENTAL,
+      reason: "next",
+      changedPaths: ["src/next.js"],
+    });
+    assert.ok(next.ok);
+    const ids = markers.listRecordIds(graphDir);
+    assert.equal(ids.length, 1,
+      "the answered reminder must not be re-imported: " + ids.join(","));
+    assert.equal(ids[0], next.markerId);
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("regression: a legacy baseline object is not lost to a later migration record", () => {
+  // The sidecar may hold a legacy pretty-printed object AND the records
+  // that were appended after it. A reader that stopped at the first
+  // parsable line threw the legacy object away -- and the legacy object is
+  // often the MEASURED baseline, which must not be displaced by a later
+  // migration.
+  const root = mkProject("legacy-baseline-mixed");
+  try {
+    const sidecar = density.baselinePath(root);
+    fs.mkdirSync(path.dirname(sidecar), { recursive: true });
+    fs.writeFileSync(sidecar, [
+      "{",
+      '  "edge_node_ratio": 5,',
+      '  "priority": 1,',
+      '  "kind": "stamp",',
+      '  "baseline_locked_at": "2026-01-01T00:00:00.000Z"',
+      "}",
+      JSON.stringify({
+        edge_node_ratio: 2,
+        priority: 0,
+        kind: "migration",
+        baseline_locked_at: "2026-01-02T00:00:00.000Z",
+      }),
+      "",
+    ].join("\n"));
+    const sidecarValue = density.readBaselineSidecar(root);
+    assert.ok(sidecarValue, "the sidecar must be readable");
+    assert.equal(Number(sidecarValue.edge_node_ratio), 5,
+      "the measured legacy baseline must win over the later migration");
   } finally {
     cleanup(root);
   }
