@@ -1053,6 +1053,7 @@ test("density: a drain that waits for the lock consumes the deferred request", a
       "const outDir = process.env.GRAPHIFY_OUT ? path.resolve(process.env.GRAPHIFY_OUT) : path.join(process.cwd(), 'graphify-out');",
       "fs.mkdirSync(outDir, { recursive: true });",
       "fs.writeFileSync(path.join(outDir, 'graph.json'), JSON.stringify({ nodes: [{ id: 'a' }, { id: 'b' }], links: [{ source: 'a', target: 'b' }] }));",
+      "fs.writeFileSync(path.join(outDir, 'manifest.json'), JSON.stringify({ schemaVersion: '1.0', graphifyVersion: '0.9.27-stub', generatedAt: new Date().toISOString(), includedRoots: [], excludedRoots: [], nodeCount: 2, edgeCount: 1, generationMode: 'update' }));",
       "process.exit(0);",
       "",
     ].join("\n"), { mode: 0o755 });

@@ -20,6 +20,7 @@ const hook = require("../../lib/graphify/hook");
 const markers = require("../../lib/graphify/markers");
 const lockLib = require("../../lib/graphify/density-lock");
 const updateLib = require("../../lib/graphify/density-update");
+const manifestLib = require("../../lib/graphify/manifest");
 
 const ROOT = path.resolve(__dirname, "..", "..");
 const WORK_ROOT = path.join(ROOT, ".agent-work", "test-density-regression");
@@ -55,7 +56,7 @@ function writeGraph(root, { nodes, edges, meta = null }) {
 }
 
 // A stub `graphify` on PATH: the hook and the runner both shell out to it.
-function installStub(root, { updateExit = 0, extractExit = 0 } = {}) {
+function installStub(root, { updateExit = 0, extractExit = 0, emitManifest = true } = {}) {
   const bin = path.join(root, "stub-bin");
   fs.mkdirSync(bin, { recursive: true });
   const log = path.join(root, "graphify-calls.log");
@@ -70,6 +71,8 @@ function installStub(root, { updateExit = 0, extractExit = 0 } = {}) {
     "OUT=\"${GRAPHIFY_OUT:-$PWD/graphify-out}\"",
     "mkdir -p \"$OUT\"",
     "printf '{\"nodes\":[{\"id\":\"a\"},{\"id\":\"b\"}],\"links\":[{\"source\":\"a\",\"target\":\"b\"},{\"source\":\"b\",\"target\":\"a\"}]}' > \"$OUT/graph.json\"",
+    ...(emitManifest ? ["printf '{\"schemaVersion\":\"1.0\",\"graphifyVersion\":\"0.9.27-stub\",\"generatedAt\":\"2026-01-01T00:00:00.000Z\",\"includedRoots\":[],\"excludedRoots\":[],\"nodeCount\":2,\"edgeCount\":2,\"generationMode\":\"update\"}' > \"$OUT/manifest.json\""] : []),
+    ...(emitManifest ? ["node -e 'const fs=require(\"fs\");fs.writeFileSync(process.argv[1],JSON.stringify({schemaVersion:\"1.0\",graphifyVersion:\"0.9.27-stub\",generatedAt:new Date().toISOString(),includedRoots:[],excludedRoots:[],nodeCount:2,edgeCount:2,generationMode:\"update\"}));' \"$OUT/manifest.json\""] : []),
     "case \"$1\" in",
     "  --version) echo 'graphify 0.9.27-stub'; exit 0 ;;",
     "  update) echo \"update $@\" >> \"$LOG\"; exit " + updateExit + " ;;",
@@ -92,6 +95,17 @@ function stubEnv(stub, extra = {}) {
 
 function cleanup(root) {
   try { fs.rmSync(root, { recursive: true, force: true }); } catch (_) { /* best-effort */ }
+}
+
+function testManifest(nodeCount, edgeCount, version) {
+  const manifest = manifestLib.buildManifest({
+    graphifyVersion: "1.0.0",
+    nodeCount,
+    edgeCount,
+    generationMode: "update",
+  });
+  if (version) manifest.version = version;
+  return JSON.stringify(manifest);
 }
 
 // The Git context the resolver is given: it never runs Git, so the context
@@ -1803,7 +1817,7 @@ test("regression: a semantic reminder published during the build survives the re
       "  extract)",
       "    echo \"extract $@\" >> \"$LOG\";",
       "    touch \"" + signal + "\";",
-      "    node -e \"const fs=require('fs');const n=200,e=400;const g={directed:true,multigraph:false,graph:{},nodes:Array.from({length:n},function(_,i){return {id:'n'+i};}),links:Array.from({length:e},function(_,i){return {source:'n'+(i%n),target:'n0'};}),hyperedges:[]};fs.writeFileSync(process.argv[1],JSON.stringify(g));\" \"$OUT/graph.json\";",
+      "    node -e \"const fs=require('fs');const path=require('path');const n=200,e=400;const g={directed:true,multigraph:false,graph:{},nodes:Array.from({length:n},function(_,i){return {id:'n'+i};}),links:Array.from({length:e},function(_,i){return {source:'n'+(i%n),target:'n0'};}),hyperedges:[]};fs.writeFileSync(process.argv[1],JSON.stringify(g));fs.writeFileSync(path.join(path.dirname(process.argv[1]),'manifest.json'),JSON.stringify({schemaVersion:'1.0',graphifyVersion:'0.9.27-stub',generatedAt:new Date().toISOString(),includedRoots:[],excludedRoots:[],nodeCount:n,edgeCount:e,generationMode:'full'}));\" \"$OUT/graph.json\";",
       "    sleep 1;",
       "    exit 0 ;;",
       "  update) echo \"update $@\" >> \"$LOG\"; exit 0 ;;",
@@ -2771,6 +2785,80 @@ test("regression: a writer that finishes before the poll cannot publish over the
   }
 });
 
+test("regression: a graph-only writer is not reported as a successful publication", () => {
+  const root = mkProject("graph-only-update");
+  try {
+    const stub = installStub(root, { emitManifest: false });
+    const graphFile = path.join(root, "graphify-out", "graph.json");
+    writeGraph(root, { nodes: 1, edges: 0 });
+    const before = fs.readFileSync(graphFile, "utf8");
+    const lock = density.acquireRebuildLock(root);
+    assert.ok(lock, "the update lock must be acquired");
+    const result = updateLib.runGuardedUpdate({
+      projectRoot: root,
+      lock,
+      timeoutMs: 30_000,
+      env: { PATH: stub.bin + ":" + process.env.PATH },
+    });
+    assert.equal(result.ok, false, "an output pair without its manifest must fail");
+    assert.equal(result.reason, "no_staged_manifest");
+    assert.equal(fs.readFileSync(graphFile, "utf8"), before,
+      "the existing public graph must survive the refused output");
+    lock.release();
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("regression: a graph update cannot reuse the copied old manifest", () => {
+  const root = mkProject("stale-staged-manifest");
+  try {
+    const stub = installStub(root, { emitManifest: false });
+    const graphFile = path.join(root, "graphify-out", "graph.json");
+    writeGraph(root, { nodes: 2, edges: 2 });
+    const before = fs.readFileSync(graphFile, "utf8");
+    fs.writeFileSync(path.join(root, "graphify-out", "manifest.json"), testManifest(2, 2, "old"));
+    const lock = density.acquireRebuildLock(root);
+    assert.ok(lock, "the update lock must be acquired");
+    const result = updateLib.runGuardedUpdate({
+      projectRoot: root,
+      lock,
+      timeoutMs: 30_000,
+      env: { PATH: stub.bin + ":" + process.env.PATH },
+    });
+    assert.equal(result.ok, false, "a graph-only writer must not publish a copied manifest");
+    assert.equal(result.reason, "stale_staged_manifest");
+    assert.equal(fs.readFileSync(graphFile, "utf8"), before,
+      "the old public graph must survive the refused graph/manifest pair");
+    lock.release();
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("regression: staged manifest validation rejects corrupt and mismatched pairs", () => {
+  for (const scenario of ["corrupt", "count-mismatch"]) {
+    const root = mkProject("staged-manifest-" + scenario);
+    try {
+      const graphFile = path.join(root, "graphify-out", "graph.json");
+      writeGraph(root, { nodes: 1, edges: 0 });
+      const before = fs.readFileSync(graphFile, "utf8");
+      const staging = path.join(root, "staging");
+      fs.mkdirSync(staging, { recursive: true });
+      fs.writeFileSync(path.join(staging, "graph.json"), JSON.stringify({ nodes: [{ id: "new" }], links: [] }));
+      fs.writeFileSync(path.join(staging, "manifest.json"), scenario === "corrupt"
+        ? "{" : testManifest(0, 0, "mismatch"));
+      const result = updateLib.publishStagedOutput(root, staging, { isHeld: () => true });
+      assert.equal(result.ok, false, scenario + " staged metadata must be refused");
+      assert.equal(result.reason, scenario === "corrupt" ? "invalid_staged_manifest" : "manifest_count_mismatch");
+      assert.equal(fs.readFileSync(graphFile, "utf8"), before,
+        "invalid staged metadata must not change the public graph");
+    } finally {
+      cleanup(root);
+    }
+  }
+});
+
 test("regression: a failed build does not roll the graph of a concurrent publication back", async () => {
   // The old implementation kept a snapshot of the public graph and put it
   // back when the update failed. The snapshot is a copy of "whatever is
@@ -2888,6 +2976,7 @@ test("regression: a descendant that survives the writer can only reach the stagi
       "OUT=\"${GRAPHIFY_OUT:-$PWD/graphify-out}\"",
       "mkdir -p \"$OUT\"",
       "printf '{\"nodes\":[{\"id\":\"a\"},{\"id\":\"b\"}],\"links\":[{\"source\":\"a\",\"target\":\"b\"}]}' > \"$OUT/graph.json\"",
+      "printf '{\"schemaVersion\":\"1.0\",\"graphifyVersion\":\"0.9.27-stub\",\"generatedAt\":\"2026-01-01T00:00:00.000Z\",\"includedRoots\":[],\"excludedRoots\":[],\"nodeCount\":2,\"edgeCount\":1,\"generationMode\":\"update\"}' > \"$OUT/manifest.json\"",
       "node \"" + escape + "\" \"$OUT\"",
       "exit 0",
       "",
@@ -2949,6 +3038,13 @@ test("regression: a publication is refused when the lock is not held any more", 
       links: [],
       hyperedges: [],
     }));
+    const manifestLib = require("../../lib/graphify/manifest");
+    fs.writeFileSync(path.join(staging, "manifest.json"), JSON.stringify(manifestLib.buildManifest({
+      graphifyVersion: "1.0.0",
+      nodeCount: 1,
+      edgeCount: 0,
+      generationMode: "full",
+    })));
 
     const refused = updateLib.publishStagedOutput(root, staging, {
       isHeld: () => false,
@@ -3209,6 +3305,7 @@ test("regression: a descendant that holds the staged graph open cannot change th
       "const { spawn } = require('node:child_process');",
       "const out = process.env.GRAPHIFY_OUT;",
       "fs.writeFileSync(out + '/graph.json', JSON.stringify({ nodes: [{ id: 'good' }], links: [] }));",
+      "fs.writeFileSync(out + '/manifest.json', JSON.stringify({ schemaVersion: '1.0', graphifyVersion: '0.9.27-stub', generatedAt: new Date().toISOString(), includedRoots: [], excludedRoots: [], nodeCount: 1, edgeCount: 0, generationMode: 'update' }));",
       "const fd = fs.openSync(out + '/graph.json', 'r+');",
       "const code = [",
       "  \"const fs=require('node:fs');\",",
@@ -3262,7 +3359,7 @@ test("regression: a failed publication leaves the graph and the manifest as they
     const graphFile = path.join(root, "graphify-out", "graph.json");
     const manifestFile = path.join(root, "graphify-out", "manifest.json");
     fs.writeFileSync(graphFile, JSON.stringify({ nodes: [{ id: "old" }], links: [] }));
-    fs.writeFileSync(manifestFile, JSON.stringify({ version: "old" }));
+    fs.writeFileSync(manifestFile, testManifest(1, 0, "old"));
 
     const staging = path.join(
       root, ".agent", "plugins", "graphify", ".density-staging", "staged-1",
@@ -3272,7 +3369,7 @@ test("regression: a failed publication leaves the graph and the manifest as they
       nodes: [{ id: "new" }],
       links: [],
     }));
-    fs.writeFileSync(path.join(staging, "manifest.json"), JSON.stringify({ version: "new" }));
+    fs.writeFileSync(path.join(staging, "manifest.json"), testManifest(1, 0, "new"));
 
     const lock = density.acquireRebuildLock(root);
     assert.ok(lock, "the lock must be acquired");
@@ -3298,6 +3395,150 @@ test("regression: a failed publication leaves the graph and the manifest as they
       "the public graph must be the one it was");
     assert.equal(JSON.parse(fs.readFileSync(manifestFile, "utf8")).version, "old",
       "the public manifest must be the one it was");
+    lock.release();
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("regression: a failed update restores an old graph-only directory to legacy-readable state", () => {
+  const root = mkProject("legacy-graph-rollback");
+  try {
+    const graphFile = path.join(root, "graphify-out", "graph.json");
+    const manifestFile = path.join(root, "graphify-out", "manifest.json");
+    const markerFile = path.join(root, ".agent", "plugins", "graphify", ".density-commit.json");
+    writeGraph(root, { nodes: 1, edges: 0 });
+    const before = fs.readFileSync(graphFile, "utf8");
+    const staging = path.join(root, "staging");
+    fs.mkdirSync(staging, { recursive: true });
+    fs.writeFileSync(path.join(staging, "graph.json"), JSON.stringify({ nodes: [{ id: "new" }], links: [] }));
+    fs.writeFileSync(path.join(staging, "manifest.json"), testManifest(1, 0, "new"));
+
+    const lock = density.acquireRebuildLock(root);
+    assert.ok(lock, "the update lock must be acquired");
+    const rename = fs.renameSync;
+    fs.renameSync = function (from, to) {
+      if (String(to) === graphFile && String(from).includes(".publish-")) {
+        throw Object.assign(new Error("injected graph publish failure"), { code: "EIO" });
+      }
+      return rename.apply(this, arguments);
+    };
+    let result;
+    try {
+      result = updateLib.publishStagedOutput(root, staging, lock);
+    } finally {
+      fs.renameSync = rename;
+    }
+    assert.equal(result.ok, false);
+    assert.equal(result.restored, true, "the prior graph must be fully restored");
+    assert.equal(fs.readFileSync(graphFile, "utf8"), before);
+    assert.equal(fs.existsSync(manifestFile), false);
+    assert.equal(fs.existsSync(markerFile), false,
+      "a transient publishing marker must not invalidate the restored legacy directory");
+    const resolver = require("../../lib/graphify/resolver");
+    const out = resolver.resolveContext({
+      projectRoot: root,
+      gitContext: fakeGitContext(),
+      includeDirtyCheck: false,
+      now: new Date().toISOString(),
+    });
+    assert.equal(out.available, true);
+    assert.ok(out.staleReasons.includes("legacy_unverified"));
+    lock.release();
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("regression: an older commit marker is restored byte-for-byte after a failed rollback", () => {
+  const root = mkProject("legacy-marker-rollback");
+  try {
+    const graphFile = path.join(root, "graphify-out", "graph.json");
+    const markerFile = path.join(root, ".agent", "plugins", "graphify", ".density-commit.json");
+    writeGraph(root, { nodes: 1, edges: 0 });
+    const priorMarker = "{\"schemaVersion\":\"1.0\",\"state\":\"publishing\",\"files\":{}}\n";
+    fs.writeFileSync(markerFile, priorMarker);
+    const staging = path.join(root, "staging");
+    fs.mkdirSync(staging, { recursive: true });
+    fs.writeFileSync(path.join(staging, "graph.json"), JSON.stringify({ nodes: [{ id: "new" }], links: [] }));
+    fs.writeFileSync(path.join(staging, "manifest.json"), testManifest(1, 0, "new"));
+    const lock = density.acquireRebuildLock(root);
+    assert.ok(lock, "the update lock must be acquired");
+
+    const rename = fs.renameSync;
+    fs.renameSync = function (from, to) {
+      if (String(to) === graphFile && String(from).includes(".publish-")) {
+        throw Object.assign(new Error("injected graph publish failure"), { code: "EIO" });
+      }
+      return rename.apply(this, arguments);
+    };
+    let result;
+    try {
+      result = updateLib.publishStagedOutput(root, staging, lock);
+    } finally {
+      fs.renameSync = rename;
+    }
+    assert.equal(result.restored, true);
+    assert.equal(fs.readFileSync(markerFile, "utf8"), priorMarker,
+      "a commit marker that existed before publication must be restored exactly");
+    lock.release();
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("regression: a failed manifest removal keeps rollback fail-closed", () => {
+  const root = mkProject("legacy-manifest-restore-failure");
+  try {
+    const graphFile = path.join(root, "graphify-out", "graph.json");
+    const manifestFile = path.join(root, "graphify-out", "manifest.json");
+    const markerFile = path.join(root, ".agent", "plugins", "graphify", ".density-commit.json");
+    writeGraph(root, { nodes: 1, edges: 0 });
+    const staging = path.join(root, "staging");
+    fs.mkdirSync(staging, { recursive: true });
+    fs.writeFileSync(path.join(staging, "graph.json"), JSON.stringify({ nodes: [{ id: "new" }], links: [] }));
+    fs.writeFileSync(path.join(staging, "manifest.json"), testManifest(1, 0, "new"));
+    const lock = density.acquireRebuildLock(root);
+    assert.ok(lock, "the update lock must be acquired");
+
+    const rename = fs.renameSync;
+    const unlink = fs.unlinkSync;
+    fs.renameSync = function (from, to) {
+      if (String(to) === graphFile && String(from).includes(".publish-")) {
+        throw Object.assign(new Error("injected graph publish failure"), { code: "EIO" });
+      }
+      return rename.apply(this, arguments);
+    };
+    fs.unlinkSync = function (file) {
+      if (String(file) === manifestFile) {
+        throw Object.assign(new Error("injected manifest restore failure"), { code: "EIO" });
+      }
+      return unlink.apply(this, arguments);
+    };
+    let result;
+    try {
+      result = updateLib.publishStagedOutput(root, staging, lock);
+    } finally {
+      fs.renameSync = rename;
+      fs.unlinkSync = unlink;
+    }
+    assert.equal(result.ok, false);
+    assert.equal(result.restored, false, "a manifest that could not be removed is not a successful restore");
+    assert.equal(result.restoreReason, "restore_failed");
+    assert.ok(result.restoreErrors.some((error) => error.target === manifestFile),
+      "the failed manifest removal must be reported explicitly");
+    assert.ok(fs.existsSync(manifestFile), "the failed deletion leaves the mixed manifest visible");
+    assert.equal(JSON.parse(fs.readFileSync(markerFile, "utf8")).state, "publishing",
+      "the mixed graph/manifest pair must remain fail-closed");
+    const resolver = require("../../lib/graphify/resolver");
+    const out = resolver.resolveContext({
+      projectRoot: root,
+      gitContext: fakeGitContext(),
+      includeDirtyCheck: false,
+      now: new Date().toISOString(),
+    });
+    assert.equal(out.available, false);
+    assert.ok(out.staleReasons.includes("commit_incomplete"));
     lock.release();
   } finally {
     cleanup(root);
@@ -3425,9 +3666,9 @@ test("regression: the public graph is never absent while a publication runs", ()
     fs.mkdirSync(out, { recursive: true });
     fs.mkdirSync(staging, { recursive: true });
     fs.writeFileSync(path.join(out, "graph.json"), JSON.stringify({ nodes: [{ id: "old" }], links: [] }));
-    fs.writeFileSync(path.join(out, "manifest.json"), JSON.stringify({ version: "old" }));
+    fs.writeFileSync(path.join(out, "manifest.json"), testManifest(1, 0, "old"));
     fs.writeFileSync(path.join(staging, "graph.json"), JSON.stringify({ nodes: [{ id: "new" }], links: [] }));
-    fs.writeFileSync(path.join(staging, "manifest.json"), JSON.stringify({ version: "new" }));
+    fs.writeFileSync(path.join(staging, "manifest.json"), testManifest(1, 0, "new"));
     const ren = fs.renameSync;
     let before = null;
     let after = null;
@@ -3467,9 +3708,9 @@ test("regression: a publication whose restore fails is reported and keeps the ba
     fs.mkdirSync(out, { recursive: true });
     fs.mkdirSync(staging, { recursive: true });
     fs.writeFileSync(path.join(out, "graph.json"), JSON.stringify({ nodes: [{ id: "old" }], links: [] }));
-    fs.writeFileSync(path.join(out, "manifest.json"), JSON.stringify({ version: "old" }));
+    fs.writeFileSync(path.join(out, "manifest.json"), testManifest(1, 0, "old"));
     fs.writeFileSync(path.join(staging, "graph.json"), JSON.stringify({ nodes: [{ id: "new" }], links: [] }));
-    fs.writeFileSync(path.join(staging, "manifest.json"), JSON.stringify({ version: "new" }));
+    fs.writeFileSync(path.join(staging, "manifest.json"), testManifest(1, 0, "new"));
     const ren = fs.renameSync;
     let failures = 0;
     fs.renameSync = function (from, to) {
@@ -4188,7 +4429,7 @@ test("regression: the published view describes the reminder that the guard captu
   }
 });
 
-test("regression: a live participant found during reclaim still blocks later tickets", () => {
+test("regression: a participant that remains unreadable during reclaim blocks later tickets", () => {
   const root = mkProject("gate-live-recheck");
   try {
     const gate = require("../../lib/graphify/density-gate");
@@ -4201,7 +4442,8 @@ test("regression: a live participant found during reclaim still blocks later tic
     const read = fs.readFileSync;
     let reads = 0;
     fs.readFileSync = function (file, ...rest) {
-      if (String(file) === lower && reads++ === 0) {
+      if (String(file) === lower && reads < 2) {
+        reads += 1;
         throw Object.assign(new Error("transient read"), { code: "EIO" });
       }
       return read.call(this, file, ...rest);
@@ -4212,7 +4454,7 @@ test("regression: a live participant found during reclaim still blocks later tic
     } finally {
       fs.readFileSync = read;
     }
-    assert.equal(reads, 2, "the stale observation must be checked again before reclaim");
+    assert.equal(reads, 2, "both the stale observation and reclaim recheck must fail to read");
     assert.equal(contender, null,
       "a live participant discovered by the reclaim recheck must keep its place in the election");
     assert.equal(gate.readGateEntry(lower).active, true,
@@ -4224,7 +4466,7 @@ test("regression: a live participant found during reclaim still blocks later tic
 
 test("regression: published commit markers require both graph and manifest files", () => {
   const resolver = require("../../lib/graphify/resolver");
-  for (const scenario of ["graph-only", "manifest-deleted"]) {
+  for (const scenario of ["graph-only", "manifest-file-missing", "manifest-entry-and-file-missing"]) {
     const root = mkProject("resolver-marker-pair-" + scenario);
     try {
       const marker = publishFixture(root);
@@ -4232,7 +4474,7 @@ test("regression: published commit markers require both graph and manifest files
       if (scenario === "graph-only") {
         delete record.files["manifest.json"];
       } else {
-        delete record.files["manifest.json"];
+        if (scenario === "manifest-entry-and-file-missing") delete record.files["manifest.json"];
         fs.unlinkSync(path.join(root, "graphify-out", "manifest.json"));
       }
       fs.writeFileSync(marker, JSON.stringify(record));
@@ -4252,33 +4494,64 @@ test("regression: published commit markers require both graph and manifest files
   }
 });
 
-test("regression: EPERM during a hard-link probe is retried on the next write", () => {
-  const root = mkProject("marker-probe-eperm-retry");
+test("regression: transient hard-link probe failures retry, definitive failures cache", () => {
+  for (const code of ["EPERM", "EXDEV"]) {
+    const root = mkProject("marker-probe-retry-" + code);
+    try {
+      const dir = path.join(root, "graphify-out");
+      const marker = path.join(dir, ".graphify-stale.json");
+      markers.writeMarker({ graphDir: dir, kind: "semantic", changedPaths: ["seed.md"] });
+      const link = fs.linkSync;
+      let probes = 0;
+      fs.linkSync = function (source, target) {
+        if (String(target).includes(".link-probe-")) {
+          probes += 1;
+          if (probes === 1) throw Object.assign(new Error("temporary link failure"), { code });
+        }
+        return link.apply(this, arguments);
+      };
+      let first;
+      let retry;
+      try {
+        first = markers.writeMarker({ graphDir: dir, kind: "semantic", changedPaths: ["reminder.md"] });
+        retry = markers.writeMarker({ graphDir: dir, kind: "semantic", changedPaths: ["later.md"] });
+      } finally {
+        fs.linkSync = link;
+      }
+      const view = JSON.parse(fs.readFileSync(marker, "utf8"));
+      assert.equal(probes, 2, code + " must be probed again on retry");
+      assert.equal(first.ok, false, "the write must defer while the probe fails");
+      assert.equal(retry.ok, true, code + " must not disable links for this directory");
+      assert.ok(view.changedPaths.includes("reminder.md"), "the deferred reminder must remain represented");
+    } finally {
+      cleanup(root);
+    }
+  }
+
+  const root = mkProject("marker-probe-definitive-cache");
   try {
     const dir = path.join(root, "graphify-out");
-    const marker = path.join(dir, ".graphify-stale.json");
     markers.writeMarker({ graphDir: dir, kind: "semantic", changedPaths: ["seed.md"] });
     const link = fs.linkSync;
     let probes = 0;
     fs.linkSync = function (source, target) {
       if (String(target).includes(".link-probe-")) {
         probes += 1;
-        throw Object.assign(new Error("temporarily denied"), { code: "EPERM" });
+        throw Object.assign(new Error("links unsupported"), { code: "EOPNOTSUPP" });
       }
       return link.apply(this, arguments);
     };
     let first;
+    let retry;
     try {
       first = markers.writeMarker({ graphDir: dir, kind: "semantic", changedPaths: ["reminder.md"] });
+      retry = markers.writeMarker({ graphDir: dir, kind: "semantic", changedPaths: ["later.md"] });
     } finally {
       fs.linkSync = link;
     }
-    const retry = markers.writeMarker({ graphDir: dir, kind: "semantic", changedPaths: ["later.md"] });
-    const view = JSON.parse(fs.readFileSync(marker, "utf8"));
-    assert.equal(probes, 1, "the probe must observe the injected transient failure");
-    assert.equal(first.ok, false, "the write must defer while the probe fails");
-    assert.equal(retry.ok, true, "a transient EPERM must not disable links for this directory");
-    assert.ok(view.changedPaths.includes("reminder.md"), "the deferred reminder must remain represented");
+    assert.equal(first.reason, "no_hardlink_support");
+    assert.equal(retry.reason, "no_hardlink_support");
+    assert.equal(probes, 1, "a definitive unsupported result should be cached for the directory");
   } finally {
     cleanup(root);
   }

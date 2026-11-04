@@ -73,6 +73,7 @@ function installGraphifyStub(projectRoot) {
     "  links: Array.from({ length: edges }, (_, i) => ({ source: 'n' + (i % Math.max(nodes,1)), target: 'n0' })),",
     "  hyperedges: [], built_at_commit: 'stub' };",
     "fs.writeFileSync(path.join(outDir, 'graph.json'), JSON.stringify(graph, null, 2));",
+    "fs.writeFileSync(path.join(outDir, 'manifest.json'), JSON.stringify({ schemaVersion: '1.0', graphifyVersion: '0.9.27-stub', generatedAt: new Date().toISOString(), includedRoots: [], excludedRoots: [], nodeCount: graph.nodes.length, edgeCount: graph.links.length, generationMode: full ? 'full' : 'update' }));",
     "process.exit(0);",
     "",
   ].join("\n");
