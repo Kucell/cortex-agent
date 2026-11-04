@@ -301,6 +301,76 @@ test("parseArgs reads every documented option", () => {
 
 // ─── L1 template / L3 working-instance drift guard ───────────────────────────
 
+// ─── LEARNING_PIPELINE phase ────────────────────────────────────────────────
+
+test("LEARNING_PIPELINE is a known phase with both transitions defined", () => {
+  assert.ok(gate.PHASES.includes("LEARNING_PIPELINE"), "LEARNING_PIPELINE is a phase");
+  assert.ok(gate.TRANSITIONS["SELF_CHECK->LEARNING_PIPELINE"], "entry transition defined");
+  assert.ok(gate.TRANSITIONS["LEARNING_PIPELINE->CLEAN"], "exit transition defined");
+});
+
+test("LEARNING_PIPELINE->CLEAN keeps the runtime-verification requirement", () => {
+  // Inserting a phase must not let CLEAN slip past the required verification
+  // check that used to live on SELF_CHECK->CLEAN.
+  const ids = gate.TRANSITIONS["LEARNING_PIPELINE->CLEAN"].map((d) => d.id);
+  assert.ok(ids.includes("runtime_verification"), "runtime verification still required");
+  const rv = gate.TRANSITIONS["LEARNING_PIPELINE->CLEAN"].find((d) => d.id === "runtime_verification");
+  assert.equal(rv.severity, "required", "verification stays blocking");
+});
+
+test("learning pipeline failure warns but does not block CLEAN", () => {
+  const dir = makeTempProject();
+  try {
+    // A pipeline report with a failed stage must not block delivery.
+    const evDir = path.join(dir, ".agent", "runtime-evidence", "learning-loop", "pipeline");
+    fs.mkdirSync(evDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(evDir, "run.json"),
+      JSON.stringify({ counts: { passed: 5, failed: 2, skipped: 0, total: 7 } }),
+      "utf8"
+    );
+    // Verification summary passes, so the only negative signal is the pipeline.
+    const metrics = path.join(dir, ".agent", "metrics");
+    fs.mkdirSync(metrics, { recursive: true });
+    fs.writeFileSync(
+      path.join(metrics, "verification-summary.json"),
+      JSON.stringify({ overall_status: "pass" }),
+      "utf8"
+    );
+
+    const result = runGate(["--from", "LEARNING_PIPELINE", "--to", "CLEAN", "--cwd", dir, "--json"], dir);
+    assert.equal(result.status, 0, "a failed learning stage must not block CLEAN");
+    const payload = JSON.parse(result.stdout);
+    const lp = payload.checks.find((c) => c.id === "learning_pipeline_report");
+    assert.equal(lp.status, "WARN", "pipeline failure is a warning");
+    assert.match(lp.detail, /2\/7/);
+  } finally {
+    cleanup(dir);
+  }
+});
+
+test("SELF_CHECK->LEARNING_PIPELINE blocks when the self-check failed", () => {
+  const dir = makeTempProject();
+  try {
+    const metrics = path.join(dir, ".agent", "metrics");
+    fs.mkdirSync(metrics, { recursive: true });
+    fs.writeFileSync(
+      path.join(metrics, "self-check-report.json"),
+      JSON.stringify({ overall_status: "fail", failed_areas: ["schema_validation"] }),
+      "utf8"
+    );
+
+    const result = runGate(["--from", "SELF_CHECK", "--to", "LEARNING_PIPELINE", "--cwd", dir, "--json"], dir);
+    assert.equal(result.status, 1, "a failed self-check must block before the pipeline runs");
+    const payload = JSON.parse(result.stdout);
+    const sc = payload.checks.find((c) => c.id === "self_check_not_blocking");
+    assert.equal(sc.status, "FAIL");
+    assert.match(sc.detail, /schema_validation/);
+  } finally {
+    cleanup(dir);
+  }
+});
+
 test("L3 working instance stays byte-identical to the L1 template", () => {
   const l1 = path.resolve(
     __dirname,

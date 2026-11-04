@@ -47,6 +47,7 @@ const PHASES = Object.freeze([
   "DOC_GARDENING",
   "PUBLISH_DOCS",
   "SELF_CHECK",
+  "LEARNING_PIPELINE",
   "CLEAN",
 ]);
 
@@ -534,13 +535,51 @@ const TRANSITIONS = {
     },
   ],
 
-  "SELF_CHECK->CLEAN": [
+  "SELF_CHECK->LEARNING_PIPELINE": [
     {
       id: "self_check_report",
       severity: "advisory",
       run: (ctx) => {
         const abs = path.join(ctx.cwd, ".agent", "metrics", "self-check-report.json");
         return fileExists(abs) ? ok(`自检报告存在：${abs}。`) : warn(`未找到 ${abs}。`);
+      },
+    },
+    {
+      // 自举自检的 L2 漂移会阻断 CLEAN。插入学习管道阶段后，这条阻断必须
+      // 落在进入管道之前，否则自检失败仍会一路带到 CLEAN。
+      id: "self_check_not_blocking",
+      severity: "required",
+      run: (ctx) => {
+        const abs = path.join(ctx.cwd, ".agent", "metrics", "self-check-report.json");
+        const data = readJson(abs);
+        if (!data) return warn(`未找到 ${abs} —— 自检未执行（not_run）。`);
+        const status = data.overall_status;
+        if (status === "fail") {
+          const areas = Array.isArray(data.failed_areas) ? data.failed_areas : [];
+          return fail(`自举自检失败（fail）：${areas.slice(0, 5).join("；") || "详见 self-check-report.json"}。`);
+        }
+        return ok(`自举自检状态：${status || "缺失"}。`);
+      },
+    },
+  ],
+
+  "LEARNING_PIPELINE->CLEAN": [
+    {
+      // 学习管道是观测性的：它失败不代表交付有问题，只代表这次没拿到学习
+      // 证据。因此这里只做 advisory，不阻断 CLEAN。
+      id: "learning_pipeline_report",
+      severity: "advisory",
+      run: (ctx) => {
+        const abs = path.join(ctx.cwd, ".agent", "runtime-evidence", "learning-loop", "pipeline", "run.json");
+        const data = readJson(abs);
+        if (!data) return warn(`未找到 ${abs} —— 学习管道未运行。`);
+        const counts = data.counts || {};
+        const failed = counts.failed || 0;
+        const total = counts.total || 0;
+        if (failed > 0) {
+          return warn(`学习管道有 ${failed}/${total} 个 stage 失败（不阻断交付，详见 pipeline/run.md）。`);
+        }
+        return ok(`学习管道全部通过（${total} 个 stage）。`);
       },
     },
     {
@@ -551,6 +590,45 @@ const TRANSITIONS = {
       //   fail    → 阻断，发布前必须先修掉失败的验证
       //   partial → 告警，存在未通过的断言
       //   not_run → 告警，明确写出「未执行验证」，不再静默通过
+      id: "runtime_verification",
+      severity: "required",
+      run: (ctx) => {
+        const abs = path.join(ctx.cwd, ".agent", "metrics", "verification-summary.json");
+        const data = readJson(abs);
+        if (!data) {
+          return warn(`未找到 ${abs} —— 运行时验证未执行（not_run）。`);
+        }
+        const status = data.overall_status;
+        if (status === "fail") {
+          const blockers = Array.isArray(data.blockers) ? data.blockers : [];
+          const detail = blockers
+            .slice(0, 5)
+            .map((b) => `${b.case_id}#${b.assertion_id}`)
+            .join("；");
+          return fail(`运行时验证失败（fail）：${detail || "详见 verification-summary.json"}。`);
+        }
+        if (status === "partial") {
+          return warn("运行时验证部分通过（partial）—— 存在未通过的断言，详见 verification-summary.json。");
+        }
+        if (status === "pass") {
+          return ok("运行时验证通过（pass）。");
+        }
+        return warn(`运行时验证状态为 ${status || "缺失"} —— 按未执行处理。`);
+      },
+    },
+  ],
+
+  // 直跳路径（跳过 LEARNING_PIPELINE）保留，语义与 LEARNING_PIPELINE->CLEAN 一致。
+  "SELF_CHECK->CLEAN": [
+    {
+      id: "self_check_report",
+      severity: "advisory",
+      run: (ctx) => {
+        const abs = path.join(ctx.cwd, ".agent", "metrics", "self-check-report.json");
+        return fileExists(abs) ? ok(`自检报告存在：${abs}。`) : warn(`未找到 ${abs}。`);
+      },
+    },
+    {
       id: "runtime_verification",
       severity: "required",
       run: (ctx) => {
