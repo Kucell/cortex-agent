@@ -36,6 +36,29 @@ function issueRequest() {
   return { lease: { sessionId: "s" }, permit: { operation: "read" } };
 }
 
+// The issuing side signs permits with one batch and the revocation list with
+// ANOTHER batch: a list signed by a revocable batch could revoke its own
+// signer, and `signRevocationList` refuses exactly that. The two are
+// therefore separate objects with separate key pairs, and the assembly
+// refuses to start without both.
+function revocationBatch(overrides = {}) {
+  return {
+    signRevocation: ({ state, fingerprints }) => ({
+      revocation_sequence: state.appliedRevocationSequence + 1,
+      revoked_fingerprints: [...fingerprints].sort(),
+      issued_at_ms: 1000,
+      prev_revocation_sequence: state.appliedRevocationSequence,
+      batch_public_key_fingerprint: "d".repeat(64),
+      signature: "revocation-signature",
+      ...overrides,
+    }),
+  };
+}
+
+function revocationStateSource(state = { appliedRevocationSequence: 3, revokedFingerprints: new Set() }) {
+  return () => state;
+}
+
 // The endpoint authenticates its client by a ticket, so every test needs one.
 // The registry is created per endpoint and the ticket is minted for the same
 // peer the assembly pins, which is what the production host does.
@@ -313,6 +336,8 @@ test("the issuing assembly serves issue and refuses the target-side actions", ()
   let issued = 0;
   const assembly = assemblePermitIssuer({
     batchSession: { issue: () => { issued += 1; return { ok: true }; } },
+    revocationBatchSession: revocationBatch(),
+    revocationStateSource: revocationStateSource(),
     peerIdentity: PEER,
   });
   assert.equal(assembly.side, "issuer");
@@ -341,6 +366,8 @@ test("the assembly hands the pinned peer to dispatch, never a request-supplied o
   const issued = [];
   const assembly = assemblePermitIssuer({
     batchSession: { issue: (args) => { issued.push(args); return { ok: true }; } },
+    revocationBatchSession: revocationBatch(),
+    revocationStateSource: revocationStateSource(),
     peerIdentity: PEER,
   });
   // The request carries a session id of its own. The peer is the PINNED
@@ -386,6 +413,8 @@ test("the attached endpoint forwards through the assembly's pinned peer", async 
       fingerprint: "c".repeat(64),
       signedPermit: { message: JSON.stringify(message), signature: "sig", sequence: 1, deadline: 5 },
     }) },
+    revocationBatchSession: revocationBatch(),
+    revocationStateSource: revocationStateSource(),
     peerIdentity: PEER,
   });
   const tickets = createTicketRegistry();
