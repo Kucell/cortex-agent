@@ -120,6 +120,48 @@ function pendingNames(root) {
   }
 }
 
+// A project whose graph was published by the framework, with the commit
+// marker of that publication. Returns the path of the marker.
+function publishFixture(root) {
+  const pluginDir = path.join(root, ".agent", "plugins", "graphify");
+  const out = path.join(root, "graphify-out");
+  const staging = path.join(root, "staging");
+  fs.mkdirSync(pluginDir, { recursive: true });
+  fs.mkdirSync(out, { recursive: true });
+  fs.mkdirSync(staging, { recursive: true });
+  fs.writeFileSync(
+    path.join(pluginDir, "config.yml"),
+    "graphify:\n  version: '>=0.9.0'\n  map_path: 'graphify-out/graph.json'\n",
+  );
+  const manifestLib = require("../../lib/graphify/manifest");
+  const graph = { schema_version: "1.0", nodes: [{ id: "n1" }], links: [] };
+  fs.writeFileSync(path.join(out, "graph.json"), JSON.stringify(graph));
+  fs.writeFileSync(path.join(out, "manifest.json"), JSON.stringify(manifestLib.buildManifest({
+    graphifyVersion: "1.0.0",
+    generatedAt: new Date().toISOString(),
+    sourceHead: "abc123",
+    includedRoots: ["lib/"],
+    excludedRoots: [],
+    nodeCount: 1,
+    edgeCount: 0,
+    generationMode: "full",
+  }), null, 2));
+  fs.writeFileSync(path.join(staging, "graph.json"), JSON.stringify(graph));
+  fs.writeFileSync(path.join(staging, "manifest.json"), JSON.stringify(manifestLib.buildManifest({
+    graphifyVersion: "1.0.0",
+    generatedAt: new Date().toISOString(),
+    sourceHead: "abc123",
+    includedRoots: ["lib/"],
+    excludedRoots: [],
+    nodeCount: 1,
+    edgeCount: 0,
+    generationMode: "full",
+  }), null, 2));
+  const published = updateLib.publishStagedOutput(root, staging, { isHeld: () => true });
+  assert.equal(published.ok, true, "the fixture must be published");
+  return path.join(pluginDir, ".density-commit.json");
+}
+
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -3629,6 +3671,287 @@ test("regression: a reminder that arrives while the view is written is not lost"
     const records = fs.readdirSync(path.join(dir, ".graphify-stale-records"));
     assert.ok(records.includes("third.json"),
       "a reminder that arrives while the view is written must not be lost");
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("regression: a participant whose slot was taken while it registered does not enter the protocol", () => {
+  // Filesystems without hard links cannot publish a registration and its
+  // content in one step. The registration then reserves the name first
+  // and writes the content afterwards -- and a participant that reclaims
+  // the empty slot in that window replaces the file. The participant that
+  // was registering has to notice that its slot is no longer its own,
+  // because a half-registered participant that enters the protocol is two
+  // participants inside the mutual exclusion.
+  const root = mkProject("gate-slot-taken-while-registering");
+  try {
+    const gate = require("../../lib/graphify/density-gate");
+    const dir = gate.gateDir(root, "taken");
+    fs.mkdirSync(dir, { recursive: true });
+    const link = fs.linkSync;
+    const open = fs.openSync;
+    let displaced = false;
+    fs.linkSync = function () {
+      throw Object.assign(new Error("no links"), { code: "EOPNOTSUPP" });
+    };
+    fs.openSync = function (file, ...rest) {
+      const handle = open.call(this, file, ...rest);
+      if (!displaced && path.basename(String(file)).startsWith("gate-")) {
+        displaced = true;
+        // Somebody else reclaims the empty slot while the content is
+        // written: the file at the path is a DIFFERENT file now, with a
+        // DIFFERENT inode.
+        const other = String(file) + ".reclaimed-" + process.pid;
+        fs.writeFileSync(other, JSON.stringify({
+          ticket: 1,
+          pid: 999999,
+          active: false,
+          releasedAt: new Date().toISOString(),
+        }));
+        fs.renameSync(other, String(file));
+        // The reclaimer takes the NEXT ticket itself, and it is ALIVE.
+        fs.writeFileSync(path.join(dir, "gate-2.json"), JSON.stringify({
+          ticket: 2,
+          pid: 1,
+          active: true,
+          at: new Date().toISOString(),
+        }));
+      }
+      return handle;
+    };
+    let held = null;
+    try {
+      held = gate.acquireGate(root, "taken", { timeoutMs: 0 });
+    } finally {
+      fs.linkSync = link;
+      fs.openSync = open;
+    }
+    assert.equal(displaced, true, "the slot must have been reclaimed");
+    assert.equal(held, null,
+      "a participant whose slot was taken must not enter the protocol");
+    const slots = fs.readdirSync(dir).filter((n) => n.startsWith("gate-"));
+    assert.ok(slots.includes("gate-1.json"),
+      "the reclaimed slot keeps its ticket");
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("regression: a commit marker that cannot be read fails the reader closed", () => {
+  // A directory that never had a marker is a directory of an older
+  // version. A marker that EXISTS but cannot be read is a different fact:
+  // the protocol is in use here, and the reader cannot know what the
+  // marker says -- so it must not read the directory as if it were fine.
+  const resolver = require("../../lib/graphify/resolver");
+  const root = mkProject("resolver-marker-unreadable");
+  try {
+    const marker = publishFixture(root);
+    const read = fs.readFileSync;
+    fs.readFileSync = function (file, ...rest) {
+      if (String(file) === marker) {
+        throw Object.assign(new Error("denied"), { code: "EACCES" });
+      }
+      return read.call(this, file, ...rest);
+    };
+    let out;
+    try {
+      out = resolver.resolveContext({
+        projectRoot: root,
+        gitContext: fakeGitContext(),
+        includeDirtyCheck: false,
+        now: new Date().toISOString(),
+      });
+    } finally {
+      fs.readFileSync = read;
+    }
+    assert.equal(out.available, false,
+      "a marker that cannot be read must not let the reader through");
+    assert.ok(out.staleReasons.includes("commit_invalid"),
+      "the reader must say why the directory is not usable");
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("regression: a changed file is not excused by its modification time", () => {
+  // The marker describes the files it published. A file that was replaced
+  // afterwards belongs to another generation -- and the reader must not
+  // excuse the mismatch with a modification time that happens to be
+  // different, in either direction.
+  const resolver = require("../../lib/graphify/resolver");
+  const root = mkProject("resolver-marker-mtime");
+  try {
+    const marker = publishFixture(root);
+    const record = JSON.parse(fs.readFileSync(marker, "utf8"));
+    const manifestPath = path.join(root, "graphify-out", "manifest.json");
+    const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+    manifest.generatedAt = new Date(Date.now() + 60000).toISOString();
+    fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
+    const newer = new Date(record.files["manifest.json"].mtimeMs + 10000);
+    fs.utimesSync(manifestPath, newer, newer);
+    const out = resolver.resolveContext({
+      projectRoot: root,
+      gitContext: fakeGitContext(),
+      includeDirtyCheck: false,
+      now: new Date().toISOString(),
+    });
+    assert.equal(out.available, false,
+      "a file that is not the one the marker describes must fail the reader closed");
+    assert.ok(out.staleReasons.includes("commit_mismatch"),
+      "the reader must name the mismatch");
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("regression: a commit marker with an invalid structure fails the reader closed", () => {
+  // The marker is a protocol: its schema, its state and its entries are
+  // validated before it is read. A marker that says nothing -- or that
+  // says half of it -- is not read as if it said everything, and it never
+  // makes the reader throw.
+  const resolver = require("../../lib/graphify/resolver");
+  for (const broken of [
+    { name: "no state", mutate: (m) => { delete m.state; m.files = {}; } },
+    { name: "no files", mutate: (m) => { m.files = {}; } },
+    { name: "a null entry", mutate: (m) => { m.files["graph.json"] = null; } },
+    { name: "an entry without a digest", mutate: (m) => { m.files["graph.json"] = { mtimeMs: 1 }; } },
+  ]) {
+    const root = mkProject("resolver-marker-structure");
+    try {
+      const marker = publishFixture(root);
+      const record = JSON.parse(fs.readFileSync(marker, "utf8"));
+      broken.mutate(record);
+      fs.writeFileSync(marker, JSON.stringify(record));
+      let out = null;
+      let threw = null;
+      try {
+        out = resolver.resolveContext({
+          projectRoot: root,
+          gitContext: fakeGitContext(),
+          includeDirtyCheck: false,
+          now: new Date().toISOString(),
+        });
+      } catch (err) {
+        threw = err;
+      }
+      assert.equal(threw, null, "the reader must not throw on a broken marker (" + broken.name + ")");
+      assert.equal(out.available, false,
+        "a broken marker must fail the reader closed (" + broken.name + ")");
+      assert.ok(out.staleReasons.includes("commit_invalid"),
+        "the reader must say why the directory is not usable (" + broken.name + ")");
+    } finally {
+      cleanup(root);
+    }
+  }
+});
+
+test("regression: a reminder that the guard captured is imported before the guard is removed", () => {
+  // The file that is moved aside may hold a REMINDER: a writer that
+  // published one between the inspection of the path and the move. It is
+  // imported into the record model before the file is removed -- on every
+  // path out of the publication, not only on the happy one.
+  const root = mkProject("legacy-guard-capture");
+  try {
+    const dir = path.join(root, "graphify-out");
+    fs.mkdirSync(dir, { recursive: true });
+    const markerPath = path.join(dir, ".graphify-stale.json");
+    const reminder = (id) => ({
+      schemaVersion: "1.0",
+      markerId: id,
+      kind: "semantic",
+      changedPaths: [id + ".md"],
+    });
+    // A derived view is already published: the next write replaces it.
+    markers.writeMarker({ graphDir: dir, kind: "semantic", changedPaths: ["seed.md"] });
+    const ren = fs.renameSync;
+    const write = fs.writeFileSync;
+    let captured = false;
+    fs.renameSync = function (from, to) {
+      if (!captured && from === markerPath && String(to).includes(".guard-")) {
+        captured = true;
+        // A writer publishes a reminder right before the file at the path
+        // is moved aside: the guard captures THAT reminder.
+        write.call(fs, markerPath, JSON.stringify(reminder("middle")));
+        const result = ren.apply(this, arguments);
+        // ... and another one right after it.
+        write.call(fs, markerPath, JSON.stringify(reminder("new")));
+        return result;
+      }
+      return ren.apply(this, arguments);
+    };
+    let result = null;
+    try {
+      result = markers.writeMarker({ graphDir: dir, kind: "semantic", changedPaths: ["another.md"] });
+    } finally {
+      fs.renameSync = ren;
+    }
+    assert.equal(captured, true, "the guard must have captured the reminder");
+    assert.equal(result.ok, true, "the write must succeed");
+    const records = fs.readdirSync(path.join(dir, ".graphify-stale-records"));
+    assert.ok(records.includes("middle.json"),
+      "a reminder that the guard captured must be imported before the guard is removed");
+    assert.ok(records.includes("new.json"),
+      "a reminder that a writer published must be imported");
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("regression: the view is never published over a reminder when hard links are missing", () => {
+  // Without hard links there is no atomic create that does not overwrite,
+  // so the name is reserved exclusively and the content is written into
+  // the file that was reserved. A reminder that a writer publishes in
+  // that window is never overwritten.
+  const root = mkProject("legacy-view-without-links");
+  try {
+    const dir = path.join(root, "graphify-out");
+    fs.mkdirSync(dir, { recursive: true });
+    const markerPath = path.join(dir, ".graphify-stale.json");
+    const reminder = (id) => ({
+      schemaVersion: "1.0",
+      markerId: id,
+      kind: "semantic",
+      changedPaths: [id + ".md"],
+    });
+    fs.writeFileSync(markerPath, JSON.stringify(reminder("old")));
+    const identity = markers.readLegacyMarker(dir).identity;
+    const link = fs.linkSync;
+    const open = fs.openSync;
+    const write = fs.writeFileSync;
+    let injected = false;
+    fs.linkSync = function () {
+      throw Object.assign(new Error("no links"), { code: "EOPNOTSUPP" });
+    };
+    fs.openSync = function (file, ...rest) {
+      const handle = open.call(this, file, ...rest);
+      if (!injected && String(file) === markerPath) {
+        injected = true;
+        // A writer publishes a reminder in the window between the
+        // reservation of the name and the writing of the content.
+        write.call(fs, markerPath, JSON.stringify(reminder("third")));
+      }
+      return handle;
+    };
+    let result = null;
+    try {
+      result = markers.clearLegacyMarkerIfUnchanged(dir, identity, {
+        onBeforeClaim: () => write.call(fs, markerPath, JSON.stringify(reminder("middle"))),
+        onAfterClaim: () => write.call(fs, markerPath, JSON.stringify(reminder("new"))),
+      });
+    } finally {
+      fs.linkSync = link;
+      fs.openSync = open;
+    }
+    assert.equal(injected, true, "the reminder must have arrived in the window");
+    assert.equal(result.ok, true, "the clear itself must not fail");
+    const records = fs.existsSync(path.join(dir, ".graphify-stale-records"))
+      ? fs.readdirSync(path.join(dir, ".graphify-stale-records"))
+      : [];
+    const onDisk = fs.existsSync(markerPath) ? JSON.parse(fs.readFileSync(markerPath, "utf8")) : null;
+    const kept = (records.includes("third.json"))
+      || (onDisk && Array.isArray(onDisk.changedPaths) && onDisk.changedPaths.includes("third.md"));
+    assert.ok(kept, "a reminder must not be overwritten by the view");
   } finally {
     cleanup(root);
   }
