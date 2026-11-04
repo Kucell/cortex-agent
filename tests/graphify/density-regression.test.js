@@ -19,6 +19,7 @@ const density = require("../../lib/graphify/density");
 const hook = require("../../lib/graphify/hook");
 const markers = require("../../lib/graphify/markers");
 const lockLib = require("../../lib/graphify/density-lock");
+const updateLib = require("../../lib/graphify/density-update");
 
 const ROOT = path.resolve(__dirname, "..", "..");
 const WORK_ROOT = path.join(ROOT, ".agent-work", "test-density-regression");
@@ -54,7 +55,7 @@ function writeGraph(root, { nodes, edges, meta = null }) {
 }
 
 // A stub `graphify` on PATH: the hook and the runner both shell out to it.
-function installStub(root, { updateExit = 0 } = {}) {
+function installStub(root, { updateExit = 0, extractExit = 0 } = {}) {
   const bin = path.join(root, "stub-bin");
   fs.mkdirSync(bin, { recursive: true });
   const log = path.join(root, "graphify-calls.log");
@@ -65,6 +66,7 @@ function installStub(root, { updateExit = 0 } = {}) {
     "case \"$1\" in",
     "  --version) echo 'graphify 0.9.27-stub'; exit 0 ;;",
     "  update) echo \"update $@\" >> \"$LOG\"; exit " + updateExit + " ;;",
+    "  extract) echo \"extract $@\" >> \"$LOG\"; exit " + extractExit + " ;;",
     "  *) echo \"$@\" >> \"$LOG\"; exit 0 ;;",
     "esac",
     "",
@@ -1893,33 +1895,404 @@ test("regression: an older measurement published later does not win the baseline
 });
 
 test("regression: a record that a displaced holder published after its loss is not trusted", () => {
-  // The displacement threshold was built from the sequences that were
-  // HANDED OUT. A holder that was allocated a sequence and lost the lock
-  // before it appended its record had that record counted as a publication
-  // that happened before the loss -- so the reader trusted a measurement
-  // that was made without the authority.
+  // The displacement threshold is the SIZE of the baseline log at the
+  // moment of the loss. Everything the holder published before the loss
+  // ends before the threshold, so it stays valid; everything it publishes
+  // afterwards starts at or after it, and the readers drop it.
+  //
+  // The threshold used to be a SEPARATE registry of the published
+  // sequences. The registry was a second write: a holder that appended
+  // its record and was displaced before it could register the publication
+  // lost a baseline it had published legitimately.
   const root = mkProject("displaced-unpublished");
   try {
-    const allocated = lockLib.allocateTicket(root, "seq");
-    assert.ok(lockLib.registerDisplaced(root, "token-1"));
-    assert.equal(
-      lockLib.isDisplacedRecord(root, { lock_token: "token-1", sequence: allocated }),
-      true,
-      "a sequence that was only allocated must not be trusted",
-    );
-    // A record that the holder REALLY published before the loss stays valid.
-    lockLib.registerPublishedSequence(root, "token-2", 7);
-    assert.ok(lockLib.registerDisplaced(root, "token-2"));
-    assert.equal(
-      lockLib.isDisplacedRecord(root, { lock_token: "token-2", sequence: 7 }),
-      false,
-      "a published record must stay valid",
-    );
-    assert.equal(
-      lockLib.isDisplacedRecord(root, { lock_token: "token-2", sequence: 8 }),
-      true,
-      "a record published after the loss must be dropped",
-    );
+    const lock = density.acquireRebuildLock(root);
+    assert.ok(lock, "the lock must be acquired");
+    const published = density.stampBaseline(root, {
+      nodes: 100,
+      edges: 500,
+      buildKind: "full",
+      lockGeneration: lock.generation,
+      lockToken: lock.token,
+    });
+    assert.equal(published.ok, true, "the publication must succeed");
+    assert.equal(density.readBaselineSidecar(root).edge_node_ratio, 5);
+
+    // The holder loses the lock.
+    assert.ok(lockLib.registerDisplaced(root, lock.token), "the holder must be fenced out");
+
+    // The record it published BEFORE the loss stays valid: it is the one
+    // baseline the guard needs.
+    assert.equal(density.readBaselineSidecar(root).edge_node_ratio, 5,
+      "a record published before the loss must survive the registration");
+
+    // A record the displaced holder appends AFTER the loss is dropped. It
+    // carries a higher sequence, so it would win the order if it were
+    // trusted.
+    fs.appendFileSync(density.baselinePath(root), JSON.stringify({
+      schemaVersion: "1.0",
+      kind: "stamp",
+      priority: 1,
+      build_kind: "full",
+      edge_node_ratio: 9,
+      nodes: 100,
+      edges: 900,
+      baseline_locked_at: new Date(Date.now() + 60_000).toISOString(),
+      lock_generation: lock.generation,
+      lock_token: lock.token,
+      sequence: 999,
+    }) + "\n");
+    assert.equal(density.readBaselineSidecar(root).edge_node_ratio, 5,
+      "a record published after the loss must be dropped by the readers");
+
+    // A record of a holder that never lost the lock is trusted.
+    fs.appendFileSync(density.baselinePath(root), JSON.stringify({
+      schemaVersion: "1.0",
+      kind: "stamp",
+      priority: 1,
+      build_kind: "full",
+      edge_node_ratio: 4,
+      nodes: 100,
+      edges: 400,
+      baseline_locked_at: new Date(Date.now() + 120_000).toISOString(),
+      lock_generation: lock.generation,
+      lock_token: "healthy-holder",
+      sequence: 1000,
+    }) + "\n");
+    assert.equal(density.readBaselineSidecar(root).edge_node_ratio, 4,
+      "the record of a healthy holder must be trusted");
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("regression: a reclaim never takes the lock of a holder that took the path in the meantime", () => {
+  // The reclaim MOVED the lock aside and looked at what it moved. The move
+  // took the path away FIRST, so a holder that took the path in the window
+  // between the judgement and the move lost its lock record -- and it
+  // published its result over the graph of the holder that replaced it.
+  //
+  // The claim is a hard link plus an identity check now: the path is only
+  // removed when it still holds the very instance that was judged stale.
+  const root = mkProject("reclaim-identity");
+  try {
+    const file = density.rebuildLockPath(root);
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    // A lock whose holder is gone and that is older than the stale window.
+    fs.writeFileSync(file, JSON.stringify({
+      token: "stale-token",
+      pid: 999999,
+      acquiredAt: new Date(Date.now() - 3600_000).toISOString(),
+      generation: 0,
+    }));
+    let second = null;
+    const acquired = lockLib.acquireRebuildLock(root, {
+      staleMs: 1000,
+      // A second holder takes the lock while the first reclaim is paused.
+      onStaleJudged: () => {
+        second = lockLib.acquireRebuildLock(root, { staleMs: 1000 });
+      },
+    });
+    assert.equal(acquired, null,
+      "the reclaim must be refused: the lock at the path is a different one");
+    assert.ok(second, "the second holder must have taken the lock");
+    const onDisk = JSON.parse(fs.readFileSync(file, "utf8"));
+    assert.equal(onDisk.token, second.token,
+      "the lock of the holder that took the path must survive the reclaim");
+    assert.equal(second.isHeld(), true,
+      "the holder that took the path must still own the lock");
+    second.release();
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("regression: a holder that lost the lock does not publish the graph", () => {
+  // The update REWRITES the graph, and the framework cannot make that a
+  // transaction: it can only decide whether the rewrite may happen, and
+  // it can undo a rewrite that was not allowed.
+  //
+  // The update therefore runs under a guard that watches the lock while it
+  // runs: a holder that lost the lock is stopped, and the graph it
+  // published is put back.
+  const root = mkProject("guarded-update");
+  try {
+    const bin = path.join(root, "stub-bin");
+    fs.mkdirSync(bin, { recursive: true });
+    const graphFile = path.join(root, "graphify-out", "graph.json");
+    const script = path.join(bin, "graphify");
+    fs.writeFileSync(script, [
+      "#!/bin/sh",
+      "printf '{\"nodes\":[{\"id\":\"a\"}],\"links\":[]}' > " + graphFile,
+      "sleep 30",
+      "",
+    ].join("\n"));
+    fs.chmodSync(script, 0o755);
+    writeGraph(root, { nodes: 200, edges: 400 });
+    const before = fs.readFileSync(graphFile, "utf8");
+
+    const lock = density.acquireRebuildLock(root);
+    assert.ok(lock, "the lock must be acquired");
+    // Another holder takes the lock while the update runs.
+    const thief = spawn(process.execPath, ["-e", [
+      "setTimeout(() => {",
+      "  require('node:fs').writeFileSync("
+        + JSON.stringify(density.rebuildLockPath(root))
+        + ", JSON.stringify({ token: 'thief', pid: process.pid,"
+        + " acquiredAt: new Date().toISOString(), generation: 0 }));",
+      "}, 400);",
+    ].join("\n")], { stdio: "ignore" });
+    const result = updateLib.runGuardedUpdate({
+      projectRoot: root,
+      lock,
+      timeoutMs: 30_000,
+      env: { PATH: bin + ":" + process.env.PATH },
+    });
+    thief.kill();
+    assert.equal(result.ok, false, "the update must not be reported as a success");
+    assert.equal(result.lockLost, true, "the loss of the lock must be reported");
+    const after = fs.readFileSync(graphFile, "utf8");
+    assert.equal(after, before,
+      "the graph of the holder that lost the lock must not survive");
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("regression: a holder that was fenced out does not believe it owns the lock", () => {
+  // The lock file can still carry the token of a holder that was fenced
+  // out -- when the reclaim could not put the record back, for instance.
+  // A holder that only looked at the file believed it still owned the lock,
+  // and it published its result over the graph of the holder that
+  // replaced it.
+  const root = mkProject("fenced-holder");
+  try {
+    const lock = density.acquireRebuildLock(root);
+    assert.ok(lock, "the lock must be acquired");
+    assert.equal(lock.isHeld(), true, "the holder owns the lock");
+    assert.ok(lockLib.registerDisplaced(root, lock.token),
+      "the holder must be registered as displaced");
+    assert.equal(lock.isHeld(), false,
+      "a fenced holder must not believe it owns the lock");
+    const onDisk = JSON.parse(fs.readFileSync(density.rebuildLockPath(root), "utf8"));
+    assert.equal(onDisk.token, lock.token,
+      "the lock file still carries the token: the registry is the fence");
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("regression: a stamp that the readers drop is not a success", () => {
+  // The stamp appended its record and then reported the record it wrote
+  // as the published baseline -- even when the readers DROPPED that
+  // record, because the holder was displaced while it was written. The
+  // caller believed that the baseline moved forward while it did not.
+  const root = mkProject("stamp-publication-rejected");
+  try {
+    const stamp = density.stampBaseline(root, {
+      nodes: 100,
+      edges: 500,
+      buildKind: "full",
+      lockToken: "displaced-token",
+      // The holder is displaced between the check and the append.
+      onBeforeAppend: () => {
+        assert.ok(lockLib.registerDisplaced(root, "displaced-token"));
+      },
+    });
+    assert.equal(stamp.ok, false, "a stamp that was dropped must not succeed");
+    assert.equal(stamp.reason, "publication_rejected");
+    assert.equal(density.readBaselineSidecar(root), null,
+      "the baseline must not have moved");
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("regression: two publications in the same millisecond are ordered by the allocator", () => {
+  // A publication that does not bring a sequence used to be published with
+  // the sequence ZERO: the allocator never ran, and two publications of
+  // the same millisecond carried the same order.
+  const root = mkProject("sequence-allocated");
+  try {
+    const now = new Date().toISOString();
+    const first = density.stampBaseline(root, {
+      nodes: 100, edges: 200, buildKind: "full", now,
+    });
+    const second = density.stampBaseline(root, {
+      nodes: 100, edges: 1000, buildKind: "full", now,
+    });
+    assert.equal(first.ok, true, "the first publication must succeed");
+    assert.equal(second.ok, true, "the second publication must succeed");
+    assert.notEqual(first.payload.sequence, second.payload.sequence,
+      "the allocator must hand out a sequence of its own");
+    assert.notEqual(first.payload.sequence, 0,
+      "the sequence zero is not a sequence");
+    assert.equal(density.readBaselineSidecar(root).edge_node_ratio, 10,
+      "the publication that came last must be the baseline in effect");
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("regression: a full rebuild answers the legacy single-file reminder", () => {
+  // The rebuild answers the reminders that existed at its INPUT boundary.
+  // The reminder of an older version is the single file, and it was left
+  // behind: the rebuild cleared the records it captured and the legacy
+  // reminder outlived every rebuild.
+  const root = mkProject("full-rebuild-clears-legacy");
+  try {
+    const stub = installStub(root);
+    writeGraph(root, { nodes: 200, edges: 400 });
+    const graphDir = path.join(root, "graphify-out");
+    const legacyPath = path.join(graphDir, ".graphify-stale.json");
+    fs.writeFileSync(legacyPath, JSON.stringify({
+      schemaVersion: "1.0",
+      markerId: "legacy-reminder",
+      recordedAt: new Date().toISOString(),
+      kind: "semantic",
+      reason: "semantic_changes_only",
+      changedPaths: ["docs/spec.md"],
+      sourceHead: null,
+      branch: null,
+    }, null, 2));
+    const runner = path.join(ROOT, "lib", "graphify", "full-rebuild-runner.js");
+    const run = spawnSync(process.execPath, [runner], {
+      cwd: root,
+      encoding: "utf8",
+      env: stubEnv(stub),
+      timeout: 60_000,
+    });
+    assert.equal(run.status, 0, "the rebuild must succeed: " + run.stderr);
+    assert.equal(fs.existsSync(legacyPath), false,
+      "the legacy reminder must be answered by the rebuild");
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("regression: a derived view without records is not a reminder", () => {
+  // The single file is the DERIVED view of the records. When there are no
+  // records, the view is stale: it describes reminders that were answered
+  // already. A reader that fell back to it resurrected a reminder that a
+  // full rebuild had answered.
+  const root = mkProject("stale-derived-view");
+  try {
+    const graphDir = path.join(root, "graphify-out");
+    const markerPath = path.join(graphDir, ".graphify-stale.json");
+    fs.writeFileSync(markerPath, JSON.stringify({
+      schemaVersion: "1.0",
+      markerId: "derived-1",
+      recordedAt: new Date().toISOString(),
+      kind: "semantic",
+      reason: "semantic_changes_only",
+      changedPaths: ["docs/spec.md"],
+      sourceHead: null,
+      branch: null,
+      recordIds: ["answered-reminder"],
+    }, null, 2));
+    const read = markers.readMarker(graphDir);
+    assert.equal(read.ok, false, "a stale view must not be a reminder");
+    assert.equal(read.reason, "marker_missing");
+    assert.equal(fs.existsSync(markerPath), false,
+      "the stale view must be removed");
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("regression: a derived view that cannot be published is reported", () => {
+  // The records were removed, but the view that the single-file consumers
+  // read could not be published. The caller has to be told: a consumer
+  // that reads the file would still see the reminder that was answered.
+  const root = mkProject("derived-write-failure");
+  try {
+    const graphDir = path.join(root, "graphify-out");
+    const written = markers.writeMarker({
+      graphDir,
+      kind: markers.KIND.SEMANTIC,
+      reason: "semantic_changes_only",
+      changedPaths: ["docs/spec.md"],
+    });
+    assert.ok(written.ok, "the reminder must be published");
+    // The path of the derived view is taken by a directory: the rename
+    // that publishes the view cannot succeed.
+    const markerPath = path.join(graphDir, ".graphify-stale.json");
+    fs.rmSync(markerPath, { force: true });
+    fs.mkdirSync(markerPath);
+    const cleared = markers.clearMarkerRecords(graphDir, {
+      recordIds: markers.listRecordIds(graphDir, { kinds: [markers.KIND.SEMANTIC] }),
+      kinds: [markers.KIND.SEMANTIC],
+    });
+    assert.equal(cleared.ok, false,
+      "a view that could not be published must be reported");
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("regression: a failed full rebuild keeps the reminders", () => {
+  // A rebuild that failed answered nothing: the reminders it captured
+  // describe a change that is still not in the graph.
+  const root = mkProject("failed-rebuild-keeps-reminders");
+  try {
+    const stub = installStub(root, { extractExit: 1 });
+    writeGraph(root, { nodes: 200, edges: 400 });
+    const graphDir = path.join(root, "graphify-out");
+    markers.writeMarker({
+      graphDir,
+      kind: markers.KIND.SEMANTIC,
+      reason: "semantic_changes_only",
+      changedPaths: ["docs/spec.md"],
+    });
+    const runner = path.join(ROOT, "lib", "graphify", "full-rebuild-runner.js");
+    const run = spawnSync(process.execPath, [runner], {
+      cwd: root,
+      encoding: "utf8",
+      env: stubEnv(stub),
+      timeout: 60_000,
+    });
+    assert.equal(run.status, 1, "the rebuild must fail: " + run.stderr);
+    const after = markers.readMarker(graphDir);
+    assert.ok(after.ok, "the reminder must survive a failed rebuild");
+    assert.equal(after.records.length, 1);
+    assert.equal(after.records[0].kind, markers.KIND.SEMANTIC);
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("regression: the compaction never removes a reminder a concurrent writer published", () => {
+  // The compaction removes the reminders that the new record SUBSUMES. A
+  // reminder that a concurrent writer published in the meantime was not
+  // subsumed by anything -- the new record does not know about it -- so it
+  // must survive.
+  const root = mkProject("compaction-concurrent");
+  try {
+    const graphDir = path.join(root, "graphify-out");
+    const written = markers.writeMarker({
+      graphDir,
+      kind: markers.KIND.SEMANTIC,
+      reason: "semantic_changes_only",
+      changedPaths: ["docs/spec.md"],
+      onBeforeCompaction: () => {
+        markers.writeMarker({
+          graphDir,
+          kind: markers.KIND.SEMANTIC,
+          reason: "concurrent",
+          changedPaths: ["docs/spec.md"],
+        });
+      },
+    });
+    assert.ok(written.ok, "the reminder must be published");
+    const ids = markers.listRecordIds(graphDir);
+    assert.equal(ids.length, 1,
+      "the reminder of the concurrent writer must survive the compaction");
+    const remaining = JSON.parse(fs.readFileSync(
+      path.join(graphDir, ".graphify-stale-records", ids[0] + ".json"),
+      "utf8",
+    ));
+    assert.equal(remaining.reason, "concurrent",
+      "the reminder that is left must be the one of the concurrent writer");
   } finally {
     cleanup(root);
   }

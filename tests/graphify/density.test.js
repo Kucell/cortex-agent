@@ -538,8 +538,10 @@ test("density: the rebuild runner bounds the rebuild in the process that owns it
     assert.ok(spawnCalls[0].args[0].endsWith("full-rebuild-runner.js"),
       "the rebuild must be driven by the framework's own runner");
     const runnerSource = fs.readFileSync(result.runner, "utf8");
-    assert.match(runnerSource, /timeout: timeoutMs/,
+    assert.match(runnerSource, /timeoutMs,/,
       "the runner must apply the timeout to the build it runs");
+    assert.match(runnerSource, /runGuardedUpdate/,
+      "the runner must run the build under the guard that watches the lock");
     assert.match(runnerSource, /releaseLock/,
       "the runner must release the lock it owns");
     assert.match(runnerSource, /acquireRebuildLock/,
