@@ -4188,6 +4188,144 @@ test("regression: the published view describes the reminder that the guard captu
   }
 });
 
+test("regression: a live participant found during reclaim still blocks later tickets", () => {
+  const root = mkProject("gate-live-recheck");
+  try {
+    const gate = require("../../lib/graphify/density-gate");
+    const dir = gate.gateDir(root, "recheck");
+    fs.mkdirSync(dir, { recursive: true });
+    const lower = path.join(dir, "gate-1.json");
+    fs.writeFileSync(lower, JSON.stringify({ ticket: 1, pid: process.pid, active: true }));
+    fs.utimesSync(lower, new Date(0), new Date(0));
+
+    const read = fs.readFileSync;
+    let reads = 0;
+    fs.readFileSync = function (file, ...rest) {
+      if (String(file) === lower && reads++ === 0) {
+        throw Object.assign(new Error("transient read"), { code: "EIO" });
+      }
+      return read.call(this, file, ...rest);
+    };
+    let contender;
+    try {
+      contender = gate.acquireGate(root, "recheck", { timeoutMs: 0, staleMs: 0 });
+    } finally {
+      fs.readFileSync = read;
+    }
+    assert.equal(reads, 2, "the stale observation must be checked again before reclaim");
+    assert.equal(contender, null,
+      "a live participant discovered by the reclaim recheck must keep its place in the election");
+    assert.equal(gate.readGateEntry(lower).active, true,
+      "the live participant slot must remain active");
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("regression: published commit markers require both graph and manifest files", () => {
+  const resolver = require("../../lib/graphify/resolver");
+  for (const scenario of ["graph-only", "manifest-deleted"]) {
+    const root = mkProject("resolver-marker-pair-" + scenario);
+    try {
+      const marker = publishFixture(root);
+      const record = JSON.parse(fs.readFileSync(marker, "utf8"));
+      if (scenario === "graph-only") {
+        delete record.files["manifest.json"];
+      } else {
+        delete record.files["manifest.json"];
+        fs.unlinkSync(path.join(root, "graphify-out", "manifest.json"));
+      }
+      fs.writeFileSync(marker, JSON.stringify(record));
+      const out = resolver.resolveContext({
+        projectRoot: root,
+        gitContext: fakeGitContext(),
+        includeDirtyCheck: false,
+        now: new Date().toISOString(),
+      });
+      assert.equal(out.available, false,
+        "a published marker without the complete file pair must fail closed (" + scenario + ")");
+      assert.ok(out.staleReasons.includes("commit_invalid"),
+        "the reader must report an invalid publication marker (" + scenario + ")");
+    } finally {
+      cleanup(root);
+    }
+  }
+});
+
+test("regression: EPERM during a hard-link probe is retried on the next write", () => {
+  const root = mkProject("marker-probe-eperm-retry");
+  try {
+    const dir = path.join(root, "graphify-out");
+    const marker = path.join(dir, ".graphify-stale.json");
+    markers.writeMarker({ graphDir: dir, kind: "semantic", changedPaths: ["seed.md"] });
+    const link = fs.linkSync;
+    let probes = 0;
+    fs.linkSync = function (source, target) {
+      if (String(target).includes(".link-probe-")) {
+        probes += 1;
+        throw Object.assign(new Error("temporarily denied"), { code: "EPERM" });
+      }
+      return link.apply(this, arguments);
+    };
+    let first;
+    try {
+      first = markers.writeMarker({ graphDir: dir, kind: "semantic", changedPaths: ["reminder.md"] });
+    } finally {
+      fs.linkSync = link;
+    }
+    const retry = markers.writeMarker({ graphDir: dir, kind: "semantic", changedPaths: ["later.md"] });
+    const view = JSON.parse(fs.readFileSync(marker, "utf8"));
+    assert.equal(probes, 1, "the probe must observe the injected transient failure");
+    assert.equal(first.ok, false, "the write must defer while the probe fails");
+    assert.equal(retry.ok, true, "a transient EPERM must not disable links for this directory");
+    assert.ok(view.changedPaths.includes("reminder.md"), "the deferred reminder must remain represented");
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("regression: a failed gate release revokes outer and re-entrant handles", () => {
+  for (const noLinks of [false, true]) {
+    const root = mkProject("gate-release-failure-" + noLinks);
+    try {
+      const gate = require("../../lib/graphify/density-gate");
+      const link = fs.linkSync;
+      if (noLinks) {
+        fs.linkSync = function () {
+          throw Object.assign(new Error("hard links unavailable"), { code: "EOPNOTSUPP" });
+        };
+      }
+      let outer;
+      try {
+        outer = gate.acquireGate(root, "release", { timeoutMs: 0 });
+      } finally {
+        fs.linkSync = link;
+      }
+      assert.ok(outer, "the gate must be acquired before release is faulted");
+      const nested = gate.acquireGate(root, "release", { timeoutMs: 0 });
+      const rename = fs.renameSync;
+      let failures = 0;
+      fs.renameSync = function (from, to) {
+        if (String(from).includes(".density-gates")) {
+          failures += 1;
+          throw Object.assign(new Error("disk failure"), { code: "EIO" });
+        }
+        return rename.apply(this, arguments);
+      };
+      try {
+        outer.release();
+      } finally {
+        fs.renameSync = rename;
+      }
+      assert.ok(failures > 0, "the release path must encounter the injected filesystem failure");
+      assert.equal(outer.isHeld(), false, "a failed release must fail closed");
+      assert.equal(nested.isHeld(), false, "re-entrant handles must follow the revoked outer handle");
+    } finally {
+      cleanup(root);
+    }
+  }
+});
+
 test("regression: two publishers cannot both succeed when the filesystem has no hard links", async () => {
   // The registration of a participant cannot publish its content in one
   // step without hard links: the name is reserved first, and the content
