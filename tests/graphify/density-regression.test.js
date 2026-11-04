@@ -2914,3 +2914,365 @@ test("regression: a publication is refused when the lock is not held any more", 
     cleanup(root);
   }
 });
+
+// ─── The mechanisms the previous round found under-constrained ────────────
+
+test("regression: the participant with the lowest ticket holds the gate", () => {
+  // The gate is a mutual exclusion, and the exclusion is the election: the
+  // participant with the LOWEST live ticket is the one inside the
+  // protocol. Without the election every participant would believe that
+  // it holds the gate, and two of them would publish at the same time.
+  const root = mkProject("gate-lowest-ticket");
+  try {
+    const gate = require("../../lib/graphify/density-gate");
+    const dir = gate.gateDir(root, "election");
+    fs.mkdirSync(dir, { recursive: true });
+    // A participant that is alive and holds the lower ticket.
+    fs.writeFileSync(path.join(dir, "gate-1.json"), JSON.stringify({
+      ticket: 1,
+      pid: process.pid,
+      at: new Date().toISOString(),
+    }));
+    const held = gate.acquireGate(root, "election", { timeoutMs: 0 });
+    assert.equal(held, null,
+      "a participant with a higher ticket must not enter the gate");
+    assert.ok(fs.existsSync(path.join(dir, "gate-1.json")),
+      "the participant that holds the gate must not be removed");
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("regression: a participant that is alive is never reclaimed, however old it is", () => {
+  // The liveness of a participant is decided by its process. A participant
+  // whose file is OLD but whose process is alive is a participant that is
+  // about to publish: removing it would let a second participant into the
+  // protocol.
+  const root = mkProject("gate-live-participant");
+  try {
+    const gate = require("../../lib/graphify/density-gate");
+    const dir = gate.gateDir(root, "live");
+    fs.mkdirSync(dir, { recursive: true });
+    const file = path.join(dir, "gate-1.json");
+    fs.writeFileSync(file, JSON.stringify({
+      ticket: 1,
+      pid: process.pid,
+      at: new Date().toISOString(),
+    }));
+    const old = new Date(Date.now() - 24 * 3600 * 1000);
+    fs.utimesSync(file, old, old);
+    const held = gate.acquireGate(root, "live", { timeoutMs: 0 });
+    assert.equal(held, null,
+      "a live participant must keep the gate, however old its file is");
+    assert.ok(fs.existsSync(file),
+      "the file of a live participant must not be removed");
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("regression: a publication is not signed off by a record with the same sequence", () => {
+  // The publication is confirmed by the IDENTITY of THIS record. A record
+  // that carries the same SEQUENCE is a DIFFERENT record: an explicit
+  // sequence can collide with an allocated one, and an older record with
+  // the same number must not sign off a publication that the readers
+  // dropped.
+  const root = mkProject("published-record-identity");
+  try {
+    const seed = density.acquireRebuildLock(root);
+    assert.ok(seed, "the seed lock must be acquired");
+    const seeded = density.stampBaseline(root, {
+      nodes: 100,
+      edges: 500,
+      buildKind: "full",
+      lockGeneration: seed.generation,
+      lockToken: seed.token,
+      // An EXPLICIT sequence: the allocator does not reserve it, so a
+      // later publication can carry the same number.
+      sequence: 1,
+    });
+    assert.equal(seeded.ok, true, "the baseline must be published");
+    seed.release();
+    assert.equal(density.readBaselineSidecar(root).edge_node_ratio, 5);
+
+    const dropped = density.stampBaseline(root, {
+      nodes: 100,
+      edges: 900,
+      buildKind: "full",
+      lockToken: "displaced-token",
+      sequence: 1,
+      onBeforeAppend: () => {
+        assert.ok(lockLib.registerDisplaced(root, "displaced-token"));
+      },
+    });
+    assert.equal(dropped.ok, false,
+      "a publication that the readers drop must not be a success");
+    assert.equal(dropped.reason, "publication_rejected");
+    assert.equal(density.readBaselineSidecar(root).edge_node_ratio, 5,
+      "the baseline on disk must still be the old one");
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("regression: a writer that ignores the staging area is detected", () => {
+  // The writer is supposed to write into the staging area. A writer that
+  // writes the PUBLIC graph instead breaks the isolation the framework
+  // relies on, and the framework has to notice: it cannot tell which of
+  // the two graphs is the one it may publish.
+  const root = mkProject("isolation-violation");
+  try {
+    const graphFile = path.join(root, "graphify-out", "graph.json");
+    writeGraph(root, { nodes: 200, edges: 400 });
+    const bin = path.join(root, "stub-bin");
+    fs.mkdirSync(bin, { recursive: true });
+    fs.writeFileSync(path.join(bin, "graphify"), [
+      "#!/bin/sh",
+      // The writer IGNORES GRAPHIFY_OUT and writes the public graph.
+      "printf '{\"nodes\":[{\"id\":\"rogue\"}],\"links\":[]}' > \"" + graphFile + "\"",
+      "exit 0",
+      "",
+    ].join("\n"));
+    fs.chmodSync(path.join(bin, "graphify"), 0o755);
+
+    const lock = density.acquireRebuildLock(root);
+    assert.ok(lock, "the lock must be acquired");
+    const result = updateLib.runGuardedUpdate({
+      projectRoot: root,
+      lock,
+      timeoutMs: 30_000,
+      env: { PATH: bin + ":" + process.env.PATH },
+    });
+    assert.equal(result.ok, false,
+      "a writer that wrote the public graph must not be a success");
+    assert.equal(result.reason, "isolation_violated");
+    lock.release();
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("regression: the legacy claim replays the reminder it claimed", () => {
+  // The claim moved the single file aside. A writer published a NEW
+  // reminder at the path in the meantime, so the claimed content cannot be
+  // put back -- it is imported into the record model instead, and the NEW
+  // reminder has to survive.
+  const root = mkProject("legacy-claim-replay");
+  try {
+    const graphDir = path.join(root, "graphify-out");
+    const legacyPath = path.join(graphDir, ".graphify-stale.json");
+    const old = {
+      schemaVersion: "1.0",
+      markerId: "old",
+      kind: "semantic",
+      changedPaths: ["docs/old.md"],
+    };
+    fs.writeFileSync(legacyPath, JSON.stringify(old));
+    const identity = markers.readMarker(graphDir).identity;
+    assert.ok(identity, "the legacy reminder must be readable");
+
+    const newer = {
+      schemaVersion: "1.0",
+      markerId: "new",
+      kind: "semantic",
+      changedPaths: ["docs/new.md"],
+    };
+    const middle = {
+      schemaVersion: "1.0",
+      markerId: "middle",
+      kind: "semantic",
+      changedPaths: ["docs/middle.md"],
+    };
+    const result = markers.clearLegacyMarkerIfUnchanged(graphDir, identity, {
+      onBeforeClaim: () => {
+        // The concurrent writer replaces the file between the read and the
+        // claim: the claim takes a reminder that was never answered.
+        fs.writeFileSync(legacyPath, JSON.stringify(middle));
+      },
+      onAfterClaim: () => {
+        // The concurrent writer publishes a NEW reminder at the path.
+        fs.writeFileSync(legacyPath, JSON.stringify(newer));
+      },
+    });
+    assert.ok(result.ok, "the clear must not fail: " + result.reason);
+    assert.equal(result.cleared, false);
+    assert.equal(result.reason, "marker_changed");
+
+    // The CLAIMED reminder was replayed into the record model, and the
+    // reminder that was published while the claim was running survived:
+    // both of them are still readable.
+    const after = markers.readMarker(graphDir);
+    assert.ok(after.ok, "the reminders must be readable");
+    const paths = after.records.flatMap((record) => record.changedPaths).sort();
+    assert.ok(paths.includes("docs/middle.md"),
+      "the claimed reminder must be replayed into the record model");
+    const onDisk = fs.existsSync(legacyPath)
+      ? JSON.parse(fs.readFileSync(legacyPath, "utf8"))
+      : null;
+    const onDiskPaths = onDisk && Array.isArray(onDisk.changedPaths)
+      ? onDisk.changedPaths
+      : [];
+    const all = paths.concat(onDiskPaths);
+    assert.ok(all.includes("docs/middle.md"),
+      "the claimed reminder must not be lost");
+    assert.ok(all.includes("docs/new.md"),
+      "the reminder that was published while the claim was running must not be lost");
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("regression: a descendant that holds the staged graph open cannot change the published graph", async () => {
+  // The published file must not be an inode that the writer -- or a
+  // descendant of the writer -- still holds open. A rename of the staged
+  // file would publish exactly that inode, and the descendant could then
+  // change the published graph AFTER the publication reported success.
+  const root = mkProject("published-inode");
+  try {
+    const graphFile = path.join(root, "graphify-out", "graph.json");
+    writeGraph(root, { nodes: 200, edges: 400 });
+
+    const writer = path.join(root, "writer.js");
+    fs.writeFileSync(writer, [
+      "const fs = require('node:fs');",
+      "const { spawn } = require('node:child_process');",
+      "const out = process.env.GRAPHIFY_OUT;",
+      "fs.writeFileSync(out + '/graph.json', JSON.stringify({ nodes: [{ id: 'good' }], links: [] }));",
+      "const fd = fs.openSync(out + '/graph.json', 'r+');",
+      "const code = [",
+      "  \"const fs=require('node:fs');\",",
+      "  \"setTimeout(function(){try{fs.ftruncateSync(3,0);fs.writeSync(3,JSON.stringify({nodes:[{id:'evil'}],links:[]}));}catch(e){}},1200);\",",
+      "].join('\\n');",
+      "spawn(process.execPath, ['-e', code], { detached: true, stdio: ['ignore', 'ignore', 'ignore', fd] }).unref();",
+      "",
+    ].join("\n"));
+    const bin = path.join(root, "stub-bin");
+    fs.mkdirSync(bin, { recursive: true });
+    fs.writeFileSync(path.join(bin, "graphify"), [
+      "#!/bin/sh",
+      "node \"" + writer + "\"",
+      "exit 0",
+      "",
+    ].join("\n"));
+    fs.chmodSync(path.join(bin, "graphify"), 0o755);
+
+    const lock = density.acquireRebuildLock(root);
+    assert.ok(lock, "the lock must be acquired");
+    const result = updateLib.runGuardedUpdate({
+      projectRoot: root,
+      lock,
+      timeoutMs: 30_000,
+      env: { PATH: bin + ":" + process.env.PATH },
+    });
+    assert.equal(result.ok, true,
+      "the update must succeed: " + (result.reason || result.stderr));
+    const published = JSON.parse(fs.readFileSync(graphFile, "utf8"));
+    assert.deepEqual(published.nodes.map((node) => node.id), ["good"],
+      "the published graph must be the one of the writer");
+    lock.release();
+
+    // The descendant wakes up long after the publication.
+    await sleep(1800);
+    const after = JSON.parse(fs.readFileSync(graphFile, "utf8"));
+    assert.deepEqual(after.nodes.map((node) => node.id), ["good"],
+      "the published graph must survive the descendant that holds the staged file open");
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("regression: a failed publication leaves the graph and the manifest as they were", () => {
+  // The publication replaces more than one file. A failure in the middle
+  // must not leave the public directory with a graph and a manifest that
+  // describe different builds: the next incremental build would read a
+  // mismatched pair.
+  const root = mkProject("publication-rollback");
+  try {
+    const graphFile = path.join(root, "graphify-out", "graph.json");
+    const manifestFile = path.join(root, "graphify-out", "manifest.json");
+    fs.writeFileSync(graphFile, JSON.stringify({ nodes: [{ id: "old" }], links: [] }));
+    fs.writeFileSync(manifestFile, JSON.stringify({ version: "old" }));
+
+    const staging = path.join(
+      root, ".agent", "plugins", "graphify", ".density-staging", "staged-1",
+    );
+    updateLib.prepareStaging(root, staging);
+    fs.writeFileSync(path.join(staging, "graph.json"), JSON.stringify({
+      nodes: [{ id: "new" }],
+      links: [],
+    }));
+    fs.writeFileSync(path.join(staging, "manifest.json"), JSON.stringify({ version: "new" }));
+
+    const lock = density.acquireRebuildLock(root);
+    assert.ok(lock, "the lock must be acquired");
+    const realRename = fs.renameSync;
+    let injected = false;
+    fs.renameSync = function (from, to, ...rest) {
+      if (!injected && String(to).endsWith(path.join("graphify-out", "graph.json"))) {
+        injected = true;
+        const err = new Error("injected");
+        err.code = "EIO";
+        throw err;
+      }
+      return realRename.call(this, from, to, ...rest);
+    };
+    let published = null;
+    try {
+      published = updateLib.publishStagedOutput(root, staging, lock);
+    } finally {
+      fs.renameSync = realRename;
+    }
+    assert.equal(published.ok, false, "the publication must fail");
+    assert.equal(JSON.parse(fs.readFileSync(graphFile, "utf8")).nodes[0].id, "old",
+      "the public graph must be the one it was");
+    assert.equal(JSON.parse(fs.readFileSync(manifestFile, "utf8")).version, "old",
+      "the public manifest must be the one it was");
+    lock.release();
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("regression: a reclaim that cannot register the fence does not release the lock", () => {
+  // The fence has to be in place BEFORE the path is released: a fence that
+  // fails must not leave the path free for the next holder. This is the
+  // branch that runs on a filesystem WITHOUT hard links -- and it used to
+  // move the lock away first, so a failed registration lost the lock.
+  const root = mkProject("no-hardlink-fence");
+  try {
+    const file = density.rebuildLockPath(root);
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, JSON.stringify({
+      token: "stale-token",
+      pid: 999999,
+      acquiredAt: new Date(Date.now() - 3600_000).toISOString(),
+      generation: 0,
+    }));
+    // The registry of the displaced holders cannot be written: it is a
+    // plain file where the directory has to be.
+    const displaced = path.join(root, ".agent", "plugins", "graphify", ".density-displaced");
+    fs.mkdirSync(path.dirname(displaced), { recursive: true });
+    fs.writeFileSync(displaced, "blocked");
+
+    const realLink = fs.linkSync;
+    fs.linkSync = function () {
+      const err = new Error("injected");
+      err.code = "EOPNOTSUPP";
+      throw err;
+    };
+    let acquired = null;
+    try {
+      acquired = density.acquireRebuildLock(root, { staleMs: 1000 });
+    } finally {
+      fs.linkSync = realLink;
+    }
+    assert.equal(acquired, null, "the reclaim must be refused");
+    assert.ok(fs.existsSync(file),
+      "the lock at the path must survive a reclaim that could not register its fence");
+    const onDisk = JSON.parse(fs.readFileSync(file, "utf8"));
+    assert.equal(onDisk.token, "stale-token",
+      "the lock at the path must still be the one that was there");
+  } finally {
+    cleanup(root);
+  }
+});

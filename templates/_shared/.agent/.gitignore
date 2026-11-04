@@ -63,6 +63,13 @@ plugins/graphify/.density-rebuild.lock.move-*
 # wait for the rebuild lock; it is local runtime state.
 plugins/graphify/.density-pending/
 
+# A legacy reminder that was CLAIMED by the rebuild: the single file is
+# moved aside with an atomic rename before it is answered, and a crash in
+# the window between the move and the cleanup can leave the claimed file
+# behind. It is local runtime state, and the reminder it holds is never
+# lost: the claim is replayed into the record model.
+graphify-out/.graphify-stale.json.claimed-*
+
 # Graphify detached full-rebuild logs. The runtime-artifact convention puts
 # every artifact under .agent/, never in the temp directory; the logs are
 # local-only and must not enter the source tree.
