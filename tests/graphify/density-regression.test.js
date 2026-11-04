@@ -63,6 +63,13 @@ function installStub(root, { updateExit = 0, extractExit = 0 } = {}) {
   fs.writeFileSync(script, [
     "#!/bin/sh",
     "LOG=\"" + log + "\"",
+    // The output directory is redirected by GRAPHIFY_OUT, exactly like the
+    // real CLI does: the framework runs the writer against a staging
+    // directory and publishes the result itself, so a writer that only
+    // writes the public graph is a writer whose isolation is broken.
+    "OUT=\"${GRAPHIFY_OUT:-$PWD/graphify-out}\"",
+    "mkdir -p \"$OUT\"",
+    "printf '{\"nodes\":[{\"id\":\"a\"},{\"id\":\"b\"}],\"links\":[{\"source\":\"a\",\"target\":\"b\"},{\"source\":\"b\",\"target\":\"a\"}]}' > \"$OUT/graph.json\"",
     "case \"$1\" in",
     "  --version) echo 'graphify 0.9.27-stub'; exit 0 ;;",
     "  update) echo \"update $@\" >> \"$LOG\"; exit " + updateExit + " ;;",
@@ -1726,12 +1733,17 @@ test("regression: a semantic reminder published during the build survives the re
     fs.writeFileSync(stubPath, [
       "#!/bin/sh",
       "LOG=\"" + stub.log + "\"",
+      // The writer writes into the directory GRAPHIFY_OUT points at, like
+      // the real CLI does.
+      "OUT=\"$GRAPHIFY_OUT\"",
+      "if [ -z \"$OUT\" ]; then OUT=\"" + path.join(root, "graphify-out") + "\"; fi",
+      "mkdir -p \"$OUT\"",
       "case \"$1\" in",
       "  --version) echo 'graphify 0.9.27-stub'; exit 0 ;;",
       "  extract)",
       "    echo \"extract $@\" >> \"$LOG\";",
       "    touch \"" + signal + "\";",
-      "    node -e \"const fs=require('fs');const n=200,e=400;const g={directed:true,multigraph:false,graph:{},nodes:Array.from({length:n},function(_,i){return {id:'n'+i};}),links:Array.from({length:e},function(_,i){return {source:'n'+(i%n),target:'n0'};}),hyperedges:[]};fs.writeFileSync(process.argv[1],JSON.stringify(g));\" \"" + graphFile + "\";",
+      "    node -e \"const fs=require('fs');const n=200,e=400;const g={directed:true,multigraph:false,graph:{},nodes:Array.from({length:n},function(_,i){return {id:'n'+i};}),links:Array.from({length:e},function(_,i){return {source:'n'+(i%n),target:'n0'};}),hyperedges:[]};fs.writeFileSync(process.argv[1],JSON.stringify(g));\" \"$OUT/graph.json\";",
       "    sleep 1;",
       "    exit 0 ;;",
       "  update) echo \"update $@\" >> \"$LOG\"; exit 0 ;;",
@@ -2023,7 +2035,12 @@ test("regression: a holder that lost the lock does not publish the graph", () =>
     const script = path.join(bin, "graphify");
     fs.writeFileSync(script, [
       "#!/bin/sh",
-      "printf '{\"nodes\":[{\"id\":\"a\"}],\"links\":[]}' > " + graphFile,
+      // The writer writes into the directory GRAPHIFY_OUT points at, like
+      // the real CLI does. The framework publishes the staged graph itself,
+      // so a writer that touches the public graph is caught.
+      "OUT=\"${GRAPHIFY_OUT:-" + graphFile.replace(/graph\.json$/, "") + "}\"",
+      "mkdir -p \"$OUT\"",
+      "printf '{\"nodes\":[{\"id\":\"a\"}],\"links\":[]}' > \"$OUT/graph.json\"",
       "sleep 30",
       "",
     ].join("\n"));
@@ -2483,6 +2500,416 @@ test("regression: a legacy baseline object is not lost to a later migration reco
     assert.ok(sidecarValue, "the sidecar must be readable");
     assert.equal(Number(sidecarValue.edge_node_ratio), 5,
       "the measured legacy baseline must win over the later migration");
+  } finally {
+    cleanup(root);
+  }
+});
+
+// ─── The scenarios the protocol has to keep honest ────────────────────────
+//
+// The independent review asked for four scenarios that the regressions
+// did not pin down yet: an existing baseline with a THIRD holder, a writer
+// that is faster than the poll that watches the lock, a descendant that
+// survives the writer, and a real rollback that would hit the wrong file.
+//
+// Every test below asserts what ends up ON DISK and whether a later write
+// still works -- not only the return code of a call.
+
+test("regression: a reclaim leaves the lock of a live holder that took the path alone", () => {
+  // The reclaim judged a lock whose holder is gone, and then it took the
+  // path away. The path was the only record of the lock, so a holder that
+  // took the path in the window between the judgement and the takeover
+  // lost its lock record -- and the reclaim ended with a refusal anyway,
+  // which HID the transient removal.
+  //
+  // The claim compares the identity of the instance that was JUDGED with
+  // the identity of the instance that is at the path NOW. A holder that
+  // took the path in the meantime keeps its lock, and it can still write.
+  const root = mkProject("reclaim-live-holder");
+  try {
+    // A baseline that the reclaim must not touch.
+    const seed = density.acquireRebuildLock(root);
+    assert.ok(seed, "the seed lock must be acquired");
+    const seeded = density.stampBaseline(root, {
+      nodes: 100,
+      edges: 500,
+      buildKind: "full",
+      lockGeneration: seed.generation,
+      lockToken: seed.token,
+    });
+    assert.equal(seeded.ok, true, "the baseline must be published");
+    seed.release();
+
+    // A lock whose holder is gone, and that is older than the stale window.
+    const file = density.rebuildLockPath(root);
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, JSON.stringify({
+      token: "stale-token",
+      pid: 999999,
+      acquiredAt: new Date(Date.now() - 3600_000).toISOString(),
+      generation: 0,
+    }));
+
+    let live = null;
+    const acquired = density.acquireRebuildLock(root, {
+      staleMs: 1000,
+      // The live holder takes the path in the window between the judgement
+      // and the takeover.
+      onStaleJudged: () => {
+        live = density.acquireRebuildLock(root, { staleMs: 1000 });
+      },
+      // A holder that takes the path AFTER the claim took the path away.
+      onLockMoved: () => {
+        fs.writeFileSync(file, JSON.stringify({
+          token: "window-token",
+          pid: process.pid,
+          acquiredAt: new Date().toISOString(),
+          generation: 0,
+        }));
+      },
+    });
+    assert.equal(acquired, null, "the reclaim must be refused");
+    assert.ok(live, "the live holder must have taken the lock");
+    assert.equal(live.isHeld(), true,
+      "the lock of the live holder must survive the reclaim");
+    const onDisk = JSON.parse(fs.readFileSync(file, "utf8"));
+    assert.equal(onDisk.token, live.token,
+      "the lock at the path must still be the one of the live holder");
+    assert.equal(density.readBaselineSidecar(root).edge_node_ratio, 5,
+      "the baseline of the project must not have moved");
+    // The live holder can still publish AFTER the reclaim.
+    const republished = density.stampBaseline(root, {
+      nodes: 100,
+      edges: 600,
+      buildKind: "full",
+      lockGeneration: live.generation,
+      lockToken: live.token,
+    });
+    assert.equal(republished.ok, true,
+      "the live holder must still be able to publish");
+    assert.equal(density.readBaselineSidecar(root).edge_node_ratio, 6,
+      "the baseline must have moved to the new measurement");
+    live.release();
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("regression: a publication that the readers drop is not a success when an older baseline exists", () => {
+  // The stamp confirmed its publication by looking for a record with the
+  // SAME IDENTITY. When the record was dropped by the readers -- because
+  // the holder was displaced while the record was written -- the stamp
+  // has to fail.
+  //
+  // The older baseline is what made this invisible: without it there was
+  // no winner either, so the refusal happened for a different reason and
+  // the missing identity check was not noticed.
+  const root = mkProject("dropped-publication-with-old-winner");
+  try {
+    const seed = density.acquireRebuildLock(root);
+    assert.ok(seed, "the seed lock must be acquired");
+    const seeded = density.stampBaseline(root, {
+      nodes: 100,
+      edges: 500,
+      buildKind: "full",
+      lockGeneration: seed.generation,
+      lockToken: seed.token,
+    });
+    assert.equal(seeded.ok, true, "the baseline must be published");
+    seed.release();
+    assert.equal(density.readBaselineSidecar(root).edge_node_ratio, 5);
+
+    const dropped = density.stampBaseline(root, {
+      nodes: 100,
+      edges: 900,
+      buildKind: "full",
+      lockToken: "displaced-token",
+      // The holder is displaced between the comparison and the append, so
+      // the readers drop the record it wrote.
+      onBeforeAppend: () => {
+        assert.ok(lockLib.registerDisplaced(root, "displaced-token"));
+      },
+    });
+    assert.equal(dropped.ok, false,
+      "a publication that the readers drop must not be a success");
+    assert.equal(dropped.reason, "publication_rejected");
+    assert.equal(density.readBaselineSidecar(root).edge_node_ratio, 5,
+      "the baseline on disk must still be the old one");
+
+    // A healthy holder can still publish afterwards.
+    const healthy = density.acquireRebuildLock(root);
+    assert.ok(healthy, "the healthy holder must be able to take the lock");
+    const stamped = density.stampBaseline(root, {
+      nodes: 100,
+      edges: 700,
+      buildKind: "full",
+      lockGeneration: healthy.generation,
+      lockToken: healthy.token,
+    });
+    assert.equal(stamped.ok, true,
+      "a healthy holder must still be able to publish");
+    assert.equal(density.readBaselineSidecar(root).edge_node_ratio, 7,
+      "the baseline must have moved to the new measurement");
+    healthy.release();
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("regression: a writer that finishes before the poll cannot publish over the graph", () => {
+  // The lock is taken away while the writer runs, and the writer is faster
+  // than the poll that watches the lock: the supervisor may never see the
+  // loss. The publication is the LAST gate, and it asks the lock whether
+  // it is still held -- the result of the writer alone is not enough.
+  const root = mkProject("fast-writer-lost-lock");
+  try {
+    const stub = installStub(root);
+    const graphFile = path.join(root, "graphify-out", "graph.json");
+    writeGraph(root, { nodes: 200, edges: 400 });
+    const before = fs.readFileSync(graphFile, "utf8");
+
+    const lock = density.acquireRebuildLock(root);
+    assert.ok(lock, "the lock must be acquired");
+    // The lock is taken over by somebody else before the writer starts.
+    fs.writeFileSync(density.rebuildLockPath(root), JSON.stringify({
+      token: "thief",
+      pid: process.pid,
+      acquiredAt: new Date().toISOString(),
+      generation: 0,
+    }));
+
+    const result = updateLib.runGuardedUpdate({
+      projectRoot: root,
+      lock,
+      timeoutMs: 30_000,
+      env: { PATH: stub.bin + ":" + process.env.PATH },
+    });
+    assert.equal(result.ok, false,
+      "an update that lost the lock must not be reported as a success");
+    const after = fs.readFileSync(graphFile, "utf8");
+    assert.equal(after, before,
+      "the graph of the holder that took over must survive");
+
+    // A later write still works.
+    fs.unlinkSync(density.rebuildLockPath(root));
+    const healthy = density.acquireRebuildLock(root);
+    assert.ok(healthy, "a healthy holder must be able to take the lock");
+    const published = updateLib.runGuardedUpdate({
+      projectRoot: root,
+      lock: healthy,
+      timeoutMs: 30_000,
+      env: { PATH: stub.bin + ":" + process.env.PATH },
+    });
+    assert.equal(published.ok, true,
+      "the healthy holder must be able to publish: " + published.reason);
+    const graph = JSON.parse(fs.readFileSync(graphFile, "utf8"));
+    assert.equal(graph.nodes.length, 2,
+      "the published graph must be the one of the writer");
+    healthy.release();
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("regression: a failed build does not roll the graph of a concurrent publication back", async () => {
+  // The old implementation kept a snapshot of the public graph and put it
+  // back when the update failed. The snapshot is a copy of "whatever is
+  // on disk", so a FAILED build could overwrite the graph that a healthy
+  // holder published while the build was running.
+  //
+  // There is no rollback any more: the writer works on a private staging
+  // area, and the publication is the only thing that touches the public
+  // graph. A failed build therefore leaves every publication alone.
+  const root = mkProject("failed-build-no-rollback");
+  try {
+    const graphFile = path.join(root, "graphify-out", "graph.json");
+    const graphDir = path.join(root, "graphify-out");
+    writeGraph(root, { nodes: 200, edges: 400 });
+
+    // The writer fails after a moment.
+    const stub = installStub(root);
+    const stubPath = path.join(stub.bin, "graphify");
+    fs.writeFileSync(stubPath, [
+      "#!/bin/sh",
+      "sleep 1",
+      "exit 3",
+      "",
+    ].join("\n"));
+    fs.chmodSync(stubPath, 0o755);
+
+    // The healthy holder that publishes while the failing build runs.
+    const publisher = path.join(root, "publisher.js");
+    fs.writeFileSync(publisher, [
+      "const fs = require('node:fs');",
+      "const markers = require(" + JSON.stringify(path.join(ROOT, "lib", "graphify", "markers.js")) + ");",
+      "const graphFile = process.argv[2];",
+      "const graphDir = process.argv[3];",
+      "const buffer = new Int32Array(new SharedArrayBuffer(4));",
+      "Atomics.wait(buffer, 0, 0, 400);",
+      "fs.writeFileSync(graphFile, JSON.stringify({ directed: true, multigraph: false, graph: {}, nodes: [{ id: 'published' }, { id: 'by' }, { id: 'holder' }], links: [], hyperedges: [] }));",
+      "markers.writeMarker({ graphDir: graphDir, kind: markers.KIND.SEMANTIC, reason: 'during_failed_build', changedPaths: ['docs/late.md'] });",
+      "",
+    ].join("\n"));
+
+    const lock = density.acquireRebuildLock(root);
+    assert.ok(lock, "the lock must be acquired");
+    const publisherProcess = spawn(process.execPath, [publisher, graphFile, graphDir], {
+      cwd: root,
+      stdio: "ignore",
+      detached: true,
+    });
+    publisherProcess.unref();
+    const result = updateLib.runGuardedUpdate({
+      projectRoot: root,
+      lock,
+      timeoutMs: 30_000,
+      env: { PATH: stub.bin + ":" + process.env.PATH },
+    });
+    assert.equal(result.ok, false, "the failing update must not be a success");
+    await new Promise((resolve) => publisherProcess.on("exit", resolve));
+
+    const graph = JSON.parse(fs.readFileSync(graphFile, "utf8"));
+    assert.deepEqual(graph.nodes.map((node) => node.id), ["published", "by", "holder"],
+      "the graph of the concurrent publication must survive the failed build");
+    const reminder = markers.readMarker(graphDir);
+    assert.ok(reminder.ok, "the reminder must still be readable");
+    assert.equal(reminder.records.length, 1,
+      "the reminder published during the failed build must survive");
+    assert.deepEqual(reminder.records[0].changedPaths, ["docs/late.md"]);
+    lock.release();
+
+    // A later write still works.
+    const healthy = density.acquireRebuildLock(root);
+    assert.ok(healthy, "a healthy holder must be able to take the lock");
+    const good = installStub(root);
+    const published = updateLib.runGuardedUpdate({
+      projectRoot: root,
+      lock: healthy,
+      timeoutMs: 30_000,
+      env: { PATH: good.bin + ":" + process.env.PATH },
+    });
+    assert.equal(published.ok, true,
+      "the healthy holder must be able to publish: " + published.reason);
+    const after = JSON.parse(fs.readFileSync(graphFile, "utf8"));
+    assert.equal(after.nodes.length, 2,
+      "the published graph must be the one of the writer");
+    healthy.release();
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("regression: a descendant that survives the writer can only reach the staging area", async () => {
+  // A writer can leave a descendant behind that outlives the supervision.
+  // The descendant inherits the staging directory, so it can only ever
+  // write into the area that is thrown away -- the published graph is out
+  // of its reach.
+  const root = mkProject("surviving-descendant");
+  try {
+    const graphFile = path.join(root, "graphify-out", "graph.json");
+    writeGraph(root, { nodes: 200, edges: 400 });
+
+    // The descendant leaves the process group of the writer and writes
+    // into the staging area long after the writer is gone.
+    const escape = path.join(root, "escape.js");
+    fs.writeFileSync(escape, [
+      "const { spawn } = require('node:child_process');",
+      "const out = process.argv[2];",
+      "const target = out + '/graph.json';",
+      "const payload = JSON.stringify({ nodes: [{ id: 'evil' }], links: [] });",
+      "const code = \"const fs=require('node:fs');setTimeout(function(){try{fs.writeFileSync(process.argv[1], process.argv[2])}catch(e){}},1200);\";",
+      "spawn(process.execPath, ['-e', code, target, payload], { detached: true, stdio: 'ignore' }).unref();",
+      "",
+    ].join("\n"));
+    const stub = installStub(root);
+    const stubPath = path.join(stub.bin, "graphify");
+    fs.writeFileSync(stubPath, [
+      "#!/bin/sh",
+      "OUT=\"${GRAPHIFY_OUT:-$PWD/graphify-out}\"",
+      "mkdir -p \"$OUT\"",
+      "printf '{\"nodes\":[{\"id\":\"a\"},{\"id\":\"b\"}],\"links\":[{\"source\":\"a\",\"target\":\"b\"}]}' > \"$OUT/graph.json\"",
+      "node \"" + escape + "\" \"$OUT\"",
+      "exit 0",
+      "",
+    ].join("\n"));
+    fs.chmodSync(stubPath, 0o755);
+
+    const lock = density.acquireRebuildLock(root);
+    assert.ok(lock, "the lock must be acquired");
+    const result = updateLib.runGuardedUpdate({
+      projectRoot: root,
+      lock,
+      timeoutMs: 30_000,
+      env: { PATH: stub.bin + ":" + process.env.PATH },
+    });
+    assert.equal(result.ok, true,
+      "the update must succeed: " + (result.reason || result.stderr));
+    const published = JSON.parse(fs.readFileSync(graphFile, "utf8"));
+    assert.equal(published.nodes.length, 2,
+      "the published graph must be the one of the writer");
+    lock.release();
+
+    // The descendant wakes up long after the publication.
+    await sleep(1800);
+    const after = JSON.parse(fs.readFileSync(graphFile, "utf8"));
+    assert.equal(after.nodes.length, 2,
+      "the published graph must survive the descendant");
+    assert.ok(!after.nodes.some((node) => node.id === "evil"),
+      "the descendant must not reach the published graph");
+    const staging = path.join(root, ".agent", "plugins", "graphify", ".density-staging");
+    const leftovers = fs.existsSync(staging) ? fs.readdirSync(staging) : [];
+    assert.deepEqual(leftovers, [],
+      "the staging area must be empty: " + leftovers.join(", "));
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("regression: a publication is refused when the lock is not held any more", () => {
+  // The publication is the LAST gate before the public graph is written.
+  // The supervisor watches the lock WHILE the writer runs, but a writer
+  // that is faster than that watch -- or a lock that was taken over in
+  // the window between the end of the writer and the publication -- is
+  // only caught here. The staged graph must not reach the public graph.
+  const root = mkProject("publication-gate");
+  try {
+    const graphFile = path.join(root, "graphify-out", "graph.json");
+    writeGraph(root, { nodes: 200, edges: 400 });
+    const before = fs.readFileSync(graphFile, "utf8");
+
+    const staging = path.join(
+      root, ".agent", "plugins", "graphify", ".density-staging", "staged-1",
+    );
+    updateLib.prepareStaging(root, staging);
+    fs.writeFileSync(path.join(staging, "graph.json"), JSON.stringify({
+      directed: true,
+      multigraph: false,
+      graph: {},
+      nodes: [{ id: "staged" }],
+      links: [],
+      hyperedges: [],
+    }));
+
+    const refused = updateLib.publishStagedOutput(root, staging, {
+      isHeld: () => false,
+    });
+    assert.equal(refused.ok, false,
+      "a publication without the lock must be refused");
+    assert.equal(refused.reason, "lock_lost");
+    assert.equal(fs.readFileSync(graphFile, "utf8"), before,
+      "the public graph must not have been written");
+
+    // The positive control: a holder that still owns the lock publishes.
+    const lock = density.acquireRebuildLock(root);
+    assert.ok(lock, "the lock must be acquired");
+    const published = updateLib.publishStagedOutput(root, staging, lock);
+    assert.equal(published.ok, true,
+      "the holder that owns the lock must be able to publish: " + published.reason);
+    const after = JSON.parse(fs.readFileSync(graphFile, "utf8"));
+    assert.equal(after.nodes.length, 1,
+      "the published graph must be the staged one");
+    assert.equal(after.nodes[0].id, "staged");
+    lock.release();
   } finally {
     cleanup(root);
   }

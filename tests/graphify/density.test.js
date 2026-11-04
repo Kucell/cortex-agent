@@ -1048,6 +1048,11 @@ test("density: a drain that waits for the lock consumes the deferred request", a
       "const fs = require('fs');",
       "const path = require('path');",
       "fs.appendFileSync(path.join(process.cwd(), 'stub-calls.log'), JSON.stringify({ args: process.argv.slice(2) }) + '\\n');",
+      // The writer writes into the directory GRAPHIFY_OUT points at, like
+      // the real CLI does: the framework publishes the staged graph itself.
+      "const outDir = process.env.GRAPHIFY_OUT ? path.resolve(process.env.GRAPHIFY_OUT) : path.join(process.cwd(), 'graphify-out');",
+      "fs.mkdirSync(outDir, { recursive: true });",
+      "fs.writeFileSync(path.join(outDir, 'graph.json'), JSON.stringify({ nodes: [{ id: 'a' }, { id: 'b' }], links: [{ source: 'a', target: 'b' }] }));",
       "process.exit(0);",
       "",
     ].join("\n"), { mode: 0o755 });

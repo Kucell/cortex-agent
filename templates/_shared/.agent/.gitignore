@@ -30,6 +30,18 @@ plugins/graphify/.density-tickets/
 # lock token, and the readers drop everything a displaced holder published.
 plugins/graphify/.density-displaced/
 
+# The publication gate of the density guard. Every participant of the
+# rebuild protocol holds a file of its own while it is inside the protocol,
+# and the files are removed when the participant is done. They are local
+# runtime state and must not be shared between machines.
+plugins/graphify/.density-gates/
+
+# The staging area of the guarded graph update. The writer of the graph
+# produces its output in a directory of its own, and the framework
+# publishes it into `graphify-out/` when the update was allowed to publish.
+# A discarded staging area is local runtime state.
+plugins/graphify/.density-staging/
+
 # The counter of an older version of the guard. It is superseded by the
 # ticket directory above, but a project that ran it still has the file.
 plugins/graphify/.density-generation

@@ -63,7 +63,10 @@ function installGraphifyStub(projectRoot) {
     "const full = argv[0] === 'extract' ? forced : (argv[0] === '.' && forced);",
     "const nodes = full ? state.fullNodes : state.nodes;",
     "const edges = full ? state.fullEdges : state.edges;",
-    "const outDir = path.join(cwd, 'graphify-out');",
+    // The output directory is redirected by GRAPHIFY_OUT, exactly like the
+    // real CLI does: the framework runs the writer against a staging
+    // directory and publishes the result itself.
+    "const outDir = process.env.GRAPHIFY_OUT ? path.resolve(process.env.GRAPHIFY_OUT) : path.join(cwd, 'graphify-out');",
     "fs.mkdirSync(outDir, { recursive: true });",
     "const graph = { directed: true, multigraph: false, graph: {},",
     "  nodes: Array.from({ length: nodes }, (_, i) => ({ id: 'n' + i })),",

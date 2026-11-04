@@ -177,6 +177,7 @@
     "lib/graphify/density.js",
     "lib/graphify/density-baseline.js",
     "lib/graphify/density-files.js",
+    "lib/graphify/density-gate.js",
     "lib/graphify/density-lock.js",
     "lib/graphify/density-pending.js",
     "lib/graphify/density-update.js",
