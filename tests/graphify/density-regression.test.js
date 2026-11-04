@@ -2579,6 +2579,36 @@ test("regression: a legacy baseline object is not lost to a later migration reco
   }
 });
 
+test("regression: a displaced legacy-format record uses its real byte offset", () => {
+  const root = mkProject("legacy-baseline-offset-fence");
+  try {
+    const sidecar = density.baselinePath(root);
+    fs.mkdirSync(path.dirname(sidecar), { recursive: true });
+    fs.writeFileSync(sidecar, "\n");
+    const lock = density.acquireRebuildLock(root);
+    assert.ok(lock, "the lock must be acquired");
+    const stamp = density.stampBaseline(root, {
+      nodes: 100,
+      edges: 500,
+      buildKind: "full",
+      lockGeneration: lock.generation,
+      lockToken: lock.token,
+      onBeforeAppend() {
+        assert.ok(lockLib.registerDisplaced(root, lock.token),
+          "the displacement threshold must be registered at byte offset one");
+      },
+    });
+    assert.equal(stamp.ok, false,
+      "a record that begins at the displacement threshold must be rejected");
+    assert.equal(stamp.reason, "publication_rejected");
+    assert.equal(density.readBaselineSidecar(root), null,
+      "the legacy-object parser must not reset the record offset to zero");
+    lock.release();
+  } finally {
+    cleanup(root);
+  }
+});
+
 // ─── The scenarios the protocol has to keep honest ────────────────────────
 //
 // The independent review asked for four scenarios that the regressions
@@ -3481,6 +3511,60 @@ test("regression: an older commit marker is restored byte-for-byte after a faile
     assert.equal(result.restored, true);
     assert.equal(fs.readFileSync(markerFile, "utf8"), priorMarker,
       "a commit marker that existed before publication must be restored exactly");
+    lock.release();
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("regression: a prior publishing marker stays fail-closed after successful file rollback", () => {
+  const root = mkProject("publishing-marker-rollback");
+  try {
+    const out = path.join(root, "graphify-out");
+    const graphFile = path.join(out, "graph.json");
+    const manifestFile = path.join(out, "manifest.json");
+    const markerFile = path.join(root, ".agent", "plugins", "graphify", ".density-commit.json");
+    fs.writeFileSync(graphFile, JSON.stringify({ nodes: [{ id: "old" }], links: [] }));
+    fs.writeFileSync(manifestFile, testManifest(1, 0, "old"));
+    const priorMarker = JSON.stringify({
+      schemaVersion: "1.0",
+      state: "publishing",
+      files: {},
+      graphRoot: out,
+    });
+    fs.writeFileSync(markerFile, priorMarker);
+
+    const staging = path.join(root, "staging");
+    fs.mkdirSync(staging, { recursive: true });
+    fs.writeFileSync(path.join(staging, "graph.json"), JSON.stringify({ nodes: [{ id: "new" }], links: [] }));
+    fs.writeFileSync(path.join(staging, "manifest.json"), testManifest(1, 0, "new"));
+    const lock = density.acquireRebuildLock(root);
+    assert.ok(lock);
+    const rename = fs.renameSync;
+    fs.renameSync = function (from, to) {
+      if (String(to) === graphFile && String(from).includes(".publish-")) {
+        throw Object.assign(new Error("injected graph publish failure"), { code: "EIO" });
+      }
+      return rename.apply(this, arguments);
+    };
+    let result;
+    try {
+      result = updateLib.publishStagedOutput(root, staging, lock);
+    } finally {
+      fs.renameSync = rename;
+    }
+    assert.equal(result.restored, true);
+    assert.equal(fs.readFileSync(markerFile, "utf8"), priorMarker,
+      "a prior publishing marker must be restored exactly, not replaced with published");
+    const resolver = require("../../lib/graphify/resolver");
+    const verdict = resolver.resolveContext({
+      projectRoot: root,
+      gitContext: fakeGitContext(),
+      includeDirtyCheck: false,
+      now: new Date().toISOString(),
+    });
+    assert.equal(verdict.available, false);
+    assert.ok(verdict.staleReasons.includes("commit_incomplete"));
     lock.release();
   } finally {
     cleanup(root);
@@ -4485,6 +4569,40 @@ test("regression: invalid participant PIDs remain unknown and block reclaim", ()
     } finally {
       cleanup(root);
     }
+  }
+});
+
+test("regression: an unreadable gate directory does not admit an unverified contender", () => {
+  const root = mkProject("gate-directory-read-failure");
+  try {
+    const gate = require("../../lib/graphify/density-gate");
+    const dir = gate.gateDir(root, "directory-read");
+    fs.mkdirSync(dir, { recursive: true });
+    const lower = path.join(dir, "gate-1.json");
+    fs.writeFileSync(lower, JSON.stringify({ ticket: 1, pid: process.pid, active: true }));
+    fs.utimesSync(lower, new Date(0), new Date(0));
+
+    const readdir = fs.readdirSync;
+    let reads = 0;
+    fs.readdirSync = function (target, ...rest) {
+      if (String(target) === dir && ++reads === 4) {
+        throw Object.assign(new Error("temporary directory read failure"), { code: "EIO" });
+      }
+      return readdir.call(this, target, ...rest);
+    };
+    let contender;
+    try {
+      contender = gate.acquireGate(root, "directory-read", { timeoutMs: 0, staleMs: 0 });
+    } finally {
+      fs.readdirSync = readdir;
+    }
+    assert.equal(reads, 4, "the injected failure must occur during participant election");
+    assert.equal(contender, null,
+      "an unreadable participant directory must not be treated as empty");
+    assert.equal(gate.readGateEntry(lower).active, true,
+      "the previously active lower-ticket participant must remain untouched");
+  } finally {
+    cleanup(root);
   }
 });
 
