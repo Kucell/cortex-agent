@@ -81,8 +81,8 @@ jobs:
             return { bytes, entry };
           }
           const manifest = JSON.parse(bytesFor(manifestPath).bytes.toString("utf8"));
-          assert.equal(manifest.sources.length, 271);
-          assert.equal(new Set(manifest.sources).size, manifest.sources.length);
+          assert.equal(manifest.sources.length, 279);
+          assert.equal(new Set(manifest.sources).size, 279);
           const proof = { source_head: head, source_manifest_blob: tree.get(manifestPath).blob,
             test_blob: tree.get(testPath).blob, blobs: {} };
           for (const [file, blob] of Object.entries(manifest.protected_source_blobs)) {
@@ -97,7 +97,7 @@ jobs:
             if (manifest.sources.includes(relative)) proof.blobs[relative] = entry;
           }
           fs.writeFileSync(path.join(root, "phase-zero-source-proof.json"), JSON.stringify(proof) + "\n", { flag: "wx" });
-          console.log(JSON.stringify({ source_head: head, node: process.version, static_source_files: 270,
+          console.log(JSON.stringify({ source_head: head, node: process.version, static_source_files: 272,
             source_manifest_blob: proof.source_manifest_blob, test_blob: proof.test_blob,
             protected_source_blobs: manifest.protected_source_blobs }));
           NODE
