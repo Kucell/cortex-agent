@@ -1,6 +1,7 @@
-# 租约作用域粒度应与真实资源隔离粒度对齐（提案）
+# 租约作用域粒度应与真实资源隔离粒度对齐（提案 + 阶段 2 实施）
 
-- 状态：Draft，待 Owner 审议；不构成 Decision，不改任何现有规则或 CLI 行为。
+- 状态：阶段 1（治理规则）与阶段 2 做法 A（可选作用域树语义）已实施。
+  作用域树语义是**显式开启**的开关，未开启时 CLI 行为与实施前完全一致。
 - 来源：SamHMI M-053 现场反馈（并行实例被粗粒度 scope 卡住）。
 
 ## 问题
@@ -42,6 +43,54 @@ acquire 的冲突判定是「同串 + 不同 owner」，父子作用域之间没
   不启用时保持现行精确键行为。
 - 做法 B：`lease acquire` 检测到同前缀下已有活跃子作用域时只给 advisory，不阻断。
 - 需要 Owner 裁定：是否引入父子互斥、默认是否开启、保护域是否强制走树语义。
+
+## 阶段 2 实施（做法 A，显式开关）
+
+Owner 已裁定采纳做法 A：引入父子互斥，但**默认关闭**，由调用方按需显式开启。
+
+### 开关
+
+```bash
+cortex-agent lease acquire --scope <scope> --owner <owner> --scope-tree [--ttl <s>] [--json]
+```
+
+`--scope-tree` 无值即启用，也可写 `--scope-tree=false` 显式关闭。
+
+### 语义
+
+| 情形 | 结果 |
+| --- | --- |
+| 父子关系，双方至少一方声明了作用域树语义 | 冲突（`ERR_LEASE_CONFLICT`，`reason=scope_tree_conflict`） |
+| 父子关系，双方都未声明 | 不冲突（保持精确键行为） |
+| 兄弟作用域（同一父下的不同子） | 永远不冲突 |
+| 完全相同的 scope | 冲突（与实施前一致） |
+| 同一 owner 持有自己的父子作用域 | 不冲突 |
+
+父子关系只在**冒号边界**上判定：`a:b` 是 `a:b:c` 的父作用域；`a:b` 与 `a:c` 互为兄弟；
+`task:A` 与 `task:A-2` 不是父子关系（连字符不是分隔符）。
+
+### 边界
+
+- fencing 单调性、同 scope 冲突 fail-closed、takeover 流程与审计事件类型不变；
+  作用域树冲突复用既有的 `ownership.conflict` 审计事件，并额外记录
+  `reason=scope_tree_conflict`、`relation`、`conflictingScope`。
+- 租约记录新增 `scopeTree` 字段并随持久化往返；旧租约读入时归一为 `false`，
+  即旧租约保持精确键行为。
+- 保护域（`protected-scope.js`）判定不变，不强制走树语义。
+- 作用域树语义只表达**层级互斥**，不表达实例隔离：实例之间能并行，靠的是兄弟作用域
+  与各自的实例级 scope，而不是树语义本身。
+
+### 命名约定（与阶段 1 规则配套）
+
+```text
+<class>:<device>                    整机作用域（真实整机动作才使用）
+<class>:<device>:instance:<id>     实例作用域（实例工作区、端口、隧道，可并行）
+<class>:<device>:desktop           共享单例资源（交互桌面，串行，全机唯一）
+```
+
+示例：`samhmi:windows`、`samhmi:windows:instance:m053-a`、`samhmi:windows:desktop`。
+整机作用域与实例作用域在开启作用域树语义时互斥；两个实例作用域互为兄弟，可并行；
+桌面作用域由所有触碰前台的动作共用同一串，因此天然串行。
 
 ## 不改变
 

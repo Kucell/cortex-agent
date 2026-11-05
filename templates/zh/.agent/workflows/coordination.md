@@ -13,6 +13,12 @@
 list、watch、Management API 与 MCP 查询不得修改 stale 状态、lease、
 Decision 或 Waitpoint。
 
+租约作用域必须命名「本次动作真正会写到的、最小的共享资源」。设备级 scope
+只用于真实整机动作；环境已提供实例级隔离时用 `<class>:<device>:instance:<id>`，
+并让所有触碰同一台物理单例资源（例如交互桌面）的工作共用同一串 scope，
+由该串自身完成串行。需要父子作用域互斥时，在 acquire 上显式加 `--scope-tree`；
+默认仍是精确键，同名不同串互不相干。
+
 Codex 宿主唤醒通过官方 App Server 的 `thread/resume` + `turn/start` 完成。
 缺少 `CODEX_THREAD_ID` / `CORTEX_CODEX_THREAD_ID` 或宿主不可用时，继续以
 journal 恢复为可靠路径并保留 pending。
