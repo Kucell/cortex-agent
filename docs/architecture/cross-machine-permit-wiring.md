@@ -422,7 +422,6 @@ permitStore.consume(consumeFields);
 | 撤销列表的 `revoked_fingerprints` 不是本地已应用集合的超集 | 拒绝，**不推进**高水位 |
 | 撤销列表 `revocation_sequence` ≠ 本地高水位 + 1，或 `prev_revocation_sequence` 不匹配 | 拒绝（链断裂） |
 | 通道不可用 / 拉取超时 | 本次验签拒绝（`ERR_REVOCATION_PULL_FAILED` / `ERR_REVOCATION_PULL_TIMEOUT`） |
-| 撤销列表虽签名有效但签发时间超过撤销陈旧上界（15s），或签发时间超出允许钟差（2s） | 本次验签拒绝（`ERR_REVOCATION_LIST_STALE`），**不推进**任何高水位 |
 | 短 lease（`ttlMs` 极小） | **必须可用**：裕量按寿命裁剪后仍可验签 |
 
 ## 6. 仍然禁止的动作
