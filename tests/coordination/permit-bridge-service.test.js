@@ -194,3 +194,45 @@ test("the bridge service refuses a provisioned store bound to another decision",
     fs.rmSync(dirs.root, { recursive: true, force: true });
   }
 });
+
+test("the bridge service close is idempotent", {
+  skip: process.platform === "win32" || Number(process.versions.node.split(".")[0]) < 24,
+  timeout: 60000,
+}, async () => {
+  const dirs = tempDirs();
+  let service;
+  try {
+    service = await startService(dirs);
+    const first = service.close();
+    const second = service.close();
+    assert.equal(first, second, "concurrent close must share one promise");
+    await first;
+    await service.close();
+  } finally {
+    if (service) await service.close().catch(() => {});
+    fs.rmSync(dirs.root, { recursive: true, force: true });
+  }
+});
+
+test("a bridge start failure releases the store it opened", {
+  skip: process.platform === "win32" || Number(process.versions.node.split(".")[0]) < 24,
+  timeout: 60000,
+}, async () => {
+  const dirs = tempDirs();
+  try {
+    await assert.rejects(startService(dirs, {
+      executorPath: path.join(dirs.root, "missing-executor.js"),
+    }));
+    // If the failed start leaked the store's lock this open would fail.
+    const reopened = ProtectedPermitStore.open(dirs.storePath, {
+      decisionId: "test-decision",
+      anchorDir: dirs.anchorDir,
+      anchorMode: "permissive",
+      expectedDecisionId: "test-decision",
+      minimumEpoch: 1,
+    });
+    reopened.close();
+  } finally {
+    fs.rmSync(dirs.root, { recursive: true, force: true });
+  }
+});

@@ -3,6 +3,8 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const http = require("node:http");
+const net = require("node:net");
+const { once } = require("node:events");
 const { createPermitAuthorityService } = require("../../lib/coordination/permit-authority-service");
 const {
   ISSUER_ACTIONS,
@@ -202,6 +204,45 @@ test("the endpoint binds loopback only", () => {
     { key: "ERR_PERMIT_INPUT_INVALID" });
   assert.throws(() => createPermitBridgeEndpoint({ perform: null }),
     { key: "ERR_PERMIT_INPUT_INVALID" });
+});
+
+test("the endpoint close is idempotent and refuses work once it starts", async () => {
+  const { endpoint, ticket } = ticketEndpoint(async () => ({
+    fingerprint: "c".repeat(64),
+    signedPermit: { message: "{}", signature: "s" },
+  }));
+  const address = await endpoint.listen();
+
+  const first = endpoint.close();
+  const second = endpoint.close();
+  assert.equal(first, second, "concurrent close must share one promise");
+  await first;
+  await endpoint.close();
+
+  await assert.rejects(fetch("http://127.0.0.1:" + address.port + "/permit", {
+    method: "POST",
+    headers: ticketHeaders(ticket()),
+    body: "{}",
+  }));
+});
+
+test("the endpoint close bounds draining of an open connection", async () => {
+  const { endpoint } = ticketEndpoint(async () => ({}), { closeDrainMs: 100 });
+  const address = await endpoint.listen();
+  const socket = net.connect(address.port, "127.0.0.1");
+  await once(socket, "connect");
+  // Let the server register the accepted connection before closing.
+  await new Promise((resolve) => setTimeout(resolve, 20));
+
+  const started = Date.now();
+  await endpoint.close();
+  assert.ok(Date.now() - started < 2_000, "close must not wait for the client");
+  await Promise.race([
+    once(socket, "close"),
+    new Promise((_, reject) => setTimeout(() => reject(new Error("socket stayed open")), 2_000)),
+  ]);
+  assert.equal(socket.destroyed, true);
+  socket.destroy();
 });
 
 test("the endpoint forwards one request to the managed session and returns the grant", async () => {
