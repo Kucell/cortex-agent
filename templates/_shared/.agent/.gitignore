@@ -79,3 +79,7 @@ plugins/graphify/.density-commit.json
 # every artifact under .agent/, never in the temp directory; the logs are
 # local-only and must not enter the source tree.
 logs/graphify/
+
+# The density guard state is isolated per worktree: two worktrees of one
+# repository must not share a lock, a baseline or a pending request.
+plugins/graphify/.density-worktrees/

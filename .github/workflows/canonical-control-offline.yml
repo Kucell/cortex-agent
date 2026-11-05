@@ -179,9 +179,9 @@ jobs:
         with:
           script: |
             const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto'),assert=require('node:assert/strict');
-            const {owner,repo}=context.repo,head=process.env.SOURCE_HEAD,reviewed='140bec01b315d20c30f3c63cb63be101a1b58791';assert.match(head||'',/^[a-f0-9]{40}$/);
+            const {owner,repo}=context.repo,head=process.env.SOURCE_HEAD,reviewed='1623e34fab4edb3d2af893d09dc38773c1d98006';assert.match(head||'',/^[a-f0-9]{40}$/);
             async function treeFor(sha){const {data:c}=await github.rest.git.getCommit({owner,repo,commit_sha:sha});assert.equal(c.sha,sha);const {data:t}=await github.rest.git.getTree({owner,repo,tree_sha:c.tree.sha,recursive:'true'});assert.equal(t.truncated,false);assert.equal(t.sha,c.tree.sha);return t;}
-            const tree=await treeFor(head),baseline=await treeFor(reviewed);assert.equal(baseline.sha,'6b1a0fff6d0d062a13155a97ec9c4ac2c43f1d1e');
+            const tree=await treeFor(head),baseline=await treeFor(reviewed);assert.equal(baseline.sha,'490822f14e468a6fb951447c8a54a13706324010');
             const proof={source_head:head,tree:tree.sha,reviewed_head:reviewed,expected_github_api_calls:291,sources:[]},root=fs.mkdtempSync(path.join(fs.realpathSync(process.env.RUNNER_TEMP),'cortex-feedback-'));
             core.exportVariable('CORTEX_FEEDBACK_ROOT',root);core.info('Expected GitHub API requests: 291 (4 tree/commit lookups + 1 manifest read + 286 file reads); any API failure fails closed; no alternate credentials or downloader');fs.chmodSync(root,0o700);for(const dir of ['source','fixtures'])fs.mkdirSync(path.join(root,dir),{mode:0o700});
             async function bytesFor(relative){

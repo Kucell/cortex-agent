@@ -47,6 +47,24 @@ cortex-agent graphify preflight --json
 `"blocked"`，**不要**直接读 `graphify-out/graph.json`，而是把过期原因反馈给用户，
 提示其先刷新图谱。
 
+## 边密度兜底
+
+增量更新成功后，共享 Graphify runtime 会把边/节点比与 baseline 比较。低于
+`baseline_edge_node_ratio * ratio_drop_threshold` 时，在后台启动受保护的全量重建，
+不会阻塞提交。baseline、锁、待处理更新和 staging 按 worktree 隔离在
+`.agent/plugins/graphify/.density-worktrees/`；日志位于 `.agent/logs/graphify/`。
+
+兼容读取旧版 `graph.json._meta.edge_node_ratio`；新的 baseline 写入 runtime sidecar，
+框架不改写 Graphify 管理的图元数据。在项目 `threshold.json` 中用字符串数组配置
+`full_rebuild_args`，例如 `["extract", ".", "--code-only", "--force", "--no-cluster"]`。
+参数必须包含 `extract`、`.` 和 `--force`；shell 命令字符串会被忽略。手动运行
+`cortex-agent graphify update` 也复用相同的锁、staging 和 marker 处理。
+
+`cortex-agent update` 会把整套集成同步到项目：安装共享 runtime、替换已发布的旧
+wrapper、补齐 `threshold.json` 中新增的键、忽略规则与 Git post-commit hook。
+项目自有的 baseline、超时与重建参数不会被覆盖；同步结果记录在
+`.agent/updates/latest.json` 的 `graphify` 段。
+
 ## 子命令
 
 ### `/graphify query "<问题>"`

@@ -16,6 +16,7 @@ const test = require("node:test");
 const { spawn, spawnSync } = require("node:child_process");
 
 const density = require("../../lib/graphify/density");
+const densityFiles = require("../../lib/graphify/density-files");
 const hook = require("../../lib/graphify/hook");
 const markers = require("../../lib/graphify/markers");
 const lockLib = require("../../lib/graphify/density-lock");
@@ -32,8 +33,25 @@ function mkProject(name) {
       + "-" + Math.random().toString(36).slice(2, 8),
   );
   fs.mkdirSync(path.join(root, ".agent", "plugins", "graphify"), { recursive: true });
+  ensureStateDir(root);
   fs.mkdirSync(path.join(root, "graphify-out"), { recursive: true });
   return root;
+}
+
+// The runtime state of the density guard lives in a WORKTREE-ISOLATED
+// directory below the plugin directory. The runtime creates it when it
+// owns the write; a fixture that writes a state file itself has to
+// create it the same way.
+function ensureStateDir(root) {
+  fs.mkdirSync(densityFiles.pluginDir(root), { recursive: true });
+  return densityFiles.pluginDir(root);
+}
+
+// A path INSIDE the runtime state directory. The tests resolve the state
+// directory through the runtime, so they pin the observable behaviour and
+// not the directory layout.
+function statePath(root, ...parts) {
+  return path.join(densityFiles.pluginDir(root), ...parts);
 }
 
 function writeGraph(root, { nodes, edges, meta = null }) {
@@ -173,7 +191,7 @@ function publishFixture(root) {
   }), null, 2));
   const published = updateLib.publishStagedOutput(root, staging, { isHeld: () => true });
   assert.equal(published.ok, true, "the fixture must be published");
-  return path.join(pluginDir, ".density-commit.json");
+  return statePath(root, ".density-commit.json");
 }
 
 function sleep(ms) {
@@ -1311,7 +1329,7 @@ test("regression: the coarse epoch fence advances when the token fence cannot be
     // the only one left.
     fs.mkdirSync(path.join(root, ".agent", "plugins", "graphify"), { recursive: true });
     fs.writeFileSync(
-      path.join(root, ".agent", "plugins", "graphify", ".density-displaced"),
+      statePath(root, ".density-displaced"),
       "not a directory\n",
     );
 
@@ -1507,7 +1525,7 @@ test("regression: a failed baseline migration keeps the _meta baseline", () => {
     // The ticket directory cannot be created: a FILE is in its place, so
     // the migration cannot allocate the publication sequence it needs.
     fs.writeFileSync(
-      path.join(root, ".agent", "plugins", "graphify", ".density-tickets"),
+      statePath(root, ".density-tickets"),
       "not a directory\n",
     );
     // The lock is held by this process, so the deferred drain that the hook
@@ -2085,8 +2103,8 @@ test("regression: an unreadable displacement registry keeps rejected baselines f
     assert.equal(rejected.reason, "publication_rejected");
     assert.equal(density.readBaselineSidecar(root).edge_node_ratio, 5);
 
-    const registry = path.join(
-      root, ".agent", "plugins", "graphify", ".density-displaced", lock.token,
+    const registry = statePath(
+      root, ".density-displaced", lock.token,
     );
     const readFile = fs.readFileSync;
     fs.readFileSync = function (file, ...args) {
@@ -3118,7 +3136,7 @@ test("regression: refusing changed staging preserves an existing publishing mark
   try {
     const graphFile = path.join(root, "graphify-out", "graph.json");
     const manifestFile = path.join(root, "graphify-out", "manifest.json");
-    const markerFile = path.join(root, ".agent", "plugins", "graphify", ".density-commit.json");
+    const markerFile = statePath(root, ".density-commit.json");
     writeGraph(root, { nodes: 1, edges: 0 });
     fs.writeFileSync(manifestFile, testManifest(1, 0, "old"));
     const priorMarker = JSON.stringify({
@@ -3171,7 +3189,7 @@ test("regression: an output-directory failure before publication preserves the o
     const out = path.join(root, "graphify-out");
     const graphFile = path.join(out, "graph.json");
     const manifestFile = path.join(out, "manifest.json");
-    const markerFile = path.join(root, ".agent", "plugins", "graphify", ".density-commit.json");
+    const markerFile = statePath(root, ".density-commit.json");
     writeGraph(root, { nodes: 1, edges: 0 });
     fs.writeFileSync(manifestFile, testManifest(1, 0, "old"));
     const priorMarker = JSON.stringify({
@@ -3357,7 +3375,7 @@ test("regression: a descendant that survives the writer can only reach the stagi
       "the published graph must survive the descendant");
     assert.ok(!after.nodes.some((node) => node.id === "evil"),
       "the descendant must not reach the published graph");
-    const staging = path.join(root, ".agent", "plugins", "graphify", ".density-staging");
+    const staging = statePath(root, ".density-staging");
     const leftovers = fs.existsSync(staging) ? fs.readdirSync(staging) : [];
     assert.deepEqual(leftovers, [],
       "the staging area must be empty: " + leftovers.join(", "));
@@ -3378,8 +3396,8 @@ test("regression: a publication is refused when the lock is not held any more", 
     writeGraph(root, { nodes: 200, edges: 400 });
     const before = fs.readFileSync(graphFile, "utf8");
 
-    const staging = path.join(
-      root, ".agent", "plugins", "graphify", ".density-staging", "staged-1",
+    const staging = statePath(
+      root, ".density-staging", "staged-1",
     );
     updateLib.prepareStaging(root, staging);
     fs.writeFileSync(path.join(staging, "graph.json"), JSON.stringify({
@@ -3602,8 +3620,8 @@ test("regression: the legacy claim replays the reminder it claimed", () => {
         fs.writeFileSync(legacyPath, JSON.stringify(newer));
         // The claimed file is runtime state under `.agent/`, so the
         // ignore rules of the project cover it.
-        const claimDir = path.join(
-          root, ".agent", "plugins", "graphify", ".density-claimed",
+        const claimDir = statePath(
+          root, ".density-claimed",
         );
         const claimed = fs.existsSync(claimDir) ? fs.readdirSync(claimDir) : [];
         assert.equal(claimed.length, 1,
@@ -3713,8 +3731,8 @@ test("regression: a failed publication leaves the graph and the manifest as they
     fs.writeFileSync(graphFile, JSON.stringify({ nodes: [{ id: "old" }], links: [] }));
     fs.writeFileSync(manifestFile, testManifest(1, 0, "old"));
 
-    const staging = path.join(
-      root, ".agent", "plugins", "graphify", ".density-staging", "staged-1",
+    const staging = statePath(
+      root, ".density-staging", "staged-1",
     );
     updateLib.prepareStaging(root, staging);
     fs.writeFileSync(path.join(staging, "graph.json"), JSON.stringify({
@@ -3758,7 +3776,7 @@ test("regression: a failed update restores an old graph-only directory to legacy
   try {
     const graphFile = path.join(root, "graphify-out", "graph.json");
     const manifestFile = path.join(root, "graphify-out", "manifest.json");
-    const markerFile = path.join(root, ".agent", "plugins", "graphify", ".density-commit.json");
+    const markerFile = statePath(root, ".density-commit.json");
     writeGraph(root, { nodes: 1, edges: 0 });
     const before = fs.readFileSync(graphFile, "utf8");
     const staging = path.join(root, "staging");
@@ -3806,7 +3824,7 @@ test("regression: an older commit marker is restored byte-for-byte after a faile
   const root = mkProject("legacy-marker-rollback");
   try {
     const graphFile = path.join(root, "graphify-out", "graph.json");
-    const markerFile = path.join(root, ".agent", "plugins", "graphify", ".density-commit.json");
+    const markerFile = statePath(root, ".density-commit.json");
     writeGraph(root, { nodes: 1, edges: 0 });
     const priorMarker = "{\"schemaVersion\":\"1.0\",\"state\":\"publishing\",\"files\":{}}\n";
     fs.writeFileSync(markerFile, priorMarker);
@@ -3845,7 +3863,7 @@ test("regression: a prior publishing marker stays fail-closed after successful f
     const out = path.join(root, "graphify-out");
     const graphFile = path.join(out, "graph.json");
     const manifestFile = path.join(out, "manifest.json");
-    const markerFile = path.join(root, ".agent", "plugins", "graphify", ".density-commit.json");
+    const markerFile = statePath(root, ".density-commit.json");
     fs.writeFileSync(graphFile, JSON.stringify({ nodes: [{ id: "old" }], links: [] }));
     fs.writeFileSync(manifestFile, testManifest(1, 0, "old"));
     const priorMarker = JSON.stringify({
@@ -3898,7 +3916,7 @@ test("regression: a failed manifest removal keeps rollback fail-closed", () => {
   try {
     const graphFile = path.join(root, "graphify-out", "graph.json");
     const manifestFile = path.join(root, "graphify-out", "manifest.json");
-    const markerFile = path.join(root, ".agent", "plugins", "graphify", ".density-commit.json");
+    const markerFile = statePath(root, ".density-commit.json");
     writeGraph(root, { nodes: 1, edges: 0 });
     const staging = path.join(root, "staging");
     fs.mkdirSync(staging, { recursive: true });
@@ -3968,7 +3986,7 @@ test("regression: a reclaim that cannot register the fence does not release the 
     }));
     // The registry of the displaced holders cannot be written: it is a
     // plain file where the directory has to be.
-    const displaced = path.join(root, ".agent", "plugins", "graphify", ".density-displaced");
+    const displaced = statePath(root, ".density-displaced");
     fs.mkdirSync(path.dirname(displaced), { recursive: true });
     fs.writeFileSync(displaced, "blocked");
 
@@ -4140,7 +4158,7 @@ test("regression: a publication whose restore fails is reported and keeps the ba
       "the staging area with the backup must be kept");
     assert.ok(fs.existsSync(path.join(staging, "superseded-manifest.json")),
       "the backup of the file that could not be restored must survive");
-    const marker = path.join(root, ".agent", "plugins", "graphify", ".density-commit.json");
+    const marker = statePath(root, ".density-commit.json");
     const state = JSON.parse(fs.readFileSync(marker, "utf8")).state;
     assert.equal(state, "publishing",
       "a directory whose restore failed must be marked as in doubt");
@@ -4178,7 +4196,7 @@ test("regression: a reader fails closed while a publication is in flight", () =>
       edgeCount: 0,
       generationMode: "full",
     }), null, 2));
-    const marker = path.join(pluginDir, ".density-commit.json");
+    const marker = statePath(root, ".density-commit.json");
     fs.writeFileSync(marker, JSON.stringify({
       schemaVersion: "1.0",
       state: "publishing",

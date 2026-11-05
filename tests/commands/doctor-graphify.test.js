@@ -12,6 +12,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
+const { execFileSync } = require("node:child_process");
 const test = require("node:test");
 
 const { doctor } = require("../../lib/commands/doctor");
@@ -91,8 +92,10 @@ test("doctor --fix: idempotently installs the Graphify hook", async () => {
   if (!graphifyLib.hook.graphifyCliAvailable()) {
     return; // environment-specific skip
   }
-  // Pretend we're a git repo so the hook can land.
-  fs.mkdirSync(path.join(root, ".git", "hooks"), { recursive: true });
+  // A real Git repository: the hooks directory is resolved through Git
+  // metadata (worktrees and core.hooksPath are honoured), so a fake
+  // ".git/hooks" directory is not enough.
+  execFileSync("git", ["init", "-q"], { cwd: root });
   try { fs.unlinkSync(path.join(root, ".git", "hooks", "post-commit")); } catch (_) {}
   const reset = resetExitCode();
   try {

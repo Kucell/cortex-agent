@@ -16,11 +16,13 @@
 
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
+const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
 const { spawn, spawnSync } = require("node:child_process");
 
 const density = require("../../lib/graphify/density");
+const densityFiles = require("../../lib/graphify/density-files");
 
 const ROOT = path.resolve(__dirname, "..", "..");
 const WORK_ROOT = path.join(ROOT, ".agent-work", "test-density");
@@ -28,6 +30,10 @@ const WORK_ROOT = path.join(ROOT, ".agent-work", "test-density");
 function mkProject(name) {
   const root = path.join(WORK_ROOT, `${name}-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
   fs.mkdirSync(path.join(root, ".agent", "plugins", "graphify"), { recursive: true });
+  // The density state lives in a worktree-isolated directory. The runtime
+  // creates it when it owns the write; a fixture that writes a state file
+  // itself creates it the same way.
+  fs.mkdirSync(densityFiles.pluginDir(root), { recursive: true });
   fs.mkdirSync(path.join(root, "graphify-out"), { recursive: true });
   return root;
 }
@@ -505,8 +511,15 @@ test("density: the full rebuild uses a command that really rebuilds from scratch
     assert.ok(fs.existsSync(result.runner), "the runner must exist");
     // The runner must invoke the command that really rebuilds from scratch.
     const source = fs.readFileSync(result.runner, "utf8");
-    assert.match(source, /"extract", "\.", "--force"/,
-      "the runner must force a full extraction");
+    // The arguments come from the project configuration, so the source no
+    // longer carries the literal -- but the DEFAULT still has to be a full
+    // extraction, and the runner has to pass the configured arguments on.
+    assert.deepEqual(density.DEFAULT_THRESHOLD.full_rebuild_args,
+      ["extract", ".", "--force"]);
+    assert.match(source, /rebuildArgs/,
+      "the runner must use the configured rebuild arguments");
+    assert.match(source, /argv: \["graphify", ...rebuildArgs\]/,
+      "the runner must pass the configured arguments to the guarded update");
     assert.match(source, /GRAPHIFY_FORCE/,
       "the runner must also set the env-var form of the same switch");
   } finally {
@@ -1272,5 +1285,61 @@ test("density: a drain serialises on the rebuild lock instead of a second lock",
     assert.equal(second, null, "a request must never be consumed twice");
   } finally {
     cleanup(root);
+  }
+});
+test("threshold config accepts only structured full-rebuild arguments", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-density-config-"));
+  const configDir = path.join(root, ".agent", "plugins", "graphify");
+  fs.mkdirSync(configDir, { recursive: true });
+  const configPath = path.join(configDir, "threshold.json");
+  try {
+    fs.writeFileSync(configPath, JSON.stringify({
+      full_rebuild_args: ["extract", ".", "--code-only", "--force", "--no-cluster"],
+    }));
+    assert.deepEqual(density.readThresholdConfig(root).full_rebuild_args, [
+      "extract", ".", "--code-only", "--force", "--no-cluster",
+    ]);
+
+    fs.writeFileSync(configPath, JSON.stringify({ full_rebuild_args: "graphify .; rm -rf /" }));
+    assert.deepEqual(density.readThresholdConfig(root).full_rebuild_args, ["extract", ".", "--force"]);
+
+    fs.writeFileSync(configPath, JSON.stringify({ full_rebuild_args: ["update", "."] }));
+    assert.deepEqual(density.readThresholdConfig(root).full_rebuild_args, ["extract", ".", "--force"]);
+
+    fs.writeFileSync(configPath, JSON.stringify({ full_rebuild_args: ["extract", ".", "--force", "--output", "outside.json"] }));
+    assert.deepEqual(density.readThresholdConfig(root).full_rebuild_args, ["extract", ".", "--force"]);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("code-only full rebuild does not claim semantic markers were answered", () => {
+  assert.equal(density.fullBuildCoversSemantic(["extract", ".", "--force"]), true);
+  assert.equal(density.fullBuildCoversSemantic(["extract", ".", "--code-only", "--force"]), false);
+});
+
+test("density runtime state is isolated by worktree while config stays shared", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-density-worktrees-"));
+  const sharedAgent = path.join(root, "shared-agent");
+  const primary = path.join(root, "primary");
+  const secondary = path.join(root, "secondary");
+  fs.mkdirSync(sharedAgent, { recursive: true });
+  fs.mkdirSync(primary, { recursive: true });
+  fs.mkdirSync(secondary, { recursive: true });
+  const sharedPlugin = path.join(sharedAgent, "plugins", "graphify");
+  fs.mkdirSync(sharedPlugin, { recursive: true });
+  fs.writeFileSync(path.join(sharedPlugin, "threshold.json"), "{}\n");
+  fs.symlinkSync(sharedAgent, path.join(primary, ".agent"), "dir");
+  fs.symlinkSync(sharedAgent, path.join(secondary, ".agent"), "dir");
+  try {
+    assert.notEqual(densityFiles.pluginDir(primary), densityFiles.pluginDir(secondary));
+    assert.equal(
+      fs.realpathSync(densityFiles.thresholdPath(primary)),
+      fs.realpathSync(densityFiles.thresholdPath(secondary)),
+    );
+    assert.equal(path.dirname(densityFiles.baselinePath(primary)), densityFiles.pluginDir(primary));
+    assert.equal(path.dirname(densityFiles.baselinePath(secondary)), densityFiles.pluginDir(secondary));
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
   }
 });

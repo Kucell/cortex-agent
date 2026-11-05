@@ -48,6 +48,29 @@ If `verdict.result == "fresh"` or `verdict.result == "skipped"`, the graph is sa
 If `verdict.result == "stale"` or `"blocked"`, do NOT read `graphify-out/graph.json` blindly;
 report the stale reasons and ask the operator to refresh the graph first.
 
+## Edge-density fallback
+
+After a successful incremental update, the shared Graphify runtime checks the edge/node
+ratio against the baseline. When it drops below `baseline_edge_node_ratio *
+ratio_drop_threshold`, the runtime starts a guarded full rebuild in the background.
+The commit is not blocked. Baselines, locks, pending requests, and staging are isolated
+per worktree under `.agent/plugins/graphify/.density-worktrees/`; logs stay under
+`.agent/logs/graphify/`.
+
+Legacy `graph.json._meta.edge_node_ratio` is read for migration. New baselines are
+published to the runtime sidecar; the framework does not rewrite Graphify-owned graph
+metadata. Configure `full_rebuild_args` as a string array in `threshold.json`, for
+example `["extract", ".", "--code-only", "--force", "--no-cluster"]`. It must use
+`extract`, `.`, and `--force`; shell command strings are ignored. Manual
+`cortex-agent graphify update` uses the same lock, staging, and marker handling.
+
+`cortex-agent update` syncs the whole integration into the project: it installs
+the shared runtime, replaces a superseded wrapper, fills in the keys a newer
+framework added to `threshold.json`, and completes the ignore rules and the Git
+post-commit hook. Project-owned baselines, timeouts, and rebuild arguments are
+never overwritten; the sync result is recorded in the `graphify` section of
+`.agent/updates/latest.json`.
+
 ## Subcommands
 
 ### `/graphify query "<question>"`
