@@ -2,6 +2,9 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const cp = require("node:child_process");
+const http = require("node:http");
+const net = require("node:net");
 const path = require("node:path");
 const { startPermitBridgeHost } = require("../../lib/coordination/permit-bridge-host");
 const { canonicalize } = require("../../lib/coordination/permit-delivery");
@@ -244,6 +247,77 @@ test("the bridge host refuses a ticket that was never minted", {
   } finally {
     await bridge.close();
   }
+});
+
+test("a failed revocation listener closes the permit listener and supervised executor", {
+  skip: process.platform === "win32" || Number(process.versions.node.split(".")[0]) < 24,
+  timeout: 30000,
+}, async (t) => {
+  // Reserve a real port, release it, and then bring up the bridge with BOTH
+  // endpoints on that port. The second listen must fail with EADDRINUSE and
+  // the already-listening permit endpoint must be closed with it.
+  const reservation = net.createServer();
+  await new Promise((resolve, reject) => {
+    reservation.once("error", reject);
+    reservation.listen(0, "127.0.0.1", resolve);
+  });
+  const port = reservation.address().port;
+  await new Promise((resolve) => reservation.close(resolve));
+
+  const servers = [];
+  const createServer = http.createServer;
+  t.mock.method(http, "createServer", function (...args) {
+    const server = createServer.apply(this, args);
+    servers.push(server);
+    return server;
+  });
+  let child;
+  const spawn = cp.ChildProcess.prototype.spawn;
+  t.mock.method(cp.ChildProcess.prototype, "spawn", function (...args) {
+    const result = spawn.apply(this, args);
+    child = this;
+    return result;
+  });
+
+  try {
+    await assert.rejects(startBridge({ issue: () => grantFor() }, {
+      port,
+      revocationPort: port,
+    }), { code: "EADDRINUSE" });
+    assert.equal(servers.length, 2);
+    assert.equal(servers[0].listening, false);
+    assert.equal(servers[1].listening, false);
+    assert.ok(child);
+    assert.ok(child.exitCode !== null || child.signalCode !== null);
+
+    const rebound = net.createServer();
+    try {
+      await new Promise((resolve, reject) => {
+        rebound.once("error", reject);
+        rebound.listen(port, "127.0.0.1", resolve);
+      });
+    } finally {
+      if (rebound.listening) await new Promise((resolve) => rebound.close(resolve));
+    }
+  } finally {
+    for (const server of servers) {
+      if (server.listening) await new Promise((resolve) => server.close(resolve));
+    }
+    if (child && child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+  }
+});
+
+test("the bridge host close is idempotent and refuses tickets afterwards", {
+  skip: process.platform === "win32" || Number(process.versions.node.split(".")[0]) < 24,
+  timeout: 30000,
+}, async () => {
+  const bridge = await startBridge({ issue: () => grantFor() });
+  const first = bridge.close();
+  const second = bridge.close();
+  assert.equal(first, second, "concurrent close must share one promise");
+  await first;
+  await bridge.close();
+  await assert.rejects(async () => bridge.issueTicket(), { key: "ERR_INVALID_STATE" });
 });
 
 test("the bridge host refuses to start without an executor or a batch session", async () => {
