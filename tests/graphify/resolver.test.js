@@ -12,15 +12,15 @@
 //   7. Manifest digest stability.
 //   8. Policy parsing + topology gating.
 //
-// The tests build their own fixtures (no real Git binary required). The
-// resolver accepts injected `gitContext` so we can pin HEAD, branch,
-// and peer list per case.
+// Resolver cases use injected `gitContext` fixtures. Hook installation cases
+// use a small real Git repository so --git-path and core.hooksPath are tested.
 
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
+const { execFileSync } = require("node:child_process");
 
 const manifestLib = require("../../lib/graphify/manifest");
 const policyLib = require("../../lib/graphify/policy");
@@ -510,7 +510,7 @@ test("hook: detectPluginState marks missing pieces", () => {
 
 test("hook: installHook writes a managed hook when none exists", () => {
   const root = mkRoot();
-  fs.mkdirSync(path.join(root, ".git", "hooks"), { recursive: true });
+  execFileSync("git", ["init", "-q"], { cwd: root });
   const r = hookLib.installHook({ projectRoot: root });
   assert.equal(r.ok, true);
   assert.equal(r.action, "created");
@@ -519,7 +519,7 @@ test("hook: installHook writes a managed hook when none exists", () => {
 
 test("hook: installHook appends when an unrelated user hook exists", () => {
   const root = mkRoot();
-  fs.mkdirSync(path.join(root, ".git", "hooks"), { recursive: true });
+  execFileSync("git", ["init", "-q"], { cwd: root });
   const hookPath = path.join(root, ".git", "hooks", "post-commit");
   fs.writeFileSync(hookPath, "#!/usr/bin/env bash\necho user-defined\n");
   fs.chmodSync(hookPath, 0o755);
@@ -533,7 +533,7 @@ test("hook: installHook appends when an unrelated user hook exists", () => {
 
 test("hook: installHook is idempotent when already managed", () => {
   const root = mkRoot();
-  fs.mkdirSync(path.join(root, ".git", "hooks"), { recursive: true });
+  execFileSync("git", ["init", "-q"], { cwd: root });
   hookLib.installHook({ projectRoot: root });
   const r = hookLib.installHook({ projectRoot: root });
   assert.equal(r.action, "unchanged");

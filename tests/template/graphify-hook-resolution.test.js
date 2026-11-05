@@ -22,7 +22,7 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
-const { spawnSync } = require("node:child_process");
+const { execFileSync, spawnSync } = require("node:child_process");
 
 const ROOT = path.resolve(__dirname, "..", "..");
 const SHARED_HOOK = path.join(
@@ -45,13 +45,7 @@ const graphifyHook = require("../../lib/setup/graphify-hook");
 // wrapper never looks at, so the test could not have passed even with a
 // correct fix.
 function wrapperCandidates(scriptsDir) {
-  return [
-    path.join(scriptsDir, "..", "lib", "graphify", "hook.js"),
-    path.join(scriptsDir, "..", "..", "lib", "graphify", "hook.js"),
-    path.join(scriptsDir, "..", "..", "..", "node_modules", "cortex-agent", "lib", "graphify", "hook.js"),
-    path.join(scriptsDir, "..", "..", "..", "..", "lib", "graphify", "hook.js"),
-    path.join(scriptsDir, "..", "..", "lib", "graphify", "hook.js"),
-  ];
+  return [path.join(scriptsDir, "..", "lib", "graphify", "hook.js")];
 }
 
 test("shipped graphify hook resolves its shared implementation inside a consumer project", () => {
@@ -73,6 +67,19 @@ test("shipped graphify hook resolves its shared implementation inside a consumer
     // framework itself is installed (npm global, npx, or a checkout).
     const runtime = graphifyHook.installGraphifyRuntime(project);
     assert.equal(runtime.ok, true, "runtime install failed: " + (runtime.reason || "unknown"));
+    for (const name of [
+      "density.js",
+      "density-baseline.js",
+      "density-files.js",
+      "density-gate.js",
+      "density-lock.js",
+      "density-pending.js",
+      "density-update.js",
+      "full-rebuild-runner.js",
+    ]) {
+      assert.equal(fs.existsSync(path.join(scriptsDir, "..", "lib", "graphify", name)), true,
+        `the installed Graphify runtime must include ${name}`);
+    }
 
     const resolved = wrapperCandidates(scriptsDir).find((c) => fs.existsSync(c));
     assert.ok(resolved,
@@ -83,6 +90,7 @@ test("shipped graphify hook resolves its shared implementation inside a consumer
     const hookLib = require(resolved);
     assert.equal(typeof hookLib.runPostCommit, "function",
       "resolved hook module must export runPostCommit");
+    assert.equal(typeof require(path.join(scriptsDir, "..", "lib", "graphify", "index.js")).density.checkAndMaybeRebuild, "function");
     assert.ok(hookLib.HOOK_RESULT, "resolved hook module must export HOOK_RESULT");
   } finally {
     fs.rmSync(project, { recursive: true, force: true });
@@ -138,18 +146,17 @@ test("the installed git post-commit hook reaches the wrapper", () => {
     const scriptsDir = path.join(project, ".agent", "plugins", "graphify", "scripts");
     fs.mkdirSync(scriptsDir, { recursive: true });
     fs.copyFileSync(SHARED_HOOK, path.join(scriptsDir, "post-commit-update.js"));
-    fs.mkdirSync(path.join(project, ".git", "hooks"), { recursive: true });
+    execFileSync("git", ["init", "-q"], { cwd: project });
 
     const installed = require("../../lib/graphify").hook.installHook({ projectRoot: project });
     assert.equal(installed.ok, true, "hook install failed: " + (installed.reason || "unknown"));
 
     const hookScript = fs.readFileSync(path.join(project, ".git", "hooks", "post-commit"), "utf8");
-    const match = hookScript.match(/node\s+"\$\(dirname \"\$0\"\)([^"]+)"/);
-    assert.ok(match, "installed hook must invoke the wrapper by a resolvable path");
-
-    const resolved = path.resolve(path.join(project, ".git", "hooks", match[1]));
-    // The hook script uses $(dirname "$0"), which is the directory the
-    // hook itself lives in.
+    assert.match(hookScript, /git rev-parse --show-toplevel/,
+      "installed hook must resolve the project root independently of hooksPath");
+    assert.match(hookScript, /CORTEX_GRAPHIFY_SOURCE_HEAD/,
+      "installed hook must pass the commit identity to the asynchronous wrapper");
+    const resolved = path.join(project, ".agent", "plugins", "graphify", "scripts", "post-commit-update.js");
     assert.equal(fs.existsSync(resolved), true,
       "installed hook must point at an existing wrapper; resolved to " + resolved);
   } finally {

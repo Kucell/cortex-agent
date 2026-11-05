@@ -15,6 +15,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
+const { execFileSync } = require("node:child_process");
 const test = require("node:test");
 
 const graphifyHook = require("../../lib/setup/graphify-hook");
@@ -25,7 +26,7 @@ function mkRoot() {
 }
 
 function fakeGitRepo(projectRoot) {
-  fs.mkdirSync(path.join(projectRoot, ".git", "hooks"), { recursive: true });
+  execFileSync("git", ["init", "-q"], { cwd: projectRoot });
 }
 
 function fakePlugin(projectRoot) {
@@ -56,6 +57,16 @@ test("ensureGraphifyPostCommitHook: skipped when plugin missing", () => {
   assert.equal(r.status, "skipped");
   assert.equal(r.reason, "graphify_not_opted_in");
   assert.equal(fs.existsSync(path.join(root, ".git", "hooks", "post-commit")), false);
+});
+
+test("resolveGitHooksDir honors worktree git metadata and core.hooksPath", () => {
+  const root = mkRoot();
+  execFileSync("git", ["init", "-q"], { cwd: root });
+  execFileSync("git", ["config", "core.hooksPath", ".custom-hooks"], { cwd: root });
+  assert.equal(
+    graphifyLib.hook.resolveGitHooksDir(root),
+    path.join(root, ".custom-hooks"),
+  );
 });
 
 test("ensureGraphifyPostCommitHook: skipped when CLI missing", () => {
@@ -123,4 +134,100 @@ test("ensureGraphifyPostCommitHook: appends when unrelated hook exists", () => {
   const text = fs.readFileSync(hookPath, "utf8");
   assert.ok(text.includes("user-defined"));
   assert.ok(text.includes("graphify"));
+});
+
+// ─── project-owned assets (upgrade path) ────────────────────────────────────
+
+function writeThreshold(root, body) {
+  const pluginDir = path.join(root, ".agent", "plugins", "graphify");
+  fs.mkdirSync(pluginDir, { recursive: true });
+  fs.writeFileSync(path.join(pluginDir, "threshold.json"), body, "utf8");
+  return path.join(pluginDir, "threshold.json");
+}
+
+test("refreshGraphifyPluginAssets: fills in missing threshold keys, keeps project values", () => {
+  const root = mkRoot();
+  fakePlugin(root);
+  const file = writeThreshold(root, JSON.stringify({
+    min_nodes_for_check: 100,
+    ratio_drop_threshold: 0.85,
+    baseline_edge_node_ratio: 2.43,
+    full_rebuild_timeout_seconds: 1500,
+    repo: "legacy",
+  }, null, 2) + "\n");
+
+  const result = graphifyHook.refreshGraphifyPluginAssets(root);
+  assert.equal(result.ok, true);
+  assert.equal(result.threshold.action, "updated");
+
+  const merged = JSON.parse(fs.readFileSync(file, "utf8"));
+  assert.equal(merged.baseline_edge_node_ratio, 2.43, "project baseline must survive");
+  assert.equal(merged.full_rebuild_timeout_seconds, 1500, "project timeout must survive");
+  assert.equal(merged.repo, "legacy", "unknown project keys must survive");
+  assert.ok(Array.isArray(merged.full_rebuild_args), "the rebuild args must be filled in");
+  assert.equal(merged.full_rebuild_args[0], "extract");
+  assert.ok(merged.full_rebuild_args.includes("--force"));
+});
+
+test("refreshGraphifyPluginAssets: never rewrites a corrupt threshold", () => {
+  const root = mkRoot();
+  fakePlugin(root);
+  const broken = "{ not json\n";
+  const file = writeThreshold(root, broken);
+
+  const result = graphifyHook.refreshGraphifyPluginAssets(root);
+  assert.equal(result.threshold.ok, false);
+  assert.equal(result.threshold.reason, "threshold_unparsable");
+  assert.equal(fs.readFileSync(file, "utf8"), broken, "the project's own file must stay untouched");
+});
+
+test("refreshGraphifyPluginAssets: appends only the missing ignore rules", () => {
+  const root = mkRoot();
+  fakePlugin(root);
+  const ignore = path.join(root, ".agent", ".gitignore");
+  fs.writeFileSync(ignore, "plugins/graphify/.hook-installed\n# project rule\n", "utf8");
+
+  const result = graphifyHook.refreshGraphifyPluginAssets(root);
+  assert.equal(result.ignore.action, "updated");
+  const body = fs.readFileSync(ignore, "utf8");
+  assert.ok(body.includes("# project rule"), "project rules must survive");
+  assert.ok(body.includes("plugins/graphify/.density-worktrees/"));
+
+  // Idempotent: a second refresh adds nothing.
+  const second = graphifyHook.refreshGraphifyPluginAssets(root);
+  assert.equal(second.ignore.action, "unchanged");
+  assert.equal(fs.readFileSync(ignore, "utf8"), body);
+});
+
+test("ensureGraphifyIntegration: installs runtime, assets and hook in one pass", () => {
+  const root = mkRoot();
+  fakePlugin(root);
+  fakeGitRepo(root);
+  writeThreshold(root, JSON.stringify({ repo: "legacy" }, null, 2) + "\n");
+
+  const result = graphifyHook.ensureGraphifyIntegration(root, { apply: true });
+  assert.equal(result.ok, true);
+  assert.equal(result.runtime.inSync, true);
+  assert.equal(result.assets.action, "updated");
+  assert.ok(fs.existsSync(
+    path.join(root, ".agent", "plugins", "graphify", "lib", "graphify", "hook.js"),
+  ));
+});
+
+test("ensureGraphifyIntegration: no-op for a project that opted out", () => {
+  const root = mkRoot();
+  fakeGitRepo(root);
+  const result = graphifyHook.ensureGraphifyIntegration(root, { apply: true });
+  assert.equal(result.ok, true);
+  assert.equal(result.reason, "graphify_not_opted_in");
+  assert.equal(fs.existsSync(path.join(root, ".git", "hooks", "post-commit")), false);
+});
+
+test("planGraphifyIntegration: reports the work an update would do", () => {
+  const root = mkRoot();
+  fakePlugin(root);
+  const plan = graphifyHook.planGraphifyIntegration(root);
+  assert.equal(plan.optedIn, true);
+  assert.equal(plan.needsWork, true, "a project without the runtime needs the sync");
+  assert.equal(plan.runtime.inSync, false);
 });

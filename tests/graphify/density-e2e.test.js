@@ -34,6 +34,7 @@ const WORK_ROOT = path.join(ROOT, ".agent-work", "test-density-e2e");
 const TEMPLATE_PLUGIN = path.join(ROOT, "templates", "_shared", ".agent", "plugins", "graphify");
 const graphifyHook = require("../../lib/setup/graphify-hook");
 const density = require("../../lib/graphify/density");
+const densityFiles = require("../../lib/graphify/density-files");
 
 // ── The graphify stub ───────────────────────────────────────────────────────
 
@@ -231,7 +232,9 @@ test("e2e: incremental update -> density drop -> detached full rebuild -> baseli
     assert.equal(sidecar.build_kind, "full");
 
     // The rebuild log lands under .agent/, never in the temp directory.
-    const logDir = path.join(root, ".agent", "logs", "graphify");
+    // The directory is worktree-scoped, so the test asks the runtime where
+    // it keeps the logs instead of pinning a layout.
+    const logDir = densityFiles.rebuildLogDir(root);
     assert.equal(fs.existsSync(logDir), true, "the rebuild log must live under .agent/logs/");
     const logs = fs.readdirSync(logDir);
     assert.ok(logs.some((n) => n.startsWith("full-rebuild-") && n.endsWith(".log")),

@@ -2,12 +2,12 @@
 
 # Graphify × Cortex Agent 集成提案
 
-> 状态：**已实现（T-G01/G02/G03/T-G04/T-G05 ✅；T-GWG-001 / P-001 ✅）**
+> 状态：**已实现（T-G01/G02/G03/T-G04/T-G05 ✅；T-GWG-001 / P-001 ✅；边密度兜底 runtime 已并入共享实现）**
 > 提案日期：2026-06-12
-> 最后更新：2026-08-13（T-GWG-001 实施收口，refreshness 与 worktree 治理补齐）
-> 影响范围：Artifact Bus · Handoff 协议 · PostCommit Hook · doctor 命令 · Graphify Context Resolver · Freshness Receipt · CLI 表面 (`cortex-agent graphify <sub>`)
+> 最后更新：2026-11-05（共享密度守卫、worktree 隔离状态与 CLI guarded update）
+> 影响范围：Artifact Bus · Handoff 协议 · PostCommit Hook · doctor 命令 · Graphify Context Resolver · Freshness Receipt · 密度守卫 · CLI 表面 (`cortex-agent graphify <sub>`)
 > 已完成任务：T-G01 · T-G02 · T-G03 · T-G04 · T-G05 · **T-GWG-001**
-> 当前任务：Graphify 基础集成、PostCommit 自更新、Worktree-aware freshness gate 与 fail-closed 查询门禁均已完成；后续增强按需立项
+> 当前任务：Graphify 基础集成、Worktree-aware freshness gate、fail-closed 查询门禁及可选边密度兜底均已完成
 
 ---
 
@@ -229,6 +229,8 @@ subgraph:
 ## 9. 自更新流程设计（T-G04 · 已完成）
 
 > 来源：2026-06-15 /arch-design 会话
+>
+> 历史设计记录。当前 wrapper、共享 runtime、锁/staging、worktree 状态和 L2 重建参数以第 10 节为准；下文早期 `.cjs` 模板路径不再是分发入口。
 
 ### 需求
 
@@ -281,7 +283,29 @@ Hook 注入位置：`hooks/hooks.json` PostCommit 段（async: true，timeout: 1
 
 ---
 
-## 10. 决策记录
+## 10. 边密度兜底与共享 runtime
+
+PostCommit 增量更新成功后，共享 `lib/graphify` runtime 按项目 `threshold.json` 检查边/节点密度。达到阈值时，runner 在后台执行受锁的全量构建；提交不会等待全量任务。手动 `cortex-agent graphify update` 复用同一增量锁、staging、marker 与 Artifact Bus 路径，避免 CLI 更新绕过 PostCommit 的发布保护。
+
+baseline 采用 append-only sidecar，按 worktree 根路径派生独立状态目录，包含 baseline、锁、待处理更新和 staging。旧 `graph.json._meta.edge_node_ratio` 与旧共享 baseline 只读用于迁移；新 runtime 不改写 Graphify 管理的 graph.json metadata。日志写入 `.agent/logs/graphify/<worktree-key>/`。
+
+`threshold.json.full_rebuild_args` 是不经 shell 执行的参数数组，必须以 `extract . --force` 为基础。通用默认值为 `["extract", ".", "--force"]`；项目可保留本地构建模式，例如 SamHMI 的 `--code-only --no-cluster`。baseline、超时和重建参数仍是 L2 项目配置。runtime 代码由 `lib/setup/graphify-hook.js` 安装到 `.agent/plugins/graphify/lib/graphify/`；模板只分发薄 wrapper、默认阈值与忽略规则。
+
+### 升级路径（`cortex-agent update`）
+
+密度守卫必须随框架升级完整落到存量项目，否则"框架已升级、能力未生效"。升级命令同步整个集成，而不只是 runtime：
+
+| 资产 | 归属 | 升级语义 |
+|------|------|----------|
+| `.agent/plugins/graphify/lib/graphify/*` | 框架 | 逐文件覆盖安装（内容寻址，差异才写） |
+| `scripts/post-commit-update.js` | 框架 | 由 L1 脚本清单管理；已发布旧副本按精确哈希替换 |
+| `threshold.json` | 项目 | **只补缺键**：项目自有 baseline、超时、重建参数一律保留 |
+| `.agent/.gitignore` | 项目 | 只追加缺失的 Graphify 忽略行 |
+| `.git/hooks/post-commit` | 框架 | 幂等安装/追加，绝不覆盖无关的用户 hook |
+
+升级报告（`.agent/updates/latest.json`）的 `graphify` 段记录本次同步结果；`--dry-run` 只做只读预演。
+
+## 11. 决策记录
 
 | 日期 | 决策 |
 |------|------|
@@ -289,3 +313,4 @@ Hook 注入位置：`hooks/hooks.json` PostCommit 段（async: true，timeout: 1
 | 2026-06-15 | T-G01/G02/G03 全部完成；T-G04（自更新）、T-G05（doctor）立项 |
 | 2026-06-15 | T-G05 完成；T-G04 进入实施阶段 |
 | 2026-06-15 | T-G04 完成：PostCommit hook 接入中英模板，自动增量更新 Graphify 图谱 |
+| 2026-11-05 | 边密度守卫归并到共享 Graphify runtime；状态按 worktree 隔离，项目重建参数保持 L2 配置 |

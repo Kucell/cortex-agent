@@ -22,6 +22,7 @@ const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
 
+const graphifyLib = require("../../lib/graphify");
 const surface = require("../../lib/commands/surface/graphify");
 
 function mkRoot() {
@@ -126,6 +127,38 @@ test("graphify update without CLI returns structured error and does not mutate",
     assert.equal(fs.existsSync(path.join(root, ".agent", "artifacts", "graphify")), false);
     assert.equal(parsed.reason === "graphify_cli_missing" || typeof parsed.exitStatus === "number", true);
     assert.equal(ctx.exitCode, parsed.reason === "graphify_cli_missing" ? 4 : 3);
+  }
+});
+
+test("graphify update delegates to the shared guarded runtime", () => {
+  const root = mkRoot();
+  fs.mkdirSync(path.join(root, ".agent", "plugins", "graphify"), { recursive: true });
+  fs.writeFileSync(path.join(root, ".agent", "plugins", "graphify", "config.yml"), "graphify:\n  version: 1\n");
+  const originalDetect = graphifyLib.hook.detectPluginState;
+  const originalGuarded = graphifyLib.density.runGuardedUpdate;
+  let received = null;
+  graphifyLib.hook.detectPluginState = () => ({ cli: true, pluginConfig: true, graphBuilt: false });
+  graphifyLib.density.runGuardedUpdate = (args) => {
+    received = args;
+    return {
+      ok: true,
+      status: 0,
+      stdout: "guarded update",
+      stderr: "",
+      result: graphifyLib.hook.HOOK_RESULT.INCREMENTAL_OK,
+    };
+  };
+  try {
+    const ctx = withCapturedIo(() => surface.graphify({ args: ["update", "--json"], cwd: root, options: {} }));
+    const payload = JSON.parse(ctx.stdout);
+    assert.equal(payload.ok, true);
+    assert.equal(payload.updateResult, graphifyLib.hook.HOOK_RESULT.INCREMENTAL_OK);
+    assert.equal(received.projectRoot, root);
+    assert.ok(received.lock, "the update must run under the rebuild lock");
+  } finally {
+    graphifyLib.hook.detectPluginState = originalDetect;
+    graphifyLib.density.runGuardedUpdate = originalGuarded;
+    fs.rmSync(root, { recursive: true, force: true });
   }
 });
 
