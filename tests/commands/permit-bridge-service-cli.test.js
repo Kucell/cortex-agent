@@ -25,7 +25,10 @@ function fixture() {
     serviceIdentity: "service-1",
     leaseTtlMs: 60_000,
     permitTtlMs: 5_000,
-    ticketTtlMs: 10_000,
+    // The ticket window stays inside the approved bound. The bridge refuses a
+    // configuration that asks for a longer one, so the fixture has to live
+    // within the bound rather than around it.
+    ticketTtlMs: 2_000,
     port: 0,
   };
   return {
