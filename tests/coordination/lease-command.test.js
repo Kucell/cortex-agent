@@ -63,3 +63,39 @@ test("public lease command keeps tainted evidence out of its response", () => {
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
+
+test("public lease command exposes the scope tree option end to end", () => {
+  const root = projectRoot();
+  try {
+    const parent = run(root, ["acquire", "--scope", "samhmi:windows", "--owner", "owner-machine", "--scope-tree"]);
+    assert.equal(parent.ok, true);
+    assert.equal(parent.lease.scopeTree, true);
+
+    let output = "";
+    try {
+      output = execFileSync(process.execPath, [CLI, "lease", "acquire", "--scope", "samhmi:windows:instance:a", "--owner", "owner-a", "--scope-tree", "--project", root], {
+        cwd: ROOT,
+        encoding: "utf8",
+      });
+    } catch (error) {
+      output = error.stdout;
+    }
+    const refused = JSON.parse(output);
+    assert.equal(refused.ok, false);
+    assert.equal(refused.code, "ERR_LEASE_CONFLICT");
+    assert.equal(refused.error.reason, "scope_tree_conflict");
+
+    // Without the option the same pair stays independent (exact-key default).
+    const siblingRoot = projectRoot();
+    try {
+      const machine = run(siblingRoot, ["acquire", "--scope", "samhmi:windows", "--owner", "owner-machine"]);
+      assert.equal(machine.ok, true);
+      const instance = run(siblingRoot, ["acquire", "--scope", "samhmi:windows:instance:a", "--owner", "owner-a"]);
+      assert.equal(instance.ok, true);
+    } finally {
+      fs.rmSync(siblingRoot, { recursive: true, force: true });
+    }
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
