@@ -753,6 +753,7 @@ async function initModeGeneral() {
     }
     case "lease":       lease(ctx); break;
     case "permit":      await require("../lib/commands/permit-managed-cli").permitManagedCli(ctx); break;
+    case "permit-bridge": await require("../lib/commands/permit-bridge-service-cli").permitBridgeServiceCli(ctx); break;
     case "notification": await notification(ctx); break;
     case "mcp":         await mcpCommand(ctx); break;
     case "motion":      await motionCommand(ctx); break;

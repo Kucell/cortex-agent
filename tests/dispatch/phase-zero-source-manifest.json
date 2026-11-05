@@ -284,7 +284,7 @@
     "templates/_shared/.agent/waitpoints/waitpoint.schema.json"
   ],
   "protected_source_blobs": {
-    "bin/cli.js": "2054bee968f32a9ffcf9bb822d749d06cff34f41",
+    "bin/cli.js": "e44454570af40bb70c9f573bb0636cd1e83fb7a3",
     "lib/dispatch/execute.js": "ad89e6bd06ce20005b9d1037195dfde657dedb57"
   },
   "builtins": [
@@ -424,6 +424,7 @@
     "S1 follow-up changes dispatch approval/cache ordering and coordination authorization/repair ordering. This phase-zero test still does not exercise existing manual dispatch; separate S1 fixtures cover the bounded ordering changes.",
     "Tier-U public-bin regression only. No live GovernanceStore, Host, Owner/Lease, authority acceptance, package install, full suite, or live E2E claim.",
     "The dedicated workflow requires exact-head materialization; ordinary suite runs verify the staged source inventory and report index-verified-working-tree provenance, which is not release HEAD evidence.",
-    "The bin/cli.js protected blob advanced with the reviewed read-only migration inspect/plan route (P-001/P-002, independent review PASS). The migration route never writes: it prints JSON, exits 0 when the scoped format inspection has no unresolved findings, 1 for unresolved input and 2 for unsupported stages. Phase 0 dispatch behaviour is unchanged."
+    "The bin/cli.js protected blob advanced with the reviewed read-only migration inspect/plan route (P-001/P-002, independent review PASS). The migration route never writes: it prints JSON, exits 0 when the scoped format inspection has no unresolved findings, 1 for unresolved input and 2 for unsupported stages. Phase 0 dispatch behaviour is unchanged.",
+    "The bin/cli.js protected blob advanced with the managed permit-bridge serve entry. The new case only lazily loads lib/commands/permit-bridge-service-cli.js, opens an already provisioned store, binds loopback and prints two ports; it never creates a store, prints tickets, or changes existing Phase 0 commands."
   ]
 }

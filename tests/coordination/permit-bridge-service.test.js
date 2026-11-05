@@ -6,6 +6,7 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const { startPermitBridgeService } = require("../../lib/coordination/permit-bridge-service");
+const { ProtectedPermitStore } = require("../../lib/coordination/protected-permit-store");
 const { canonicalize } = require("../../lib/coordination/permit-delivery");
 
 const EXECUTOR = path.join(__dirname, "../../lib/commands/permit-bridge-executor.js");
@@ -148,6 +149,47 @@ test("the bridge service refuses to open a store that does not exist", async () 
       permitTtlMs: PERMIT_TTL_MS,
       anchorMode: "permissive",
     }));
+  } finally {
+    fs.rmSync(dirs.root, { recursive: true, force: true });
+  }
+});
+
+test("the bridge service opens a provisioned store bound to its decision", {
+  skip: process.platform === "win32" || Number(process.versions.node.split(".")[0]) < 24,
+  timeout: 60000,
+}, async () => {
+  const dirs = tempDirs();
+  let service;
+  try {
+    const provisioned = ProtectedPermitStore.initialize(dirs.storePath, {
+      anchorDir: dirs.anchorDir,
+      anchorMode: "permissive",
+      decisionId: "test-decision",
+    });
+    provisioned.close();
+    service = await startService(dirs, { create: false });
+    assert.ok(service.address.port > 0);
+    assert.ok(service.revocationAddress.port > 0);
+  } finally {
+    if (service) await service.close();
+    fs.rmSync(dirs.root, { recursive: true, force: true });
+  }
+});
+
+test("the bridge service refuses a provisioned store bound to another decision", {
+  skip: process.platform === "win32" || Number(process.versions.node.split(".")[0]) < 24,
+  timeout: 60000,
+}, async () => {
+  const dirs = tempDirs();
+  try {
+    const provisioned = ProtectedPermitStore.initialize(dirs.storePath, {
+      anchorDir: dirs.anchorDir,
+      anchorMode: "permissive",
+      decisionId: "different-decision",
+    });
+    provisioned.close();
+    await assert.rejects(startService(dirs, { create: false }),
+      { code: "ERR_DECISION_MISMATCH" });
   } finally {
     fs.rmSync(dirs.root, { recursive: true, force: true });
   }
