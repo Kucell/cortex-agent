@@ -28,10 +28,12 @@ export DSH_BIN=/custom/path/to/dsh
 
 | 状态 | 含义 | invoke 行为 |
 | :--- | :--- | :--- |
-| `ready` | 版本可识别 + help 含 headless profile | 允许 spawn |
+| `ready` | 版本可识别 + help 含 headless + `--profile headless --help` 退出 0 | 允许 spawn |
 | `degraded` | 二进制可达但 help 无 headless | 拒绝 spawn |
-| `unsupported` | 二进制缺失 / 版本形状不识别 / 参数被拒 / 超时 | 拒绝 spawn（`ERR_DSH_TRANSPORT_UNSUPPORTED`） |
+| `unsupported` | 二进制缺失 / 版本形状不识别 / 参数被拒 / 超时 / headless profile 无法启动 | 拒绝 spawn（`ERR_DSH_TRANSPORT_UNSUPPORTED`） |
 | `unknown` | 探测未运行 | 仅当调用方未要求 `verifyTransport` 时可 spawn |
+
+> probe 实际执行三条只读命令：`dsh --version`、`dsh --help`、`dsh --profile headless --help`。最后一条用于证明 profile 真能启动——help 文本里出现 "headless" 只是示例，不能作为可用性证据。probe 结果回报 `profile.exit_code` / `profile.ok`。
 
 > 裸命令 `dsh` 会按 `PATH` 解析（与 shell 行为一致）；解析不到时报 `fail_closed_reasons=["binary_not_found"]`。
 

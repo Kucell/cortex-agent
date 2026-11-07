@@ -786,6 +786,26 @@ if [ "$1" = "--version" ]; then echo "0.1.1"; exit 0; fi
 if [ "$1" = "--help" ]; then sleep 5; exit 0; fi
 exit 0
 `
+    : mode === "profile-missing"
+    // Help text advertises headless (like real dsh), but booting the profile
+    // fails: the probe must not report ready on help text alone.
+    ? `#!/bin/sh
+if [ "$1" = "--version" ]; then echo "0.2.1-rc.5"; exit 0; fi
+if [ "$1" = "--help" ]; then
+  cat <<'HELP'
+Usage: dsh [options] [command] [args...]
+Options:
+  --profile <name>            the profile under $DSH_HOME/profiles to boot
+Examples:
+  dsh --profile headless "run the tests"     answer one task, print the result, and exit
+HELP
+  exit 0; fi
+if [ "$1" = "--profile" ]; then
+  echo "error: profile headless not found" >&2
+  exit 1
+fi
+exit 0
+`
     // help-ok-headless default: behaves like a real dsh with version + headless help.
     : `#!/bin/sh
 if [ "$1" = "--version" ]; then echo "0.1.1-rc.2"; exit 0; fi
@@ -832,16 +852,20 @@ test("M-034 MS-001 probe(): help-ok-headless fake -> status=ready, has_headless_
 // VC-034-001-01: probe() against the real machine's dsh (only runs when DSH_BIN
 // is on PATH and points to a 0.1.x binary). Skipped otherwise so CI without
 // dsh stays green.
-test("M-034 MS-001 probe(): real dsh binary on PATH -> status=ready", async () => {
+test("M-034 MS-001 probe(): real dsh binary on PATH -> status=ready", async (t) => {
   const whichOut = require("node:child_process")
     .spawnSync("which", ["dsh"], { encoding: "utf8" });
-  if (whichOut.status !== 0) return; // skip when no real dsh on PATH
+  if (whichOut.status !== 0) return t.skip("no real dsh on PATH");
   const bin = (whichOut.stdout || "").trim();
-  if (!bin) return;
+  if (!bin) return t.skip("no real dsh on PATH");
   const a = new DshAdapter({ bin, shell: false });
   const r = await a.probe();
-  // Must classify as ready OR degraded depending on version help excerpt.
-  assert.ok(["ready", "degraded"].includes(r.status));
+  // The probe now boots `--profile headless --help`, so a host that merely
+  // ships the dsh binary without a usable headless profile is not ready.
+  assert.equal(r.status, "ready");
+  assert.equal(r.ready, true);
+  assert.equal(r.profile.ok, true);
+  assert.equal(r.profile.exit_code, 0);
   assert.ok(r.help.exit_code === 0 || r.help.timed_out === true);
   assert.match(r.help.sha256, /^[a-f0-9]{64}$/);
   // transport_supported must always include text-headless-v1 once probed.
@@ -952,6 +976,28 @@ test("M-034 MS-001 fail-closed #5: missing settled signal in help -> status=degr
     assert.equal(r.help.has_headless_profile, false);
     assert.equal(r.supported_transport, "text-headless-v1"); // transport name kept
     assert.deepEqual(r.fail_closed_reasons, []); // not fail-closed, but partial
+  } finally {
+    await fsPromises.rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("M-034 MS-001 fail-closed #5b: headless profile missing -> status=unsupported (help text alone is not proof)", async () => {
+  const dir = await fsPromises.mkdtemp(require("node:os").tmpdir() + "/ms001-probe-prof-");
+  const fp = await writeFakeDsh(dir, "profile-missing");
+  try {
+    const a = new DshAdapter({ bin: fp, shell: false });
+    const r = await a.probe();
+    assert.equal(r.status, "unsupported");
+    assert.equal(r.ready, false);
+    // The help text still advertises headless — that must not be enough.
+    assert.equal(r.help.has_headless_profile, true);
+    assert.equal(r.profile.ok, false);
+    assert.equal(r.profile.exit_code, 1);
+    assert.ok(r.fail_closed_reasons.includes("headless_profile_exit_nonzero:1"));
+    // A failed transport must not be advertised as supported.
+    const after = a.discover();
+    assert.deepEqual(after.transport_supported, []);
+    assert.equal(after.transport_verified, false);
   } finally {
     await fsPromises.rm(dir, { recursive: true, force: true });
   }
@@ -1187,12 +1233,13 @@ test("M-034 WP-03: verifyTransport fails closed when the probe is not ready", as
   }
 });
 
-test("M-034 WP-03: probe() resolves a bare binary name on PATH", async () => {
+test("M-034 WP-03: probe() resolves a bare binary name on PATH", async (t) => {
   const which = require("node:child_process").spawnSync("which", ["dsh"], { encoding: "utf8" });
-  if (which.status !== 0) return; // no real dsh on this host — skip
+  if (which.status !== 0) return t.skip("no real dsh on this host");
   const adapter = new DshAdapter(); // bin === "dsh", no DSH_BIN override
   const probe = await adapter.probe();
-  assert.ok(["ready", "degraded"].includes(probe.status));
+  assert.equal(probe.status, "ready");
+  assert.equal(probe.profile.ok, true);
   assert.ok(path.isAbsolute(probe.binary_path), "PATH lookup must yield an absolute path");
   assert.equal(probe.supported_transport, PROBE_SUPPORTED_TRANSPORT);
 });
