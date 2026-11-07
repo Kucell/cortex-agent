@@ -345,7 +345,7 @@ test("cli-contract --json surfaces the notification segment under the contract r
 // ─── Adapter whitelist & integration notes ──────────────────────────────────
 
 test("adapter whitelist contains only the public set", () => {
-  assert.deepEqual(ADAPTER_WHITELIST.slice().sort(), ["claude-code", "codex", "noop", "webhook"]);
+  assert.deepEqual(ADAPTER_WHITELIST.slice().sort(), ["claude-code", "codex", "dsh", "noop", "webhook"]);
 });
 
 test("contract advertises an integration_notes section", () => {
