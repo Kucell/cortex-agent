@@ -107,3 +107,5 @@ flowchart LR
 | 探针 | `probe()` 用 `path.resolve(bin)` 解析裸命令 → `<cwd>/dsh` 必然 ENOENT；`health()` 只做 `which` 故 CLI 显示假阳性；probe 无 CLI 入口 | `_resolveBinary()` 按 PATH/PATHEXT 解析；`health({probe:true})` 叠加 probe 结果；新增 `agent adapter probe <id>`；CLI 派发前传 `verifyTransport: true` |
 
 附带一致性修复：`discover()` 探测前不再宣称 `stdio-json-rpc` 可用（`transport_supported=[]`、`transport:null`、`maturity:"experimental"`）；`host-runtime-snapshots` 移除 dsh 两条过时 `missing_*` 限制并新增 `transport_unverified`；`agent discover --adapter-type dsh` 接受 EXT 联合表；`dsh:<id>` 前缀解析落地（前缀与条目 `adapter_type` 不一致时报 `ERR_ADAPTER_PREFIX_MISMATCH`）。
+
+2026-11-07 复核补丁：`probe()` 不再只靠 `dsh --help` 文本里出现 "headless" 就宣称可用——它额外执行有界的 `dsh --profile headless --help`，profile 缺失/损坏时归类 `unsupported`（`headless_profile_*`），并把 `profile.exit_code` / `profile.ok` 写入 probe 结果与缓存；`invoke()` 默认 `shell:false`（任务只走 stdin，避免 `args + shell:true` 的 DEP0190 与注入面）。通知泵把 `dsh` 注册为显式 deferred adapter：0.2.1-rc.5 没有 session 注入/唤醒 API，投递以 `ERR_NOTIFICATION_ADAPTER_UNAVAILABLE` 失败关闭，不伪造送达。
