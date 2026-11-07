@@ -33,7 +33,7 @@ export DSH_BIN=/custom/path/to/dsh
 | `unsupported` | 二进制缺失 / 版本形状不识别 / 参数被拒 / 超时 / headless profile 无法启动 | 拒绝 spawn（`ERR_DSH_TRANSPORT_UNSUPPORTED`） |
 | `unknown` | 探测未运行 | 仅当调用方未要求 `verifyTransport` 时可 spawn |
 
-> probe 实际执行三条只读命令：`dsh --version`、`dsh --help`、`dsh --profile headless --help`。最后一条用于证明 profile 真能启动——help 文本里出现 "headless" 只是示例，不能作为可用性证据。probe 结果回报 `profile.exit_code` / `profile.ok`。
+> probe 执行三条有界命令：`dsh --version`、`dsh --help`（各 5s）、`dsh --profile headless --help`（15s，超时重试一次）。最后一条用于证明 profile 真能启动——help 文本里出现 "headless" 只是示例，不能作为可用性证据；成功还要求 stdout 含 `Usage: dsh --profile headless`，防止包装器转发 launcher help 蒙混。probe 结果回报 `profile.exit_code` / `profile.ok`。注意：启动 profile 会让 dsh 初始化自己的 `$DSH_HOME/profiles/headless/cordis.yml`（实测 mtime 变化），适配器本身不解析任何 dsh 配置，但不要假设 probe 对 `$DSH_HOME` 零写入。
 
 > 裸命令 `dsh` 会按 `PATH` 解析（与 shell 行为一致）；解析不到时报 `fail_closed_reasons=["binary_not_found"]`。
 
@@ -133,7 +133,7 @@ $ dsh --profile headless [--json] [--session-id <id>] -
 ## 4. 已知限制
 
 1. **tool gate 未启用**：`tool.before.observe` / `tool.before.block` 标记 `unsupported`（P-001 冻结词汇），待 M-018 验证 DSH 真实 hook 能力后另行接入。
-2. **不读取会话存储**：dispatch adapter 不读 `~/.dsh/sessions/`；usage 测量由 `scripts/dsh-usage-sync.js`（shadow）单独维护，两者互不依赖。
+2. **不读取会话存储**：dispatch adapter 不读 `~/.dsh/sessions/`；usage 测量由 `scripts/dsh-usage-sync.js`（shadow）单独维护，两者互不依赖。probe 会启动 headless profile，dsh 可能刷新 `$DSH_HOME/profiles/headless/cordis.yml` 等自身运行时文件（只影响 dsh，不影响 cortex 数据）。
 3. **无自动 dispatch**：DSH agent 保持 opt-in；`cortex-agent add dsh` 不启用 daemon / 自动调度。`cortex-agent dispatch` 仍是 Phase 0 dry-run 契约面（`dispatch execute` 返回 `PHASE_ZERO_STUB`），真实派发只走 `agent dispatch-execute`。
 4. **通知泵对 dsh 是显式 deferred**：`notification-cli.js#ADAPTER_WHITELIST` 现在包含 `dsh`，但 `notification-host.js#resolveAdapter("dsh")` 返回经注册的 deferred adapter（`hostAvailable:false`，`deliver` → `status=deferred` / `ERR_NOTIFICATION_ADAPTER_UNAVAILABLE`）。原因：dsh 0.2.1-rc.5 没有 session 注入/唤醒 API（CLI 只有一次性 `--profile headless`），无法在不额外起模型回合的前提下投递通知。该注册让 pump 以明确的能力错误失败关闭，而不是 `ERR_NOTIFICATION_ADAPTER: adapter is not registered`；未来若 dsh 提供注入面，再替换为真实投递。
 5. **`.dsh/settings.json` 与 MCP 配置待核实**：`add dsh` 写出的 `.dsh/settings.json` 采用 `{skills,prompts}` 形状，与 DSH 0.2.x 的 `$DSH_HOME/settings.yaml`（`ui-*` / `locale` / `llm-*` 命名空间）不同构；`mcp install dsh` 写入 `~/.config/dsh/mcp.json`，当前未在 DSH 0.2.1 包内找到该路径的消费证据。二者目前按"预留/未证实"对待，接入生产前需实测。
