@@ -72,6 +72,66 @@ test("an artifact directory created under a temp root fails", (t) => {
   assert.match(result.stdout, /artifact-dir-under-temp/);
 });
 
+test("an apply_patch target in a temp directory fails", (t) => {
+  const root = buildFixture(t, {
+    "scripts/launch.ps1": [
+      "*** Begin Patch",
+      "*** Add File: /private/tmp/probe/launch-runtime.ps1",
+      "+Write-Output 'started'",
+      "*** End Patch",
+      "",
+    ].join("\n"),
+  });
+  const result = runCheck(root);
+  assert.equal(result.status, 1);
+  assert.match(result.stdout, /apply-patch-target-in-temp/);
+});
+
+test("shell redirection to a temp path fails", (t) => {
+  const root = buildFixture(t, {
+    "scripts/run.sh": "printf 'ready\\n' > /tmp/runtime-status.txt\n",
+  });
+  const result = runCheck(root);
+  assert.equal(result.status, 1);
+  assert.match(result.stdout, /shell-write-to-temp/);
+});
+
+test("tee, copy, and output-flag destinations in temp directories fail", (t) => {
+  const root = buildFixture(t, {
+    "scripts/run.sh": [
+      "cat runtime.log | tee /tmp/runtime.log",
+      "cp runtime.ps1 /tmp/probe/runtime.ps1",
+      "node collect.js --output /var/folders/demo/result.json",
+      "",
+    ].join("\n"),
+  });
+  const result = runCheck(root);
+  assert.equal(result.status, 1);
+  assert.match(result.stdout, /shell-write-to-temp[^\n]*\(3\)/);
+});
+
+test("same-command shell scratch with trap cleanup passes", (t) => {
+  const root = buildFixture(t, {
+    "scripts/run.sh": [
+      "work=$(mktemp -d)",
+      "trap 'rm -rf \"$work\"' EXIT",
+      "printf 'ready\\n' > \"$work/status.txt\"",
+      "test ! -e \"$work\" || true",
+      "",
+    ].join("\n"),
+  });
+  const result = runCheck(root);
+  assert.equal(result.status, 0, `expected pass, got:\n${result.stdout}${result.stderr}`);
+});
+
+test("promoting a temp script into .agent is allowed", (t) => {
+  const root = buildFixture(t, {
+    "scripts/promote.sh": "mv /tmp/probe.ps1 .agent/debug/temp/task-r1/probe.ps1\n",
+  });
+  const result = runCheck(root);
+  assert.equal(result.status, 0, `expected pass, got:\n${result.stdout}${result.stderr}`);
+});
+
 test("a document that points an agent at a temp artifact path fails", (t) => {
   const root = buildFixture(t, {
     "SKILL.md": "Write the summary to /tmp/session-summary.json when done.\n",

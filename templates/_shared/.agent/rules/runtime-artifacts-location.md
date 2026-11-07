@@ -1,6 +1,6 @@
 ---
 title: "Runtime Artifact Location"
-description: '> All runtime artifacts produced by a cortex-agent-managed project — logs, probe scripts, per-run output, observations, scratch JSON — must live under the project .agent/ directory, never in /tmp, the home directory, or the project root.'
+description: 'Classify every script, log, and output by lifetime. Cross-command, review, or handoff artifacts belong under .agent/; process-local scratch may use the OS temp directory only when it is deleted and verified within the same top-level command.'
 type: rule
 scope: L1
 applicable_to:
@@ -8,17 +8,45 @@ applicable_to:
 linked_workflows: []
 linked_skills: []
 owner: Kucell
-last_verified: 2026-10-28
+last_verified: 2026-11-07
 status: stable
 linked_decisions: ["D-OKF-001"]
 ---
 
 # Runtime Artifact Location
 
-> **Core rule**: in a project managed by cortex-agent, everything the agent produces while
-> running, debugging, or investigating — logs, probe scripts, per-run output,
-> observations, scratch JSON, screenshots — belongs under the project .agent/
-> directory. It does **not** belong in /tmp, the home directory, or the project root.
+> **Core rule**: choose a script, log, or output's location by its lifetime. If it
+> must survive the producing process, or will be read by another command, reviewer,
+> handoff, or task, it belongs under the project's `.agent/` directory. The OS temp
+> directory is reserved for process plumbing that is deleted and verified within the
+> same top-level command.
+>
+> **Cross-command means durable**: creating a script with `apply_patch`, recording its
+> path for a later command, or letting another agent read its output crosses that
+> boundary. Such files must not live in `/tmp`, `os.tmpdir()`, `%TEMP%`, or `$TMPDIR`.
+
+Three questions determine the answer; the filename alone does not:
+
+1. Must it survive after the current process or top-level command ends?
+2. Will another command, reviewer, agent, or resumed task read it?
+3. Is it a reusable probe, measurement, or delivery asset?
+
+If any answer is yes, use the `.agent/` lifecycle table below.
+
+---
+
+## Lifetime and destination
+
+| Lifetime / use | Location | Closeout requirement |
+|---|---|---|
+| Valid only while one process or top-level command runs | OS temp directory | Delete and verify absence in the same command |
+| Needed across commands or for short review, but not durable evidence | `.agent/debug/temp/<task>-<run-id>/` | Keep a file inventory and retention condition |
+| Reusable across tasks | `.agent/skills/<skill>/scripts/` | Provide an entry point and tests |
+| Mission-specific tool or long-lived evidence | `.agent/missions/<id>/scripts/` or `evidence/` | Bind to source identity and verification result |
+| Machine-readable summary for another agent | `.agent/artifacts/` | Keep compact references, hashes, and payloads |
+
+Do not evade the rule by renaming a directory to `temp`, `scratch`, or `debug`.
+Lifetime and consumer determine placement.
 
 ---
 
@@ -107,19 +135,51 @@ Use <run-id-or-sample-id>.<ext>:
 - ❌ **Do not treat .agent/debug/ as release evidence.** Long-lived evidence
   belongs in .agent/missions/<id>/evidence/ or the project documentation assets.
 
-### The one legitimate exception
+### Cross-command boundary
 
-Short-lived **process plumbing** may use the OS temp directory, provided it is
-genuinely ephemeral and holds nothing that must survive the process:
+A top-level command is one indivisible host invocation, including synchronous child
+processes in its process tree. The boundary has been crossed when:
 
-- a private context file passed to a child process and deleted right after;
-- a scratch build directory for a throwaway compile;
-- a test fixture directory created and removed inside a single test case.
+- `apply_patch`, `Write`, or `Edit` creates a file and a later tool command uses it;
+- command A creates a script or output and command B reads, uploads, forwards, or
+  updates it by absolute path;
+- shell redirection, `tee`, `cp`, `mv`, or a program argument writes to a temp path
+  but cleanup happens in another command;
+- a temp path is persisted in task progress, a handoff, README, configuration, or
+  another durable document.
 
-The test is simple: **if the artifact has value after the process exits, it
-belongs under .agent/.** A secret-bearing context file also belongs nowhere
-persistent — it must be mode 0600 and removed on completion, which is why it is
-not a runtime artifact but process plumbing.
+Cross-command material must be created under `.agent/` directly. For a probe or output
+needed briefly for review, use `.agent/debug/temp/<task>-<run-id>/` and record each
+file's purpose and retention condition in `inventory.json`.
+
+### Single-command process plumbing
+
+Process plumbing may use the OS temp directory only when all of these hold:
+
+- its lifetime is bounded by a provable cleanup path in the same top-level command;
+- `trap`, `finally`, or an equivalent mechanism cleans up on success, failure, and
+  interruption;
+- absence is verified before the command returns;
+- the path is not written into durable documentation, configuration, or a variable
+  table consumed by another command.
+
+Examples are a child-process context file (mode `0600`), a throwaway compile directory,
+and a fixture created and removed inside one test case. A PowerShell, Python, Node, or
+shell probe reused across commands is not process plumbing.
+
+### Task closeout
+
+Before a task is complete, inventory every temp path created by the run and classify it
+as one of:
+
+- `deleted`: removed and verified absent;
+- `promoted`: moved under `.agent/debug/temp/` or a longer-lived destination and all
+  references updated;
+- `owned_by_live_process`: still used by a named running process, with the process and
+  retention condition recorded.
+
+Any unclassified path makes the closeout `TEMP_ARTIFACT_CLOSEOUT_INCOMPLETE`. "Will clean
+later" is not a completed state.
 
 ---
 
@@ -136,6 +196,22 @@ If an artifact or script was written to the wrong place:
 
 Do **not** fix this by adding a .gitignore entry — that hides the symptom and
 leaves the artifact lost.
+
+---
+
+## Mechanical check
+
+`pnpm check:runtime-artifact-location` scans the L1 templates, skills, workflows, and
+framework code for writes that may place artifacts in a temp directory. It recognizes
+the Node write APIs, `apply_patch` `Add/Update File` targets, shell redirection,
+`tee`, `cp`, `mv`, and common `--output` arguments. A form whose lifecycle cannot be
+proved fails closed; the author must choose an explicit `.agent/` destination or add a
+documented exception.
+
+When a host exposes a Stop event, use it to inventory the run's temp paths and record
+`deleted`, `promoted`, or `owned_by_live_process` for each one. If the host has no
+blocking Stop gate, the same closeout remains a task-completion requirement and the
+result must be reported explicitly.
 
 ---
 

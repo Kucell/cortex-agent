@@ -3,10 +3,9 @@
 
 // ─── Check Runtime Artifact Location ──────────────────────────────────────────
 // Mechanical gate for the L1 rule `runtime-artifacts-location.md`:
-// in a cortex-agent-managed project, every runtime artifact (logs, probe
-// scripts, per-run output, observations, scratch JSON) belongs under the
-// project `.agent/` directory — never in /tmp, the home directory, or the
-// project root.
+// classify scripts, logs, and outputs by lifetime. Cross-command material
+// belongs under the project `.agent/` directory; process plumbing may use the
+// OS temp directory only when it is removed inside the same top-level command.
 //
 // The rule is written as prose, so prose alone does not keep a skill from
 // shipping a `os.tmpdir()` draft directory to every managed project. This
@@ -98,6 +97,20 @@ const ARTIFACT_EXTENSIONS = Object.freeze([
   "md", "json", "jsonl", "ndjson", "log", "txt", "csv", "yaml", "yml",
 ]);
 
+// A host patch creates a file in one tool call and normally consumes it in a
+// later call. That is already cross-command material, so every temp target is
+// a violation even when the file is not named like a report or log.
+const APPLY_PATCH_TARGET = /\*\*\*\s+(?:Add|Update|Delete) File:\s*([^\r\n]+)/gi;
+
+// Shell/PowerShell writes do not go through Node's fs API. Detect the common
+// operators explicitly; the destination, rather than any mention of a temp
+// path, determines whether the line writes into a temp directory.
+const SHELL_REDIRECT = /(?<![=!<>-])>{1,2}\s*(?:"([^"]+)"|'([^']+)'|([^\s;|&]+))/g;
+const SHELL_TEMP_WRITER = /\b(?:tee|Out-File|Set-Content|Add-Content)\b[^\r\n]*/i;
+const SHELL_OUTPUT_FLAG = /(?:--output(?:=|\s+)|(?:^|\s)-o\s+)(?:"([^"]+)"|'([^']+)'|([^\s;|&]+))/gi;
+const SHELL_COPY = /\b(?:cp|mv|install|Copy-Item|Move-Item)\b([^\r\n]*)/i;
+const HAS_SHELL_CLEANUP = /\btrap\s+[^\n]*(?:\brm\b|Remove-Item)|\brm\s+-[A-Za-z]*r[^\n]*\b(?:\$TMPDIR|\/tmp|\/private\/tmp)\/|\bRemove-Item\b[^\n]*(?:-Recurse|-Force)/i;
+
 // Splits a file name into its stem tokens, so that "catalog.json" does not
 // read as an artifact just because "log" appears inside it, while
 // "session-signals.json" does.
@@ -145,6 +158,9 @@ const ALLOW_PATTERNS = Object.freeze([
   /GIT_INDEX_FILE/,
   // A fixture that is removed again in the same breath.
   /rmSync|rimraf|removeSync|unlinkSync/,
+  // Promoting a temp file into .agent/ is the required repair, not a write
+  // back into temp.
+  /\bmv\b[^\n]*\/(?:tmp|private\/tmp|var\/folders)\/[^\n]*\.agent\//i,
 ]);
 
 // A test file is where a fixture legitimately lives in a temp directory: the
@@ -174,6 +190,72 @@ function containsTempSource(text) {
 
 function containsArtifactName(text) {
   return namesArtifactFile(text) || ARTIFACT_DIRNAME.test(text);
+}
+
+function referencesTemp(text, tempVars) {
+  return containsTempSource(text) ||
+    [...tempVars].some((name) => new RegExp(`\\b${name}\\b`).test(text));
+}
+
+// Split the small command-line subset relevant to copy/move destinations.
+// This is deliberately not a shell parser; it only keeps quoted paths intact
+// so a destination containing spaces is still classified correctly.
+function shellArguments(text) {
+  const args = [];
+  let current = "";
+  let quote = null;
+  for (let i = 0; i < text.length; i += 1) {
+    const ch = text[i];
+    if (quote) {
+      if (ch === quote) quote = null;
+      else current += ch;
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+      continue;
+    }
+    if (/\s/.test(ch)) {
+      if (current) args.push(current);
+      current = "";
+      continue;
+    }
+    current += ch;
+  }
+  if (current) args.push(current);
+  return args;
+}
+
+// Return concrete destinations that are written by shell syntax on this line.
+// A `mv /tmp/file .agent/...` source alone is not a write back into temp.
+function shellTempDestinations(line, tempVars) {
+  // Markdown blockquotes begin with `>` and are documentation, not shell
+  // redirection. A shell command that writes without any command part is not
+  // useful in the repository patterns this gate needs to protect.
+  if (/^\s*>\s/.test(line)) return [];
+  const destinations = [];
+  let match;
+
+  for (const pattern of [SHELL_REDIRECT, SHELL_OUTPUT_FLAG]) {
+    pattern.lastIndex = 0;
+    while ((match = pattern.exec(line)) !== null) {
+      const target = match[1] || match[2] || match[3];
+      if (target && referencesTemp(target, tempVars)) destinations.push(target);
+    }
+  }
+
+  if (SHELL_TEMP_WRITER.test(line) && referencesTemp(line, tempVars)) {
+    destinations.push(line.trim().slice(0, 120));
+  }
+
+  const copy = line.match(SHELL_COPY);
+  if (copy) {
+    const args = shellArguments(copy[1]).filter((arg) => !arg.startsWith("-"));
+    const destination = args[args.length - 1];
+    if (destination && referencesTemp(destination, tempVars)) destinations.push(destination);
+  }
+
+  return destinations;
 }
 
 // ─── Taint analysis ───────────────────────────────────────────────────────────
@@ -250,10 +332,40 @@ function analyseFile(filePath, root) {
   // in another is still caught.
   const tempVars = new Set();
   const artifactVars = new Set();
+  const hasShellCleanup = HAS_SHELL_CLEANUP.test(text);
 
   const lines = text.split("\n");
   lines.forEach((line, idx) => {
     if (isAllowlisted(line)) return;
+
+    // apply_patch is a host edit: the file survives the tool call by design,
+    // so even a one-off script target crosses the process-local boundary.
+    APPLY_PATCH_TARGET.lastIndex = 0;
+    let patchTarget;
+    while ((patchTarget = APPLY_PATCH_TARGET.exec(line)) !== null) {
+      if (containsTempSource(patchTarget[1])) {
+        findings.push({
+          rule: "apply-patch-target-in-temp",
+          title: "host patch targets a temp path",
+          file: rel,
+          line: idx + 1,
+          detail: patchTarget[0].trim().slice(0, 120),
+        });
+      }
+    }
+
+    if (!hasShellCleanup) {
+      const destinations = shellTempDestinations(line, tempVars);
+      if (destinations.length > 0) {
+        findings.push({
+          rule: "shell-write-to-temp",
+          title: "shell syntax writes to a temp path",
+          file: rel,
+          line: idx + 1,
+          detail: destinations[0].slice(0, 120),
+        });
+      }
+    }
 
     const assignment = line.match(ASSIGNMENT);
     if (assignment) {

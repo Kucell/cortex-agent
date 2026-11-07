@@ -17,7 +17,7 @@ status: stable
 1.  **遵守语言设定**: 始终遵循 `.agent/rules/language.md` 中定义的语言进行交流。
 2.  **架构第一**: 在提出任何代码更改建议之前，请务必检查 `.agent/rules/architecture-design.md`。
 3.  **行为规则**: 会话开始时读取 `.agent/rules/ai-behavior.md` —— 它管理 Git 纪律、编辑范围、代码探索策略（含 `graphify-out/graph.json` 存在时优先使用 Graphify）以及分阶段提交协议。
-4.  **运行时产物落盘**: 凡需持久化的运行时产物（单次运行 JSON、单样本观测、调试日志、临时 JSON、探针脚本），一律落在 `.agent/` 下，详见 `.agent/rules/runtime-artifacts-location.md`。**不得**写入 `/tmp`、home 目录或项目根——那些位置会随会话或系统清理而丢失。
+4.  **运行时产物落盘**: 按生命周期决定位置。跨命令、复核或交接后仍需读取的 JSON、日志、截图和脚本必须落在 `.agent/` 下；只有同一顶层命令内创建并验证删除的进程临时文件可以使用系统临时目录。详见 `.agent/rules/runtime-artifacts-location.md`。
 5.  **Memory 索引**: 会话开始时已由 SessionStart hook 自动加载 `.agent/memory/MEMORY.md`（≤200 行 / 25KB cap）；按需 Read topic 文件（`{user,feedback,project,reference}/*.md`）。详见 `.agent/rules/memory-protocol.md`。
 6.  **提案目录结构**: 创建或重组架构提案前读取 `.agent/rules/proposal-structure.md`，尤其是大项目或关联项目提案组。
 7.  **遵循工作流**: 当用户运行命令（例如 `/start-task`）时，严格遵循 `.agent/workflows/` 中定义的相应工作流。
