@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- 下一个版本的条目写在这里 -->
 
+### Fixed
+
+- DSH (DeepSeek Harness) dispatch is now actually reachable. Three independent breaks were removed: (1) additive agent-entry reading via `lib/agents/registry-ext.js` so `external.adapter_type = "dsh"` loads while M-002's frozen `registry.js` stays untouched; (2) `invoke()` speaks the real `dsh --profile headless [--json] -- -` contract (task on stdin, NDJSON run events, `{"type":"final"}` as the only settled signal, exit 0 without it reports `blocked`); (3) `probe()` resolves a bare `dsh` on `PATH` instead of `<cwd>/dsh`, `health()` layers the probe result, and `agent adapter probe <id>` exposes the four-state transport evidence. `agent dispatch-execute dsh:<id>` now passes `verifyTransport` and fails closed with `ERR_DSH_TRANSPORT_UNSUPPORTED`. `discover()` no longer advertises `stdio-json-rpc` before a probe, the host snapshot drops the stale dsh `missing_dispatch_whitelist` / `missing_skill_discovery_path` limits in favour of `transport_unverified`, and `agent discover --adapter-type dsh` accepts the additive union.
+
 ## [1.16.0] - Unreleased development candidate
 
 Advisor-only development candidate; not published. This release scope covers read-only advice, proposal preparation and upgrade/safety fixes. Real L3 autonomy and real AI Host execution are deferred to incremental, independently accepted 1.16.x delivery. The formal 28-item authorization/L3/SelfEvolution matrix remains a future L3 enablement gate, not a blanket prerequisite for this advisor-only release.

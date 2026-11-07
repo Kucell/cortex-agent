@@ -58,8 +58,8 @@ flowchart LR
 
 **关键流程**：
 
-1. `invoke()` 写 `request.json` → spawn `dsh --json --run-id <id> --task <task>` → JSON-RPC over stdio → 解析响应 → 写 `result.json` + `rollback.json`（atomic `.tmp + rename`）。
-2. 6 类失败模式全部写 `error.json` + `rollback.json`（或 `rollback-failed.json` + `notify_parent: true`）：`ERR_ADAPTER_SPAWN` / `ERR_DISPATCH_FAILED` / `ERR_DISPATCH_TIMEOUT` / `ERR_JSONRPC_PARSE` / `ERR_DSH_<code>` / rollback 写失败。
+1. `invoke()` 写 `request.json` → spawn `dsh --profile headless [--json] -- -`（任务经 stdin 投递）→ 解析 NDJSON 运行事件 → 以 `{"type":"final"}` 为结算信号 → 写 `result.json` + `rollback.json`（atomic `.tmp + rename`）。**注**：P-006 原始文档设想的 `--json --run-id --task` + JSON-RPC 形状在 M-034 WP-03（2026-11-07）被证伪并替换，见 §8。
+2. 失败模式全部写 `error.json` + `rollback.json`（或 `rollback-failed.json` + `notify_parent: true`）：`ERR_ADAPTER_SPAWN` / `ERR_DSH_TRANSPORT_UNSUPPORTED` / `ERR_DSH_TASK_REQUIRED` / `ERR_DISPATCH_FAILED` / `ERR_DISPATCH_TIMEOUT` / `ERR_DSH_EVENT_PARSE` / `ERR_DSH_<code>` / rollback 写失败。
 3. `cancel()` 通过 `_subprocesses` Map（runId → child）SIGTERM；`report()` 读 journal 并附加 `adapter_type` + `latency_ms`。
 
 **能力声明**（`discover().capability_descriptor`，P-001 冻结词汇）：
@@ -75,7 +75,7 @@ flowchart LR
 
 ## 5. 影响范围
 
-- **新增**：`lib/agents/adapters/dsh.js`、`lib/agents/adapters/dsh-bootstrap.js`、`templates/{zh,en}/integrations/dsh/`（6 文件）、`docs/host-dsh-integration.md`、`tests/agent/agent-adapter-dsh.test.js`、`tests/cli/add-host-dsh.test.js`。
+- **新增**：`lib/agents/adapters/dsh.js`、`lib/agents/adapters/dsh-bootstrap.js`、`lib/agents/registry-ext.js`（M-034 WP-03 additive 读取器）、`templates/{zh,en}/integrations/dsh/`（6 文件）、`docs/host-dsh-integration.md`、`tests/agent/agent-adapter-dsh.test.js`、`tests/cli/add-host-dsh.test.js`。
 - **修改（additive）**：`lib/agents/registry-adapter-types.js`（`VALID_ADAPTER_TYPES_EXT` 加 `"dsh"`）、`lib/agents/adapters/index.js#_seed()`（末尾 try/catch 注入）、`lib/coordination/adapter-core.js`（`REGISTERED_ADAPTER_IDS` 加 `dsh.local`/`dsh.dev`）、`lib/registry/index.js`（`PLATFORM_REGISTRY.dsh`）、`docs/platform-integration.md`（平台映射表行）、`docs/architecture/adapter-authoring.md`（§9.4 / §9.5）。
 - **零修改（硬约束）**：`lib/agents/registry.js`（M-002 frozen）、`bin/cli.js`、既有 5 个 vendor adapter。
 - **不触碰**：`~/.dsh/sessions/`（shadow backfill 独占）、`lib/host-adapter/shadow-usage/dsh-shadow.js`、TCP 测量逻辑。
@@ -84,14 +84,26 @@ flowchart LR
 
 - **纯加法**：`cortex-agent upgrade` 不覆盖用户对本地治理目录的改动；`add dsh` 的 `settings.json` 走 merge（保留用户字段），README/AGENTS 已存在则跳过。
 - **回滚**：移除 `_seed()` try/catch 块或从 `VALID_ADAPTER_TYPES_EXT` 删除 `"dsh"` 即恢复 pre-P-006 行为；其他宿主不受影响（注册为可选）。
-- **fail-closed**：DSH CLI 未安装时 `health()` → `ready: false`（`ERR_ADAPTER_SPAWN`），`invoke()` 写结构化失败，不影响既有 dispatch。
+- **fail-closed**：DSH CLI 未安装时 `health()` → `ready: false`；`invoke()` 在 `verifyTransport` 下先跑 probe，未 `ready` 时返回 `ERR_DSH_TRANSPORT_UNSUPPORTED` 并写结构化失败，不影响既有 dispatch。
 
 ## 7. 后续任务
 
 - [ ] DSH 真实 hook 能力证据出现后，单列 P-007 follow-up（tool gate + context pilot），把 `tool.before.*` / `context.render.observe` 从 `unsupported` 提升。
 - [x] `docs/architecture.md` 既有对 ARI 提案的本地治理目录路径引用已迁移为 docs 相对链接（commit `95052e8`）。
-- [ ] 完整 CLI e2e（`cortex-agent agent dispatch-execute dsh:<id>` 真实 agent 条目）可选补充。
+- [x] 完整 CLI e2e（`cortex-agent agent dispatch-execute dsh:<id>` 真实 agent 条目）已补：`tests/agent/agent-adapter-dsh.test.js` 覆盖 `dsh:` 前缀 + headless 派发全链路（fake binary）。
 
 ---
 
 > 返回：[架构文档](./README.md) | [集成指南](../host-dsh-integration.md) | [Adapter Authoring](./adapter-authoring.md)
+
+## 8. 2026-11-07 修复附录（M-034 WP-03）
+
+对真实 `dsh 0.2.1-rc.5` 逐层实测后发现 P-006 的"派发可用"并未真正落地，三处断路已在本轮修复：
+
+| 层 | 断点 | 修复 |
+| :--- | :--- | :--- |
+| 注册 | `registry.js#validateEntry` 用 M-002 冻结表拒收 `dsh`，`readAgent` 因此抛 `ERR_AGENT_PARSE`；`VALID_ADAPTER_TYPES_EXT` 只在 `m003-cli` 的 protocol 分支被调用，位于 `readAgent` 之后（死代码） | 新增 `lib/agents/registry-ext.js`：先跑冻结校验，仅对 `ERR_INVALID_ADAPTER_TYPE` 用 M-002 ∪ EXT 联合表重校验 adapter_type，其余字段仍走原校验；`discover` / `invoke` / `dispatch-execute` 改用它。`registry.js` 保持零修改 |
+| 执行 | `invoke()` 仍 spawn `--json --run-id --task` + stdin JSON-RPC，真实 CLI 直接 `error: --profile <name> is required`（exit 1） | 改为 `--profile headless [--json] -- -`，任务走 stdin；解析 NDJSON（`session` / `status` / `thinking` / `text` / `tool_call` / `tool_result` / `final` / `error`），仅 `final` 视为结算，其余 exit 0 记 `blocked` |
+| 探针 | `probe()` 用 `path.resolve(bin)` 解析裸命令 → `<cwd>/dsh` 必然 ENOENT；`health()` 只做 `which` 故 CLI 显示假阳性；probe 无 CLI 入口 | `_resolveBinary()` 按 PATH/PATHEXT 解析；`health({probe:true})` 叠加 probe 结果；新增 `agent adapter probe <id>`；CLI 派发前传 `verifyTransport: true` |
+
+附带一致性修复：`discover()` 探测前不再宣称 `stdio-json-rpc` 可用（`transport_supported=[]`、`transport:null`、`maturity:"experimental"`）；`host-runtime-snapshots` 移除 dsh 两条过时 `missing_*` 限制并新增 `transport_unverified`；`agent discover --adapter-type dsh` 接受 EXT 联合表；`dsh:<id>` 前缀解析落地（前缀与条目 `adapter_type` 不一致时报 `ERR_ADAPTER_PREFIX_MISMATCH`）。

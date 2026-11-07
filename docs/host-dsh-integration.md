@@ -1,27 +1,39 @@
 # DSH (DeepSeek Harness) Integration Guide
 
-> **Status**: `first-class dispatch adapter`（M-029 / P-006，2026-08-19 批准 `D-ARI-P006-promote-dsh-firstclass`）
-> **参考实现**: `lib/agents/adapters/dsh.js` + `lib/agents/adapters/dsh-bootstrap.js`
-> **注册路径**: `lib/agents/adapters/index.js#_seed()` try/catch + `lib/agents/registry-adapter-types.js#VALID_ADAPTER_TYPES_EXT` + `lib/coordination/adapter-core.js#REGISTERED_ADAPTER_IDS`
+> **Status**: `first-class dispatch adapter`（M-029 / P-006，2026-08-19 批准 `D-ARI-P006-promote-dsh-firstclass`）+ **M-034 WP-03 headless 传输修复**（2026-11-07，实测 `dsh 0.2.1-rc.5`）
+> **参考实现**: `lib/agents/adapters/dsh.js` · `lib/agents/registry-ext.js` · `lib/agents/adapters/dsh-bootstrap.js`
+> **注册路径**: `lib/agents/adapters/index.js#_seed()` try/catch + `lib/agents/registry-adapter-types.js#VALID_ADAPTER_TYPES_EXT` + `lib/agents/registry-ext.js`（additive 读取）+ `lib/coordination/adapter-core.js#REGISTERED_ADAPTER_IDS`
 
 DSH（DeepSeek Harness）以与 Pi / Claude Code / Codex CLI 同等地位接入 Cortex Agent：通过 `cortex-agent add dsh` 下发模板，通过 `agent dispatch-execute dsh:<id>` 执行派发。本文档与 `docs/host-claude-code-integration.md` / `docs/host-codex-integration.md` 对齐，共四节。
 
-## 1. 安装与 PATH
+## 1. 安装、PATH 与传输探测
 
 ```bash
-# 1. 安装 DSH CLI（参考 DSH 官方文档；本仓库不内置）
-#    确保 `dsh` 在 PATH 中：
+# 1. 安装 DSH CLI（参考 DSH 官方文档；本仓库不内置），确保 `dsh` 在 PATH 中
 which dsh
 
-# 2. 验证 adapter 探测
-cortex-agent agent adapter health dsh
-# 期望：ready: true（DSH CLI 存在且可解析）
+# 2. 严格探测（真实启动面证据：版本 + help 摘要 + headless profile）
+cortex-agent agent adapter probe dsh
+# 期望：status=ready ready=true transport_supported=text-headless-v1
 
-# 3. 可选：DSH_BIN 环境变量覆盖默认 "dsh" 二进制路径（与 PI_BIN / CODEX_BIN 同位）
+# 3. 健康检查（现在会叠加 probe 结果，不再只做 which）
+cortex-agent agent adapter health dsh
+# 期望：status=ok ready=true，details.transport_status=ready
+
+# 4. 可选：DSH_BIN 覆盖默认 "dsh"（与 PI_BIN / CODEX_BIN 同位）
 export DSH_BIN=/custom/path/to/dsh
 ```
 
-> **fail-closed 语义**：DSH CLI 未安装 / 不在 PATH 时，`health()` 返回 `ready: false`（`ERR_ADAPTER_SPAWN`），`invoke()` 写 `error.json` + `rollback.json` 后返回结构化失败；不影响其他宿主。
+**探测四态 + fail-closed**：
+
+| 状态 | 含义 | invoke 行为 |
+| :--- | :--- | :--- |
+| `ready` | 版本可识别 + help 含 headless profile | 允许 spawn |
+| `degraded` | 二进制可达但 help 无 headless | 拒绝 spawn |
+| `unsupported` | 二进制缺失 / 版本形状不识别 / 参数被拒 / 超时 | 拒绝 spawn（`ERR_DSH_TRANSPORT_UNSUPPORTED`） |
+| `unknown` | 探测未运行 | 仅当调用方未要求 `verifyTransport` 时可 spawn |
+
+> 裸命令 `dsh` 会按 `PATH` 解析（与 shell 行为一致）；解析不到时报 `fail_closed_reasons=["binary_not_found"]`。
 
 ## 2. DSH → Cortex agent 注册
 
@@ -31,7 +43,7 @@ cortex-agent init
 
 # 2. 添加 DSH 平台集成
 cortex-agent add dsh
-# 产物：
+# 产物（写入当前目录，无 --project 参数）：
 #   .dsh/settings.json   （skills/prompts 指向 .agent/，merge 保留用户已有配置）
 #   .dsh/README.md
 #   .dsh/AGENTS.md
@@ -42,13 +54,30 @@ cortex-agent agent adapter list          # 应包含 dsh
 cortex-agent list                        # 已安装平台应包含 dsh
 ```
 
-**Agent 条目**（`.agent/agents/<id>.json`）使用 `external.adapter_type = "dsh"`。该类型经 `VALID_ADAPTER_TYPES_EXT`（additive 扩展）校验通过；`lib/agents/registry.js`（M-002 frozen）保持零修改。
+**Agent 条目**（`.agent/agents/<id>.json`）使用 `external.adapter_type = "dsh"`：
+
+```json
+{
+  "schema_version": 1,
+  "agent_id": "Worker-A",
+  "role": "implementer",
+  "model": "deepseek-v4",
+  "started_at": "2026-11-07T00:00:00.000Z",
+  "status": "running",
+  "capabilities": ["code_review"],
+  "external": { "adapter_type": "dsh" }
+}
+```
+
+校验路径：`lib/agents/registry.js`（M-002 frozen）保持不变，其 `VALID_ADAPTER_TYPES` **仍然不含** `dsh`；需要 EXT 类型的调用方走 `lib/agents/registry-ext.js#readAgentExt`（先跑冻结校验，仅在 `ERR_INVALID_ADAPTER_TYPE` 时用 M-002 ∪ EXT 联合表重校验 adapter_type，其余字段仍走原校验）。`agent discover` / `agent invoke` / `agent dispatch-execute` 均使用该 additive 读取器；未知类型依旧 fail closed。
 
 ## 3. dispatch / cancel / report 调用范例
 
 ```bash
-# 显式手动派发（需要 agent 条目已注册且 external.adapter_type === "dsh"）
-cortex-agent agent dispatch-execute dsh:Worker-A "review the schema"
+# 显式手动派发。`dsh:` 前缀是可选的 adapter 限定：会校验条目
+# external.adapter_type === "dsh"；不写前缀时按条目自身 adapter_type 路由。
+cortex-agent agent dispatch-execute dsh:Worker-A "review the schema" --timeout 120
+cortex-agent agent dispatch-execute Worker-A "review the schema"     # 等价
 
 # 显式加载 bootstrap（可选，等价于 _seed() 自动注册）
 NODE_OPTIONS="--require ./lib/agents/adapters/dsh-bootstrap.js" \
@@ -58,34 +87,56 @@ NODE_OPTIONS="--require ./lib/agents/adapters/dsh-bootstrap.js" \
 #   request.json / result.json / error.json / rollback.json / rollback-failed.json
 ```
 
-**JSON-RPC 协议形状**（P-006 §4.3 假设；MS-003 由 fake binary 测试覆盖）：
+**真实调用形状**（`dsh 0.2.1-rc.5` 实测）：
 
 ```text
-$ dsh --json --run-id <runId> --task "<task>" [--input <input>] [--config <configRef>] [--model <model>]
-  stdin  : JSON-RPC 2.0 request（单行 / LF-terminated）
-  stdout : JSON-RPC 2.0 response（plain JSON 或 Content-Length framing）
+$ dsh --profile headless [--json] [--session-id <id>] -
+  stdin  : 任务正文（`-` = 从 stdin 读取；多行安全，无 shell 转义风险）
+  stdout : --json 时为 NDJSON 运行事件流：
+             {"type":"session",...}
+             {"type":"status","phase":"turn_start|step_start|step_end|turn_end",...}
+             {"type":"thinking","text":...}
+             {"type":"text","text":...}
+             {"type":"tool_call",...} / {"type":"tool_result",...,"status":...}
+             {"type":"final","text":...}        <- 终止/结算信号
+             {"type":"error","message":...}      <- 失败
   stderr : diagnostics（non-JSON）
 ```
 
-**6 类失败模式**（全部写 `error.json` + `rollback.json` 或 `rollback-failed.json` + `notify_parent: true`）：
+> `--model` / `--config` 在 headless 面没有对应参数：适配器把它们记录进 `request.json`（`model_ref` / `config_ref`）供溯源，实际由 DSH profile 决定。
+
+**状态契约**（P-008 / VC-034-001-02）：
+
+| status | 条件 | journal |
+| :--- | :--- | :--- |
+| `ok` | exit 0 **且** 观测到 `{"type":"final"}` | `result.json` + `rollback.json(status=completed)` |
+| `blocked` | exit 0 但无终止事件（`turn_end` 不算结算） | `result.json(status=blocked, reason=missing_settled_signal)` + `rollback.json(status=blocked)` |
+| `failed` | spawn 失败 / 非零退出 / `{"type":"error"}` / stdout 不可解析 | `error.json` + `rollback.json` |
+| `timeout` | 适配器侧 SIGTERM → 1.5s SIGKILL | `error.json` + `rollback.json` |
+
+**失败码**：
 
 | 场景 | error code |
 | :--- | :--- |
 | binary 缺失 / spawn 失败 | `ERR_ADAPTER_SPAWN` |
+| probe 未通过（`verifyTransport`） | `ERR_DSH_TRANSPORT_UNSUPPORTED` |
+| 缺少 task / input | `ERR_DSH_TASK_REQUIRED` |
 | 非零退出（含 `exit_code` / `signal` / stderr 摘录） | `ERR_DISPATCH_FAILED` |
-| 超时（SIGTERM → 1.5s SIGKILL 兜底） | `ERR_DISPATCH_TIMEOUT` |
-| stdout 非 JSON / 空 | `ERR_JSONRPC_PARSE` |
-| JSON-RPC error envelope | `ERR_DSH_<code>` |
+| 超时 | `ERR_DISPATCH_TIMEOUT` |
+| stdout 无机器可读事件 / 空 | `ERR_DSH_EVENT_PARSE` |
+| `{"type":"error"}` 事件（优先于退出码） | `ERR_DSH_<code>` |
+| 失败的 turn（`status/phase=turn_end` 且 `reason.kind="error"`） | `ERR_DSH_<reason.error.code>`（如实测的 `ERR_DSH_MISSING_CREDENTIAL`） |
 | rollback 写失败 | `rollback-failed.json` + `notify_parent: true` |
 
 ## 4. 已知限制
 
-1. **协议假设未固化**：DSH CLI 真实协议与 §3 假设是否一致尚未在仓库内固化证据。实施期 `health()` 只做 binary 探测；`discover().transport` 在验证真实 CLI 前保持 `stdio-json-rpc` 假设。若真实 CLI 不兼容，需在后续提案中把 transport 改为探测结果并调整 `_parseJsonRpc`。
-2. **tool gate 未启用**：`tool.before.observe` / `tool.before.block` 标记 `unsupported`（P-001 冻结词汇），待 M-018（P-006 Phase 5）验证 DSH 真实 hook 能力后另行接入。
-3. **不读取会话存储**：dispatch adapter 不读 `~/.dsh/sessions/`；usage 测量由 `scripts/dsh-usage-sync.js`（shadow）单独维护，两者互不依赖。
-4. **无自动 dispatch**：DSH agent 保持 opt-in；`cortex-agent add dsh` 不启用 daemon / 自动调度。
-5. **零 npm 依赖**：`dsh.js` / `dsh-bootstrap.js` 只用 Node.js 内置模块（`node:child_process` / `node:fs` / `node:path`），继承 `bin/cli.js` 零依赖原则。
+1. **tool gate 未启用**：`tool.before.observe` / `tool.before.block` 标记 `unsupported`（P-001 冻结词汇），待 M-018 验证 DSH 真实 hook 能力后另行接入。
+2. **不读取会话存储**：dispatch adapter 不读 `~/.dsh/sessions/`；usage 测量由 `scripts/dsh-usage-sync.js`（shadow）单独维护，两者互不依赖。
+3. **无自动 dispatch**：DSH agent 保持 opt-in；`cortex-agent add dsh` 不启用 daemon / 自动调度。`cortex-agent dispatch` 仍是 Phase 0 dry-run 契约面（`dispatch execute` 返回 `PHASE_ZERO_STUB`），真实派发只走 `agent dispatch-execute`。
+4. **通知泵不路由 dsh**：`lib/coordination/notification-cli.js#ADAPTER_WHITELIST` 只含 `noop|claude-code|codex|webhook`，且 `notification-host.js#resolveAdapter` 没有 dsh 投递实现。`notification pump --adapter dsh` 会在参数校验阶段被拒绝（fail closed），不会静默假装投递。
+5. **`.dsh/settings.json` 与 MCP 配置待核实**：`add dsh` 写出的 `.dsh/settings.json` 采用 `{skills,prompts}` 形状，与 DSH 0.2.x 的 `$DSH_HOME/settings.yaml`（`ui-*` / `locale` / `llm-*` 命名空间）不同构；`mcp install dsh` 写入 `~/.config/dsh/mcp.json`，当前未在 DSH 0.2.1 包内找到该路径的消费证据。二者目前按"预留/未证实"对待，接入生产前需实测。
+6. **零 npm 依赖**：`dsh.js` / `dsh-bootstrap.js` / `registry-ext.js` 只用 Node.js 内置模块，继承 `bin/cli.js` 零依赖原则。
 
 ---
 
-> 返回：[平台集成](./platform-integration.md) | [Adapter Authoring](./architecture/adapter-authoring.md)
+> 返回：[平台集成](./platform-integration.md) | [Adapter Authoring](./architecture/adapter-authoring.md) | [DSH 架构决策](./architecture/dsh-host-adapter.md)

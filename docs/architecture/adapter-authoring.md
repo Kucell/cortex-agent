@@ -79,7 +79,7 @@ Returns an object with:
 | `protocol`    | string              | ✅        | Wire protocol version. Use `"external_v1"` for adapters that follow the M-003 contract. |
 | `capabilities`| string[]            | ✅        | Free-form tags. Surfaced in MCP `tools/list`. |
 | `schema`      | object              | optional | `{ request, response, journal }` — schema versions of the wire shapes. |
-| `transport`   | string              | optional | `"stdio-json-rpc"` / `"http"` / `"cli-spawn"` — what the adapter uses to talk to the runtime. |
+| `transport`   | string              | optional | `"stdio-json-rpc"` / `"text-headless-v1"` / `"http"` / `"cli-spawn"` — what the adapter uses to talk to the runtime. |
 | `cli`         | object              | optional | `{ bin, shell, ... }` — vendor CLI hints for debugging. |
 
 `discover()` is also the place to document **which env vars or config paths
@@ -895,12 +895,35 @@ approved 2026-08-19). Reference implementation:
 It passes `validateCapabilityDescriptor` from
 `lib/runtime-adapters/capability-contract.js`.
 
+**Launch surface (M-034 WP-03, verified 2026-11-07 against dsh 0.2.1-rc.5)**
+
+The real CLI is `dsh --profile headless [--json] [--session-id <id>] -`, with
+the task on stdin and a newline-delimited run projection on stdout. The
+pre-M-034 `--json --run-id --task` + JSON-RPC shape does not exist and is
+retired. `probe()` classifies the host as `ready | degraded | unsupported |
+unknown`; `agent adapter probe dsh` exposes it and `dispatch-execute` passes
+`verifyTransport: true` so an unproven surface fails closed with
+`ERR_DSH_TRANSPORT_UNSUPPORTED` before spawning. Only a terminal
+`{"type":"final"}` event yields `ok`; exit 0 without it is `blocked`
+(`missing_settled_signal`), per P-008.
+
+**Additive registry read**
+
+M-002's `registry.js` stays frozen (its `VALID_ADAPTER_TYPES` still excludes
+`dsh`). Callers that must load an EXT-typed agent entry use
+`lib/agents/registry-ext.js#readAgentExt`, which runs the frozen validation
+first and only re-validates `adapter_type` against the M-002 ∪ EXT union when
+the frozen check rejects it. Every other field still goes through the
+canonical validator, and unknown adapter types remain
+`ERR_INVALID_ADAPTER_TYPE`.
+
 **Security boundary**
 
 The dispatch adapter never reads `~/.dsh/sessions/` (session envelope
 backfill is owned by `scripts/dsh-usage-sync.js`). Fail-closed when the DSH
 CLI is absent: `health()` → `ready: false`, `invoke()` →
-`ERR_ADAPTER_SPAWN`. DSH_BIN env override mirrors `PI_BIN` / `CODEX_BIN` /
+`ERR_DSH_TRANSPORT_UNSUPPORTED` (or `ERR_ADAPTER_SPAWN` when the gate is
+bypassed). DSH_BIN env override mirrors `PI_BIN` / `CODEX_BIN` /
 `CLAUDE_CODE_BIN` / `MINIMAX_BIN`.
 
 ---
