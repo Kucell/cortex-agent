@@ -33,7 +33,7 @@ export DSH_BIN=/custom/path/to/dsh
 | `unsupported` | 二进制缺失 / 版本形状不识别 / 参数被拒 / 超时 / headless profile 无法启动 | 拒绝 spawn（`ERR_DSH_TRANSPORT_UNSUPPORTED`） |
 | `unknown` | 探测未运行 | 仅当调用方未要求 `verifyTransport` 时可 spawn |
 
-> probe 执行三条有界命令：`dsh --version`、`dsh --help`（各 5s）、`dsh --profile headless --help`（15s，超时重试一次）。最后一条用于证明 profile 真能启动——help 文本里出现 "headless" 只是示例，不能作为可用性证据；成功还要求 stdout 含 `Usage: dsh --profile headless`，防止包装器转发 launcher help 蒙混。probe 结果回报 `profile.exit_code` / `profile.ok`。注意：启动 profile 会让 dsh 初始化自己的 `$DSH_HOME/profiles/headless/cordis.yml`（实测 mtime 变化），适配器本身不解析任何 dsh 配置，但不要假设 probe 对 `$DSH_HOME` 零写入。
+> probe 执行三条有界命令：`dsh --version`、`dsh --help`（各 5s）、`dsh --profile headless --help`（15s，超时重试一次）；最坏情况会阻塞约 40s（5+5+15+15），CLI 同步等待。最后一条用于证明 profile 真能启动——help 文本里出现 "headless" 只是示例，不能作为可用性证据；成功还要求 stdout 含 `Usage: dsh --profile headless`，防止包装器转发 launcher help 蒙混。probe 结果回报 `profile.exit_code` / `profile.ok`。注意：启动 profile 会让 dsh 初始化自己的 `$DSH_HOME/profiles/headless/cordis.yml`（实测 mtime 变化），适配器本身不解析任何 dsh 配置，但不要假设 probe 对 `$DSH_HOME` 零写入。
 
 > 裸命令 `dsh` 会按 `PATH` 解析（与 shell 行为一致）；解析不到时报 `fail_closed_reasons=["binary_not_found"]`。
 

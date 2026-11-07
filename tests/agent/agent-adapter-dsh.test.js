@@ -934,6 +934,32 @@ test("M-034 MS-001 discover(): transport_supported + transport_unsupported + pro
   assert.equal(before.supported_profile, null);
 });
 
+test("M-034 WP-03: discover() stops advertising an expired probe cache", () => {
+  const a = new DshAdapter({ bin: "/bin/true", shell: false });
+  a._setProbeCache({
+    status: "ready",
+    ready: true,
+    captured_at: new Date().toISOString(),
+    binary_path: "/bin/true",
+    version: { major: 0, minor: 2, patch: 1, raw: "0.2.1", out_excerpt: "0.2.1", recognised: true },
+    help: { sha256: "a".repeat(64), exit_code: 0, has_headless_profile: true },
+    profile: { exit_code: 0, ok: true },
+    supported_transport: "text-headless-v1",
+    supported_profile: "headless",
+    unsupported_transports: PROBE_UNSUPPORTED_TRANSPORTS,
+    fail_closed_reasons: [],
+  });
+  a._probeCacheExpiresAt = Date.now() - 1;
+  const d = a.discover();
+  assert.equal(d.transport_status, "unknown");
+  assert.equal(d.transport_verified, false);
+  assert.deepEqual(d.transport_supported, []);
+  assert.equal(d.supported_profile, null);
+  assert.equal(d.maturity, "experimental");
+  // The stale summary stays inspectable, just never as a verified transport.
+  assert.equal(d.probe_summary.help_sha256, "a".repeat(64));
+});
+
 // VC-034-001-03 / VC-034-001-04: 6 fail-closed classes (per P-008 §6 AC-P008-17).
 //
 // We reuse a single fake-dsh-per-mode scaffold so the test file stays readable.
