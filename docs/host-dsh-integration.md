@@ -180,6 +180,8 @@ cortex-agent agent dispatch-batch --tasks ./tasks.json --concurrency 2 --output 
 4. **通知泵对 dsh 是显式 deferred**：`notification-cli.js#ADAPTER_WHITELIST` 现在包含 `dsh`，但 `notification-host.js#resolveAdapter("dsh")` 返回经注册的 deferred adapter（`hostAvailable:false`，`deliver` → `status=deferred` / `ERR_NOTIFICATION_ADAPTER_UNAVAILABLE`）。原因：dsh 0.2.1-rc.5 没有 session 注入/唤醒 API（CLI 只有一次性 `--profile headless`），无法在不额外起模型回合的前提下投递通知。该注册让 pump 以明确的能力错误失败关闭，而不是 `ERR_NOTIFICATION_ADAPTER: adapter is not registered`；未来若 dsh 提供注入面，再替换为真实投递。
 5. **`.dsh/settings.json` 与 MCP 配置待核实**：`add dsh` 写出的 `.dsh/settings.json` 采用 `{skills,prompts}` 形状，与 DSH 0.2.x 的 `$DSH_HOME/settings.yaml`（`ui-*` / `locale` / `llm-*` 命名空间）不同构；`mcp install dsh` 写入 `~/.config/dsh/mcp.json`，当前未在 DSH 0.2.1 包内找到该路径的消费证据。二者目前按"预留/未证实"对待，接入生产前需实测。
 6. **零 npm 依赖**：`dsh.js` / `dsh-bootstrap.js` / `registry-ext.js` 只用 Node.js 内置模块，继承 `bin/cli.js` 零依赖原则。
+7. **`--session-id` 是 DSH 专属**：只有 `dsh` 适配器把它翻译成 `dsh --profile headless --json --session-id <id> -`；其他适配器会静默忽略这个参数（不会报错，也不会续接任何会话）。
+8. **批调度不做写隔离**：`agent dispatch-batch` 按任务起独立运行与独立 DSH 会话，但**不会**为每个任务创建 worktree，也不做 lease/permit 授权——并发写同一工作树会互相覆盖。需要隔离时请自行给每个任务分配 worktree，并逐个任务派发。
 
 ---
 
