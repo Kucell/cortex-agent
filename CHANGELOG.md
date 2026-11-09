@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- 下一个版本的条目写在这里 -->
 
+### Added
+
+- `cortex-agent schedule <add|list|remove|run|daemon>` — recurring model runs scheduled by cortex itself instead of an external cron entry that shells out to the CLI. Definitions live in `.agent/schedules/<id>.json` (agent, task or task file, `every` interval or 5-field `cron`, optional `session_id`, concurrency, timeout); each tick executes through the normal `agent dispatch-batch` path, so scheduled runs produce the same journals, statuses, and exit codes as manual ones. `schedule run` performs one due-check tick (an external timer can drive it); `schedule daemon --interval N` is the built-in loop. Run evidence is written under `.agent/runtime/schedules/<id>/runs/`, which the template `.gitignore` now ignores.
+
 ## [1.15.11] - 2026-11-09
 
 ### Added

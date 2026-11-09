@@ -154,3 +154,30 @@ flowchart LR
 - 只有每任务超时，没有批次级总时限。
 - 批调度不做写隔离与 lease/permit（与 `dispatch-execute` 一致；lease/fencing 目前
   只存在于 M-002 `agent launch`）。
+
+## 10. 2026-11-09 定时触发：把调度做进 cortex
+
+`cortex-agent schedule` 把「什么时候该起一次运行」从外部 cron 移进 cortex 自身：
+
+- **定义**：`.agent/schedules/<id>.json`（`agent_id` + `task` 或 `tasks_file` +
+  `every`/`cron` + 可选 `session_id` / `concurrency` / `timeout`）。定义是配置，
+  可 review、可入库；`last_run_at` / `last_status` 也写回同一文件。
+- **执行**：一次 tick 复用 `dispatchBatch`，因此定时运行与手动 `agent dispatch-batch`
+  产出同一套 journal、同一套状态判定与退出码（0 / 3，参数错误 2），不会出现
+  "定时路径另一套语义"。
+- **时钟**：`schedule run` 做一次到期检查（可由 cron/launchd 驱动）；
+  `schedule daemon --interval N` 是内置循环。`tick()` 本身不 sleep、`now` 可注入，
+  所以测试可以完全确定性地验证到期判定。
+- **到期纪律**：`every` 从上一次运行时间起算；`cron` 一个匹配分钟内只跑一次，
+  避免 daemon 与手动 run 在同一分钟重复触发。
+- **证据**：每次运行写 `.agent/runtime/schedules/<id>/runs/<stamp>.json`，模板
+  `.gitignore` 忽略 `runtime/schedules/`；没有把运行记录混进可入库的配置目录。
+
+诚实边界：
+
+- 同一项目假定**单写者**：没有跨进程锁，两个 daemon 并发会重复触发、互相覆盖
+  `last_run_at`。
+- 调度只负责"起运行"，不提供写隔离、lease/fencing 或批次级总时限（这些仍是
+  `dispatch-batch` 的既有边界）。
+- headless 的凭证来自启动环境，daemon 必须带着 `DEEPSEEK_API_KEY` 等变量常驻；
+  否则每次运行都会以 `ERR_DSH_MISSING_CREDENTIAL` 失败（响亮，不会静默成功）。

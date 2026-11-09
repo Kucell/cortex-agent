@@ -173,11 +173,44 @@ cortex-agent agent dispatch-batch --tasks ./tasks.json --concurrency 2 --output 
 - 任务文件可用裸数组或 `{"tasks":[...]}`；每项必须有 `agent_id`，以及 `task` 或 `input` 之一；`label` 唯一（默认 `task-NN`）。
 - `--session-id` 只被 `dsh` 适配器翻译成命令行参数；其他适配器会忽略它并打印一行 stderr 警告（不中断运行）。
 
-## 5. 已知限制
+## 5. 定时触发（cortex 内置 schedule）
+
+不需要外部 cron 直接调 CLI：调度定义、到期判定和运行记录都在 cortex 里，执行仍走正常的 dispatch 路径。
+
+```bash
+# 每 30 分钟让同一个 DSH agent 做一次巡检（每次新会话）
+cortex-agent schedule add --id nightly-audit --agent dsh:worker \
+  --task "检查 .agent/runtime/dispatch 下最近一次失败并给出结论" --every 30m
+
+# 工作日 09:00 触发（5 段 cron：分 时 日 月 周）
+cortex-agent schedule add --id morning-brief --agent dsh:worker \
+  --tasks ./briefs/tasks.json --cron "0 9 * * 1-5"
+
+# 续接固定会话（同一个 session 上反复追问）
+cortex-agent schedule add --id followup --agent dsh:worker \
+  --task "继续上一轮的方案，给出下一步" --session-id session-b9ed020a-... --every 2h
+
+cortex-agent schedule list
+cortex-agent schedule run            # 单次到期检查（外部 cron/launchd 可驱动它）
+cortex-agent schedule daemon --interval 60   # cortex 自带循环，前台常驻
+cortex-agent schedule remove nightly-audit
+```
+
+要点：
+
+- **定义是配置**：`.agent/schedules/<id>.json`（含 agent、task 或 tasks_file、every/cron、可选 session_id/concurrency/timeout、`last_run_at`/`last_status`），可入库、可 review。
+- **运行记录是本地产物**：`.agent/runtime/schedules/<id>/runs/<stamp>.json`，模板 `.gitignore` 已忽略 `runtime/schedules/`。
+- **执行复用 `agent dispatch-batch`**：同一个 journal 目录、同一套 `ok/partial/failed` 判定；成功的 tick 退出 0，任一 schedule 运行失败退出 3，定义/参数错误退出 2。
+- **到期纪律**：`every` 从上一次运行时间起算；`cron` 一个匹配分钟内只触发一次（daemon 与手动 `schedule run` 同时存在也不会重复跑）。
+- **单写者假设**：同一项目不要同时跑两个 `schedule daemon`；`schedule run` 也不适合与 daemon 并发执行（没有跨进程锁）。
+- **凭证**：headless 只读启动环境（`DEEPSEEK_API_KEY` 等），不读 `~/.dsh/.credentials.yaml`；daemon 需要带着这个环境启动。
+- **不注入运行中的 GUI 会话**：schedule 触发的是新的一次 headless 运行（或按 `--session-id` 续接的历史会话），不会把消息塞进正在跑的 GUI 回合。
+
+## 6. 已知限制
 
 1. **tool gate 未启用**：`tool.before.observe` / `tool.before.block` 标记 `unsupported`（P-001 冻结词汇），待 M-018 验证 DSH 真实 hook 能力后另行接入。
 2. **不读取会话存储**：dispatch adapter 不读 `~/.dsh/sessions/`；usage 测量由 `scripts/dsh-usage-sync.js`（shadow）单独维护，两者互不依赖。probe 会启动 headless profile，dsh 可能刷新 `$DSH_HOME/profiles/headless/cordis.yml` 等自身运行时文件（只影响 dsh，不影响 cortex 数据）。
-3. **无自动 dispatch**：DSH agent 保持 opt-in；`cortex-agent add dsh` 不启用 daemon / 自动调度。`cortex-agent dispatch` 仍是 Phase 0 dry-run 契约面（`dispatch execute` 返回 `PHASE_ZERO_STUB`），真实派发只走 `agent dispatch-execute`。
+3. **无隐式自动 dispatch**：DSH agent 仍保持 opt-in，`cortex-agent add dsh` 不会启动任何后台循环。定时触发需要显式创建 schedule 并由 `schedule daemon`（或外部计时器调 `schedule run`）驱动；`cortex-agent dispatch` 命令行本身仍是 Phase 0 dry-run 契约面（`dispatch execute` 返回 `PHASE_ZERO_STUB`），真实派发走 `agent dispatch-execute` / `agent dispatch-batch`。
 4. **通知泵对 dsh 是显式 deferred**：`notification-cli.js#ADAPTER_WHITELIST` 现在包含 `dsh`，但 `notification-host.js#resolveAdapter("dsh")` 返回经注册的 deferred adapter（`hostAvailable:false`，`deliver` → `status=deferred` / `ERR_NOTIFICATION_ADAPTER_UNAVAILABLE`）。原因：dsh 0.2.1-rc.5 没有 session 注入/唤醒 API（CLI 只有一次性 `--profile headless`），无法在不额外起模型回合的前提下投递通知。该注册让 pump 以明确的能力错误失败关闭，而不是 `ERR_NOTIFICATION_ADAPTER: adapter is not registered`；未来若 dsh 提供注入面，再替换为真实投递。
 5. **`.dsh/settings.json` 与 MCP 配置待核实**：`add dsh` 写出的 `.dsh/settings.json` 采用 `{skills,prompts}` 形状，与 DSH 0.2.x 的 `$DSH_HOME/settings.yaml`（`ui-*` / `locale` / `llm-*` 命名空间）不同构；`mcp install dsh` 写入 `~/.config/dsh/mcp.json`，当前未在 DSH 0.2.1 包内找到该路径的消费证据。二者目前按"预留/未证实"对待，接入生产前需实测。
 6. **零 npm 依赖**：`dsh.js` / `dsh-bootstrap.js` / `registry-ext.js` 只用 Node.js 内置模块，继承 `bin/cli.js` 零依赖原则。

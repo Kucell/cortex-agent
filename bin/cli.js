@@ -52,6 +52,7 @@ const {
 // `execute` / unknown / no-subcommand → lib/automation-stubs (Phase 0 stub).
 // `daemon` and `trigger` keep their current phaseZeroAutomation binding.
 const { dispatchCommand } = require("../lib/dispatch/cli.js");
+const { scheduleCommand } = require("../lib/commands/schedule-cli");
 
 // M-002 MS-002: Memory subsystem CLI surface.
 // `memory <subcommand>` lives in lib/memory/cli.js and routes
@@ -762,6 +763,10 @@ async function initModeGeneral() {
     case "query":       managementQuery(ctx); break;
     case "memory":      memoryCommand(ctx); break;
     case "dispatch":    await dispatchCommand(ctx); break;
+    // Recurring model runs owned by cortex (definitions under .agent/schedules/,
+    // execution through the normal dispatch path, `schedule daemon` as the
+    // built-in loop). Kept separate from the Phase 0 `daemon` stub below.
+    case "schedule":    process.exitCode = await scheduleCommand(ctx); break;
     case "daemon":
     case "trigger":     phaseZeroAutomation(ctx); break;
     case "dashboard":   dashboard(ctx); break;

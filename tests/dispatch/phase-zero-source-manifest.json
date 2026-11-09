@@ -26,6 +26,7 @@
     "lib/automation/mission-completion-hook.js",
     "lib/automation/proposal-to-bridge-gate.js",
     "lib/automation/proposal-to-mission.js",
+    "lib/automation/scheduler.js",
     "lib/automation/stubs.js",
     "lib/branch/naming.js",
     "lib/branch/registry.js",
@@ -73,6 +74,7 @@
     "lib/commands/prompt.js",
     "lib/commands/proposal-share.js",
     "lib/commands/reconcile.js",
+    "lib/commands/schedule-cli.js",
     "lib/commands/session.js",
     "lib/commands/skill-browse.js",
     "lib/commands/surface/agent.js",
@@ -176,13 +178,13 @@
     "lib/governed/launch-cli.js",
     "lib/governed/launcher.js",
     "lib/governed/pi-launch.js",
-    "lib/graphify/density.js",
     "lib/graphify/density-baseline.js",
     "lib/graphify/density-files.js",
     "lib/graphify/density-gate.js",
     "lib/graphify/density-lock.js",
     "lib/graphify/density-pending.js",
     "lib/graphify/density-update.js",
+    "lib/graphify/density.js",
     "lib/graphify/full-rebuild-runner.js",
     "lib/graphify/hook.js",
     "lib/graphify/index.js",
@@ -286,7 +288,7 @@
     "templates/_shared/.agent/waitpoints/waitpoint.schema.json"
   ],
   "protected_source_blobs": {
-    "bin/cli.js": "52ea1f9d9cf1ac2bd22e9be452b5dcdaccba0457",
+    "bin/cli.js": "b32759683fafa35a04a00c2e103a06299539c44b",
     "lib/dispatch/execute.js": "ad89e6bd06ce20005b9d1037195dfde657dedb57"
   },
   "builtins": [
@@ -428,6 +430,7 @@
     "The dedicated workflow requires exact-head materialization; ordinary suite runs verify the staged source inventory and report index-verified-working-tree provenance, which is not release HEAD evidence.",
     "The bin/cli.js protected blob advanced with the reviewed read-only migration inspect/plan route (P-001/P-002, independent review PASS). The migration route never writes: it prints JSON, exits 0 when the scoped format inspection has no unresolved findings, 1 for unresolved input and 2 for unsupported stages. Phase 0 dispatch behaviour is unchanged.",
     "The bin/cli.js protected blob advanced with the managed permit-bridge serve entry. The new case only lazily loads lib/commands/permit-bridge-service-cli.js, opens an already provisioned store, binds loopback and prints two ports; it never creates a store, prints tickets, or changes existing Phase 0 commands.",
-    "The bin/cli.js protected blob advanced with the reviewed agent dispatch-batch routing entry, and the reviewed literal-require closure grows by lib/agents/registry-ext.js and lib/agents/batch-dispatch.js. registry-ext.js was added by the DSH adapter work and is eagerly required by lib/agents/cli.js and lib/agents/m003-cli.js, so the closure must carry it for the sandbox to start at all; batch-dispatch.js is the reviewed multi-task fan-out module behind agent dispatch-batch. The new case only routes the dispatch-batch subcommand; it writes only under .agent/runtime/dispatch/<batchId>/ through the already reviewed writeDispatchArtifact seam. Existing Phase 0 dispatch behaviour is unchanged."
+    "The bin/cli.js protected blob advanced with the reviewed agent dispatch-batch routing entry, and the reviewed literal-require closure grows by lib/agents/registry-ext.js and lib/agents/batch-dispatch.js. registry-ext.js was added by the DSH adapter work and is eagerly required by lib/agents/cli.js and lib/agents/m003-cli.js, so the closure must carry it for the sandbox to start at all; batch-dispatch.js is the reviewed multi-task fan-out module behind agent dispatch-batch. The new case only routes the dispatch-batch subcommand; it writes only under .agent/runtime/dispatch/<batchId>/ through the already reviewed writeDispatchArtifact seam. Existing Phase 0 dispatch behaviour is unchanged.",
+    "The bin/cli.js protected blob advanced with the reviewed cortex schedule entry, and the reviewed literal-require closure grows by lib/commands/schedule-cli.js and lib/automation/scheduler.js. schedule-cli.js is required eagerly by bin/cli.js and eagerly requires the scheduler module, so the closure must carry both for the sandbox to start; the scheduler writes only .agent/schedules/<id>.json (definitions) and .agent/runtime/schedules/<id>/runs/ (run evidence), and executes through the already reviewed dispatchBatch seam. Existing Phase 0 dispatch behaviour is unchanged."
   ]
 }
