@@ -65,7 +65,15 @@ function withScript(scripted, fn) {
 // ─── Test fixtures ───────────────────────────────────────────────────────────
 
 const baseConfig = { host: 'https://gitlab.example.com', default: { org: 'Kucell', repo: 'cortex-agent' } };
-const baseToken = 'glpat-test-token';
+const baseCred = 'test-token-not-a-secret';
+const currentMrResponse = {
+  status: 200,
+  body: { iid: 7, title: 'Old title', web_url: 'https://gitlab.example.com/mr/7', state: 'opened' },
+};
+const draftCurrentMrResponse = {
+  status: 200,
+  body: { iid: 7, title: 'Draft: old title', web_url: 'https://gitlab.example.com/mr/7', state: 'opened' },
+};
 const standardPutResponse = {
   iid: 7,
   web_url: 'https://gitlab.example.com/Kucell/cortex-agent/-/merge_requests/7',
@@ -86,8 +94,8 @@ test.afterEach(() => {
 
 test('updatePR: title only sends PUT with title payload', async () => {
   const result = await withScript(
-    [{ status: 200, body: standardPutResponse }],
-    () => gitlab.updatePR({ config: baseConfig, token: baseToken, pr_number: 7, title: 'New title' })
+    [currentMrResponse, { status: 200, body: standardPutResponse }],
+    () => gitlab.updatePR({ config: baseConfig, token: baseCred, pr_number: 7, title: 'New title' })
   );
   assert.equal(result.number, 7);
   assert.equal(result.state, 'opened');
@@ -97,7 +105,7 @@ test('updatePR: title only sends PUT with title payload', async () => {
 test('updatePR: close flag returns the closed state from API', async () => {
   const result = await withScript(
     [{ status: 200, body: { ...standardPutResponse, state: 'closed' } }],
-    () => gitlab.updatePR({ config: baseConfig, token: baseToken, pr_number: 7, close: true })
+    () => gitlab.updatePR({ config: baseConfig, token: baseCred, pr_number: 7, close: true })
   );
   assert.equal(result.state, 'closed');
 });
@@ -105,8 +113,8 @@ test('updatePR: close flag returns the closed state from API', async () => {
 test('updatePR: PUT failure surfaces as gitlab_update_failed error', async () => {
   await assert.rejects(
     withScript(
-      [{ status: 500, body: { message: 'internal error' } }],
-      () => gitlab.updatePR({ config: baseConfig, token: baseToken, pr_number: 7, title: 'x' })
+      [currentMrResponse, { status: 500, body: { message: 'internal error' } }],
+      () => gitlab.updatePR({ config: baseConfig, token: baseCred, pr_number: 7, title: 'x' })
     ),
     /gitlab_update_failed: HTTP 500/,
   );
@@ -117,10 +125,11 @@ test('updatePR: reviewers list — lookup success populates reviewer_ids and res
     [
       { status: 200, body: [{ id: 101, username: 'alice', state: 'active' }] },
       { status: 200, body: [{ id: 102, username: 'bob', state: 'active' }] },
+      currentMrResponse,
       { status: 200, body: { ...standardPutResponse, reviewers: [{ username: 'alice' }, { username: 'bob' }] } },
     ],
     () => gitlab.updatePR({
-      config: baseConfig, token: baseToken, pr_number: 7,
+      config: baseConfig, token: baseCred, pr_number: 7,
       title: 'Updated', reviewers: ['alice', 'bob']
     })
   );
@@ -132,7 +141,7 @@ test('updatePR: reviewer not found throws gitlab_reviewer_not_found', async () =
   await assert.rejects(
     withScript(
       [{ status: 200, body: [{ id: 101, username: 'someone-else', state: 'active' }] }],
-      () => gitlab.updatePR({ config: baseConfig, token: baseToken, pr_number: 7, reviewers: ['alice'] })
+      () => gitlab.updatePR({ config: baseConfig, token: baseCred, pr_number: 7, reviewers: ['alice'] })
     ),
     /gitlab_reviewer_not_found: alice/,
   );
@@ -142,7 +151,7 @@ test('updatePR: reviewer lookup HTTP failure throws gitlab_reviewer_lookup_faile
   await assert.rejects(
     withScript(
       [{ status: 404, body: { message: 'not found' } }],
-      () => gitlab.updatePR({ config: baseConfig, token: baseToken, pr_number: 7, reviewers: ['alice'] })
+      () => gitlab.updatePR({ config: baseConfig, token: baseCred, pr_number: 7, reviewers: ['alice'] })
     ),
     /gitlab_reviewer_lookup_failed: alice HTTP 404/,
   );
@@ -154,7 +163,7 @@ test('updatePR: ready=true without title fetches current MR and strips draft pre
       { status: 200, body: { iid: 7, title: 'Draft: New login flow', web_url: 'u', state: 'opened', draft: false } },
       { status: 200, body: { ...standardPutResponse, title: 'New login flow' } },
     ],
-    () => gitlab.updatePR({ config: baseConfig, token: baseToken, pr_number: 7, ready: true })
+    () => gitlab.updatePR({ config: baseConfig, token: baseCred, pr_number: 7, ready: true })
   );
   assert.equal(result.title, 'New login flow');
 });
@@ -162,7 +171,7 @@ test('updatePR: ready=true without title fetches current MR and strips draft pre
 test('updatePR: ready=true with explicit title uses the explicit title (no GET)', async () => {
   const result = await withScript(
     [{ status: 200, body: { ...standardPutResponse, title: 'Custom' } }],
-    () => gitlab.updatePR({ config: baseConfig, token: baseToken, pr_number: 7, ready: true, title: 'Custom' })
+    () => gitlab.updatePR({ config: baseConfig, token: baseCred, pr_number: 7, ready: true, title: 'Custom' })
   );
   assert.equal(result.title, 'Custom');
 });
@@ -171,7 +180,7 @@ test('updatePR: ready=true but GET current MR fails surfaces gitlab_status_faile
   await assert.rejects(
     withScript(
       [{ status: 500, body: { message: 'oops' } }],
-      () => gitlab.updatePR({ config: baseConfig, token: baseToken, pr_number: 7, ready: true })
+      () => gitlab.updatePR({ config: baseConfig, token: baseCred, pr_number: 7, ready: true })
     ),
     /gitlab_status_failed: HTTP 500/,
   );
@@ -179,16 +188,34 @@ test('updatePR: ready=true but GET current MR fails surfaces gitlab_status_faile
 
 test('updatePR: empty reviewers array does not invoke user lookup', async () => {
   const result = await withScript(
-    [{ status: 200, body: { ...standardPutResponse, title: 't' } }],
-    () => gitlab.updatePR({ config: baseConfig, token: baseToken, pr_number: 7, title: 't', reviewers: [] })
+    [currentMrResponse, { status: 200, body: { ...standardPutResponse, title: 't' } }],
+    () => gitlab.updatePR({ config: baseConfig, token: baseCred, pr_number: 7, title: 't', reviewers: [] })
   );
   assert.equal(result.title, 't');
 });
 
 test('updatePR: non-array reviewers does not invoke user lookup', async () => {
   const result = await withScript(
-    [{ status: 200, body: { ...standardPutResponse, title: 't' } }],
-    () => gitlab.updatePR({ config: baseConfig, token: baseToken, pr_number: 7, title: 't', reviewers: 'alice' })
+    [currentMrResponse, { status: 200, body: { ...standardPutResponse, title: 't' } }],
+    () => gitlab.updatePR({ config: baseConfig, token: baseCred, pr_number: 7, title: 't', reviewers: 'alice' })
   );
   assert.equal(result.title, 't');
+});
+
+test('updatePR: draft MR with a non-draft title is blocked unless ready=true', async () => {
+  await assert.rejects(
+    withScript(
+      [draftCurrentMrResponse],
+      () => gitlab.updatePR({ config: baseConfig, token: baseCred, pr_number: 7, title: 'feat: promote me' })
+    ),
+    /gitlab_draft_promotion_blocked: MR !7 is Draft/,
+  );
+});
+
+test('updatePR: ready=true allows promoting a draft MR with an explicit title', async () => {
+  const result = await withScript(
+    [{ status: 200, body: { ...standardPutResponse, title: 'feat: promote me' } }],
+    () => gitlab.updatePR({ config: baseConfig, token: baseCred, pr_number: 7, ready: true, title: 'feat: promote me' })
+  );
+  assert.equal(result.title, 'feat: promote me');
 });

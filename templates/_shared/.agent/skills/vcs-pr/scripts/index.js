@@ -207,6 +207,11 @@ function defaultBody(opts, ctx) {
   lines.push(`## 受管创建`);
   lines.push(`- 创建入口：vcs-pr`);
   lines.push(``);
+  // The R05 waiver must survive GitLab's ~2700-char description truncation,
+  // so it goes immediately after the marker and ahead of 提交范围.
+  lines.push(`## 大变更说明`);
+  lines.push(`- (超过 +500/-500 行时填写：明确“不可拆分”并给出具体理由)`);
+  lines.push(``);
   lines.push(`## 提交范围`);
   lines.push(`- branch: \`${opts.head}\` → \`${opts.base || ctx.cfg.default.base_branch || "main"}\``);
   if (ctx.cfg.default.org && ctx.cfg.default.repo) {
@@ -231,15 +236,42 @@ function defaultBody(opts, ctx) {
   lines.push("");
   lines.push(`## 风险与回滚`);
   lines.push(`- (填写)`);
-  lines.push("");
-  lines.push(`## 组件分支吸收与清理`);
-  lines.push(`- 不适用`);
   return lines.join("\n");
 }
 
+// Keep this alias set synchronized with the project's MR governance check
+// (for example `Tools/CI/check-mr-governance.mjs`) so a body written against
+// any accepted spelling still satisfies the R01 governance trace check.
+const MANAGED_MARKER_ALIASES = [
+  "受管创建",
+  "vcs-pr 创建",
+  "vcs-pr 受管创建",
+  "MR 创建入口",
+  "managed creation",
+  "managed",
+];
+const MANAGED_MARKER_PATTERN = new RegExp(
+  `^##[ \\t]+(?:${MANAGED_MARKER_ALIASES.join("|")})[ \\t]*\\r?\\n(?:[ \\t]*\\r?\\n)*[ \\t]*-[ \\t]*创建入口[ \\t]*[：:][ \\t]*vcs-pr[ \\t]*$`,
+  "m",
+);
+
 function ensureManagedCreationMarker(body) {
-  const marker = "## 受管创建\n- 创建入口：vcs-pr";
-  return body.includes(marker) ? body : `${marker}\n\n${body}`;
+  const source = body || "";
+  const markerPattern = new RegExp(MANAGED_MARKER_PATTERN.source, "gm");
+  const matches = [...source.matchAll(markerPattern)];
+  if (matches.length === 0) return `## 受管创建\n- 创建入口：vcs-pr\n\n${source}`;
+
+  const marker = matches[0][0];
+  const remainder = source.replace(markerPattern, "").trimStart();
+  return remainder ? `${marker}\n\n${remainder}` : marker;
+}
+
+// An update must not drop governance traceability just because the caller
+// supplied its own body file. Caller-supplied aliases are preserved verbatim;
+// a body with no marker at all gets the canonical heading prepended.
+function applyUpdateBody(body) {
+  if (body == null) return null;
+  return ensureManagedCreationMarker(body);
 }
 
 function loadBody(opts) {
@@ -381,7 +413,10 @@ async function main() {
   if (command === "update") {
     const bodyFile = flag("--body-file", argv);
     const body = bodyFile
-      ? fs.readFileSync(path.isAbsolute(bodyFile) ? bodyFile : path.join(process.cwd(), bodyFile), "utf8")
+      ? applyUpdateBody(fs.readFileSync(
+          path.isAbsolute(bodyFile) ? bodyFile : path.join(process.cwd(), bodyFile),
+          "utf8",
+        ))
       : null;
     const reviewers = (flag("--reviewers", argv) || "")
       .split(",")
@@ -570,4 +605,12 @@ function readReviewBody(argv) {
 if (require.main === module) {
   main().catch((err) => fail("orchestrator_error", err.message));
 }
-module.exports = { discoverActiveRunId, appendRunEvent };
+module.exports = {
+  discoverActiveRunId,
+  appendRunEvent,
+  defaultBody,
+  ensureManagedCreationMarker,
+  applyUpdateBody,
+  MANAGED_MARKER_PATTERN,
+  MANAGED_MARKER_ALIASES,
+};

@@ -233,6 +233,28 @@ async function updatePR(opts) {
     payload.title = current.body.title.replace(/^(?:Draft:\s*|WIP:\s*)/i, "");
   }
 
+  // Draft promotion is a semantic transition, not a side effect of fixing a
+  // typo in the title.  GitLab has no draft field on PUT /merge_requests —
+  // Draft-ness is carried entirely by the `Draft:` / `WIP:` title prefix
+  // (see createPR), so `update --title "feat(x): ..."` silently promotes a
+  // Draft MR to Ready.  Observed on MR !329: the create-time title
+  // `Draft: feat(automation): ...` was replaced by a corrective title update,
+  // flipping the MR to merge-ready and turning Draft-only governance warnings
+  // (R03/R04) into hard failures.  Fail closed unless the caller opts in.
+  if (payload.title && !ready && !/^(?:Draft:|WIP:)/i.test(payload.title)) {
+    const current = await send("GET", config.host, `/api/v4/projects/${pid}/merge_requests/${pr_number}`, token);
+    if (current.status !== 200) {
+      throw new Error(`gitlab_status_failed: HTTP ${current.status} ${current.raw?.slice(0, 200)}`);
+    }
+    if (isDraftMergeRequest(current.body)) {
+      throw new Error(
+        `gitlab_draft_promotion_blocked: MR !${pr_number} is Draft (current title ${JSON.stringify(current.body.title)}) `
+        + `but the requested title ${JSON.stringify(payload.title)} has no Draft:/WIP: prefix, which would promote it to Ready. `
+        + `Pass --ready to promote explicitly, or keep the Draft:/WIP: prefix.`,
+      );
+    }
+  }
+
   const res = await send("PUT", config.host, `/api/v4/projects/${pid}/merge_requests/${pr_number}`, token, payload);
   if (res.status !== 200) throw new Error(`gitlab_update_failed: HTTP ${res.status} ${res.raw?.slice(0, 200)}`);
   return {
