@@ -117,6 +117,35 @@ test("permit-bridge serve emits only ports and closes its service on signal", as
   } finally { f.cleanup(); }
 });
 
+test("permit-bridge serve reports the ticket agent port only when an agent runs", async () => {
+  const f = fixture();
+  const signalSource = new EventEmitter();
+  const lines = [];
+  try {
+    f.write();
+    const running = permitBridgeServiceCli({
+      args: ["permit-bridge", "serve", "--config", f.configPath],
+      cwd: f.root,
+    }, {
+      signalSource,
+      output: { log: (line) => lines.push(line), error: (line) => lines.push(line) },
+      startService: async () => ({
+        address: { port: 1234 },
+        revocationAddress: { port: 1235 },
+        agentAddress: { port: 1236 },
+        issueTicket: () => "secret-ticket",
+        close: async () => {},
+      }),
+    });
+    await new Promise(setImmediate);
+    assert.deepEqual(JSON.parse(lines[0]),
+      { ok: true, action: "serve", port: 1234, revocationPort: 1235, agentPort: 1236 });
+    assert.ok(!lines.join("").includes("secret-ticket"));
+    signalSource.emit("SIGTERM");
+    await running;
+  } finally { f.cleanup(); }
+});
+
 test("permit-bridge serve is routed by the CLI and rejects absent protected stores", () => {
   const f = fixture();
   try {
