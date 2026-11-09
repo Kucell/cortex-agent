@@ -9,10 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- 下一个版本的条目写在这里 -->
 
+## [1.15.11] - 2026-11-09
+
 ### Added
 
 - Multi-session DSH scheduling is now a first-class cortex surface. `agent dispatch-batch --tasks <file.json> [--concurrency N]` fans a task set out over the normal per-adapter `invoke()` path: every task gets its own run id, its own dispatch journal, and (by default) its own DSH session; the aggregate is written next to those journals with per-item status counts (`ok / blocked / timeout / failed`) and, for every task that reported one, the observed `session_id` (timed-out tasks report `null`, and the requested id is kept in a separate `requested_session_id` field so it can never be mistaken for a verified resume). Concurrency is opt-in (default 1, max 16) because parallel workers writing into one working tree collide — run them in separate worktrees.
 - `agent dispatch-execute` accepts `--session-id <id>`, and the DSH adapter now reports the session id it observed (`result.session_id`, taken from the run stream's `{"type":"session"}` event). Together these make a DSH session *resumable* across invocations: a first turn returns the id, a later invocation with `--session-id` continues the same conversation instead of opening a fresh one.
+
+### Fixed
+
+- The batch summary no longer blurs requested and observed sessions: `session_id` is what the adapter observed, `requested_session_id` is what the task file asked to resume, and a failed item reports no session id at all.
+- `agent dispatch-batch --concurrency` now fails with exit code 2 on a non-positive or non-numeric value instead of silently degrading to serial execution.
+- `agent dispatch-execute --session-id` warns on stderr when the target adapter is not `dsh` (the flag is DSH-specific and was silently ignored).
 
 ## [1.15.10] - 2026-11-09
 
