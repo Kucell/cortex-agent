@@ -166,11 +166,12 @@ cortex-agent agent dispatch-batch --tasks ./tasks.json --concurrency 2 --output 
 
 要点：
 
-- **每个任务一个 run_id、一个 journal**（`.agent/runtime/dispatch/<runId>/`），汇总写在 `<batchId>/batch.json`。
-- **每个任务一个独立 DSH 会话**（除非显式给 `session_id` 续接），汇总里回带各自的 `session_id`，便于后续续接。
-- **并发默认 1**：`--concurrency N` 显式开启并行（上限 16）。多个 worker 在同一工作树写文件会互相干扰，并行任务请放在各自的 worktree 里。
+- **每个任务一个 run_id、一个 journal**，汇总写在同一个 dispatch 目录下（目录由 `base.js#dispatchDir` 决定：默认 `.agent/runtime/dispatch/<runId>/`，若工作区使用 legacy 布局则是 `.agent-runtime/dispatch/<runId>/`，除非存在 `.agent/runtime/layout.json` 另有约定）。
+- **每个任务一个独立 DSH 会话**（除非显式给 `session_id` 续接）。汇总里同时给出两个字段：`session_id` 是**实际观测到的**会话 id，`requested_session_id` 是任务文件里**请求续接**的 id——两者分开，避免"请求的 id"被当成"已验证的续接"。
+- **并发默认 1**：`--concurrency N` 显式开启并行（上限 16）。多个 worker 在同一工作树写文件会互相干扰，并行任务请放在各自的 worktree 里。`--concurrency` 传入非正整数会**直接报错退出 2**，不会悄悄退回串行。
 - **状态如实汇总**：`ok / blocked / timeout / failed` 逐条统计；任一条 `failed` / `timeout` 时整体为 `failed`，只有 `blocked` 时为 `partial`，全绿才是 `ok`。批次退出码：全绿 0，否则 3（任务文件本身有问题时 2）。
 - 任务文件可用裸数组或 `{"tasks":[...]}`；每项必须有 `agent_id`，以及 `task` 或 `input` 之一；`label` 唯一（默认 `task-NN`）。
+- `--session-id` 只被 `dsh` 适配器翻译成命令行参数；其他适配器会忽略它并打印一行 stderr 警告（不中断运行）。
 
 ## 5. 已知限制
 

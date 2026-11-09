@@ -119,22 +119,38 @@ flowchart LR
 （实测续接时 `turn` 递增）。本轮据此补齐两件事：
 
 1. **会话连续性**：`lib/agents/adapters/dsh.js` 解析 `session` 事件并把 id 写进
-   `result.session_id`（ok / blocked / failed 各分支都带）；`agent dispatch-execute`
-   新增 `--session-id <id>`，透传给适配器后变成
-   `dsh --profile headless --json --session-id <id> -`。
+   `result.session_id`（ok / blocked / failed 各分支都带；`timeout` 分支没有可观测的
+   事件流，因此为 `null`）；`agent dispatch-execute` 新增 `--session-id <id>`，透传给
+   适配器后变成 `dsh --profile headless --json --session-id <id> -`。该参数只有 `dsh`
+   适配器会翻译，其他适配器忽略它并打印 stderr 警告。
 2. **多会话批调度**：新增 `lib/agents/batch-dispatch.js` 与
    `agent dispatch-batch --tasks <file.json> [--concurrency N]`。它复用既有的
    per-adapter `invoke()` 路径（不自起进程、不重复状态机），每个任务拿到独立
-   run_id、独立 journal、默认独立 DSH 会话；汇总写入
-   `.agent/runtime/dispatch/<batchId>/batch.json`，逐条如实统计
-   `ok / blocked / timeout / failed`。
+   run_id、独立 journal、默认独立 DSH 会话；汇总写入 dispatch 目录下的
+   `batch.json`（目录由 `base.js#dispatchDir` 决定），逐条如实统计
+   `ok / blocked / timeout / failed`，并把**观测到的** `session_id` 与**请求续接的**
+   `requested_session_id` 分开报告。
 
 边界与取舍：
 
 - **并发默认 1**（上限 16）。多个 worker 在同一工作树写文件会互相干扰，因此并行
-  必须显式开启，且并行任务应各自使用 worktree。
+  必须显式开启，且并行任务应各自使用 worktree。`--concurrency` 传入非法值直接
+  退出 2，不会静默退回串行。
 - **不伪造送达**：批次状态由各任务真实结果聚合而成，任一 `failed`/`timeout` 时整体
   `failed`，只有 `blocked` 时 `partial`，全绿才是 `ok`；退出码 0 / 3（任务文件本身
   有问题为 2）。
 - **不替代通知面**：实时 steer / 唤醒 GUI 运行中会话仍不可用（通知泵对 dsh 是
   显式 deferred），批调度走的是一次性 headless 运行。
+- **会话 id 绑定工作目录**：DSH 把会话记录在创建时的 cwd，换目录续接会返回
+  `{"type":"error","message":"session … was recorded in …, not …"}`（此时 dsh 退出码
+  仍是 0，靠适配器"error 事件优先于退出码"的分支兜住）。跨目录续接需重建会话。
+
+待办（本轮未做，已被独立复核列为 non-blocking）：
+
+- `probe()` 没有 in-flight 去重：并行批次会并发启动 headless profile 多次
+  （探针缓存只对顺序批次有效）。
+- 批调度没有取消面（不处理 SIGINT、也不调 `adapter.cancel()`），Ctrl-C 可能留下
+  孤儿 dsh 进程。
+- 只有每任务超时，没有批次级总时限。
+- 批调度不做写隔离与 lease/permit（与 `dispatch-execute` 一致；lease/fencing 目前
+  只存在于 M-002 `agent launch`）。

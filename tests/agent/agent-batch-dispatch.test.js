@@ -35,6 +35,7 @@ const NL = String.fromCharCode(10);
 
 const FAKE_DSH_BODY = `#!/usr/bin/env node
 'use strict';
+const fs = require("fs");
 const argv = process.argv.slice(2);
 const mode = process.env.FAKE_DSH_MODE || "success";
 if (argv.includes("--version")) { process.stdout.write("0.2.1-rc.5" + String.fromCharCode(10)); process.exit(0); }
@@ -46,15 +47,30 @@ if (argv.includes("--help")) {
   process.stdout.write(["Usage: dsh [--profile <name>] <name> [options]", "  dsh headless run-the-tests", "  dsh web"].join(String.fromCharCode(10)) + String.fromCharCode(10));
   process.exit(0);
 }
+// Real dsh echoes the session id it was asked to resume. Mirror that.
+const sessionArgIndex = argv.indexOf("--session-id");
+const requestedSessionId = sessionArgIndex >= 0 ? argv[sessionArgIndex + 1] : null;
 let body = "";
 process.stdin.setEncoding("utf8");
 process.stdin.on("data", (chunk) => { body += chunk; });
 process.stdin.on("end", () => {
-  const sessionId = process.env.FAKE_DSH_SESSION_ID || "session-fake-0001";
   const emit = (obj) => process.stdout.write(JSON.stringify(obj) + String.fromCharCode(10));
   if (mode === "fail") {
     emit({ type: "error", code: "rate_limited", message: "rate limited" });
     process.exit(1);
+  }
+  let sessionId = requestedSessionId;
+  if (!sessionId) {
+    const counterFile = process.env.FAKE_DSH_COUNTER_FILE;
+    if (counterFile) {
+      let n = 0;
+      try { n = parseInt(fs.readFileSync(counterFile, "utf8").trim(), 10) || 0; } catch (_) { n = 0; }
+      n += 1;
+      fs.writeFileSync(counterFile, String(n));
+      sessionId = "session-fake-" + String(n).padStart(4, "0");
+    } else {
+      sessionId = process.env.FAKE_DSH_SESSION_ID || "session-fake-0001";
+    }
   }
   emit({ type: "session", sessionId, cwd: process.cwd() });
   emit({ type: "status", phase: "turn_start", turn: 1 });
@@ -319,6 +335,58 @@ test("batch-dispatch: dispatchBatch requires a non-empty task list", async () =>
   );
 });
 
+test("batch-dispatch: every task opens its own session", async () => {
+  const root = mkProject();
+  seedAgent(root, "dsher");
+  const counterFile = path.join(root, "session-counter.txt");
+  fs.writeFileSync(counterFile, "0");
+  const prevCounter = process.env.FAKE_DSH_COUNTER_FILE;
+  process.env.FAKE_DSH_COUNTER_FILE = counterFile;
+  let summary;
+  try {
+    summary = await withFakeDshEnvAsync(() => dispatchBatch({
+      projectRoot: root,
+      tasks: [
+        { label: "first", agent_id: "dsh:dsher", task: "one" },
+        { label: "second", agent_id: "dsh:dsher", task: "two" },
+      ],
+    }));
+  } finally {
+    if (prevCounter === undefined) delete process.env.FAKE_DSH_COUNTER_FILE;
+    else process.env.FAKE_DSH_COUNTER_FILE = prevCounter;
+  }
+  assert.equal(summary.status, "ok");
+  const ids = summary.items.map((i) => i.session_id);
+  assert.equal(ids.length, 2);
+  assert.ok(ids[0] && ids[1], "each task must report an observed session id");
+  assert.notEqual(ids[0], ids[1], "tasks must not share one session id");
+  assert.match(ids[0], /^session-fake-\d{4}$/);
+});
+
+test("batch-dispatch: a task with session_id resumes it and reports requested vs observed", async () => {
+  const root = mkProject();
+  seedAgent(root, "dsher");
+  const summary = await withFakeDshEnvAsync(() => dispatchBatch({
+    projectRoot: root,
+    tasks: [{ label: "resume", agent_id: "dsh:dsher", task: "continue", session_id: "session-abc" }],
+  }));
+  assert.equal(summary.status, "ok");
+  assert.equal(summary.items[0].session_id, "session-abc", "the observed session id must be the resumed one");
+  assert.equal(summary.items[0].requested_session_id, "session-abc");
+});
+
+test("batch-dispatch: an item without a session reports no observed session id", async () => {
+  const root = mkProject();
+  seedAgent(root, "dsher");
+  const summary = await withFakeDshEnvAsync(() => dispatchBatch({
+    projectRoot: root,
+    tasks: [{ label: "ghost", agent_id: "dsh:ghost", task: "nobody" }],
+  }));
+  assert.equal(summary.items[0].status, "failed");
+  assert.equal(summary.items[0].session_id, null, "a failed item must not claim a session id");
+  assert.equal(summary.items[0].requested_session_id, null);
+});
+
 // ─── CLI surface ─────────────────────────────────────────────────────────────
 
 test("cli: agent dispatch-batch without --tasks exits 2", () => {
@@ -373,4 +441,20 @@ test("cli: agent dispatch-batch reports a broken task file with exit code 2", ()
   assert.equal(r.status, 2);
   const json = JSON.parse(r.stdout);
   assert.equal(json.error.code, "ERR_BATCH_TASK_FILE_PARSE");
+});
+
+test("cli: agent dispatch-batch rejects a non-numeric --concurrency instead of running serially", () => {
+  const root = mkProject();
+  seedAgent(root, "dsher");
+  const tasksFile = path.join(root, "tasks.json");
+  fs.writeFileSync(tasksFile, JSON.stringify([{ agent_id: "dsh:dsher", task: "one" }]));
+  const env = { ...process.env, DSH_BIN: fakeDshPath() };
+  delete env.FAKE_DSH_MODE;
+  const r = spawnSync("node", [
+    binCli, "agent", "dispatch-batch", "--tasks", tasksFile, "--project", root,
+    "--concurrency", "four", "--output", "json",
+  ], { encoding: "utf8", env });
+  assert.equal(r.status, 2, `stderr: ${r.stderr}\nstdout: ${r.stdout}`);
+  assert.ok(/--concurrency/.test(r.stderr), r.stderr);
+  assert.equal(r.stdout.trim(), "", "a rejected flag must not start any task");
 });
