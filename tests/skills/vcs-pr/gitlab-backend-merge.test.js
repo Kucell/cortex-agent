@@ -63,7 +63,7 @@ function lastPayload() {
 }
 
 const baseConfig = { host: 'https://gitlab.example.com', default: { org: 'Kucell', repo: 'cortex-agent' } };
-const baseToken = 'glpat-test-token';
+const baseCred = 'glpat-test-token';
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
@@ -71,7 +71,7 @@ test.beforeEach(() => { installHttpsMock(); });
 test.afterEach(() => { restoreHttpsMock(); });
 
 test('merge: empty commit_message omits merge_commit_message from the payload', async () => {
-  await gitlab.merge({ config: baseConfig, token: baseToken, pr_number: 7, commit_message: '' });
+  await gitlab.merge({ config: baseConfig, token: baseCred, pr_number: 7, commit_message: '' });
   const payload = lastPayload();
   assert.equal('merge_commit_message' in payload, false);
   assert.equal(payload.squash, false);
@@ -79,13 +79,13 @@ test('merge: empty commit_message omits merge_commit_message from the payload', 
 });
 
 test('merge: absent commit_message omits merge_commit_message from the payload', async () => {
-  await gitlab.merge({ config: baseConfig, token: baseToken, pr_number: 7 });
+  await gitlab.merge({ config: baseConfig, token: baseCred, pr_number: 7 });
   assert.equal('merge_commit_message' in lastPayload(), false);
 });
 
 test('merge: a supplied commit_message is forwarded unchanged', async () => {
   await gitlab.merge({
-    config: baseConfig, token: baseToken, pr_number: 7,
+    config: baseConfig, token: baseCred, pr_number: 7,
     commit_message: 'feat(coordination): add permit CLI entry (#136)',
   });
   const payload = lastPayload();
@@ -93,38 +93,100 @@ test('merge: a supplied commit_message is forwarded unchanged', async () => {
 });
 
 test('merge: squash path still omits an empty merge_commit_message', async () => {
-  await gitlab.merge({ config: baseConfig, token: baseToken, pr_number: 7, commit_message: '', squash: true });
+  await gitlab.merge({ config: baseConfig, token: baseCred, pr_number: 7, commit_message: '', squash: true });
   const payload = lastPayload();
   assert.equal('merge_commit_message' in payload, false);
   assert.equal(payload.squash, true);
 });
 
 test('merge: sha is forwarded when supplied and omitted otherwise', async () => {
-  await gitlab.merge({ config: baseConfig, token: baseToken, pr_number: 7, sha: 'abc123' });
+  await gitlab.merge({ config: baseConfig, token: baseCred, pr_number: 7, sha: 'abc123' });
   assert.equal(lastPayload().sha, 'abc123');
 
-  await gitlab.merge({ config: baseConfig, token: baseToken, pr_number: 7 });
+  await gitlab.merge({ config: baseConfig, token: baseCred, pr_number: 7 });
   assert.equal('sha' in lastPayload(), false);
 });
 
 test('merge: HTTP failure surfaces as gitlab_merge_failed error', async () => {
-  https.request = function failingRequest(_opts, cb) {
+  https.request = function routedRequest(opts, cb) {
     const req = new EventEmitter();
     req.write = () => {};
     req.end = () => {
       const res = new EventEmitter();
-      res.statusCode = 422;
+      const isIdentityCheck = String(opts.path).endsWith('/api/v4/user');
+      res.statusCode = isIdentityCheck ? 200 : 422;
       res.headers = {};
       cb(res);
       process.nextTick(() => {
-        res.emit('data', Buffer.from(JSON.stringify({ message: 'Branch cannot be merged' }), 'utf8'));
+        res.emit('data', Buffer.from(JSON.stringify(
+          isIdentityCheck ? { id: 1, username: 'alice', bot: false } : { message: 'Branch cannot be merged' },
+        ), 'utf8'));
         res.emit('end');
       });
     };
     return req;
   };
   await assert.rejects(
-    gitlab.merge({ config: baseConfig, token: baseToken, pr_number: 7, commit_message: '' }),
+    gitlab.merge({ config: baseConfig, token: baseCred, pr_number: 7, commit_message: '' }),
     /gitlab_merge_failed: HTTP 422/,
   );
+});
+
+test('merge: a bot token is refused before any merge request is sent', async () => {
+  const seen = [];
+  https.request = function routedRequest(opts, cb) {
+    seen.push(`${opts.method} ${opts.path}`);
+    const req = new EventEmitter();
+    req.write = () => {};
+    req.end = () => {
+      const res = new EventEmitter();
+      res.statusCode = 200;
+      res.headers = {};
+      cb(res);
+      process.nextTick(() => {
+        res.emit('data', Buffer.from(JSON.stringify({ id: 2, username: 'project_1_bot_cicd', bot: true }), 'utf8'));
+        res.emit('end');
+      });
+    };
+    return req;
+  };
+  await assert.rejects(
+    () => gitlab.merge({ config: baseConfig, token: 'bot-token', pr_number: 524 }),
+    (error) => {
+      assert.match(error.message, /gitlab_merge_bot_token_forbidden/);
+      assert.match(error.message, /project_1_bot_cicd/);
+      assert.match(error.message, /§9\.1\/§9\.3/);
+      assert.match(error.message, /\/Kucell\/cortex-agent\/-\/merge_requests\/524/);
+      return true;
+    },
+  );
+  assert.deepEqual(seen, ['GET /api/v4/user'], 'the merge PUT must never be issued for a bot token');
+});
+
+test('merge: reports merged_by from the identity check', async () => {
+  const original = https.request;
+  https.request = function routedRequest(opts, cb) {
+    const req = new EventEmitter();
+    req.write = () => {};
+    req.end = () => {
+      const res = new EventEmitter();
+      res.statusCode = 200;
+      res.headers = {};
+      cb(res);
+      process.nextTick(() => {
+        res.emit('data', Buffer.from(JSON.stringify(
+          String(opts.path).endsWith('/api/v4/user') ? { username: 'alice' } : { merged: true },
+        ), 'utf8'));
+        res.emit('end');
+      });
+    };
+    return req;
+  };
+  try {
+    const result = await gitlab.merge({ config: baseConfig, token: baseCred, pr_number: 9 });
+    assert.equal(result.merged, true);
+    assert.equal(result.merged_by, 'alice');
+  } finally {
+    https.request = original;
+  }
 });

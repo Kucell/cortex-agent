@@ -118,6 +118,17 @@ default:
   base_branch: main
 ```
 
+
+### Dedicated merge token (optional)
+
+Merging is destructive: §9.1/§9.3 of the pull-request workflow forbid bot / CI tokens
+from calling the merge API. To automate merges, add `merge_token_ref` to `vcs.yml`
+(a human Maintainer PAT); only the `merge` command resolves it, every other command
+keeps using `token_ref`. The GitLab backend reads `/api/v4/user` before `PUT /merge`:
+a bot identity raises `gitlab_merge_bot_token_forbidden` without sending any write
+request and points at the human-merge URL in the Web UI. Without `merge_token_ref`
+the merge falls back to `token_ref` and the same gate rejects a bot.
+
 无 `config/vcs.yml` → CLI 报 `vcs_config_missing`,host 需 first-time setup。
 
 ## Body 模板
