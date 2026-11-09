@@ -192,10 +192,110 @@ async function submitReview(opts) {
   };
 }
 
+// ─── update ─────────────────────────────────────────────────────────────────
+//
+// GitHub's PATCH /pulls/{n} is deliberately narrow: it carries title, body and
+// state (open / closed) only.  Three caller-facing knobs therefore need an
+// explicit answer instead of being dropped on the floor:
+//
+//   * `ready` — draft-ness is a read-only REST field; clearing it requires the
+//     `markPullRequestReadyForReview` GraphQL mutation.  Fetch the PR first so
+//     we mutate only a real draft and never demote anything.
+//   * `reviewers` — GitHub accepts logins directly (no id lookup); the
+//     `requested_reviewers` call appends to the existing review requests.
+//   * `remove_source` / `squash` — on GitHub the first is a repository setting
+//     and the second is a merge-time `merge_method`; neither is a PR field, so
+//     they are reported in `ignored` rather than silently pretended.
+//
+// A request that only flips `ready` (or performs no mutation at all) still
+// returns the current PR, so `vcs-pr update` output stays uniform across
+// backends.
+
+function graphqlRoot(host) {
+  // GitHub Enterprise keeps REST under /api/v3 and GraphQL under /api/graphql;
+  // github.com serves both from the host root.
+  const clean = String(host || "").replace(/\/+$/, "");
+  return clean.endsWith("/api/v3") ? clean.slice(0, -"/api/v3".length) : clean;
+}
+
+const MARK_READY_MUTATION =
+  "mutation($id: ID!) { markPullRequestReadyForReview(input: {pullRequestId: $id}) { pullRequest { number isDraft } } }";
+
+async function updatePR(opts) {
+  const { config, token, pr_number, title, body, reviewers, ready, close, remove_source, squash } = opts;
+  const { owner, repo } = mapRepo(opts, config);
+  if (!owner || !repo) throw new Error("missing_owner_or_repo");
+
+  const payload = {};
+  if (title) payload.title = title;
+  if (body != null) payload.body = body;
+  if (close) payload.state = "closed";
+
+  const ignored = [];
+  if (remove_source) ignored.push("remove_source_branch");
+  if (squash) ignored.push("squash");
+
+  let current = null;
+
+  if (ready) {
+    const res = await send("GET", config.host, `/repos/${owner}/${repo}/pulls/${pr_number}`, token);
+    if (res.status !== 200) throw new Error(`github_status_failed: HTTP ${res.status} ${res.raw?.slice(0, 200)}`);
+    current = res.body;
+  }
+
+  if (Object.keys(payload).length > 0) {
+    const res = await send("PATCH", config.host, `/repos/${owner}/${repo}/pulls/${pr_number}`, token, payload);
+    if (res.status !== 200) throw new Error(`github_update_failed: HTTP ${res.status} ${res.raw?.slice(0, 200)}`);
+    current = res.body;
+  }
+
+  if (Array.isArray(reviewers) && reviewers.length > 0) {
+    const res = await send("POST", config.host, `/repos/${owner}/${repo}/pulls/${pr_number}/requested_reviewers`, token, {
+      reviewers,
+    });
+    if (res.status !== 201) throw new Error(`github_reviewer_request_failed: HTTP ${res.status} ${res.raw?.slice(0, 200)}`);
+    current = res.body;
+  }
+
+  if (ready && current && current.draft) {
+    const res = await send("POST", graphqlRoot(config.host), "/graphql", token, {
+      query: MARK_READY_MUTATION,
+      variables: { id: current.node_id },
+    });
+    const errors = res.body && Array.isArray(res.body.errors) ? res.body.errors : [];
+    if (res.status !== 200 || errors.length > 0) {
+      const detail = errors.length > 0
+        ? errors.map((error) => error.message).join("; ")
+        : String(res.status);
+      throw new Error(`github_ready_failed: ${detail}`);
+    }
+    current = { ...current, draft: false };
+  }
+
+  if (!current) {
+    const res = await send("GET", config.host, `/repos/${owner}/${repo}/pulls/${pr_number}`, token);
+    if (res.status !== 200) throw new Error(`github_status_failed: HTTP ${res.status} ${res.raw?.slice(0, 200)}`);
+    current = res.body;
+  }
+
+  return {
+    number: current.number ?? pr_number,
+    url: current.html_url ?? null,
+    state: current.state ?? null,
+    title: current.title ?? null,
+    draft: current.draft === true,
+    reviewers: (current.requested_reviewers || []).map((reviewer) => reviewer.login).filter(Boolean),
+    labels: (current.labels || []).map((label) => (typeof label === "string" ? label : label.name)),
+    ignored,
+    raw: current,
+  };
+}
+
 module.exports = {
   backend: "github",
   createPR,
   getStatus,
+  updatePR,
   merge,
   list,
   getDiff,

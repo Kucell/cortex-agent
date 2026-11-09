@@ -440,6 +440,9 @@ async function main() {
     return;
   }
   if (command === "update") {
+    if (typeof backend.updatePR !== "function") {
+      fail("capability_unavailable", `${cfg.backend} backend does not support update.`);
+    }
     const bodyFile = flag("--body-file", argv);
     const body = bodyFile
       ? applyUpdateBody(fs.readFileSync(
