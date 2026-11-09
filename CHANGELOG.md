@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- 下一个版本的条目写在这里 -->
 
+## [1.15.10] - 2026-11-09
+
+### Fixed
+
+- vcs-pr GitLab backend no longer silently promotes a Draft MR: `update --title` without a `Draft:`/`WIP:` prefix now fails closed with `gitlab_draft_promotion_blocked` unless the caller passes `--ready`. GitLab carries draft-ness only in the title, so a title correction used to flip the MR to merge-ready and turn Draft-only governance warnings into hard failures.
+- vcs-pr managed-creation marker handling accepts the alias spellings used by project MR governance checks (`vcs-pr 创建`, `MR 创建入口`, `managed creation`, …) and normalizes caller-supplied `update --body-file` bodies through the same rule, so an update cannot drop the R01 trace marker.
+- vcs-pr default MR body places the R05 大变更说明 waiver ahead of the GitLab description truncation point and drops the obsolete 组件分支吸收与清理 section.
+
 ## [1.15.9] - 2026-11-07
 
 ### Fixed
