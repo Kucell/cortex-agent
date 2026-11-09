@@ -9,6 +9,58 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- 下一个版本的条目写在这里 -->
 
+## [1.15.14] - 2026-11-09
+
+### Added
+
+- vcs-pr: optional `merge_token_ref` in `vcs.yml` — a dedicated human Maintainer PAT used only by the `merge` command (other commands keep the shared CI `token_ref`). `--token-ref` overrides it per call; an unresolvable ref fails with `merge_token_ref_unresolved`.
+- gitlab backend: `merge()` now returns `merged_by` (the identity behind the token).
+
+### Security
+
+- gitlab backend: before `PUT /merge`, the token is checked against `/api/v4/user`; a bot identity fails with `gitlab_merge_bot_token_forbidden` **without sending any write request**, and the error carries the human-merge URL. This enforces the pull-request workflow rule (§9.1/§9.3) that bot / CI tokens must not merge or delete source branches — including the case where no `merge_token_ref` is configured and the merge falls back to the CI token.
+
+## [1.15.13] - 2026-11-09
+
+### Fixed
+
+- `cortex-agent schedule` now treats `--help`, `-h` and a bare `schedule` as a request for the usage block (exit 0) instead of "unknown schedule subcommand" (exit 2), matching the rest of the CLI.
+
+## [1.15.12] - 2026-11-09
+
+### Added
+
+- `cortex-agent schedule <add|list|remove|run|daemon>` — recurring model runs scheduled by cortex itself instead of an external cron entry that shells out to the CLI. Definitions live in `.agent/schedules/<id>.json` (agent, task or task file, `every` interval or 5-field `cron`, optional `session_id`, concurrency, timeout); each tick executes through the normal `agent dispatch-batch` path, so scheduled runs produce the same journals, statuses, and exit codes as manual ones. `schedule run` performs one due-check tick (an external timer can drive it); `schedule daemon --interval N` is the built-in loop. Run evidence is written under `.agent/runtime/schedules/<id>/runs/`, which the template `.gitignore` now ignores.
+
+## [1.15.11] - 2026-11-09
+
+### Added
+
+- Multi-session DSH scheduling is now a first-class cortex surface. `agent dispatch-batch --tasks <file.json> [--concurrency N]` fans a task set out over the normal per-adapter `invoke()` path: every task gets its own run id, its own dispatch journal, and (by default) its own DSH session; the aggregate is written next to those journals with per-item status counts (`ok / blocked / timeout / failed`) and, for every task that reported one, the observed `session_id` (timed-out tasks report `null`, and the requested id is kept in a separate `requested_session_id` field so it can never be mistaken for a verified resume). Concurrency is opt-in (default 1, max 16) because parallel workers writing into one working tree collide — run them in separate worktrees.
+- `agent dispatch-execute` accepts `--session-id <id>`, and the DSH adapter now reports the session id it observed (`result.session_id`, taken from the run stream's `{"type":"session"}` event). Together these make a DSH session *resumable* across invocations: a first turn returns the id, a later invocation with `--session-id` continues the same conversation instead of opening a fresh one.
+
+### Fixed
+
+- The batch summary no longer blurs requested and observed sessions: `session_id` is what the adapter observed, `requested_session_id` is what the task file asked to resume, and a failed item reports no session id at all.
+- `agent dispatch-batch --concurrency` now fails with exit code 2 on a non-positive or non-numeric value instead of silently degrading to serial execution.
+- `agent dispatch-execute --session-id` warns on stderr when the target adapter is not `dsh` (the flag is DSH-specific and was silently ignored).
+
+## [1.15.10] - 2026-11-09
+
+### Fixed
+
+- vcs-pr GitLab backend no longer silently promotes a Draft MR: `update --title` without a `Draft:`/`WIP:` prefix now fails closed with `gitlab_draft_promotion_blocked` unless the caller passes `--ready`. GitLab carries draft-ness only in the title, so a title correction used to flip the MR to merge-ready and turn Draft-only governance warnings into hard failures.
+- vcs-pr managed-creation marker handling accepts the alias spellings used by project MR governance checks (`vcs-pr 创建`, `MR 创建入口`, `managed creation`, …) and normalizes caller-supplied `update --body-file` bodies through the same rule, so an update cannot drop the R01 trace marker.
+- vcs-pr default MR body places the R05 大变更说明 waiver ahead of the GitLab description truncation point and drops the obsolete 组件分支吸收与清理 section.
+
+## [1.15.9] - 2026-11-07
+
+### Fixed
+
+- DSH (DeepSeek Harness) dispatch is now actually reachable. Three independent breaks were removed: (1) additive agent-entry reading via `lib/agents/registry-ext.js` so `external.adapter_type = "dsh"` loads while M-002's frozen `registry.js` stays untouched; (2) `invoke()` speaks the real `dsh --profile headless [--json] -- -` contract (task on stdin, NDJSON run events, `{"type":"final"}` as the only settled signal, exit 0 without it reports `blocked`); (3) `probe()` resolves a bare `dsh` on `PATH` instead of `<cwd>/dsh`, `health()` layers the probe result, and `agent adapter probe <id>` exposes the four-state transport evidence. `agent dispatch-execute dsh:<id>` now passes `verifyTransport` and fails closed with `ERR_DSH_TRANSPORT_UNSUPPORTED`. `discover()` no longer advertises `stdio-json-rpc` before a probe, the host snapshot drops the stale dsh `missing_dispatch_whitelist` / `missing_skill_discovery_path` limits in favour of `transport_unverified`, and `agent discover --adapter-type dsh` accepts the additive union.
+- Harden the DSH adapter's evidence: `probe()` now boots `dsh --profile headless --help` (bounded, read-only) instead of trusting the word "headless" in `dsh --help`, so a missing/broken profile fails closed as `unsupported` (`headless_profile_*`); probe output/cache expose `profile.exit_code`/`profile.ok`. `invoke()` now spawns without a shell by default (the task travels on stdin). The notification pump registers `dsh` as an explicit deferred adapter (`ERR_NOTIFICATION_ADAPTER_UNAVAILABLE`) because dsh 0.2.1-rc.5 has no session-injection surface.
+- Stabilize the DSH probe budget: `--profile headless --help` gets its own 15s timeout with one retry (profile boot measured 3.1–4.6s, so the shared 5s budget flaked ~50% under load and could reject healthy hosts at `verifyTransport`). The profile result must also print `Usage: dsh --profile headless`; real-PATH tests now skip when the host's profile is not ready instead of failing, and cache entries expire (2 min ready / 15s failure) so one transient timeout cannot pin the adapter to `unsupported`.
+
 ## [1.16.0] - Unreleased development candidate
 
 Advisor-only development candidate; not published. This release scope covers read-only advice, proposal preparation and upgrade/safety fixes. Real L3 autonomy and real AI Host execution are deferred to incremental, independently accepted 1.16.x delivery. The formal 28-item authorization/L3/SelfEvolution matrix remains a future L3 enablement gate, not a blanket prerequisite for this advisor-only release.

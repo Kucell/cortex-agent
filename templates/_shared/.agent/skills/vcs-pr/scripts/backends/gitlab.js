@@ -233,6 +233,28 @@ async function updatePR(opts) {
     payload.title = current.body.title.replace(/^(?:Draft:\s*|WIP:\s*)/i, "");
   }
 
+  // Draft promotion is a semantic transition, not a side effect of fixing a
+  // typo in the title.  GitLab has no draft field on PUT /merge_requests —
+  // Draft-ness is carried entirely by the `Draft:` / `WIP:` title prefix
+  // (see createPR), so `update --title "feat(x): ..."` silently promotes a
+  // Draft MR to Ready.  Observed on MR !329: the create-time title
+  // `Draft: feat(automation): ...` was replaced by a corrective title update,
+  // flipping the MR to merge-ready and turning Draft-only governance warnings
+  // (R03/R04) into hard failures.  Fail closed unless the caller opts in.
+  if (payload.title && !ready && !/^(?:Draft:|WIP:)/i.test(payload.title)) {
+    const current = await send("GET", config.host, `/api/v4/projects/${pid}/merge_requests/${pr_number}`, token);
+    if (current.status !== 200) {
+      throw new Error(`gitlab_status_failed: HTTP ${current.status} ${current.raw?.slice(0, 200)}`);
+    }
+    if (isDraftMergeRequest(current.body)) {
+      throw new Error(
+        `gitlab_draft_promotion_blocked: MR !${pr_number} is Draft (current title ${JSON.stringify(current.body.title)}) `
+        + `but the requested title ${JSON.stringify(payload.title)} has no Draft:/WIP: prefix, which would promote it to Ready. `
+        + `Pass --ready to promote explicitly, or keep the Draft:/WIP: prefix.`,
+      );
+    }
+  }
+
   const res = await send("PUT", config.host, `/api/v4/projects/${pid}/merge_requests/${pr_number}`, token, payload);
   if (res.status !== 200) throw new Error(`gitlab_update_failed: HTTP ${res.status} ${res.raw?.slice(0, 200)}`);
   return {
@@ -250,6 +272,12 @@ async function updatePR(opts) {
 async function merge(opts) {
   const { config, token, pr_number, commit_message, sha } = opts;
   const pid = projectUrl(opts, config);
+  // Merge is reserved for a human Maintainer (§9.1/§9.3 of the pull-request
+  // workflow): a bot / CI token must never call the merge API, and a bot-run
+  // squash merge is a recorded rule violation.  Read /api/v4/user before the
+  // PUT: a bot identity fails here without issuing any write request, and the
+  // error carries the human-merge URL so the Maintainer can finish in the UI.
+  const merger = await assertHumanMergerToken(config, token, pr_number, pid);
   // GitLab API 18+ requires an explicit `sha` on PUT merge.  Forward it when
   // supplied; otherwise omit the field so older GitLab versions still accept
   // the request.
@@ -266,7 +294,27 @@ async function merge(opts) {
   if (sha) payload.sha = sha;
   const res = await send("PUT", config.host, `/api/v4/projects/${pid}/merge_requests/${pr_number}/merge`, token, payload);
   if (res.status !== 200) throw new Error(`gitlab_merge_failed: HTTP ${res.status} ${res.raw?.slice(0, 200)}`);
-  return { merged: true, raw: res.body };
+  return { merged: true, merged_by: merger.username, raw: res.body };
+}
+
+// Pre-merge identity gate. Returns the user the token belongs to; a bot account
+// raises before any write request is sent.
+async function assertHumanMergerToken(config, token, pr_number, pid) {
+  const res = await send("GET", config.host, "/api/v4/user", token);
+  if (res.status !== 200) {
+    throw new Error(`gitlab_merge_token_check_failed: HTTP ${res.status} ${res.raw?.slice(0, 200)}`);
+  }
+  const user = res.body || {};
+  if (user.bot === true) {
+    const ownerRepo = decodeURIComponent(pid);
+    const url = `${config.host}/${ownerRepo}/-/merge_requests/${pr_number}`;
+    throw new Error(
+      `gitlab_merge_bot_token_forbidden: token '${user.username}' belongs to a bot account; `
+      + `§9.1/§9.3 of the pull-request workflow forbid bots from merging or deleting the source branch. `
+      + `Ask a human Maintainer to merge in the Web UI: ${url}`,
+    );
+  }
+  return user;
 }
 
 async function list(opts) {

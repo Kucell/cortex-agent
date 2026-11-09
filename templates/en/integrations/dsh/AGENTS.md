@@ -18,4 +18,4 @@ If legacy content was imported, review `.agent/imported_rules/` and migrate usef
 If there is any conflict, `.agent/` content takes precedence.
 
 > DSH is a first-class dispatch adapter for Cortex Agent (on par with Pi / Claude Code / Codex CLI).
-> See `.dsh/README.md` for install/usage; see `cortex-agent agent adapter discover dsh` for capability boundaries.
+> See `.dsh/README.md` for install/usage; see `cortex-agent agent adapter probe dsh` for capability boundaries.

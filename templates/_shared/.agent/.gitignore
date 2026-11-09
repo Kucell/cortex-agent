@@ -83,3 +83,9 @@ logs/graphify/
 # The density guard state is isolated per worktree: two worktrees of one
 # repository must not share a lock, a baseline or a pending request.
 plugins/graphify/.density-worktrees/
+
+# Scheduled-run evidence: `.agent/schedules/*.json` definitions are tracked
+# config, but each tick writes a run record containing batch ids and reply
+# excerpts. Those records are local runtime state and must not enter the
+# source tree.
+runtime/schedules/

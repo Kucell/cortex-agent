@@ -81,8 +81,8 @@ jobs:
             return { bytes, entry };
           }
           const manifest = JSON.parse(bytesFor(manifestPath).bytes.toString("utf8"));
-          assert.equal(manifest.sources.length, 279);
-          assert.equal(new Set(manifest.sources).size, 279);
+          assert.equal(manifest.sources.length, 283);
+          assert.equal(new Set(manifest.sources).size, 283);
           const proof = { source_head: head, source_manifest_blob: tree.get(manifestPath).blob,
             test_blob: tree.get(testPath).blob, blobs: {} };
           for (const [file, blob] of Object.entries(manifest.protected_source_blobs)) {

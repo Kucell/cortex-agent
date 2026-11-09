@@ -56,13 +56,13 @@ test("dsh adapter: discover() returns the frozen M-029 MS-001 envelope", () => {
   }
   assert.ok(meta.capabilities.includes("text_generation"));
   assert.ok(meta.capabilities.includes("tool_use"));
-  assert.equal(meta.transport, "stdio-json-rpc");
+  assert.equal(meta.transport, null);
   assert.equal(meta.schema.request, 1);
   assert.equal(meta.schema.response, 1);
   assert.equal(meta.schema.journal, 1);
   assert.equal(meta.cli.bin, "/bin/true");
   assert.equal(meta.cli.shell, false);
-  assert.equal(meta.maturity, "stable");
+  assert.equal(meta.maturity, "experimental");
   assert.equal(meta.host, "deepseek-harness");
   assert.equal(meta.receipt_contract, "ms-001");
 });
@@ -345,67 +345,89 @@ test("dsh adapter: index.js _seed() remains try/catch additive and survives rese
 // chmod +x so spawn(this.bin, ...) executes it via shebang.
 const FAKE_DSH_BODY = `#!/usr/bin/env node
 'use strict';
-// Minimal mock of the DSH CLI for tests. Driven by env vars:
-//   FAKE_DSH_MODE = success | empty | badjson | framed | error-envelope |
-//                   hang | exitcode | stderr
-//   FAKE_DSH_DELAY_MS (optional) — sleep before responding (for hang mode)
-
+// Mock of the real DSH headless CLI (dsh 0.2.1-rc.5):
+//   dsh --profile headless [--json] [--session-id <id>] -
+// The task arrives on stdin; --json emits newline-delimited run events.
+const fs = require("node:fs");
 const mode = process.env.FAKE_DSH_MODE || "success";
-const delayMs = parseInt(process.env.FAKE_DSH_DELAY_MS || "0", 10);
+const argv = process.argv.slice(2);
 
-function emit(plain) {
-  process.stdout.write(plain + "\\n");
+// Probe surfaces (M-034 WP-03): a real-looking version + help so the CLI
+// transport gate can pass against the fake.
+if (argv.includes("--version")) { process.stdout.write("0.2.1-rc.5" + String.fromCharCode(10)); process.exit(0); }
+if (argv.includes("--profile") && argv.includes("--help")) {
+  process.stdout.write("Usage: dsh --profile headless [options] [task...]" + String.fromCharCode(10));
+  process.exit(0);
 }
-function emitFramed(plain) {
-  const body = Buffer.byteLength(plain, "utf8");
-  process.stdout.write("Content-Length: " + body + "\\r\\n\\r\\n" + plain);
-}
-function bail(code, msg) {
-  process.stderr.write(msg);
-  process.exit(code);
-}
-
-let drained = 0;
-process.stdin.on("data", (c) => { drained += c.length; });
-process.stdin.on("end", () => { drained += 0; });
-
-if (mode === "hang") {
-  setTimeout(() => emit(JSON.stringify({ jsonrpc: "2.0", id: 1, result: { too_late: true } })), Math.max(delayMs, 30000));
-  return;
+if (argv.includes("--help")) {
+  process.stdout.write(["Usage: dsh [--profile <name>] <name> [options]", "  dsh headless run-the-tests", "  dsh web"].join(String.fromCharCode(10)) + String.fromCharCode(10));
+  process.exit(0);
 }
 
-if (delayMs > 0) setTimeout(() => {}, delayMs);
-
-switch (mode) {
-  case "empty":
-    process.exit(0);
-    break;
-  case "badjson":
-    emit("this is { not valid json at all");
-    process.exit(0);
-    break;
-  case "framed":
-    emitFramed(JSON.stringify({ jsonrpc: "2.0", id: 1, result: { text: "framed-ok", count: 42 } }));
-    process.exit(0);
-    break;
-  case "error-envelope":
-    emit(JSON.stringify({ jsonrpc: "2.0", id: 1, error: { code: -32001, message: "rate_limited" } }));
-    process.exit(0);
-    break;
-  case "stderr":
-    process.stderr.write("warning: deprecated flag --foo\\n");
-    emit(JSON.stringify({ jsonrpc: "2.0", id: 1, result: { text: "ok-with-warnings" } }));
-    process.exit(0);
-    break;
-  case "exitcode":
-    bail(7, "fatal: bad config\\n");
-    break;
-  case "success":
-  default:
-    emit(JSON.stringify({ jsonrpc: "2.0", id: 1, result: { text: "hello from fake dsh", task_received: true, drained_bytes: drained } }));
-    process.exit(0);
-    break;
+function emit(obj) { process.stdout.write(JSON.stringify(obj) + "\\n"); }
+function emitRaw(line) { process.stdout.write(line + "\\n"); }
+function record(envName, value) {
+  const file = process.env[envName];
+  if (file) fs.writeFileSync(file, JSON.stringify(value));
 }
+
+let body = "";
+process.stdin.setEncoding("utf8");
+process.stdin.on("data", (chunk) => { body += chunk; });
+process.stdin.on("end", () => {
+  record("FAKE_DSH_STDIN_FILE", body);
+  record("FAKE_DSH_ARGV_FILE", process.argv.slice(2));
+  if (mode === "hang") { setTimeout(() => {}, 60000); return; }
+  switch (mode) {
+    case "empty":
+      process.exit(0);
+      break;
+    case "badjson":
+      emitRaw("this is not a json event");
+      process.exit(0);
+      break;
+    case "exitcode":
+      process.stderr.write("fatal: bad config\\n");
+      process.exit(7);
+      break;
+    case "error-event":
+      emit({ type: "error", code: "rate_limited", message: "rate_limited" });
+      process.exit(1);
+      break;
+    case "turn-error":
+      emit({ type: "status", phase: "turn_end", turn: 1, reason: { kind: "error", error: { code: "MISSING_CREDENTIAL", message: "no api key for provider route" } } });
+      emit({ type: "final", text: "" });
+      process.exit(1);
+      break;
+    case "no-final":
+      emit({ type: "session", sessionId: "s1" });
+      emit({ type: "text", text: "partial answer" });
+      emit({ type: "status", phase: "turn_end", turn: 1, reason: { kind: "completed" } });
+      process.exit(0);
+      break;
+    case "stream":
+      emit({ type: "text", text: "hello " });
+      emit({ type: "thinking", text: "hidden reasoning" });
+      emit({ type: "text", text: "from fake dsh" });
+      emit({ type: "final", text: "hello from fake dsh" });
+      process.exit(0);
+      break;
+    case "stderr":
+      process.stderr.write("warning: deprecated flag --foo\\n");
+      emit({ type: "final", text: "ok-with-warnings" });
+      process.exit(0);
+      break;
+    case "success":
+    default:
+      emit({ type: "session", sessionId: "s1", cwd: process.cwd() });
+      emit({ type: "status", phase: "turn_start", turn: 1 });
+      emit({ type: "text", text: "hello from fake dsh" });
+      emit({ type: "status", phase: "turn_end", turn: 1, reason: { kind: "completed" } });
+      emit({ type: "final", text: "hello from fake dsh" });
+      process.exit(0);
+      break;
+  }
+});
 `;
 
 let _fakeDshPath = null;
@@ -469,16 +491,19 @@ test("dsh adapter: invoke() success writes request + result + rollback + returns
   } finally { ctx.restore(); }
 });
 
-// VC-029-003-01: invoke() with Content-Length framed JSON-RPC response
-test("dsh adapter: invoke() accepts Content-Length framed JSON-RPC response", async () => {
-  const ctx = runWithMode("framed");
+// M-034 WP-03: invoke() parses the NDJSON run projection and prefers the
+// terminal `final` text over accumulated `text` chunks (thinking excluded).
+test("dsh adapter: invoke() parses NDJSON events and prefers the terminal final text", async () => {
+  const ctx = runWithMode("stream");
   try {
     const adapter = new DshAdapter({ bin: ctx.fake, shell: false });
-    const result = await adapter.invoke({}, { projectRoot: ctx.dir, runId: "R-dsh-framed-1" });
+    const result = await adapter.invoke({ task: "say hello" }, { projectRoot: ctx.dir, runId: "R-dsh-stream-1" });
     assert.equal(result.status, "ok");
-    assert.equal(result.run_id, "R-dsh-framed-1");
-    assert.equal(result.result.text, "framed-ok");
-    assert.equal(result.result.count, 42);
+    assert.equal(result.run_id, "R-dsh-stream-1");
+    assert.equal(result.result.text, "hello from fake dsh");
+    assert.equal(result.result.events_count, 4);
+    assert.equal(result.settlement.type, "final");
+    assert.ok(!result.result.text.includes("hidden reasoning"));
   } finally { ctx.restore(); }
 });
 
@@ -537,44 +562,45 @@ test("dsh adapter: invoke() on timeout writes ERR_DISPATCH_TIMEOUT + rollback", 
   }
 });
 
-// VC-029-003-02: failure mode 4 — ERR_JSONRPC_PARSE (bad stdout)
-test("dsh adapter: invoke() on bad JSON writes ERR_JSONRPC_PARSE + stdout excerpt", async () => {
+// VC-029-003-02: failure mode 4 — ERR_DSH_EVENT_PARSE (non-JSON stdout)
+test("dsh adapter: invoke() on non-JSON stdout writes ERR_DSH_EVENT_PARSE + stdout excerpt", async () => {
   const ctx = runWithMode("badjson");
   try {
     const adapter = new DshAdapter({ bin: ctx.fake, shell: false });
     const result = await adapter.invoke({ task: "x" }, { projectRoot: ctx.dir, runId: "R-dsh-badjson-1" });
     assert.equal(result.status, "failed");
-    assert.equal(result.error.code, "ERR_JSONRPC_PARSE");
+    assert.equal(result.error.code, "ERR_DSH_EVENT_PARSE");
     assert.ok(typeof result.stdout_excerpt === "string");
-    assert.ok(result.stdout_excerpt.includes("not valid json"));
+    assert.ok(result.stdout_excerpt.includes("not a json event"));
     assert.ok(fs.existsSync(journalFile(ctx.dir, "R-dsh-badjson-1", "error.json")));
   } finally { ctx.restore(); }
 });
 
-// VC-029-003-02: failure mode 5 — ERR_JSONRPC_PARSE (empty stdout)
-test("dsh adapter: invoke() on empty stdout writes ERR_JSONRPC_PARSE + rollback", async () => {
+// VC-029-003-02: failure mode 5 — ERR_DSH_EVENT_PARSE (empty stdout)
+test("dsh adapter: invoke() on empty stdout writes ERR_DSH_EVENT_PARSE + rollback", async () => {
   const ctx = runWithMode("empty");
   try {
     const adapter = new DshAdapter({ bin: ctx.fake, shell: false });
     const result = await adapter.invoke({ task: "x" }, { projectRoot: ctx.dir, runId: "R-dsh-empty-1" });
     assert.equal(result.status, "failed");
-    assert.equal(result.error.code, "ERR_JSONRPC_PARSE");
+    assert.equal(result.error.code, "ERR_DSH_EVENT_PARSE");
     assert.match(result.error.message, /empty stdout from dsh CLI/);
     assert.ok(fs.existsSync(journalFile(ctx.dir, "R-dsh-empty-1", "error.json")));
   } finally { ctx.restore(); }
 });
 
-// VC-029-003-02: failure mode 6 — JSON-RPC error envelope (rate_limited)
-test("dsh adapter: invoke() on JSON-RPC error envelope maps to ERR_DSH_RATE_LIMITED + rollback", async () => {
-  const ctx = runWithMode("error-envelope");
+// VC-029-003-02: failure mode 6 — structured error event (rate_limited)
+test("dsh adapter: invoke() maps a {type:error} event to ERR_DSH_RATE_LIMITED", async () => {
+  const ctx = runWithMode("error-event");
   try {
     const adapter = new DshAdapter({ bin: ctx.fake, shell: false });
-    const result = await adapter.invoke({ task: "x" }, { projectRoot: ctx.dir, runId: "R-dsh-rpc-err-1" });
+    const result = await adapter.invoke({ task: "x" }, { projectRoot: ctx.dir, runId: "R-dsh-evt-err-1" });
     assert.equal(result.status, "failed");
-    // Note: code = -32001; codex adapter prefixes with ERR_CODEX_, dsh with ERR_DSH_.
-    assert.equal(result.error.code, "ERR_DSH_-32001");
+    // The event code wins over the generic non-zero-exit failure.
+    assert.equal(result.error.code, "ERR_DSH_RATE_LIMITED");
     assert.equal(result.error.message, "rate_limited");
-    assert.ok(fs.existsSync(journalFile(ctx.dir, "R-dsh-rpc-err-1", "error.json")));
+    assert.equal(result.error.exit_code, 1);
+    assert.ok(fs.existsSync(journalFile(ctx.dir, "R-dsh-evt-err-1", "error.json")));
   } finally { ctx.restore(); }
 });
 
@@ -764,8 +790,48 @@ if [ "$1" = "--version" ]; then echo "0.1.1"; exit 0; fi
 if [ "$1" = "--help" ]; then sleep 5; exit 0; fi
 exit 0
 `
+    : mode === "profile-wrong-shape"
+    ? `#!/bin/sh
+if [ "$1" = "--version" ]; then echo "0.2.1-rc.5"; exit 0; fi
+if [ "$1" = "--help" ]; then
+  cat <<'HELP'
+Usage: dsh [options] [command] [args...]
+Options:
+  --profile <name>            the profile under $DSH_HOME/profiles to boot
+Examples:
+  dsh --profile headless "run the tests"
+HELP
+  exit 0; fi
+if [ "$1" = "--profile" ]; then
+  echo "Usage: dsh [--profile <name>] <name> [options]"
+  exit 0; fi
+exit 0
+`
+    : mode === "profile-missing"
+    // Help text advertises headless (like real dsh), but booting the profile
+    // fails: the probe must not report ready on help text alone.
+    ? `#!/bin/sh
+if [ "$1" = "--version" ]; then echo "0.2.1-rc.5"; exit 0; fi
+if [ "$1" = "--help" ]; then
+  cat <<'HELP'
+Usage: dsh [options] [command] [args...]
+Options:
+  --profile <name>            the profile under $DSH_HOME/profiles to boot
+Examples:
+  dsh --profile headless "run the tests"     answer one task, print the result, and exit
+HELP
+  exit 0; fi
+if [ "$1" = "--profile" ]; then
+  echo "error: profile headless not found" >&2
+  exit 1
+fi
+exit 0
+`
     // help-ok-headless default: behaves like a real dsh with version + headless help.
     : `#!/bin/sh
+if [ "$1" = "--profile" ]; then
+  echo "Usage: dsh --profile headless [options] [task...]"
+  exit 0; fi
 if [ "$1" = "--version" ]; then echo "0.1.1-rc.2"; exit 0; fi
 if [ "$1" = "--help" ]; then
   cat <<'HELP'
@@ -810,16 +876,23 @@ test("M-034 MS-001 probe(): help-ok-headless fake -> status=ready, has_headless_
 // VC-034-001-01: probe() against the real machine's dsh (only runs when DSH_BIN
 // is on PATH and points to a 0.1.x binary). Skipped otherwise so CI without
 // dsh stays green.
-test("M-034 MS-001 probe(): real dsh binary on PATH -> status=ready", async () => {
+test("M-034 MS-001 probe(): real dsh binary on PATH -> status=ready", async (t) => {
   const whichOut = require("node:child_process")
     .spawnSync("which", ["dsh"], { encoding: "utf8" });
-  if (whichOut.status !== 0) return; // skip when no real dsh on PATH
+  if (whichOut.status !== 0) return t.skip("no real dsh on PATH");
   const bin = (whichOut.stdout || "").trim();
-  if (!bin) return;
+  if (!bin) return t.skip("no real dsh on PATH");
   const a = new DshAdapter({ bin, shell: false });
   const r = await a.probe();
-  // Must classify as ready OR degraded depending on version help excerpt.
-  assert.ok(["ready", "degraded"].includes(r.status));
+  // The probe now boots `--profile headless --help`, so a host that merely
+  // ships the dsh binary without a usable headless profile is not ready.
+  // An environment problem (profile missing / host too slow) skips instead
+  // of turning the whole suite red; the fake-binary cases assert readiness.
+  if (!r.ready) return t.skip(`dsh present but headless profile not ready: ${r.status} ${r.fail_closed_reasons.join(",")}`);
+  assert.equal(r.status, "ready");
+  assert.equal(r.ready, true);
+  assert.equal(r.profile.ok, true);
+  assert.equal(r.profile.exit_code, 0);
   assert.ok(r.help.exit_code === 0 || r.help.timed_out === true);
   assert.match(r.help.sha256, /^[a-f0-9]{64}$/);
   // transport_supported must always include text-headless-v1 once probed.
@@ -832,17 +905,59 @@ test("M-034 MS-001 probe(): real dsh binary on PATH -> status=ready", async () =
   assert.equal(after.probe_summary.help_sha256.length, 64);
 });
 
+test("M-034 MS-001 fail-closed #5c: profile exits 0 with the launcher help -> unsupported (shape check)", async () => {
+  const dir = await fsPromises.mkdtemp(require("node:os").tmpdir() + "/ms001-probe-shape-");
+  const fp = await writeFakeDsh(dir, "profile-wrong-shape");
+  try {
+    const a = new DshAdapter({ bin: fp, shell: false });
+    const r = await a.probe();
+    assert.equal(r.status, "unsupported");
+    assert.equal(r.ready, false);
+    assert.equal(r.profile.ok, false);
+    assert.ok(r.fail_closed_reasons.includes("headless_profile_shape_unrecognised"));
+  } finally {
+    await fsPromises.rm(dir, { recursive: true, force: true });
+  }
+});
+
 // VC-034-001-02: discover() exposes transport_supported/unsupported + probe_summary
 test("M-034 MS-001 discover(): transport_supported + transport_unsupported + probe_summary", () => {
   const a = new DshAdapter({ bin: "/bin/true", shell: false });
   // Pre-probe: discover() must must be safe and report transport_status=unknown.
   const before = a.discover();
-  assert.equal(before.transport, "stdio-json-rpc"); // legacy default
+  assert.equal(before.transport, null); // no launch surface before the probe
   assert.equal(before.transport_status, "unknown");
+  assert.equal(before.transport_verified, false);
   assert.equal(before.probe_summary, null);
-  assert.deepEqual(before.transport_supported, PROBE_UNSUPPORTED_TRANSPORTS.slice());
+  assert.deepEqual(before.transport_supported, []);
   assert.deepEqual(before.transport_unsupported, PROBE_UNSUPPORTED_TRANSPORTS);
   assert.equal(before.supported_profile, null);
+});
+
+test("M-034 WP-03: discover() stops advertising an expired probe cache", () => {
+  const a = new DshAdapter({ bin: "/bin/true", shell: false });
+  a._setProbeCache({
+    status: "ready",
+    ready: true,
+    captured_at: new Date().toISOString(),
+    binary_path: "/bin/true",
+    version: { major: 0, minor: 2, patch: 1, raw: "0.2.1", out_excerpt: "0.2.1", recognised: true },
+    help: { sha256: "a".repeat(64), exit_code: 0, has_headless_profile: true },
+    profile: { exit_code: 0, ok: true },
+    supported_transport: "text-headless-v1",
+    supported_profile: "headless",
+    unsupported_transports: PROBE_UNSUPPORTED_TRANSPORTS,
+    fail_closed_reasons: [],
+  });
+  a._probeCacheExpiresAt = Date.now() - 1;
+  const d = a.discover();
+  assert.equal(d.transport_status, "unknown");
+  assert.equal(d.transport_verified, false);
+  assert.deepEqual(d.transport_supported, []);
+  assert.equal(d.supported_profile, null);
+  assert.equal(d.maturity, "experimental");
+  // The stale summary stays inspectable, just never as a verified transport.
+  assert.equal(d.probe_summary.help_sha256, "a".repeat(64));
 });
 
 // VC-034-001-03 / VC-034-001-04: 6 fail-closed classes (per P-008 §6 AC-P008-17).
@@ -855,8 +970,8 @@ test("M-034 MS-001 fail-closed #1: missing binary -> status=unsupported, ENOENT 
   const r = await a.probe();
   assert.equal(r.status, "unsupported");
   assert.equal(r.ready, false);
-  assert.ok(r.fail_closed_reasons.some((x) => /version_error:ENOENT/.test(x)));
-  assert.ok(r.fail_closed_reasons.some((x) => /help_error:ENOENT/.test(x)));
+  assert.ok(r.fail_closed_reasons.includes("binary_not_found"));
+  assert.ok(r.fail_closed_reasons.includes("binary_not_found"));
   assert.equal(r.version.recognised, false);
   assert.equal(r.help.has_headless_profile, false);
 });
@@ -934,6 +1049,28 @@ test("M-034 MS-001 fail-closed #5: missing settled signal in help -> status=degr
   }
 });
 
+test("M-034 MS-001 fail-closed #5b: headless profile missing -> status=unsupported (help text alone is not proof)", async () => {
+  const dir = await fsPromises.mkdtemp(require("node:os").tmpdir() + "/ms001-probe-prof-");
+  const fp = await writeFakeDsh(dir, "profile-missing");
+  try {
+    const a = new DshAdapter({ bin: fp, shell: false });
+    const r = await a.probe();
+    assert.equal(r.status, "unsupported");
+    assert.equal(r.ready, false);
+    // The help text still advertises headless — that must not be enough.
+    assert.equal(r.help.has_headless_profile, true);
+    assert.equal(r.profile.ok, false);
+    assert.equal(r.profile.exit_code, 1);
+    assert.ok(r.fail_closed_reasons.includes("headless_profile_exit_nonzero:1"));
+    // A failed transport must not be advertised as supported.
+    const after = a.discover();
+    assert.deepEqual(after.transport_supported, []);
+    assert.equal(after.transport_verified, false);
+  } finally {
+    await fsPromises.rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("M-034 MS-001 fail-closed #6: abnormal exit code on help probe -> fail-closed reason", async () => {
   const dir = await fsPromises.mkdtemp(require("node:os").tmpdir() + "/ms001-probe-hz-");
   const fp = await writeFakeDsh(dir, "nonzero-exit");
@@ -994,4 +1131,254 @@ test("M-034 MS-001 drift: probe() never writes JSON-RPC and never claims agent_s
   const probeRegion = src.slice(probeStart, probeEnd);
   assert.ok(!/jsonrpc|agent_settled|Content-Length/.test(probeRegion),
     "probe() region must not reference JSON-RPC, agent_settled, or Content-Length framing");
+});
+
+// ─── P-006 follow-up + M-034 WP-03 (2026-11-07 repair round) ─────────────────
+//
+// Regression coverage for the three layers that were broken against the real
+// `dsh 0.2.1-rc.5` CLI:
+//   1. registry  — a dsh agent entry must load (frozen reader still rejects it)
+//   2. transport — real headless argv/stdin, `final` settlement, blocked state
+//   3. probe     — bare `dsh` resolves on PATH; the CLI gate fails closed
+//
+// The last test drives `bin/cli.js agent dispatch-execute dsh:<id>` end to end;
+// it is the one that would have caught the original ERR_AGENT_PARSE blocker.
+
+const {
+  readAgentExt,
+  listAgentsExt,
+  findAgentsExt,
+  splitAdapterQualifiedId,
+} = require("../../lib/agents/registry-ext");
+const { readAgent } = require("../../lib/agents/registry");
+
+function seedAgentProject(adapterType, agentId = "worker-x") {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "m029-agent-"));
+  fs.mkdirSync(path.join(dir, ".agent", "agents"), { recursive: true });
+  const entry = {
+    schema_version: 1,
+    agent_id: agentId,
+    role: "implementer",
+    model: "deepseek-v4",
+    started_at: new Date().toISOString(),
+    status: "running",
+    capabilities: ["code_review"],
+    external: { adapter_type: adapterType },
+  };
+  fs.writeFileSync(
+    path.join(dir, ".agent", "agents", `${agentId}.json`),
+    JSON.stringify(entry),
+  );
+  return dir;
+}
+
+test("M-034 WP-03: a failed turn (turn_end.reason=error) maps to its reason code", async () => {
+  const ctx = runWithMode("turn-error");
+  try {
+    const adapter = new DshAdapter({ bin: ctx.fake, shell: false });
+    const result = await adapter.invoke(
+      { task: "x" },
+      { projectRoot: ctx.dir, runId: "R-dsh-turn-err" },
+    );
+    assert.equal(result.status, "failed");
+    // Real dsh 0.2.1-rc.5 writes the failure inside turn_end.reason.error and
+    // still emits an empty terminal `final`; the reason code must win.
+    assert.equal(result.error.code, "ERR_DSH_MISSING_CREDENTIAL");
+    assert.match(result.error.message, /no api key/);
+    assert.equal(result.error.exit_code, 1);
+  } finally {
+    ctx.restore();
+  }
+});
+
+test("P-006 follow-up: registry-ext loads a dsh agent while the frozen reader still rejects it", () => {
+  const dir = seedAgentProject("dsh", "dsher");
+  try {
+    assert.equal(readAgentExt(dir, "dsher").external.adapter_type, "dsh");
+    assert.equal(listAgentsExt(dir).length, 1);
+    assert.equal(findAgentsExt(dir, { adapterType: "dsh" }).length, 1);
+    // M-002 stays frozen: the canonical reader still refuses the type.
+    assert.throws(
+      () => readAgent(dir, "dsher"),
+      (err) => err.code === "ERR_AGENT_PARSE" && /invalid adapter_type "dsh"/.test(err.message),
+    );
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("P-006 follow-up: registry-ext still fails closed for unknown adapter types", () => {
+  const dir = seedAgentProject("not-a-host", "bad");
+  try {
+    assert.throws(
+      () => readAgentExt(dir, "bad"),
+      (err) => err.code === "ERR_INVALID_ADAPTER_TYPE",
+    );
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("P-006 follow-up: splitAdapterQualifiedId handles known and unknown prefixes", () => {
+  assert.deepEqual(
+    splitAdapterQualifiedId("dsh:worker"),
+    { adapterPrefix: "dsh", agentId: "worker" },
+  );
+  assert.deepEqual(
+    splitAdapterQualifiedId("worker"),
+    { adapterPrefix: null, agentId: "worker" },
+  );
+  assert.deepEqual(
+    splitAdapterQualifiedId("ns:worker"),
+    { adapterPrefix: null, agentId: "ns:worker" },
+  );
+});
+
+test("M-034 WP-03: invoke() spawns the headless argv and delivers the task on stdin", async () => {
+  const ctx = runWithMode("success");
+  const stdinFile = path.join(ctx.dir, "stdin.txt");
+  const argvFile = path.join(ctx.dir, "argv.json");
+  const prevStdin = process.env.FAKE_DSH_STDIN_FILE;
+  const prevArgv = process.env.FAKE_DSH_ARGV_FILE;
+  process.env.FAKE_DSH_STDIN_FILE = stdinFile;
+  process.env.FAKE_DSH_ARGV_FILE = argvFile;
+  try {
+    const adapter = new DshAdapter({ bin: ctx.fake, shell: false });
+    const result = await adapter.invoke(
+      { task: "review the schema", input: { file: "a.js" } },
+      { projectRoot: ctx.dir, runId: "R-dsh-argv-1" },
+    );
+    assert.equal(result.status, "ok");
+    assert.deepEqual(
+      JSON.parse(fs.readFileSync(argvFile, "utf8")),
+      ["--profile", "headless", "--json", "-"],
+    );
+    // The fake records the raw stdin as a JSON string.
+    const stdin = JSON.parse(fs.readFileSync(stdinFile, "utf8"));
+    assert.match(stdin, /review the schema/);
+    assert.match(stdin, /"file": "a.js"/);
+  } finally {
+    if (prevStdin === undefined) delete process.env.FAKE_DSH_STDIN_FILE;
+    else process.env.FAKE_DSH_STDIN_FILE = prevStdin;
+    if (prevArgv === undefined) delete process.env.FAKE_DSH_ARGV_FILE;
+    else process.env.FAKE_DSH_ARGV_FILE = prevArgv;
+    ctx.restore();
+  }
+});
+
+test("M-034 WP-03: invoke() reports the session id captured from the session event", async () => {
+  const ctx = runWithMode("success");
+  try {
+    const adapter = new DshAdapter({ bin: ctx.fake, shell: false });
+    const result = await adapter.invoke(
+      { task: "x" },
+      { projectRoot: ctx.dir, runId: "R-dsh-session-1" },
+    );
+    assert.equal(result.status, "ok");
+    // The headless CLI opens the run with {"type":"session","sessionId":...};
+    // surfacing it is what makes the session resumable.
+    assert.equal(result.result.session_id, "s1");
+    const journal = readJournal(ctx.dir, "R-dsh-session-1", "result.json");
+    assert.equal(journal.result.session_id, "s1");
+  } finally {
+    ctx.restore();
+  }
+});
+
+test("M-034 WP-03: invoke() forwards --session-id to resume an existing session", async () => {
+  const ctx = runWithMode("success");
+  const argvFile = path.join(ctx.dir, "argv.json");
+  const prevArgv = process.env.FAKE_DSH_ARGV_FILE;
+  process.env.FAKE_DSH_ARGV_FILE = argvFile;
+  try {
+    const adapter = new DshAdapter({ bin: ctx.fake, shell: false });
+    const result = await adapter.invoke(
+      { task: "continue" },
+      { projectRoot: ctx.dir, runId: "R-dsh-session-2", sessionId: "session-abc" },
+    );
+    assert.equal(result.status, "ok");
+    assert.deepEqual(
+      JSON.parse(fs.readFileSync(argvFile, "utf8")),
+      ["--profile", "headless", "--json", "--session-id", "session-abc", "-"],
+    );
+  } finally {
+    if (prevArgv === undefined) delete process.env.FAKE_DSH_ARGV_FILE;
+    else process.env.FAKE_DSH_ARGV_FILE = prevArgv;
+    ctx.restore();
+  }
+});
+
+test("M-034 WP-03: exit 0 without a terminal final event is blocked, not ok", async () => {
+  const ctx = runWithMode("no-final");
+  try {
+    const adapter = new DshAdapter({ bin: ctx.fake, shell: false });
+    const result = await adapter.invoke(
+      { task: "x" },
+      { projectRoot: ctx.dir, runId: "R-dsh-blocked-1" },
+    );
+    assert.equal(result.status, "blocked");
+    assert.equal(result.reason, "missing_settled_signal");
+    assert.match(result.result.text, /partial answer/);
+    const rb = readJournal(ctx.dir, "R-dsh-blocked-1", "rollback.json");
+    assert.equal(rb.status, "blocked");
+  } finally {
+    ctx.restore();
+  }
+});
+
+test("M-034 WP-03: verifyTransport fails closed when the probe is not ready", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "m034-gate-"));
+  try {
+    const adapter = new DshAdapter({ bin: "/no/such/dsh", shell: false });
+    const result = await adapter.invoke(
+      { task: "x" },
+      { projectRoot: dir, runId: "R-dsh-gate", verifyTransport: true },
+    );
+    assert.equal(result.status, "failed");
+    assert.equal(result.error.code, "ERR_DSH_TRANSPORT_UNSUPPORTED");
+    assert.equal(result.error.probe_status, "unsupported");
+    assert.deepEqual(result.error.fail_closed_reasons, ["binary_not_found"]);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("M-034 WP-03: probe() resolves a bare binary name on PATH", async (t) => {
+  const which = require("node:child_process").spawnSync("which", ["dsh"], { encoding: "utf8" });
+  if (which.status !== 0) return t.skip("no real dsh on this host");
+  const adapter = new DshAdapter(); // bin === "dsh", no DSH_BIN override
+  const probe = await adapter.probe();
+  if (!probe.ready) return t.skip(`dsh present but headless profile not ready: ${probe.status}`);
+  assert.equal(probe.status, "ready");
+  assert.equal(probe.profile.ok, true);
+  assert.ok(path.isAbsolute(probe.binary_path), "PATH lookup must yield an absolute path");
+  assert.equal(probe.supported_transport, PROBE_SUPPORTED_TRANSPORT);
+});
+
+test("P-006 follow-up: CLI dispatch-execute dsh:<id> reaches the adapter end-to-end", () => {
+  const dir = seedAgentProject("dsh", "dsher");
+  const fake = installFakeDsh();
+  try {
+    const cli = path.join(__dirname, "..", "..", "bin", "cli.js");
+    const out = require("node:child_process").spawnSync(
+      process.execPath,
+      [
+        cli, "agent", "dispatch-execute", "dsh:dsher", "review the schema",
+        "--project", dir, "--run-id", "R-cli-e2e", "--json",
+      ],
+      {
+        encoding: "utf8",
+        env: { ...process.env, DSH_BIN: fake, FAKE_DSH_MODE: "success" },
+        timeout: 30000,
+      },
+    );
+    assert.equal(out.status, 0, out.stderr);
+    const parsed = JSON.parse(out.stdout);
+    assert.equal(parsed.status, "ok");
+    assert.equal(parsed.agent_id, "dsher");
+    assert.equal(parsed.adapter_type, "dsh");
+    assert.equal(parsed.result.text, "hello from fake dsh");
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });

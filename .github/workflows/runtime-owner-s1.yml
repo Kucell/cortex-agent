@@ -81,8 +81,8 @@ jobs:
           }
           const manifestPath = "tests/dispatch/phase-zero-source-manifest.json";
           const manifest = JSON.parse(bytesFor(manifestPath).bytes.toString("utf8"));
-          assert.equal(manifest.sources.length, 279);
-          assert.equal(new Set(manifest.sources).size, 279);
+          assert.equal(manifest.sources.length, 283);
+          assert.equal(new Set(manifest.sources).size, 283);
           const additions = [
             "lib/dispatch/execute.js",
             "lib/dispatch/strict-domain-entry.js",

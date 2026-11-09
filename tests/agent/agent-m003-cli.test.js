@@ -190,6 +190,33 @@ test("m003-cli: agent dispatch-execute end-to-end (real CLI, fake claude binary)
   } finally { rmProject(root); rmProject(fake.dir); }
 });
 
+test("m003-cli: agent dispatch-execute warns when --session-id is given to a non-dsh adapter", () => {
+  const root = mkProject();
+  const fake = makeFakeClaude();
+  try {
+    seedAgent(root, "Worker-A-MS001", {
+      capabilities: ["code_review"],
+      external: { adapter_type: "claude-code", config_ref: "cfg", credential_ref: "sec" },
+    });
+    const shim = path.join(fake.dir, "shim.sh");
+    fs.writeFileSync(shim, `#!/bin/sh\nexec node ${JSON.stringify(fake.file)} "$@"\n`, "utf8");
+    fs.chmodSync(shim, 0o755);
+    const env = { ...process.env, CLAUDE_CODE_BIN: shim };
+    const r = spawnSync("node", [
+      binCli, "agent", "dispatch-execute",
+      "Worker-A-MS001", "review the schema",
+      "--session-id", "session-abc",
+      "--project", root, "--output", "json", "--timeout", "30",
+    ], { encoding: "utf8", env });
+    assert.ok(
+      /--session-id is only honoured by the "dsh" adapter/.test(r.stderr),
+      `stderr must warn about the ignored flag: ${r.stderr}`,
+    );
+    // The run itself still proceeds: the flag is ignored, not fatal.
+    assert.equal(r.status, 0, `stderr: ${r.stderr}\nstdout: ${r.stdout}`);
+  } finally { rmProject(root); rmProject(fake.dir); }
+});
+
 test("m003-cli: agent dispatch-execute on missing agent exits 3 with ERR_AGENT_NOT_FOUND", () => {
   const root = mkProject();
   try {

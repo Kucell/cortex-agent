@@ -56,14 +56,18 @@ function readPayload() {
   }
 }
 
-function loadConfig() {
-  const configPath = path.join(AGENT_ROOT, "config", "vcs.yml");
-  if (!fs.existsSync(configPath)) return null;
-  // Minimal YAML-like parser — sufficient for our flat schema.  Pulls
-  // `backend`, `host`, `token_ref`, and `default: {org, repo, base_branch}`.
-  const text = fs.readFileSync(configPath, "utf8");
+// Parse the flat vcs.yml schema.  Pulls backend, host, token_ref, the
+// optional merge_token_ref, and default: {org, repo, base_branch}.
+//
+// merge_token_ref (optional): a dedicated secret ref for the *merge* call.
+// Rationale — §9.1 of the pull-request workflow forbids bot / CI tokens from
+// merging, so the merge call must resolve a *human* Maintainer PAT while every
+// other command keeps using the shared CI token (least privilege).  When it is
+// absent, merge falls back to token_ref and the backend bot gate rejects it
+// with the human-merge URL.
+function parseVcsConfig(text) {
   const lines = text.split(/\r?\n/);
-  const cfg = { backend: null, host: null, token_ref: null, default: {} };
+  const cfg = { backend: null, host: null, token_ref: null, merge_token_ref: null, default: {} };
   let inDefault = false;
   for (const line of lines) {
     const t = line.replace(/#.*$/, "").replace(/^\s+/, "");
@@ -77,10 +81,16 @@ function loadConfig() {
       if (m) cfg.default[m[1]] = m[2].replace(/^["']|["']$/g, "");
       continue;
     }
-    const m = t.match(/^(backend|host|token_ref):\s+(.+?)\s*$/);
+    const m = t.match(/^(backend|host|token_ref|merge_token_ref):\s+(.+?)\s*$/);
     if (m) cfg[m[1]] = m[2].replace(/^["']|["']$/g, "");
   }
   return cfg;
+}
+
+function loadConfig() {
+  const configPath = path.join(AGENT_ROOT, "config", "vcs.yml");
+  if (!fs.existsSync(configPath)) return null;
+  return parseVcsConfig(fs.readFileSync(configPath, "utf8"));
 }
 
 // Resolve `secret://<ref>` by spawning the secrets CLI with `--gate user`.
@@ -207,6 +217,11 @@ function defaultBody(opts, ctx) {
   lines.push(`## 受管创建`);
   lines.push(`- 创建入口：vcs-pr`);
   lines.push(``);
+  // The R05 waiver must survive GitLab's ~2700-char description truncation,
+  // so it goes immediately after the marker and ahead of 提交范围.
+  lines.push(`## 大变更说明`);
+  lines.push(`- (超过 +500/-500 行时填写：明确“不可拆分”并给出具体理由)`);
+  lines.push(``);
   lines.push(`## 提交范围`);
   lines.push(`- branch: \`${opts.head}\` → \`${opts.base || ctx.cfg.default.base_branch || "main"}\``);
   if (ctx.cfg.default.org && ctx.cfg.default.repo) {
@@ -231,15 +246,42 @@ function defaultBody(opts, ctx) {
   lines.push("");
   lines.push(`## 风险与回滚`);
   lines.push(`- (填写)`);
-  lines.push("");
-  lines.push(`## 组件分支吸收与清理`);
-  lines.push(`- 不适用`);
   return lines.join("\n");
 }
 
+// Keep this alias set synchronized with the project's MR governance check
+// (for example `Tools/CI/check-mr-governance.mjs`) so a body written against
+// any accepted spelling still satisfies the R01 governance trace check.
+const MANAGED_MARKER_ALIASES = [
+  "受管创建",
+  "vcs-pr 创建",
+  "vcs-pr 受管创建",
+  "MR 创建入口",
+  "managed creation",
+  "managed",
+];
+const MANAGED_MARKER_PATTERN = new RegExp(
+  `^##[ \\t]+(?:${MANAGED_MARKER_ALIASES.join("|")})[ \\t]*\\r?\\n(?:[ \\t]*\\r?\\n)*[ \\t]*-[ \\t]*创建入口[ \\t]*[：:][ \\t]*vcs-pr[ \\t]*$`,
+  "m",
+);
+
 function ensureManagedCreationMarker(body) {
-  const marker = "## 受管创建\n- 创建入口：vcs-pr";
-  return body.includes(marker) ? body : `${marker}\n\n${body}`;
+  const source = body || "";
+  const markerPattern = new RegExp(MANAGED_MARKER_PATTERN.source, "gm");
+  const matches = [...source.matchAll(markerPattern)];
+  if (matches.length === 0) return `## 受管创建\n- 创建入口：vcs-pr\n\n${source}`;
+
+  const marker = matches[0][0];
+  const remainder = source.replace(markerPattern, "").trimStart();
+  return remainder ? `${marker}\n\n${remainder}` : marker;
+}
+
+// An update must not drop governance traceability just because the caller
+// supplied its own body file. Caller-supplied aliases are preserved verbatim;
+// a body with no marker at all gets the canonical heading prepended.
+function applyUpdateBody(body) {
+  if (body == null) return null;
+  return ensureManagedCreationMarker(body);
 }
 
 function loadBody(opts) {
@@ -285,7 +327,26 @@ async function main() {
   }
 
   const backend = require(path.join(__dirname, "backends", `${cfg.backend}.js`));
-  const token = resolveSecret(cfg.token_ref);
+  // Merge resolves its own secret ref when configured (§9.1 human-PAT gate);
+  // --token-ref overrides it per call.  Every other command keeps using the
+  // shared CI token.
+  const mergeRef = command === "merge"
+    ? (flag("--token-ref", argv) || cfg.merge_token_ref || null)
+    : null;
+  let token;
+  try {
+    token = resolveSecret(mergeRef || cfg.token_ref);
+  } catch (err) {
+    if (mergeRef) {
+      fail(
+        "merge_token_ref_unresolved",
+        `cannot resolve merge-only token ref '${mergeRef}': ${err.message}. `
+        + `Register it in .agent/config/secrets.yml and store the human Maintainer PAT in the keychain; `
+        + `until then merge through the Web UI as described in the pull-request workflow (§9.2).`,
+      );
+    }
+    throw err;
+  }
   const optsBase = {
     config: cfg,
     token,
@@ -379,9 +440,15 @@ async function main() {
     return;
   }
   if (command === "update") {
+    if (typeof backend.updatePR !== "function") {
+      fail("capability_unavailable", `${cfg.backend} backend does not support update.`);
+    }
     const bodyFile = flag("--body-file", argv);
     const body = bodyFile
-      ? fs.readFileSync(path.isAbsolute(bodyFile) ? bodyFile : path.join(process.cwd(), bodyFile), "utf8")
+      ? applyUpdateBody(fs.readFileSync(
+          path.isAbsolute(bodyFile) ? bodyFile : path.join(process.cwd(), bodyFile),
+          "utf8",
+        ))
       : null;
     const reviewers = (flag("--reviewers", argv) || "")
       .split(",")
@@ -570,4 +637,13 @@ function readReviewBody(argv) {
 if (require.main === module) {
   main().catch((err) => fail("orchestrator_error", err.message));
 }
-module.exports = { discoverActiveRunId, appendRunEvent };
+module.exports = {
+  parseVcsConfig,
+  discoverActiveRunId,
+  appendRunEvent,
+  defaultBody,
+  ensureManagedCreationMarker,
+  applyUpdateBody,
+  MANAGED_MARKER_PATTERN,
+  MANAGED_MARKER_ALIASES,
+};

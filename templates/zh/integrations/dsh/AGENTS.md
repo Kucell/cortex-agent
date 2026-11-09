@@ -18,4 +18,4 @@
 如有冲突，以 `.agent/` 内容为准。
 
 > DSH 是 Cortex Agent 的 first-class dispatch adapter（与 Pi / Claude Code / Codex CLI 同等地位）。
-> 安装与使用说明见 `.dsh/README.md`；能力边界见 `cortex-agent agent adapter discover dsh`。
+> 安装与使用说明见 `.dsh/README.md`；能力边界见 `cortex-agent agent adapter probe dsh`。

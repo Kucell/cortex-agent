@@ -116,6 +116,16 @@ default:
   base_branch: main
 ```
 
+
+### merge 专用 token（可选）
+
+合并是破坏性动作，pull-request 工作流 §9.1/§9.3 不允许 bot / CI token 调合并 API。
+需要自动合并时，在 `vcs.yml` 加 `merge_token_ref`（指向人类 Maintainer 的个人 PAT），
+只有 `merge` 命令会解析它；其他命令继续用 `token_ref`。GitLab backend 在 `PUT /merge`
+之前先读 `/api/v4/user`：命中 bot 直接抛 `gitlab_merge_bot_token_forbidden`，不发出任何
+写请求，并在错误里给出人工合并的 Web UI 地址。未配置 `merge_token_ref` 时回退到
+`token_ref`，由同一道闸门拒绝 bot。
+
 无 `config/vcs.yml` → CLI 报 `vcs_config_missing`,host 需 first-time setup。
 
 ## Body 模板

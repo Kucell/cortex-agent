@@ -9,9 +9,16 @@
 #           invokes `secrets get --ref <token_ref> --no-mask --gate user`
 #           internally to fetch the Authorization header. The agent
 #           never sees this value.
+# merge_token_ref (optional): a separate secret for the merge call only.
+#           The pull-request workflow forbids bot / CI tokens from
+#           merging, so this must resolve to a human Maintainer PAT.
+#           Every other command keeps using token_ref; without it the
+#           merge falls back to token_ref and the GitLab backend refuses
+#           a bot identity before sending any write request.
 backend: gitea
 host: "https://vcs.example.com"
 token_ref: gitea-pr
+# merge_token_ref: gitlab-maintainer-pat
 
 default:
   org: your-org
