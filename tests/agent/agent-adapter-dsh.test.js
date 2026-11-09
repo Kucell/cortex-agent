@@ -1266,6 +1266,48 @@ test("M-034 WP-03: invoke() spawns the headless argv and delivers the task on st
   }
 });
 
+test("M-034 WP-03: invoke() reports the session id captured from the session event", async () => {
+  const ctx = runWithMode("success");
+  try {
+    const adapter = new DshAdapter({ bin: ctx.fake, shell: false });
+    const result = await adapter.invoke(
+      { task: "x" },
+      { projectRoot: ctx.dir, runId: "R-dsh-session-1" },
+    );
+    assert.equal(result.status, "ok");
+    // The headless CLI opens the run with {"type":"session","sessionId":...};
+    // surfacing it is what makes the session resumable.
+    assert.equal(result.result.session_id, "s1");
+    const journal = readJournal(ctx.dir, "R-dsh-session-1", "result.json");
+    assert.equal(journal.result.session_id, "s1");
+  } finally {
+    ctx.restore();
+  }
+});
+
+test("M-034 WP-03: invoke() forwards --session-id to resume an existing session", async () => {
+  const ctx = runWithMode("success");
+  const argvFile = path.join(ctx.dir, "argv.json");
+  const prevArgv = process.env.FAKE_DSH_ARGV_FILE;
+  process.env.FAKE_DSH_ARGV_FILE = argvFile;
+  try {
+    const adapter = new DshAdapter({ bin: ctx.fake, shell: false });
+    const result = await adapter.invoke(
+      { task: "continue" },
+      { projectRoot: ctx.dir, runId: "R-dsh-session-2", sessionId: "session-abc" },
+    );
+    assert.equal(result.status, "ok");
+    assert.deepEqual(
+      JSON.parse(fs.readFileSync(argvFile, "utf8")),
+      ["--profile", "headless", "--json", "--session-id", "session-abc", "-"],
+    );
+  } finally {
+    if (prevArgv === undefined) delete process.env.FAKE_DSH_ARGV_FILE;
+    else process.env.FAKE_DSH_ARGV_FILE = prevArgv;
+    ctx.restore();
+  }
+});
+
 test("M-034 WP-03: exit 0 without a terminal final event is blocked, not ok", async () => {
   const ctx = runWithMode("no-final");
   try {

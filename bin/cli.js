@@ -775,7 +775,7 @@ async function initModeGeneral() {
       // supervise <status|steer|abort>. Routing is strictly additive —
       // the M-002 dispatcher body is unchanged.
       const sub = args[1];
-      if (sub === "adapter" || sub === "dispatch-execute") {
+      if (sub === "adapter" || sub === "dispatch-execute" || sub === "dispatch-batch") {
         agentM003Command(ctx);
       } else if (sub === "supervise") {
         // M-013 SP-006: supervise <status|steer|abort> entry point.

@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- 下一个版本的条目写在这里 -->
 
+### Added
+
+- Multi-session DSH scheduling is now a first-class cortex surface. `agent dispatch-batch --tasks <file.json> [--concurrency N]` fans a task set out over the normal per-adapter `invoke()` path: every task gets its own run id, its own dispatch journal, and (by default) its own DSH session; the aggregate is written to `.agent/runtime/dispatch/<batchId>/batch.json` with per-item status counts (`ok / blocked / timeout / failed`) and the observed `session_id` of every session it opened. Concurrency is opt-in (default 1, max 16) because parallel workers writing into one working tree collide — run them in separate worktrees.
+- `agent dispatch-execute` accepts `--session-id <id>`, and the DSH adapter now reports the session id it observed (`result.session_id`, taken from the run stream's `{"type":"session"}` event). Together these make a DSH session *resumable* across invocations: a first turn returns the id, a later invocation with `--session-id` continues the same conversation instead of opening a fresh one.
+
 ## [1.15.10] - 2026-11-09
 
 ### Fixed

@@ -130,7 +130,49 @@ $ dsh --profile headless [--json] [--session-id <id>] -
 | 失败的 turn（`status/phase=turn_end` 且 `reason.kind="error"`） | `ERR_DSH_<reason.error.code>`（如实测的 `ERR_DSH_MISSING_CREDENTIAL`） |
 | rollback 写失败 | `rollback-failed.json` + `notify_parent: true` |
 
-## 4. 已知限制
+## 4. 会话续接与多会话批调度
+
+DSH headless 的一次运行就是一个**会话**。每次运行的第一个事件是
+`{"type":"session","sessionId":"..."}`；把该 id 交给下一次运行即可**续接同一段对话**：
+
+```bash
+# 1) 首次派发：适配器把 session 事件里的 id 记进结果
+cortex-agent agent dispatch-execute dsh:Worker-A "先把 schema 读一遍" --output json
+# → result.session_id = "session-b9ed020a-5ac4-40f3-a7d3-b4fb089451b2"
+
+# 2) 续接同一会话（等价于 dsh --profile headless --json --session-id <id> -）
+cortex-agent agent dispatch-execute dsh:Worker-A "现在给出改动清单" \
+  --session-id session-b9ed020a-5ac4-40f3-a7d3-b4fb089451b2 --output json
+```
+
+> 实测（dsh 0.2.1-rc.5）：续接时运行流里的 `turn` 递增（turn 1 → turn 2），说明恢复的是同一段会话上下文，而不是新会话。
+
+**批调度**（多个会话并行）：把任务写成 JSON 交给 `agent dispatch-batch`：
+
+```json
+{
+  "tasks": [
+    { "label": "first",  "agent_id": "dsh:Worker-A", "task": "reply with exactly: FIRST-OK" },
+    { "label": "second", "agent_id": "dsh:Worker-A", "task": "reply with exactly: SECOND-OK" },
+    { "label": "followup", "agent_id": "dsh:Worker-A", "task": "继续上一轮",
+      "session_id": "session-b9ed020a-5ac4-40f3-a7d3-b4fb089451b2" }
+  ]
+}
+```
+
+```bash
+cortex-agent agent dispatch-batch --tasks ./tasks.json --concurrency 2 --output json
+```
+
+要点：
+
+- **每个任务一个 run_id、一个 journal**（`.agent/runtime/dispatch/<runId>/`），汇总写在 `<batchId>/batch.json`。
+- **每个任务一个独立 DSH 会话**（除非显式给 `session_id` 续接），汇总里回带各自的 `session_id`，便于后续续接。
+- **并发默认 1**：`--concurrency N` 显式开启并行（上限 16）。多个 worker 在同一工作树写文件会互相干扰，并行任务请放在各自的 worktree 里。
+- **状态如实汇总**：`ok / blocked / timeout / failed` 逐条统计；任一条 `failed` / `timeout` 时整体为 `failed`，只有 `blocked` 时为 `partial`，全绿才是 `ok`。批次退出码：全绿 0，否则 3（任务文件本身有问题时 2）。
+- 任务文件可用裸数组或 `{"tasks":[...]}`；每项必须有 `agent_id`，以及 `task` 或 `input` 之一；`label` 唯一（默认 `task-NN`）。
+
+## 5. 已知限制
 
 1. **tool gate 未启用**：`tool.before.observe` / `tool.before.block` 标记 `unsupported`（P-001 冻结词汇），待 M-018 验证 DSH 真实 hook 能力后另行接入。
 2. **不读取会话存储**：dispatch adapter 不读 `~/.dsh/sessions/`；usage 测量由 `scripts/dsh-usage-sync.js`（shadow）单独维护，两者互不依赖。probe 会启动 headless profile，dsh 可能刷新 `$DSH_HOME/profiles/headless/cordis.yml` 等自身运行时文件（只影响 dsh，不影响 cortex 数据）。

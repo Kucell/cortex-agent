@@ -111,3 +111,30 @@ flowchart LR
 2026-11-07 复核补丁：`probe()` 不再只靠 `dsh --help` 文本里出现 "headless" 就宣称可用——它额外执行有界的 `dsh --profile headless --help`，profile 缺失/损坏时归类 `unsupported`（`headless_profile_*`），并把 `profile.exit_code` / `profile.ok` 写入 probe 结果与缓存；`invoke()` 默认 `shell:false`（任务只走 stdin，避免 `args + shell:true` 的 DEP0190 与注入面）。通知泵把 `dsh` 注册为显式 deferred adapter：0.2.1-rc.5 没有 session 注入/唤醒 API，投递以 `ERR_NOTIFICATION_ADAPTER_UNAVAILABLE` 失败关闭，不伪造送达。
 
 2026-11-07 稳定性补丁（独立复核 FAIL 后）：profile 探针改为独立 15s 预算并超时重试一次（实测 profile 启动 3.1–4.6s，共享 5s 预算在并行负载下约 50% 误判 `unsupported`，进而让 `verifyTransport` 拒绝健康主机）；成功还要求 stdout 匹配 `Usage: dsh --profile headless`，防止包装器转发 launcher help；probe 缓存按结果分 TTL（ready 120s / 失败 15s），`discover()` 不再用过期缓存宣称 `ready`；真实 PATH 用例在 profile 不就绪时显式 skip；CLI human 输出在未 ready 时不再展示 `transport_supported=text-headless-v1`。注意：boot profile 会让 dsh 刷新自己的 `$DSH_HOME/profiles/headless/cordis.yml`（实测 mtime 变化），适配器本身不解析 dsh 配置。
+
+## 9. 2026-11-09 会话连续性与多会话批调度
+
+真实 headless 的一次运行就是一个 DSH 会话：运行流的第一个事件是
+`{"type":"session","sessionId":"..."}`，把它交给下一次运行即续接同一段对话
+（实测续接时 `turn` 递增）。本轮据此补齐两件事：
+
+1. **会话连续性**：`lib/agents/adapters/dsh.js` 解析 `session` 事件并把 id 写进
+   `result.session_id`（ok / blocked / failed 各分支都带）；`agent dispatch-execute`
+   新增 `--session-id <id>`，透传给适配器后变成
+   `dsh --profile headless --json --session-id <id> -`。
+2. **多会话批调度**：新增 `lib/agents/batch-dispatch.js` 与
+   `agent dispatch-batch --tasks <file.json> [--concurrency N]`。它复用既有的
+   per-adapter `invoke()` 路径（不自起进程、不重复状态机），每个任务拿到独立
+   run_id、独立 journal、默认独立 DSH 会话；汇总写入
+   `.agent/runtime/dispatch/<batchId>/batch.json`，逐条如实统计
+   `ok / blocked / timeout / failed`。
+
+边界与取舍：
+
+- **并发默认 1**（上限 16）。多个 worker 在同一工作树写文件会互相干扰，因此并行
+  必须显式开启，且并行任务应各自使用 worktree。
+- **不伪造送达**：批次状态由各任务真实结果聚合而成，任一 `failed`/`timeout` 时整体
+  `failed`，只有 `blocked` 时 `partial`，全绿才是 `ok`；退出码 0 / 3（任务文件本身
+  有问题为 2）。
+- **不替代通知面**：实时 steer / 唤醒 GUI 运行中会话仍不可用（通知泵对 dsh 是
+  显式 deferred），批调度走的是一次性 headless 运行。
