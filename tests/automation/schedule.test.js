@@ -457,6 +457,15 @@ test("CLI daemon --once performs exactly one tick and exits", () => {
   assert.equal(fs.readdirSync(scheduler.runsDir(root, "once")).length, 1);
 });
 
+test("schedule --help / -h / bare schedule print usage instead of erroring", () => {
+  for (const argv of [["schedule"], ["schedule", "--help"], ["schedule", "-h"]]) {
+    const r = runCli(argv);
+    assert.equal(r.status, 0, `${argv.join(" ")} should exit 0`);
+    assert.match(r.stdout, /cortex-agent schedule add/);
+    assert.equal(r.stderr, "");
+  }
+});
+
 test("schedule help is side-effect free and lists every subcommand", () => {
   const root = mkProject();
   const help = runCli(["schedule", "help"]);

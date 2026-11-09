@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- 下一个版本的条目写在这里 -->
 
+## [1.15.13] - 2026-11-09
+
+### Fixed
+
+- `cortex-agent schedule` now treats `--help`, `-h` and a bare `schedule` as a request for the usage block (exit 0) instead of "unknown schedule subcommand" (exit 2), matching the rest of the CLI.
+
 ## [1.15.12] - 2026-11-09
 
 ### Added
