@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- 下一个版本的条目写在这里 -->
 
+## [1.15.14] - 2026-11-09
+
+### Added
+
+- vcs-pr: optional `merge_token_ref` in `vcs.yml` — a dedicated human Maintainer PAT used only by the `merge` command (other commands keep the shared CI `token_ref`). `--token-ref` overrides it per call; an unresolvable ref fails with `merge_token_ref_unresolved`.
+- gitlab backend: `merge()` now returns `merged_by` (the identity behind the token).
+
+### Security
+
+- gitlab backend: before `PUT /merge`, the token is checked against `/api/v4/user`; a bot identity fails with `gitlab_merge_bot_token_forbidden` **without sending any write request**, and the error carries the human-merge URL. This enforces the pull-request workflow rule (§9.1/§9.3) that bot / CI tokens must not merge or delete source branches — including the case where no `merge_token_ref` is configured and the merge falls back to the CI token.
+
 ## [1.15.13] - 2026-11-09
 
 ### Fixed
