@@ -28,7 +28,7 @@ jobs:
         node: ["22", "24"]
     env:
       SOURCE_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
-      EXPECTED_GITLINK: 918c0007efc486f378b1922d00866aa616c99d17
+      EXPECTED_GITLINK: be30a5e0a45ef78e2a3cff2750ef564110f14261
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
