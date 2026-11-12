@@ -40,6 +40,8 @@ const {
 
 const modeArg = process.argv.find((a) => a.startsWith("--mode="));
 const mode = modeArg ? modeArg.slice("--mode=".length) : "echo";
+const fixtureOwnerArg = process.argv.find((arg) => arg.startsWith("--fixture-owner="));
+const fixtureOwnerArgs = fixtureOwnerArg ? [fixtureOwnerArg] : [];
 
 const pending = new Map();
 let seq = 0;
@@ -255,7 +257,7 @@ if (mode === "transfer") {
   // must reject the forged response and detect the transfer.
   const { spawn } = require("node:child_process");
   const path = require("node:path");
-  const grandchild = spawn(process.execPath, [path.join(__dirname, "m044-ms002-grandchild.js"), "--inherit-ipc"], {
+  const grandchild = spawn(process.execPath, [path.join(__dirname, "m044-ms002-grandchild.js"), "--inherit-ipc", ...fixtureOwnerArgs], {
     stdio: ["ignore", "pipe", "pipe", 3],
   });
 
@@ -328,7 +330,7 @@ if (mode === "relay") {
   // coordinator, where it has to be refused on authentication grounds.
   const startGrandchild = () => {
     if (relayGrandchild) return relayGrandchild;
-    const grandchild = spawn(process.execPath, [path.join(__dirname, "m044-ms002-relay.js")], {
+    const grandchild = spawn(process.execPath, [path.join(__dirname, "m044-ms002-relay.js"), ...fixtureOwnerArgs], {
       // stdin carries the request to replay, stdout is unused, stderr carries
       // the report, and fd 3 is the transferred IPC handle.
       stdio: ["pipe", "pipe", "pipe", 3],
@@ -384,7 +386,7 @@ if (mode === "inherit") {
   // inherits nothing of ours. It must not be able to answer on our channel.
   const { spawn } = require("node:child_process");
   const path = require("node:path");
-  const grandchild = spawn(process.execPath, [path.join(__dirname, "m044-ms002-grandchild.js")], {
+  const grandchild = spawn(process.execPath, [path.join(__dirname, "m044-ms002-grandchild.js"), ...fixtureOwnerArgs], {
     stdio: ["ignore", "pipe", "pipe", "ipc"],
   });
   const killGrandchild = () => {
