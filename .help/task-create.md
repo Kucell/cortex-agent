@@ -1,46 +1,55 @@
 # cortex-agent task create
 
-Create a coordination task by publishing a task.created event.
+Create a coordination task through the Coordination Application Service.
 
-## Usage
+## Field-based interface (preferred)
 
-    cortex-agent task create --project <path> --event-json <json>
+    cortex-agent task create --project <path> --task <id> \
+      --actor <coordinator-id> --session <session-id> \
+      --project-id <project-id> --correlation-id <correlation-id> \
+      [--repository-id <repository-id>] [--message <text>] \
+      [--notification-policy <policy>] [--auth-context-json <json>] [--json]
 
-## Required
+`--task`, `--actor`, `--session`, `--project-id` and `--correlation-id` are
+required. `--project` defaults to the current directory. The writer supplies
+the `task.created` envelope and a coordinator producer; this declaration does
+not grant static Registry capabilities or a file Lease.
 
-  --project <path>        Project root directory (default: current working directory).
-  --event-json <json>     Coordination event JSON describing the created task.
+`--auth-context-json`, when supplied, contains `actorId`, `kind`, `sessionId`
+and optional `workflowGate`. The producer must match that context. Task,
+actor, session and project IDs are existing identities, not interchangeable.
 
-## Event schema (task.created)
+## Legacy event-envelope compatibility path
 
-    {
-      "eventId": "string",
-      "projectId": "string",
-      "taskId": "string",
-      "correlationId": "string",
-      "producer": { "actorId": "string", "kind": "coordinator|agent|system" },
-      "targets": [],
-      "eventType": "task.created",
-      "previousState": null,
-      "currentState": "CREATED",
-      "timestamp": "ISO-8601",
-      "repository": { "repositoryId": "string" },
-      "notification": { "policy": "journal_only|notify_parent", "dedupeKey": "string" }
-    }
+    cortex-agent task create --project <path> --event-json <complete-event-json> \
+      [--auth-context-json <json>] [--json]
 
-## Options
+`--event-json` remains the legacy path and takes precedence over the field
+builder. It requires a complete valid coordination event, including
+`schemaVersion`, `eventId`, `projectId`, `taskId`, `correlationId`, `producer`,
+`targets`, `eventType`, `previousState`, `currentState`, `timestamp`,
+`repository` and `notification`; use the shipped coordination event schema.
+`eventType` must be `task.created`, `previousState` must be null, and
+`currentState` must be `CREATED`. A partial event is not a valid example.
 
-  --json                  Emit machine-readable JSON.
+## Ownership and state boundaries
 
-## Notes
+The field-based `create/assign/accept` builders do not bind `fileOwnership`.
+A raw envelope may carry it, but must satisfy the application service's
+actor, transition, lease and fencing rules. There is no arbitrary set_state.
 
-  State is written through the Coordination Application Service; there is no
-  arbitrary set_state capability.
-  During the legacy-layout compatibility window, task events and ownership
-  leases resolve to the same runtime namespace so a task is never split from
-  its lease.
+`task rebind-ownership` refreshes existing ownership over the same scope and
+owner using a newer continuation Lease. It is not first registration, initial
+file ownership assignment, a scope expansion, or a way to change the owner.
+Never infer permission from an empty ownership list or from command success.
+
+Task events and leases resolve to the same runtime namespace during the
+legacy-layout compatibility window. Static `agent register/enable/disable`
+does not create Task, Session or Lease state; acquire and validate these
+separately before source writes or Runtime activation.
 
 ## Example
 
-    cortex-agent task create --project . \
-      --event-json '{"eventId":"CE-1","projectId":"cortex-agent","eventType":"task.created"}'
+    cortex-agent task create --project . --task T-EXAMPLE \
+      --actor coordinator-id --session existing-session-id \
+      --project-id example --correlation-id CORR-EXAMPLE --json
