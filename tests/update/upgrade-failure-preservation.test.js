@@ -373,6 +373,9 @@ function upgradeHarness(root, overrides) {
       runUpdateVerification: call("runUpdateVerification", { ok: true, verification: [], summary: { failed: 0 } }),
     },
     "./update/runtime-layout-migration": { ...migration, ...overrides },
+    // Orthogonal contract installation has public CLI coverage in
+    // upgrade-static-registry.test.js; keep this migration harness isolated.
+    "./update/static-registry-contracts": { addRegistryContracts() {} },
     "../team-pack/index": inert,
     "./management/api-helpers": { printManagementPayload: (value) => payloads.push(value) },
     "../script/manifest": { reconcileScripts: () => ({ updates: [], applied: [], failed: [], skipped: [] }) },
