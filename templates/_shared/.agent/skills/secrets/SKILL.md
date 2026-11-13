@@ -118,7 +118,10 @@ secrets:
     account: your-account
   - ref: github-copilot
     service: github-copilot-your-account
+    account: your-account
 ```
+
+macOS Keychain 操作要求显式非空 `account`，按 `service` 和 `account` 精确匹配；缺少或不匹配时不会回退到仅按 service 查询。升级前应核对现有条目的 account 并补全配置；旧条目不会自动迁移或删除。
 
 无 `config/secrets.yml` → `secrets list` 提示 host 先 first-time setup。
 

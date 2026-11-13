@@ -97,6 +97,12 @@ function loadConfig() {
   const out = { default_backend: null, secrets: [] };
   let inSecrets = false;
   for (const line of lines) {
+    // Fail closed on identity scalars the minimal parser cannot safely decode.
+    // In particular, '#' inside quotes must not silently change the account.
+    const identity = line.match(/^\s*(?:-\s*)?(?:ref|service|account):\s*(.*)$/);
+    if (identity && (identity[1].includes("#") || (/^["']/.test(identity[1]) && identity[1].includes("\\")))) {
+      fail("unsupported_identity_scalar", "Identity values containing # or quoted escapes are not supported; use an unambiguous configuration.");
+    }
     const trimmed = line.replace(/#.*$/, "").replace(/^\s+/, "");
     if (!trimmed) continue;
     if (trimmed === "secrets:") {
@@ -115,7 +121,20 @@ function loadConfig() {
       const child = trimmed.match(/^(\w+):\s+(.+?)\s*$/);
       if (child && child[1] !== "ref") {
         const last = out.secrets[out.secrets.length - 1];
-        if (last && !last[child[1]]) last[child[1]] = child[2].replace(/^["']|["']$/g, "");
+        if (last && !last[child[1]]) {
+          const raw = child[2];
+          const isIdentity = child[1] === "service" || child[1] === "account";
+          if (isIdentity && /^["']/.test(raw)) {
+            const quote = raw[0];
+            if (raw.length < 2 || raw.at(-1) !== quote || raw.slice(1, -1).includes(quote)) {
+              fail("unsupported_identity_scalar", "Identity values must use simple matching quotes or an unquoted scalar.");
+            }
+            last[child[1]] = raw.slice(1, -1);
+          } else {
+            if (isIdentity && /^[\[\]{},|>!&*]/.test(raw)) fail("unsupported_identity_scalar", "Unsupported identity scalar.");
+            last[child[1]] = isIdentity ? raw : raw.replace(/^["']|["']$/g, "");
+          }
+        }
       }
       continue;
     }
@@ -226,7 +245,11 @@ function main() {
   // as before the fix.
   const cfg = loadConfig();
   const declared = cfg?.secrets?.find?.((s) => s && s.ref === ref);
-  const service = flag("--service", argv) || declared?.service || ref;
+  const serviceOverride = flag("--service", argv);
+  if (declared && serviceOverride !== null && serviceOverride !== (declared.service || ref)) {
+    fail("service_override_disallowed", `--service must match the configured service for ref '${ref}'.`);
+  }
+  const service = serviceOverride || declared?.service || ref;
   // Account is the (service, account) tuple from config — never the operator's
   // --account flag.  Honoring --account would let a caller reach a different
   // row's secret (the yunxiao-pkg-upload incident).  Reject explicit overrides
