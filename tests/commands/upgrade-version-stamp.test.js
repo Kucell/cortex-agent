@@ -48,6 +48,9 @@ function runChild(root, scenario, reportMode, command) {
     "node:fs": fs, "node:path": path,
     "node:child_process": { spawnSync() { throw Error("unexpected subprocess"); } },
     "./update/report": reports,
+    // Registry contract bootstrap is covered by upgrade-static-registry.test.js;
+    // this relocated VM fixture isolates version-stamp IO and its failure paths.
+    "./update/static-registry-contracts": { addRegistryContracts() {} },
     "./update/verify": {
       collectSemanticMergeCandidates: () => [],
       runUpdateVerification: () => ({ ok: scenario !== "verification-failed", verification: [], summary: { failed: scenario === "verification-failed" ? 1 : 0, skipped: 0 } }),

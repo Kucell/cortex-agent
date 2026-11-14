@@ -13,12 +13,48 @@
     "started_at",
     "status"
   ],
+  "dependencies": {
+    "identity": ["enabled", "registration", "external", "capabilities", "projects", "owned_files"],
+    "enabled": ["identity", "registration"],
+    "registration": ["identity", "enabled"]
+  },
   "properties": {
     "schema_version": { "const": 1 },
     "agent_id": {
       "type": "string",
       "minLength": 1,
       "description": "Stable agent id, e.g. Worker-A-MS001, codex-main, claude-code-user."
+    },
+    "identity": {
+      "type": "object", "additionalProperties": false,
+      "required": ["provider", "adapter_type", "subject"],
+      "properties": {
+        "provider": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*$" },
+        "adapter_type": { "type": "string", "enum": ["claude-code", "cortex", "codex", "codey", "pi", "custom", "minimax", "dsh", "cursor"] },
+        "subject": { "type": "string", "minLength": 1, "maxLength": 512, "description": "Native host identity verified and pinned by the project owner, never a generated Task/Lease id." }
+      }
+    },
+    "enabled": { "type": "boolean", "description": "Explicit static selection state. Managed registration starts false; independent of runtime status and recall." },
+    "registration": {
+      "type": "object", "additionalProperties": false,
+      "required": ["owner_id", "events"],
+      "properties": {
+        "owner_id": { "type": "string", "minLength": 1 },
+        "events": {
+          "type": "array", "minItems": 1, "maxItems": 10001,
+          "items": {
+            "type": "object", "additionalProperties": false,
+            "required": ["action", "actor_id", "session_id", "at", "policy_sha256"],
+            "properties": {
+              "action": { "enum": ["register", "enable", "disable"] },
+              "actor_id": { "type": "string", "minLength": 1 },
+              "session_id": { "type": "string", "minLength": 1 },
+              "at": { "type": "string", "format": "date-time" },
+              "policy_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+            }
+          }
+        }
+      }
     },
     "role": {
       "type": "string",
@@ -72,7 +108,7 @@
       "properties": {
         "adapter_type": {
           "type": "string",
-          "enum": ["claude-code", "cortex", "codex", "codey", "pi", "custom"]
+          "enum": ["claude-code", "cortex", "codex", "codey", "pi", "custom", "minimax", "dsh", "cursor"]
         },
         "config_ref": { "type": "string" },
         "credential_ref": { "type": "string" }

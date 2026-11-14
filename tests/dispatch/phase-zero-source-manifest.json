@@ -18,7 +18,11 @@
     "lib/agents/invoke.js",
     "lib/agents/m003-cli.js",
     "lib/agents/registry-adapter-types.js",
+    "lib/agents/registry-authorization.js",
+    "lib/agents/registry-cli.js",
     "lib/agents/registry-ext.js",
+    "lib/agents/registry-identity.js",
+    "lib/agents/registry-managed.js",
     "lib/agents/registry.js",
     "lib/agents/reporter.js",
     "lib/anchor/anchor.js",
@@ -90,6 +94,7 @@
     "lib/commands/topology.js",
     "lib/commands/update/report.js",
     "lib/commands/update/runtime-layout-migration.js",
+    "lib/commands/update/static-registry-contracts.js",
     "lib/commands/update/verify.js",
     "lib/commands/upgrade.js",
     "lib/coordination/adapter-core.js",
@@ -431,6 +436,7 @@
     "The bin/cli.js protected blob advanced with the reviewed read-only migration inspect/plan route (P-001/P-002, independent review PASS). The migration route never writes: it prints JSON, exits 0 when the scoped format inspection has no unresolved findings, 1 for unresolved input and 2 for unsupported stages. Phase 0 dispatch behaviour is unchanged.",
     "The bin/cli.js protected blob advanced with the managed permit-bridge serve entry. The new case only lazily loads lib/commands/permit-bridge-service-cli.js, opens an already provisioned store, binds loopback and prints two ports; it never creates a store, prints tickets, or changes existing Phase 0 commands.",
     "The bin/cli.js protected blob advanced with the reviewed agent dispatch-batch routing entry, and the reviewed literal-require closure grows by lib/agents/registry-ext.js and lib/agents/batch-dispatch.js. registry-ext.js was added by the DSH adapter work and is eagerly required by lib/agents/cli.js and lib/agents/m003-cli.js, so the closure must carry it for the sandbox to start at all; batch-dispatch.js is the reviewed multi-task fan-out module behind agent dispatch-batch. The new case only routes the dispatch-batch subcommand; it writes only under .agent/runtime/dispatch/<batchId>/ through the already reviewed writeDispatchArtifact seam. Existing Phase 0 dispatch behaviour is unchanged.",
-    "The bin/cli.js protected blob advanced with the reviewed cortex schedule entry, and the reviewed literal-require closure grows by lib/commands/schedule-cli.js and lib/automation/scheduler.js. schedule-cli.js is required eagerly by bin/cli.js and eagerly requires the scheduler module, so the closure must carry both for the sandbox to start; the scheduler writes only .agent/schedules/<id>.json (definitions) and .agent/runtime/schedules/<id>/runs/ (run evidence), and executes through the already reviewed dispatchBatch seam. Existing Phase 0 dispatch behaviour is unchanged."
+    "The bin/cli.js protected blob advanced with the reviewed cortex schedule entry, and the reviewed literal-require closure grows by lib/commands/schedule-cli.js and lib/automation/scheduler.js. schedule-cli.js is required eagerly by bin/cli.js and eagerly requires the scheduler module, so the closure must carry both for the sandbox to start; the scheduler writes only .agent/schedules/<id>.json (definitions) and .agent/runtime/schedules/<id>/runs/ (run evidence), and executes through the already reviewed dispatchBatch seam. Existing Phase 0 dispatch behaviour is unchanged.",
+    "The managed static registry entry eagerly loads registry-cli.js, registry-authorization.js, registry-identity.js and registry-managed.js through lib/agents/cli.js; lib/commands/upgrade.js also references update/static-registry-contracts.js on upgrade paths. These five reviewed modules extend the literal-require closure without changing protected source pins or Phase 0 dispatch assertions. Registry writes still require the explicit register/enable/disable route and Owner-provisioned local authorization; upgrade only fills missing schema and README contracts."
   ]
 }

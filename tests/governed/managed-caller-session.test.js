@@ -5,10 +5,11 @@ const assert = require("node:assert/strict");
 const path = require("node:path");
 const fs = require("node:fs");
 const os = require("node:os");
+const { randomUUID } = require("node:crypto");
 const { execFileSync } = require("node:child_process");
 
 const {
-  startManagedCallerSession,
+  startManagedCallerSession: startUnscopedManagedCallerSession,
   createExecutorEndpoint,
   readSessionSecret,
   SUPERVISOR_OPERATIONS,
@@ -20,6 +21,14 @@ const {
 } = require("../../lib/governed/managed-caller-session");
 
 const EXECUTOR = path.join(__dirname, "fixtures", "m044-ms002-executor.js");
+const FIXTURE_OWNER_ARG = `--fixture-owner=${randomUUID()}`;
+
+function startManagedCallerSession(options = {}) {
+  return startUnscopedManagedCallerSession({
+    ...options,
+    args: [...(options.args || []), FIXTURE_OWNER_ARG],
+  });
+}
 
 /**
  * Read a process's process-group id.
@@ -47,43 +56,65 @@ function readPgid(pid) {
 /** Kill a child and wait until it is really gone. */
 async function killChild(child) {
   if (!child || typeof child.kill !== "function") return;
-  try {
-    child.kill();
-  } catch (_) {
-    // Already gone.
-  }
-  // Give the OS a moment to reap it so the next test does not see a stray
-  // process. A leaked executor outlives the test run.
-  await new Promise((resolve) => setTimeout(resolve, 100));
+  if (child.exitCode !== null || child.signalCode !== null) return;
+  await new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      child.removeListener("exit", onExit);
+      reject(new Error(`fixture child ${child.pid} did not exit`));
+    }, 5000);
+    function onExit() { clearTimeout(timer); resolve(); }
+    child.once("exit", onExit);
+    try { child.kill(); }
+    catch (error) {
+      clearTimeout(timer);
+      child.removeListener("exit", onExit);
+      reject(error);
+    }
+  });
 }
 
 /**
- * Kill every fixture process that outlived its test.
+ * Find only this suite's live fixture processes, including orphaned descendants.
  *
  * The `transfer` fixture deliberately hands its IPC handle to a grandchild.
  * That grandchild holds the inherited descriptor, so it survives the death of
  * its parent and would keep the channel open. The fixture cannot reap it
  * reliably, so the test sweep does it here.
  */
-async function sweepFixtureProcesses() {
+function ownedFixturePids() {
   let listing = "";
   try {
-    listing = execFileSync("ps", ["-A", "-o", "pid=,command="], { encoding: "utf8" });
-  } catch (_) {
-    return;
+    listing = execFileSync("ps", ["-A", "-o", "pid=,stat=,command="], { encoding: "utf8" });
+  } catch (error) {
+    if (process.platform === "win32" && error.code === "ENOENT") return [];
+    throw error;
   }
+  const pids = [];
   for (const line of listing.split("\n")) {
-    if (!line.includes("m044-ms002-executor.js") && !line.includes("m044-ms002-grandchild.js")) {
-      continue;
-    }
-    const pid = Number.parseInt(line.trim().split(/\s+/)[0], 10);
-    if (!Number.isInteger(pid) || pid <= 0) continue;
+    const [rawPid, status, ...args] = line.trim().split(/\s+/);
+    if (!status || status.startsWith("Z") || !args.includes(FIXTURE_OWNER_ARG)) continue;
+    if (!args.some((arg) => /^m044-ms002-(executor|grandchild|relay)\.js$/.test(path.basename(arg)))) continue;
+    const pid = Number(rawPid);
+    if (Number.isSafeInteger(pid) && pid > 0) pids.push(pid);
+  }
+  return pids;
+}
+
+async function sweepFixtureProcesses() {
+  const pids = ownedFixturePids();
+  for (const pid of pids) {
     try {
       process.kill(pid, "SIGKILL");
-    } catch (_) {
-      // Already gone.
+    } catch (error) {
+      if (error.code !== "ESRCH") throw error;
     }
   }
+  const deadline = Date.now() + 5000;
+  while (ownedFixturePids().some((pid) => pids.includes(pid))) {
+    if (Date.now() >= deadline) throw new Error("owned fixture processes did not exit");
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  return pids;
 }
 
 /** Start a session and always tear it down, even when the test throws. */
@@ -129,6 +160,43 @@ async function expectHandshakeFailure(options, pattern) {
 }
 
 describe("governed/managed-caller-session - session lifecycle", () => {
+  test("fixture cleanup preserves another suite's same-name executors", {
+    skip: process.platform === "win32", // The scoped ps sweep is POSIX-only.
+  }, async () => {
+    const sessions = [];
+    function options(args = []) {
+      let pid;
+      return { modulePath: EXECUTOR, args, factSource: {
+        collectProcessFacts: (child) => { pid = child.pid; return { pid,
+          startToken: "fixture", commandDigest: "fixture", socketAddress: "fixture",
+          socketEndpoint: { inode: 123, address: "fixture" } }; },
+        readSocketHolders: () => [pid],
+        isPreciseStartToken: () => true,
+      } };
+    }
+    try {
+      // A prefix match would incorrectly claim the first foreign executor.
+      for (const args of [[`${FIXTURE_OWNER_ARG}-foreign`], []]) {
+        sessions.push(await startUnscopedManagedCallerSession(options(args)));
+      }
+      const owned = await startManagedCallerSession(options());
+      sessions.push(owned);
+      assert.ok((await sweepFixtureProcesses()).includes(owned.child.pid));
+      await killChild(owned.child);
+      for (const { session, child } of sessions.slice(0, 2)) {
+        assert.equal(child.exitCode, null);
+        assert.equal(child.signalCode, null);
+        assert.equal(session.established, true);
+        assert.equal((await session.request(SUPERVISOR_OPERATIONS.PING)).handled, SUPERVISOR_OPERATIONS.PING);
+      }
+    } finally {
+      for (const { session, child } of sessions) {
+        await session.close("test_cleanup");
+        await killChild(child);
+      }
+    }
+  });
+
   test("Windows holder enumeration returns the supervised channel endpoints", {
     skip: process.platform !== "win32",
     timeout: 30000,
