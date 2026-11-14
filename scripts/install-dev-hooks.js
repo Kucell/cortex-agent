@@ -73,7 +73,7 @@ function install() {
   fs.writeFileSync(TARGET, body, { mode: 0o755 });
   fs.chmodSync(TARGET, 0o755);
   console.log(`✅ installed ${path.relative(ROOT, TARGET)}`);
-  console.log("   gates: L3 distribution boundary + per-file checks + memory integrity");
+  console.log("   gates: L3 distribution boundary + per-file checks + memory integrity + gitlink pin sync");
 }
 
 function check() {
