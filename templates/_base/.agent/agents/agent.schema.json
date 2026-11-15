@@ -46,11 +46,14 @@
             "type": "object", "additionalProperties": false,
             "required": ["action", "actor_id", "session_id", "at", "policy_sha256"],
             "properties": {
-              "action": { "enum": ["register", "enable", "disable"] },
+              "action": { "enum": ["register", "enable", "disable", "reconcile"] },
               "actor_id": { "type": "string", "minLength": 1 },
               "session_id": { "type": "string", "minLength": 1 },
               "at": { "type": "string", "format": "date-time" },
-              "policy_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+              "policy_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+              "previous_profile_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+              "profile_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+              "profile_revision": { "type": "integer", "minimum": 2 }
             }
           }
         }
@@ -61,6 +64,7 @@
       "enum": ["implementer", "coordinator", "reviewer", "researcher", "documenter", "memory-curator", "conversation-curator", "user", "external"]
     },
     "model": { "type": "string", "minLength": 1 },
+    "profile_revision": { "type": "integer", "minimum": 1 },
     "task_id": { "type": ["string", "null"] },
     "mission_id": { "type": ["string", "null"] },
     "session_id": { "type": ["string", "null"] },

@@ -5,7 +5,8 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const os = require("node:os");
-const { register, setEnabled } = require("../../lib/agents/registry-managed");
+const { createHash } = require("node:crypto");
+const { register, setEnabled, planReconcile, reconcile } = require("../../lib/agents/registry-managed");
 const { deriveAgentId } = require("../../lib/agents/registry-identity");
 const { readAgentExt, validateEntryExt } = require("../../lib/agents/registry-ext");
 const { discover } = require("../../lib/agents/discover");
@@ -29,6 +30,169 @@ function fixture(t) {
   const file = path.join(root, ".agent/agents", `${id}.json`);
   return { root, auth, identity, grant, policy, policyFile, save, id, file };
 }
+
+function sha256(value) { return createHash("sha256").update(value).digest("hex"); }
+
+test("reconcile plans from Owner policy and applies an audited disabled profile with CAS hashes", (t) => {
+  const f = fixture(t);
+  const original = register(f.root, f.identity, f.auth);
+  f.grant.role = "reviewer";
+  f.grant.model = "review-model";
+  f.grant.capabilities = ["code_review"];
+  f.grant.owned_files = ["lib/example.js", "tests/example.test.js"];
+  f.save();
+
+  const plan = planReconcile(f.root, f.id, f.auth);
+  assert.equal(plan.changed, true);
+  assert.equal(plan.agent_id, original.agent_id);
+  assert.equal(plan.enabled, false);
+  assert.equal(plan.profile_revision, 1);
+  assert.equal(plan.next_profile_revision, 2);
+  assert.equal(plan.policy_sha256, sha256(fs.readFileSync(f.policyFile)));
+  assert.equal(plan.entry_sha256, sha256(fs.readFileSync(f.file)));
+  assert.deepEqual(plan.target_profile, {
+    role: "reviewer", model: "review-model", capabilities: ["code_review"],
+    projects: ["example"], owned_files: ["lib/example.js", "tests/example.test.js"],
+  });
+  assert.equal(fs.readFileSync(f.file, "utf8"), `${JSON.stringify(original, null, 2)}\n`);
+
+  const updated = reconcile(f.root, f.id, f.auth, {
+    expectedEntrySha256: plan.entry_sha256,
+    expectedPolicySha256: plan.policy_sha256,
+  });
+  assert.equal(updated.agent_id, original.agent_id);
+  assert.deepEqual(updated.identity, original.identity);
+  assert.equal(updated.enabled, false);
+  assert.equal(updated.role, "reviewer");
+  assert.equal(updated.model, "review-model");
+  assert.deepEqual(updated.capabilities, ["code_review"]);
+  assert.deepEqual(updated.projects, ["example"]);
+  assert.deepEqual(updated.owned_files, ["lib/example.js", "tests/example.test.js"]);
+  assert.equal(updated.profile_revision, 2);
+  assert.deepEqual(updated.registration.events.map((event) => event.action), ["register", "reconcile"]);
+  assert.equal(updated.registration.events[1].profile_revision, 2);
+  assert.match(updated.registration.events[1].previous_profile_sha256, /^[a-f0-9]{64}$/);
+  assert.match(updated.registration.events[1].profile_sha256, /^[a-f0-9]{64}$/);
+  assert.notEqual(updated.registration.events[1].previous_profile_sha256, updated.registration.events[1].profile_sha256);
+  assert.equal(fs.existsSync(path.join(f.root, ".agent/runtime")), false);
+  assert.equal(fs.existsSync(path.join(f.root, ".agent-runtime/coordination")), false);
+  assert.equal(setEnabled(f.root, f.id, true, f.auth).role, "reviewer");
+});
+
+test("reconcile with an already-matching profile is a read-only no-op", (t) => {
+  const f = fixture(t);
+  const original = register(f.root, f.identity, f.auth);
+  const plan = planReconcile(f.root, f.id, f.auth);
+  assert.equal(plan.changed, false);
+  const result = reconcile(f.root, f.id, f.auth, {
+    expectedEntrySha256: plan.entry_sha256,
+    expectedPolicySha256: plan.policy_sha256,
+  });
+  assert.deepEqual(result, original);
+  assert.equal(fs.readFileSync(f.file, "utf8"), `${JSON.stringify(original, null, 2)}\n`);
+});
+
+test("reconcile fails closed for enabled, unauthorized, and stale profile or policy snapshots", (t) => {
+  const f = fixture(t);
+  const original = register(f.root, f.identity, f.auth);
+  f.grant.model = "changed-model";
+  f.save();
+  const plan = planReconcile(f.root, f.id, f.auth);
+  const before = fs.readFileSync(f.file, "utf8");
+
+  assert.throws(() => planReconcile(f.root, f.id, { ...f.auth, actor_id: "forged" }),
+    { code: "ERR_REGISTRY_UNAUTHORIZED" });
+  assert.throws(() => reconcile(f.root, f.id, f.auth, {
+    expectedEntrySha256: "0".repeat(64), expectedPolicySha256: plan.policy_sha256,
+  }), { code: "ERR_REGISTRY_STALE" });
+  assert.equal(fs.readFileSync(f.file, "utf8"), before);
+
+  f.grant.model = "newer-model";
+  f.save();
+  assert.throws(() => reconcile(f.root, f.id, f.auth, {
+    expectedEntrySha256: plan.entry_sha256, expectedPolicySha256: plan.policy_sha256,
+  }), { code: "ERR_REGISTRY_STALE" });
+  assert.equal(fs.readFileSync(f.file, "utf8"), before);
+
+  f.grant.model = "test-model";
+  f.save();
+  setEnabled(f.root, f.id, true, f.auth);
+  f.grant.model = "enabled-profile-mismatch";
+  f.save();
+  const enabled = fs.readFileSync(f.file, "utf8");
+  const enabledPlan = planReconcile(f.root, f.id, f.auth);
+  assert.equal(enabledPlan.enabled, true);
+  assert.throws(() => reconcile(f.root, f.id, f.auth, {
+    expectedEntrySha256: enabledPlan.entry_sha256,
+    expectedPolicySha256: enabledPlan.policy_sha256,
+  }), { code: "ERR_REGISTRY_ENABLED" });
+  assert.equal(fs.readFileSync(f.file, "utf8"), enabled);
+  assert.equal(JSON.parse(enabled).agent_id, original.agent_id);
+});
+
+test("reconcile atomically preserves the old record on publication failure", (t) => {
+  const f = fixture(t);
+  register(f.root, f.identity, f.auth);
+  f.grant.model = "changed-model";
+  f.save();
+  const plan = planReconcile(f.root, f.id, f.auth);
+  const before = fs.readFileSync(f.file, "utf8");
+  const rename = fs.renameSync;
+  fs.renameSync = () => { throw new Error("injected reconcile IO failure"); };
+  try {
+    assert.throws(() => reconcile(f.root, f.id, f.auth, {
+      expectedEntrySha256: plan.entry_sha256,
+      expectedPolicySha256: plan.policy_sha256,
+    }), /injected reconcile IO failure/);
+  } finally { fs.renameSync = rename; }
+  assert.equal(fs.readFileSync(f.file, "utf8"), before);
+  assert.deepEqual(fs.readdirSync(path.dirname(f.file)), [`${f.id}.json`]);
+});
+
+test("reconcile upgrades pre-revision managed records without changing their identity or journal", (t) => {
+  const f = fixture(t);
+  register(f.root, f.identity, f.auth);
+  const legacy = JSON.parse(fs.readFileSync(f.file, "utf8"));
+  delete legacy.profile_revision;
+  fs.writeFileSync(f.file, JSON.stringify(legacy, null, 2) + "\n");
+  setEnabled(f.root, f.id, true, f.auth);
+  setEnabled(f.root, f.id, false, f.auth);
+  const before = JSON.parse(fs.readFileSync(f.file, "utf8"));
+
+  f.grant.model = "migrated-model";
+  f.save();
+  const plan = planReconcile(f.root, f.id, f.auth);
+  assert.equal(plan.profile_revision, 1);
+  const updated = reconcile(f.root, f.id, f.auth, {
+    expectedEntrySha256: plan.entry_sha256,
+    expectedPolicySha256: plan.policy_sha256,
+  });
+  assert.equal(updated.profile_revision, 2);
+  assert.equal(updated.agent_id, before.agent_id);
+  assert.deepEqual(updated.identity, before.identity);
+  assert.deepEqual(updated.registration.events.slice(0, 3), before.registration.events);
+  assert.deepEqual(updated.registration.events.map((event) => event.action),
+    ["register", "enable", "disable", "reconcile"]);
+});
+
+test("reconcile preserves audit capacity for an explicit re-enable and final disable", (t) => {
+  const f = fixture(t);
+  const entry = register(f.root, f.identity, f.auth);
+  const first = entry.registration.events[0];
+  entry.registration.events = Array.from({ length: 9998 }, (_, index) => ({ ...first,
+    action: index === 0 ? "register" : index % 2 ? "enable" : "disable" }));
+  entry.registration.events[9997].action = "disable";
+  fs.writeFileSync(f.file, JSON.stringify(entry));
+  f.grant.model = "changed-model";
+  f.save();
+  const plan = planReconcile(f.root, f.id, f.auth);
+  const before = fs.readFileSync(f.file, "utf8");
+  assert.throws(() => reconcile(f.root, f.id, f.auth, {
+    expectedEntrySha256: plan.entry_sha256,
+    expectedPolicySha256: plan.policy_sha256,
+  }), { code: "ERR_REGISTRY_AUDIT_CAPACITY" });
+  assert.equal(fs.readFileSync(f.file, "utf8"), before);
+});
 
 test("managed lifecycle has authoritative readback, idempotence and append-only audit", (t) => {
   const f = fixture(t);
