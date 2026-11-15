@@ -4,7 +4,7 @@
 
 ## 受管注册与启停 / Managed registration and activation
 
-`agent register/enable/disable` 管理本目录中的静态能力记录。它们不创建或接管
+`agent register/enable/disable/reconcile` 管理本目录中的静态能力记录。它们不创建或接管
 Task、Session、fileOwnership、Lease，不启动 Agent 或 Runtime。生产源码写入仍需
 单独核对已分配 Task、匹配的真实 Session、精确文件范围和有效 fencing Lease。
 Registry Maintainer 是项目 Owner 显式授权的维护者；不是任意 coordinator，
@@ -91,15 +91,34 @@ cortex-agent agent discover --project . --managed-only --include-disabled --json
 The ID is the full SHA-256 of the canonical `[provider, adapter_type, subject]`
 tuple, prefixed with `agent-`. Role/model/project changes do not generate a second
 identity. Registration starts disabled; duplicate registration never replaces an
-existing record. Enable validates the current owner grant against the stored
-profile; changing that grant requires explicit owner migration rather than a
-silent role/scope update. `projects set` refuses managed profiles. Disable remains
-available after removing a grant, provided the maintainer still owns the record's
-project scope. Changing `owner_id` requires an explicit migration.
+existing record. `reconcile` plans from the current Owner grant by default.
+Applying the plan requires the record to be explicitly disabled and both the
+planned record and policy SHA-256 values to remain unchanged. It preserves the
+generated ID and native identity, increments `profile_revision`, appends before
+and after profile hashes, and leaves the record disabled. Re-enable is a separate
+maintainer action. Reconcile does not edit Task ownership or Lease state; existing
+task scopes stay as recorded and must be reviewed before enabling the identity.
+`projects set` refuses managed profiles. Disable remains available after removing
+a grant, provided the maintainer still owns the record's project scope. Changing
+`owner_id` requires an explicit migration.
+
+```bash
+# Plan only; copy both hashes from the response for the apply step.
+cortex-agent agent reconcile <agent_id> --project . \
+  --actor owner-maintainer --session verified-maintainer-session --json
+
+# Disable separately first if the plan reports enabled=true, then apply against
+# the exact unchanged entry and policy snapshots.
+cortex-agent agent reconcile <agent_id> --apply \
+  --expected-entry-sha256 <entry-sha256> \
+  --expected-policy-sha256 <policy-sha256> --project . \
+  --actor owner-maintainer --session verified-maintainer-session --json
+```
 
 `identity`, `enabled` and `registration` are additive schema-v1 fields, required
 together for managed records. Each lifecycle change appends an audit event with
 actor, session, time and policy digest to the same atomically published record.
+Reconcile events also record profile revision and previous/current profile digests.
 Repeated enable/disable of the current state is a no-op. Discovery includes the
 exact identity, enabled state, model, scope, capabilities and audit journal;
 disabled records require `--include-disabled`. Invoke, dispatch-execute and
@@ -117,7 +136,7 @@ and migrate explicitly before further enable operations.
 
 The writer rejects existing symlinks and serializes cooperating writes with
 `.registry-write.lock`. Atomic no-replace creation protects duplicate IDs; atomic
-replacement preserves complete records during enable/disable. Validation/auth
+replacement preserves complete records during enable/disable/reconcile. Validation/auth
 failures publish no profile. A post-publication readback failure returns
 `ERR_REGISTRY_READBACK` with `committed:true`: inspect the exact file before
 retrying. Cleanup errors preserve the original error and publication state,
@@ -163,6 +182,7 @@ activation is implied by successful registration.
 | `agent_id` | string | ✓ | 稳定 id |
 | `role` | enum | ✓ | `implementer` / `coordinator` / `reviewer` / `researcher` / `documenter` / `memory-curator` / `conversation-curator` / `user` / `external` |
 | `model` | string | ✓ | 模型标识 |
+| `profile_revision` | int | | 受管 profile 每次 reconcile 后递增；旧记录可缺省 |
 | `task_id` | string | | 当前任务 |
 | `mission_id` | string | | 当前 mission |
 | `session_id` | string | | 当前 session |

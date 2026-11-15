@@ -57,6 +57,7 @@ test("agent-cli: agent --help exits 0 with usage", () => {
   assert.ok(/Usage:/.test(result.stdout));
   assert.ok(/agent discover/.test(result.stdout));
   assert.ok(/agent invoke/.test(result.stdout));
+  assert.ok(/agent reconcile/.test(result.stdout));
 });
 
 test("agent-cli: agent report routes to M-008 (lib/commands.js) — fails on missing service", () => {

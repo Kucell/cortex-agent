@@ -23,7 +23,9 @@ function fixture(t) {
   fs.writeFileSync(file, JSON.stringify(policy), { mode: 0o600 });
   const auth = ["--actor", "maintainer", "--session", "native-m"];
   const registerArgs = ["register", "--identity-json", JSON.stringify(identity), ...auth];
-  return { root, identity, policy, auth, registerArgs, id: deriveAgentId(identity) };
+  const id = deriveAgentId(identity);
+  return { root, identity, policy, auth, registerArgs, policyFile: file,
+    recordFile: path.join(root, ".agent/agents", `${id}.json`), id };
 }
 
 function call(root, args) {
@@ -55,6 +57,97 @@ test("public register/enable/discover/disable round-trip exact owner-granted pro
   for (const dir of ["runtime", "sessions", "runs"]) assert.equal(fs.existsSync(path.join(f.root, ".agent", dir)), false);
 });
 
+test("public reconcile plans by default and applies only against both expected snapshots", (t) => {
+  const f = fixture(t);
+  assert.equal(call(f.root, f.registerArgs).status, 0);
+  f.policy.grants[0].role = "reviewer";
+  f.policy.grants[0].model = "review-model";
+  f.policy.grants[0].capabilities = ["code_review"];
+  f.policy.grants[0].owned_files = ["lib/example.js", "tests/example.test.js"];
+  fs.writeFileSync(f.policyFile, JSON.stringify(f.policy), { mode: 0o600 });
+
+  const planned = json(call(f.root, ["reconcile", f.id, ...f.auth]));
+  assert.equal(planned.command, "agent.reconcile.plan");
+  assert.equal(planned.plan.agent_id, f.id);
+  assert.equal(planned.plan.changed, true);
+  assert.equal(planned.plan.enabled, false);
+  const applied = call(f.root, ["reconcile", f.id, "--apply",
+    "--expected-entry-sha256", planned.plan.entry_sha256,
+    "--expected-policy-sha256", planned.plan.policy_sha256, ...f.auth]);
+  assert.equal(applied.status, 0, applied.stdout + applied.stderr);
+  const updated = json(applied).agent;
+  assert.equal(updated.agent_id, f.id);
+  assert.equal(updated.enabled, false);
+  assert.equal(updated.role, "reviewer");
+  assert.deepEqual(updated.capabilities, ["code_review"]);
+  assert.deepEqual(updated.registration.events.map((event) => event.action), ["register", "reconcile"]);
+  assert.equal(call(f.root, ["enable", f.id, ...f.auth]).status, 0);
+});
+
+test("public reconcile requires maintainer authority, exact hashes, and explicit disable", (t) => {
+  const f = fixture(t);
+  assert.equal(call(f.root, f.registerArgs).status, 0);
+  f.policy.grants[0].model = "changed-model";
+  fs.writeFileSync(f.policyFile, JSON.stringify(f.policy), { mode: 0o600 });
+  const plan = json(call(f.root, ["reconcile", f.id, ...f.auth])).plan;
+
+  const unauthorized = call(f.root, ["reconcile", f.id, "--actor", "forged",
+    "--session", "native-m"]);
+  assert.notEqual(unauthorized.status, 0);
+  assert.equal(json(unauthorized).error.code, "ERR_REGISTRY_UNAUTHORIZED");
+  const missingHash = call(f.root, ["reconcile", f.id, "--apply", ...f.auth]);
+  assert.notEqual(missingHash.status, 0);
+  assert.equal(json(missingHash).error.code, "INVALID_USAGE");
+
+  f.policy.grants[0].model = "newer-model";
+  fs.writeFileSync(f.policyFile, JSON.stringify(f.policy), { mode: 0o600 });
+  const stale = call(f.root, ["reconcile", f.id, "--apply",
+    "--expected-entry-sha256", plan.entry_sha256,
+    "--expected-policy-sha256", plan.policy_sha256, ...f.auth]);
+  assert.notEqual(stale.status, 0);
+  assert.equal(json(stale).error.code, "ERR_REGISTRY_STALE");
+
+  f.policy.grants[0].model = "test-model";
+  fs.writeFileSync(f.policyFile, JSON.stringify(f.policy), { mode: 0o600 });
+  assert.equal(call(f.root, ["enable", f.id, ...f.auth]).status, 0);
+  f.policy.grants[0].model = "newer-enabled-profile";
+  fs.writeFileSync(f.policyFile, JSON.stringify(f.policy), { mode: 0o600 });
+  const enabledPlan = json(call(f.root, ["reconcile", f.id, ...f.auth])).plan;
+  const enabledApply = call(f.root, ["reconcile", f.id, "--apply",
+    "--expected-entry-sha256", enabledPlan.entry_sha256,
+    "--expected-policy-sha256", enabledPlan.policy_sha256, ...f.auth]);
+  assert.notEqual(enabledApply.status, 0);
+  assert.equal(json(enabledApply).error.code, "ERR_REGISTRY_ENABLED");
+  assert.match(call(f.root, ["reconcile", "--help"]).stdout, /expected-policy-sha256/);
+});
+
+test("concurrent reconcile applies have one winner and one stale-snapshot failure", async (t) => {
+  const f = fixture(t);
+  assert.equal(call(f.root, f.registerArgs).status, 0);
+  f.policy.grants[0].owned_files = ["lib/example.js", "tests/example.test.js"];
+  fs.writeFileSync(f.policyFile, JSON.stringify(f.policy), { mode: 0o600 });
+  const plan = json(call(f.root, ["reconcile", f.id, ...f.auth])).plan;
+  const run = () => new Promise((resolve, reject) => {
+    const args = [cli, "agent", "reconcile", f.id, "--apply",
+      "--expected-entry-sha256", plan.entry_sha256,
+      "--expected-policy-sha256", plan.policy_sha256,
+      ...f.auth, "--project", f.root, "--json"];
+    const child = spawn(process.execPath, args, { cwd: f.root, stdio: ["ignore", "pipe", "pipe"] });
+    let out = "";
+    child.stdout.on("data", (part) => { out += part; });
+    child.on("error", reject);
+    child.on("close", (status) => resolve({ status, payload: JSON.parse(out) }));
+  });
+  const results = await Promise.all([run(), run()]);
+  assert.equal(results.filter((result) => result.status === 0).length, 1);
+  const loser = results.find((result) => result.status !== 0);
+  assert.ok(["ERR_REGISTRY_BUSY", "ERR_REGISTRY_STALE"].includes(loser.payload.error.code));
+  const saved = JSON.parse(fs.readFileSync(f.recordFile, "utf8"));
+  assert.equal(saved.profile_revision, 2);
+  assert.deepEqual(saved.registration.events.map((event) => event.action), ["register", "reconcile"]);
+  assert.deepEqual(fs.readdirSync(path.dirname(f.recordFile)), [`${f.id}.json`]);
+});
+
 test("public write grammar rejects role injection, unknown flags, malformed identities and paths", (t) => {
   const f = fixture(t);
   for (const args of [[...f.registerArgs, "--role", "reviewer"],
@@ -68,7 +161,7 @@ test("public write grammar rejects role injection, unknown flags, malformed iden
   assert.equal(fs.existsSync(path.join(f.root, ".agent/agents")), false);
   const help = call(f.root, ["register", "--help"]);
   assert.equal(help.status, 0);
-  assert.match(help.stdout, /Registration starts disabled/);
+  assert.match(help.stdout, /Reconcile plans by default/);
 });
 
 test("projects set cannot modify an enabled managed grant", (t) => {
