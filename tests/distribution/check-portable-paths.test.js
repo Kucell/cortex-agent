@@ -297,3 +297,140 @@ test("the real repository scans the runtime-evidence tree where scripts live", (
   const scanned = Number((result.stdout.match(/Files scanned: (\d+)/) || [])[1]);
   assert.ok(scanned > 0, "the gate must scan something");
 });
+
+// ─── Tracked symlinks ───────────────────────────────────────────────────────
+//
+// A symlink is a defect once it is committed: the link travels with the
+// repository and lands on every other machine, where it either dangles or
+// resolves to something that is not what the author meant. The unit of
+// judgement is the Git index, so every fixture here is a repository whose
+// symlinks are staged.
+
+// A fixture that is a Git repository, so that the tracked-symlink scan has
+// an index to read. `git add` is enough — a commit is not needed, and not
+// wanted, because a commit would require a configured identity.
+function buildRepoFixture(t) {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-symlink-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const init = spawnSync("git", ["init", "-q"], { cwd: root, encoding: "utf8" });
+  assert.equal(init.status, 0, init.stderr);
+  return root;
+}
+
+// A tracked symlink: created on disk and staged in the index.
+function trackedSymlink(root, relativePath, target) {
+  const link = path.join(root, relativePath);
+  fs.mkdirSync(path.dirname(link), { recursive: true });
+  fs.symlinkSync(target, link);
+  const add = spawnSync("git", ["add", "--", relativePath], {
+    cwd: root,
+    encoding: "utf8",
+  });
+  assert.equal(add.status, 0, add.stderr);
+  return link;
+}
+
+// The skills directory of a template layer, with a layer to point at.
+const SKILLS = "templates/_shared/.agent/skills";
+
+test("a tracked symlink with an absolute target fails", (t) => {
+  const root = buildRepoFixture(t);
+  trackedSymlink(root, `${SKILLS}/demo/absolute-link`, "/Users/alice/tools/cortex-agent");
+  const result = runCheck(root);
+  assert.equal(result.status, 1, result.stdout);
+  assert.match(result.stdout, /non-portable-symlink/);
+});
+
+test("a tracked symlink with a home-directory target fails", (t) => {
+  const root = buildRepoFixture(t);
+  trackedSymlink(root, `${SKILLS}/demo/home-link`, "~/tools/cortex-agent");
+  const result = runCheck(root);
+  assert.equal(result.status, 1, result.stdout);
+  assert.match(result.stdout, /non-portable-symlink/);
+});
+
+test("a tracked symlink with a windows absolute target fails", (t) => {
+  const root = buildRepoFixture(t);
+  trackedSymlink(root, `${SKILLS}/demo/windows-link`, "C:\\Users\\alice\\tools");
+  const result = runCheck(root);
+  assert.equal(result.status, 1, result.stdout);
+  assert.match(result.stdout, /non-portable-symlink/);
+});
+
+test("a tracked symlink that escapes the repository root fails", (t) => {
+  const root = buildRepoFixture(t);
+  // Six levels up from the link directory leaves the repository.
+  trackedSymlink(root, `${SKILLS}/demo/escape-link`, "../../../../../../outside");
+  const result = runCheck(root);
+  assert.equal(result.status, 1, result.stdout);
+  assert.match(result.stdout, /non-portable-symlink/);
+});
+
+test("a tracked symlink into a template layer is reported as a layer dependency", (t) => {
+  const root = buildRepoFixture(t);
+  fs.mkdirSync(path.join(root, "templates", "general", ".agent", "rules"), {
+    recursive: true,
+  });
+  // Four levels up from the link directory is the template root, and `general`
+  // is one of the layers that sits under it.
+  trackedSymlink(
+    root,
+    `${SKILLS}/demo/layer-link`,
+    "../../../../general/.agent/rules",
+  );
+  const result = runCheck(root);
+  assert.equal(result.status, 1, result.stdout);
+  assert.match(result.stdout, /template-layer-symlink/);
+  assert.doesNotMatch(result.stdout, /non-portable-symlink/);
+});
+
+test("a tracked symlink inside the repository is not reported", (t) => {
+  const root = buildRepoFixture(t);
+  fs.mkdirSync(path.join(root, SKILLS, "real-skill"), { recursive: true });
+  trackedSymlink(root, `${SKILLS}/demo/alias-link`, "../real-skill");
+  const result = runCheck(root);
+  assert.equal(result.status, 0, result.stdout);
+});
+
+test("a symlink that is not tracked is not reported", (t) => {
+  const root = buildRepoFixture(t);
+  const link = path.join(root, SKILLS, "demo", "local-link");
+  fs.mkdirSync(path.dirname(link), { recursive: true });
+  fs.symlinkSync("/Users/alice/tools/cortex-agent", link);
+  const result = runCheck(root);
+  assert.equal(result.status, 0, result.stdout);
+});
+
+test("the governance repository root is scanned in full", (t) => {
+  const root = buildRepoFixture(t);
+  const governance = path.join(root, ".agent");
+  fs.mkdirSync(governance, { recursive: true });
+  const init = spawnSync("git", ["init", "-q"], { cwd: governance, encoding: "utf8" });
+  assert.equal(init.status, 0, init.stderr);
+  // A path outside the scan trees of the framework repository: the
+  // governance tree is a distribution unit in its own right.
+  const link = path.join(governance, "notes", "absolute-link");
+  fs.mkdirSync(path.dirname(link), { recursive: true });
+  fs.symlinkSync("/Users/alice/tools/cortex-agent", link);
+  const add = spawnSync("git", ["add", "--", "notes/absolute-link"], {
+    cwd: governance,
+    encoding: "utf8",
+  });
+  assert.equal(add.status, 0, add.stderr);
+  const result = runCheck(governance);
+  assert.equal(result.status, 1, result.stdout);
+  assert.match(result.stdout, /non-portable-symlink/);
+});
+
+test("the convenience symlinks at the repository root are not reported", (t) => {
+  const root = buildRepoFixture(t);
+  fs.mkdirSync(path.join(root, "templates"), { recursive: true });
+  trackedSymlink(root, "agents", "templates");
+  const result = runCheck(root);
+  assert.equal(result.status, 0, result.stdout);
+});
+
+test("the report states how many tracked symlinks were checked", () => {
+  const result = runCheck(ROOT);
+  assert.match(result.stdout, /Symlinks checked: \d+/);
+});

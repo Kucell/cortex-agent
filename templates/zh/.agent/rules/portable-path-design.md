@@ -71,18 +71,36 @@ node scripts/check-portable-paths.js
 `.agent/{skills,scripts,workflows,rules}`，以及 `.agent/runtime-evidence/`
 （可复用验证脚本的实际落点）。
 
-三类检出：
+五类检出：
 
 | 规则 | 含义 |
 |---|---|
 | `machine-specific-home-path` | 代码里写死了带真实用户名的家目录路径 |
 | `machine-specific-manager-root` | 版本管理器安装根被逐字写出（`.volta/`、`.nvm/` …） |
 | `machine-specific-windows-path` | 写死了某台机器的 Windows 目录 |
+| `non-portable-symlink` | 被 Git 追踪的软链指向绝对路径、`~` 开头，或相对目标解析后逃出仓库根 |
+| `template-layer-symlink` | 软链指向 `templates/<layer>/` 模板覆盖层（`_base`/`_shared`/`general`/`zh`/`en`） |
 
 文档文件的判定更保守：代码块内与带示例标记的行视为文档示例，不报。
 
 **门禁在 CI 中执行**（`.github/workflows/full-test.yml`），所以回退会在 PR
 阶段被拦住，而不是等到某个用户在自己机器上踩到。
+
+### 软链的判定单元
+
+软链只有「被提交进版本控制」才是缺陷。setup 在本机生成的软链是合法运行态，
+不入库即可；真正的问题是它们随仓库分发，在别人机器上悬空或指向错物。
+因此判定对象是 **Git 已追踪的软链（mode 120000）**，不是磁盘上所有软链。
+
+| 单元 | 扫描范围 |
+|---|---|
+| 主仓本身 | 限定上述扫描面（仓根的 `agents`、`commands` 便利软链不在扫描面，它们是框架仓自身的入口，不随分发物下发） |
+| `<root>/.agent` 治理仓 | 全量扫描——整棵 `.agent` 树都是分发单元 |
+| `--root` 即 `.agent` 仓根 | 全量扫描 |
+
+唯一合法形态是**仓内相对目标**（如 `architecture-audit -> architecture-guard`）：
+它随仓库一起走，在别的机器上照样解析得到。
+扫描时绝不跟随软链：只对 `entry.isDirectory()` 递归，软链单独判定，天然无环。
 
 ---
 
@@ -117,6 +135,14 @@ node scripts/check-portable-paths.js
    并给出推导出的默认值——不要写死。
 3. 跑 `node scripts/check-portable-paths.js` 确认清零。
 4. 跑一次该脚本，确认它在新环境下解析到**预期的那个版本**。
+
+软链类违规的修复路径：
+
+1. `non-portable-symlink`——若该软链由 setup 在本机生成，
+   用 `git rm --cached <path>` 取消追踪并写入 `.gitignore`，由各机器的 setup 重建；
+   若它确实是要随仓分发的内容，改为仓内相对软链，或直接物化实体文件。
+2. `template-layer-symlink`——模板层是**覆盖层**而非运行时依赖，
+   消费者机器上没有这棵树。把内容复制进该树，不要链入模板覆盖层。
 
 不要用豁免名单绕过——豁免要有理由，且理由是「这里不是绑定路径」，
 不是「这里只是这次不方便」。
