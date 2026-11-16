@@ -56,6 +56,16 @@ Provider 验证状态：
 - [Provider Capability Matrix](docs/architecture/provider-capability-matrix.md)
 - [MS-012 Acceptance Evidence](docs/validation/rdg-ms012-acceptance.md)
 
+## Roadmap：v1.17 确定性工程与验证框架（提案阶段）
+
+> **PROPOSED / DESIGN_ONLY**，尚未通过独立审查；不构成实施、合并、发布或 L3/L4 执行授权。v1.16.0 继续保持 advisor-only 候选范围，真实 L3 Gate 由 1.16.x 独立验收。
+
+- **v1.17.0 / P0**：项目可配置的 Architecture Policy-as-Code、真实运行 Feature Map、绑定 PR HEAD 的 Evidence-based Review Gate；与现有 `/ship`、`validation-contract` 和多层代码审查整合。
+- **v1.17.x / P1**：针对 Owner/Lease、Decision/Waitpoint、撤销和恢复的 TLA+ 模型检查；可选 UI 属性验证、独立的库外黑盒发布验证 Agent。
+- **L4 / 后续提案**：风险分级的自动修复、合并与发布，仅在真实授权、独立 QA 和双 Gate 成立后开放，绝不由 AI 审查结果直接授予。
+
+详见 [v1.17 确定性工程与验证框架提案](docs/architecture/v117-deterministic-engineering-verification-proposal.md)。
+
 ## 核心价值
 
 - **架构一致性**：强制 AI 遵循项目预定义的架构模式（六边形、分层、微服务等）。
