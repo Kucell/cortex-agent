@@ -32,6 +32,12 @@
 //     rather than shown as a placeholder example;
 //   - a package-manager-specific install root pinned to a literal path
 //     (e.g. a `.volta` / `.nvm` / `AppData` directory spelled out).
+//   - a symlink that Git *tracks* and that points at a location which only
+//     resolves on the machine that created it: an absolute target, a `~`
+//     target, or a relative target that escapes the repository root;
+//   - a tracked symlink that points into a template overlay layer
+//     (`templates/<layer>/`), a tree that the consumers of the project do
+//     not have.
 //
 // What it deliberately does not flag:
 //   - `/Users/...` with an ellipsis or a placeholder — that is a template, not
@@ -40,6 +46,10 @@
 //   - `os.homedir()`, `process.env.HOME`, `__dirname`, `require.resolve` and
 //     friends — those are the portable spellings this gate steers toward;
 //   - Windows-style paths, which are checked separately and conservatively.
+//   - a symlink that Git does *not* track — setup may create those on the
+//     local machine, and only the committed ones travel with the repository;
+//   - a tracked symlink whose target is relative and stays inside the
+//     repository root — that form travels with the repository.
 //
 // Run:
 //   node scripts/check-portable-paths.js [--root <dir>] [--verbose]
@@ -48,6 +58,9 @@
 
 const fs = require("node:fs");
 const path = require("node:path");
+const { spawnSync } = require("node:child_process");
+
+const { listTemplateLayers } = require("../lib/template-layers");
 
 const DEFAULT_ROOT = path.resolve(__dirname, "..");
 
@@ -465,6 +478,270 @@ function scanTree(root, relativeDir, violations) {
   return files.length;
 }
 
+// ─── Tracked symlinks ────────────────────────────────────────────────────────
+//
+// A symlink is only a defect once it is committed. Setup may create local
+// symlinks — that is a legitimate runtime arrangement — but the ones that
+// are tracked travel with the repository and land on every other machine,
+// where they either dangle or, worse, resolve to something that happens to
+// exist there and is not what the author meant.
+//
+// So the unit of judgement is the Git index: an entry with mode 120000. The
+// working tree is not consulted, because a symlink that was never committed
+// is not shipped.
+//
+// The scan never follows a symlink. The file scan recurses only into real
+// directories (`entry.isDirectory()` is false for a symlink), and the symlink
+// scan reads the index instead of walking the tree, so a link that points at
+// its own ancestor cannot produce a cycle.
+
+const SYMLINK_MODE = "120000";
+
+// The two rules a tracked symlink can break.
+const SYMLINK_RULES = Object.freeze({
+  "non-portable-symlink": "tracked symlink points at a path that only resolves on one machine",
+  "template-layer-symlink": "tracked symlink points into a template overlay layer",
+});
+
+function git(args, cwd) {
+  const r = spawnSync("git", args, {
+    cwd,
+    encoding: "utf8",
+    maxBuffer: 16 * 1024 * 1024,
+  });
+  if (r.error) return { status: 127, stdout: "", stderr: String(r.error.message) };
+  return { status: r.status, stdout: r.stdout || "", stderr: r.stderr || "" };
+}
+
+// The real path of a location, with symbolic links resolved.
+//
+// The same directory can be reached under two names — a temporary
+// directory is `/var/...` on macOS and `/private/var/...` once the links
+// are followed — and a comparison that ignores that calls one path
+// different from the other. A path that does not exist yet is resolved as
+// far as it goes: the longest existing prefix is resolved and the rest is
+// appended unchanged.
+function realPath(target) {
+  const resolved = path.resolve(target);
+  const tail = [];
+  let current = resolved;
+  for (;;) {
+    try {
+      const real = fs.realpathSync(current);
+      return tail.length ? path.join(real, ...tail) : real;
+    } catch {
+      const parent = path.dirname(current);
+      if (parent === current) return resolved;
+      tail.unshift(path.basename(current));
+      current = parent;
+    }
+  }
+}
+
+// The repository that owns `dir`, or null when there is none. The answer is
+// compared with `dir` itself before it is trusted: inside a repository, a
+// directory that is not a repository of its own still reports the *outer*
+// repository, and that would make the gate scan the wrong tree.
+function repoRootOf(dir) {
+  const r = git(["rev-parse", "--show-toplevel"], dir);
+  if (r.status !== 0) return null;
+  const top = r.stdout.trim();
+  return top ? realPath(top) : null;
+}
+
+function samePath(a, b) {
+  return realPath(a) === realPath(b);
+}
+
+// Every tracked symlink of a repository, read from the index.
+function trackedSymlinks(repoRoot) {
+  const r = git(["ls-files", "--stage", "-z", "--full-name"], repoRoot);
+  if (r.status !== 0) return [];
+  const found = [];
+  for (const entry of r.stdout.split("\0")) {
+    if (!entry) continue;
+    const tab = entry.indexOf("\t");
+    if (tab === -1) continue;
+    const meta = entry.slice(0, tab).split(/\s+/);
+    if (meta[0] !== SYMLINK_MODE) continue;
+    found.push({ file: entry.slice(tab + 1), sha: meta[1] });
+  }
+  return found;
+}
+
+// The target of a tracked symlink. The index holds it in the blob the entry
+// points at, and that is the authority: the working tree may have been
+// changed since. The link on disk is only a fallback for a repository whose
+// object store does not have the blob (a shallow or partial clone).
+function symlinkTarget(repoRoot, entry) {
+  const r = git(["cat-file", "blob", entry.sha], repoRoot);
+  if (r.status === 0) return r.stdout.replace(/\r?\n$/, "");
+  try {
+    return fs.readlinkSync(path.join(repoRoot, entry.file));
+  } catch {
+    return null;
+  }
+}
+
+// True when `target` is inside `base`. Both are absolute paths.
+function isInside(base, target) {
+  const rel = path.relative(base, target);
+  if (rel === "") return true;
+  return !rel.startsWith("..") && !path.isAbsolute(rel);
+}
+
+// An absolute target: a POSIX root, a Windows drive, or a UNC share. A `~`
+// target is not absolute but is equally machine-bound, and is judged first.
+function isAbsoluteTarget(target) {
+  if (target.startsWith("/")) return true;
+  if (/^[A-Za-z]:[\\/]/.test(target)) return true;
+  if (target.startsWith("\\\\")) return true;
+  return false;
+}
+
+// The trees to scan for tracked symlinks.
+//
+// Which tree is in scope depends on what is being checked:
+//
+//   the repository itself       only the scan trees above — the convenience
+//                               symlinks at the repository root (`agents`,
+//                               `commands`) are the framework's own entry
+//                               points and are not part of what it ships;
+//   the `.agent` governance     the whole tree — every file in it is a
+//   repository                  distribution unit;
+//   `--root` is the `.agent`    the whole tree, for the same reason.
+//   repository root
+//
+// The governance tree is a repository of its own — in the framework it is a
+// submodule, in a managed project it is a separate repository — so it has to
+// be scanned separately. A gitlink in the parent repository's index says
+// nothing about the files inside it.
+function buildSymlinkScanPlan(root) {
+  const repoRoot = repoRootOf(root);
+  if (!repoRoot) return [];
+  const plans = [];
+  const base = realPath(root);
+
+  // `--root` is the governance repository root.
+  if (path.basename(root) === ".agent" && samePath(root, repoRoot)) {
+    plans.push({
+      repoRoot,
+      base,
+      scope: null,
+      templatesRoot: realPath(path.join(path.dirname(base), "templates")),
+    });
+    return plans;
+  }
+
+  // The repository itself.
+  plans.push({
+    repoRoot,
+    base,
+    scope: SCAN_TREES,
+    templatesRoot: realPath(path.join(base, "templates")),
+  });
+
+  // The governance tree, when it is a repository of its own.
+  const governance = realPath(path.join(base, ".agent"));
+  const governanceRoot = repoRootOf(governance);
+  if (governanceRoot && samePath(governanceRoot, governance)) {
+    plans.push({
+      repoRoot: governanceRoot,
+      base: governance,
+      scope: null,
+      templatesRoot: realPath(path.join(base, "templates")),
+    });
+  }
+
+  return plans;
+}
+
+// Is a tracked path inside the scan scope of a plan?
+function inScope(plan, repoRelPath) {
+  if (plan.scope === null) return true;
+  const abs = path.join(plan.repoRoot, repoRelPath);
+  const rel = path.relative(plan.base, abs).split(path.sep).join("/");
+  if (rel.startsWith("../")) return false;
+  return plan.scope.some((tree) => rel === tree || rel.startsWith(`${tree}/`));
+}
+
+// The verdict on one tracked symlink.
+//
+// The order is fixed, so the same symlink always gets the same verdict: a
+// `~` target and an absolute target are machine-bound whatever they point
+// at; a target inside a template layer is a layer dependency (a different
+// defect with a different fix); and only then does the question become
+// whether a relative target stays inside the repository.
+function judgeSymlink(target, linkDir, repoRoot, layers, templatesRoot) {
+  if (target === "~" || target.startsWith("~/")) {
+    return {
+      rule: "non-portable-symlink",
+      reason: "target is relative to the home directory",
+    };
+  }
+  if (isAbsoluteTarget(target)) {
+    return {
+      rule: "non-portable-symlink",
+      reason: "target is an absolute path",
+    };
+  }
+
+  // A relative target. Windows separators are normalized so that the
+  // containment checks below mean the same thing on both platforms.
+  const link = realPath(linkDir);
+  const resolved = path.resolve(link, target.replace(/\\/g, "/"));
+  for (const layer of layers) {
+    const layerDir = path.join(templatesRoot, layer);
+    if (!isInside(layerDir, resolved)) continue;
+    // A link that lives inside the layer and stays inside it is a plain
+    // relative link: it travels with the layer and depends on nothing.
+    if (isInside(layerDir, link)) return null;
+    return {
+      rule: "template-layer-symlink",
+      reason: `target points into the template overlay layer "${layer}"`,
+    };
+  }
+  if (!isInside(repoRoot, resolved)) {
+    return {
+      rule: "non-portable-symlink",
+      reason: "target resolves outside the repository root",
+    };
+  }
+  // A relative target that stays inside the repository travels with the
+  // repository. This is the only legal form.
+  return null;
+}
+
+function scanSymlinks(root, violations) {
+  let checked = 0;
+  for (const plan of buildSymlinkScanPlan(root)) {
+    const layers = listTemplateLayers(plan.templatesRoot);
+    for (const entry of trackedSymlinks(plan.repoRoot)) {
+      if (!inScope(plan, entry.file)) continue;
+      const target = symlinkTarget(plan.repoRoot, entry);
+      if (target === null) continue;
+      checked += 1;
+      const linkDir = path.dirname(path.join(plan.repoRoot, entry.file));
+      const verdict = judgeSymlink(
+        target,
+        linkDir,
+        plan.repoRoot,
+        layers,
+        plan.templatesRoot,
+      );
+      if (!verdict) continue;
+      violations.push({
+        rule: verdict.rule,
+        title: SYMLINK_RULES[verdict.rule],
+        file: entry.file,
+        line: null,
+        detail: `→ ${target}  (${verdict.reason})`,
+      });
+    }
+  }
+  return checked;
+}
+
 function main() {
   const args = process.argv.slice(2);
   const verbose = args.includes("--verbose") || args.includes("-v");
@@ -478,9 +755,11 @@ function main() {
   for (const tree of SCAN_TREES) {
     checked += scanTree(root, tree, violations);
   }
+  const symlinksChecked = scanSymlinks(root, violations);
 
   console.log(`\n📍 Portable Path Report`);
   console.log(`   Files scanned: ${checked}`);
+  console.log(`   Symlinks checked: ${symlinksChecked}`);
   console.log(`   Violations:    ${violations.length}`);
 
   if (violations.length === 0) {
@@ -496,7 +775,8 @@ function main() {
   for (const [rule, items] of byRule) {
     console.log(`\n❌ ${rule} — ${items[0].title} (${items.length})`);
     for (const v of items) {
-      console.log(`   ${v.file}:${v.line}  ${v.detail}`);
+      const where = v.line === null ? v.file : `${v.file}:${v.line}`;
+      console.log(`   ${where}  ${v.detail}`);
     }
   }
 
