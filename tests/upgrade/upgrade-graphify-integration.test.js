@@ -70,6 +70,22 @@ function update(cwd) {
   return spawnSync(process.execPath, [CLI, "update"], { cwd, encoding: "utf8" });
 }
 
+test("Graphify drift keeps upgrade/update dry-run JSON machine-readable", (t) => {
+  const cwd = oldProject();
+  t.after(() => fs.rmSync(cwd, { recursive: true, force: true }));
+  const wrapper = path.join(cwd, ".agent/plugins/graphify/scripts/post-commit-update.js");
+  const before = fs.readFileSync(wrapper);
+  for (const command of ["upgrade", "update"]) {
+    const r = spawnSync(process.execPath, [CLI, command, "--dry-run", "--report", "json"], { cwd, encoding: "utf8" });
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    const report = JSON.parse(r.stdout);
+    assert.equal(report.mode, "dry-run");
+    assert.equal(report.graphify.applied, false);
+    assert.equal(report.graphify.preview.needsWork, true);
+    assert.deepEqual(fs.readFileSync(wrapper), before);
+  }
+});
+
 function readJson(file) {
   return JSON.parse(fs.readFileSync(file, "utf8"));
 }

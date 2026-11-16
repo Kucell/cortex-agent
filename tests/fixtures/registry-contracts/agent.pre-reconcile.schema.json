@@ -1,0 +1,119 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/Kucell/cortex-agent/schemas/agent.schema.json",
+  "title": "Cortex Agent Registry Entry",
+  "description": "Mode-agnostic agent registry entry. Per general-mode-design.md §6.4: registry.yaml + capabilities/ + external/ + credentials/. This schema describes a single agent entry; project-wide registry aggregates a list of these.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "agent_id",
+    "role",
+    "model",
+    "started_at",
+    "status"
+  ],
+  "dependencies": {
+    "identity": ["enabled", "registration", "external", "capabilities", "projects", "owned_files"],
+    "enabled": ["identity", "registration"],
+    "registration": ["identity", "enabled"]
+  },
+  "properties": {
+    "schema_version": { "const": 1 },
+    "agent_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Stable agent id, e.g. Worker-A-MS001, codex-main, claude-code-user."
+    },
+    "identity": {
+      "type": "object", "additionalProperties": false,
+      "required": ["provider", "adapter_type", "subject"],
+      "properties": {
+        "provider": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*$" },
+        "adapter_type": { "type": "string", "enum": ["claude-code", "cortex", "codex", "codey", "pi", "custom", "minimax", "dsh", "cursor"] },
+        "subject": { "type": "string", "minLength": 1, "maxLength": 512, "description": "Native host identity verified and pinned by the project owner, never a generated Task/Lease id." }
+      }
+    },
+    "enabled": { "type": "boolean", "description": "Explicit static selection state. Managed registration starts false; independent of runtime status and recall." },
+    "registration": {
+      "type": "object", "additionalProperties": false,
+      "required": ["owner_id", "events"],
+      "properties": {
+        "owner_id": { "type": "string", "minLength": 1 },
+        "events": {
+          "type": "array", "minItems": 1, "maxItems": 10001,
+          "items": {
+            "type": "object", "additionalProperties": false,
+            "required": ["action", "actor_id", "session_id", "at", "policy_sha256"],
+            "properties": {
+              "action": { "enum": ["register", "enable", "disable"] },
+              "actor_id": { "type": "string", "minLength": 1 },
+              "session_id": { "type": "string", "minLength": 1 },
+              "at": { "type": "string", "format": "date-time" },
+              "policy_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+            }
+          }
+        }
+      }
+    },
+    "role": {
+      "type": "string",
+      "enum": ["implementer", "coordinator", "reviewer", "researcher", "documenter", "memory-curator", "conversation-curator", "user", "external"]
+    },
+    "model": { "type": "string", "minLength": 1 },
+    "task_id": { "type": ["string", "null"] },
+    "mission_id": { "type": ["string", "null"] },
+    "session_id": { "type": ["string", "null"] },
+    "started_at": { "type": "string", "format": "date-time" },
+    "last_heartbeat": { "type": ["string", "null"], "format": "date-time" },
+    "status": {
+      "type": "string",
+      "enum": ["running", "paused", "completed", "failed", "handed_off", "stale", "expired"]
+    },
+    "owned_files": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "pending_artifacts": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "capabilities": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Capabilities the agent self-declares (e.g. schema_design, javascript, testing, vision, code_review)."
+    },
+    "projects": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+        "maxLength": 32,
+        "description": "Project id (normalized kebab-case) this agent subscribes to."
+      },
+      "uniqueItems": true,
+      "maxItems": 32,
+      "default": [],
+      "description": "P-002 project scope: authorization-free subscription/identity scope. Absent or [] means no project scope. Changing these values is additive and does not change schema_version."
+    },
+    "recall": {
+      "type": "string",
+      "enum": ["enabled", "disabled"],
+      "default": "disabled",
+      "description": "P-002 recall opt-in flag: whether the agent participates in team knowledge recall precheck."
+    },
+    "external": {
+      "type": ["object", "null"],
+      "description": "External agent adapter metadata (v1.11). null for first-party agents.",
+      "properties": {
+        "adapter_type": {
+          "type": "string",
+          "enum": ["claude-code", "cortex", "codex", "codey", "pi", "custom", "minimax", "dsh", "cursor"]
+        },
+        "config_ref": { "type": "string" },
+        "credential_ref": { "type": "string" }
+      },
+      "additionalProperties": false
+    }
+  }
+}
