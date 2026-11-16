@@ -2,6 +2,11 @@
 
 > **Schema**: [`agent.schema.json`](./agent.schema.json) · **Sample**: [`sample.json`](./sample.json)
 
+升级已有项目时，`cortex-agent upgrade` 只补缺失契约；随后运行 `cortex-agent update`
+安全刷新可由历史官方 SHA-256 或受管清单证明来源的 schema / README，并保留 `.bak`。
+自定义契约与符号链接保持原样，`--force-scripts` 也不会覆盖它们；请审阅更新报告。
+这不会修改 Owner policy、Agent Profile、Task、Session 或 Lease。
+
 ## 受管注册与启停 / Managed registration and activation
 
 `agent register/enable/disable/reconcile` 管理本目录中的静态能力记录。它们不创建或接管
