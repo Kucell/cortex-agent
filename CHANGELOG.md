@@ -9,6 +9,67 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- 下一个版本的条目写在这里 -->
 
+## [1.16.0] - 2026-11-18 (release candidate, publication pending)
+
+> **状态**：本条目是 **release candidate**，**尚未发布**到 npm；`2026-11-18` 是候选版本冻结日期，不是发布日期。
+> **已发布基线**：npm registry 上 `cortex-agent` 的最高已发布版本为 `1.15.6`（`latest` = `1.15.6`）。本条目记录的 `1.15.7`–`1.15.14` 以及 `1.16.0` 在 npm 上均未发布。
+> **验收边界**：本次发布授权、正式候选产物校验与 npm 发布本身均未完成，详见 *Pending for This Release Candidate*。
+
+Advisor-only development candidate; not published. This release scope covers read-only advice, proposal preparation and upgrade/safety fixes. Real L3 autonomy and real AI Host execution are deferred to incremental, independently accepted 1.16.x delivery. The formal 28-item authorization/L3/SelfEvolution matrix remains a future L3 enablement gate, not a blanket prerequisite for this advisor-only release.
+
+### Merged Since Published 1.15.6 Baseline (v1.15.6 → 11dc3ef0)
+
+以下为从已发布的 `1.15.6` 到当前 `main`（`11dc3ef0`）之间已合并变更的概括，按能力域分组，不代表逐条变更清单。
+
+- **受管 Registry 授权同步（#185）**：受 maintainer 管理的 Registry profile reconcile，要求 entry 与 policy 的 SHA-256 一致并保持禁用状态；补充 profile 修订号、审计摘要、模板契约与回归测试。
+- **旧项目 Registry/README 升级（#187）**：`agents/agent.schema.json` 与 `agents/README.md` 纳入受管 ownership / backup 账本；软链、硬链与类型异常判为 `user_modified` 并跳过，不覆盖用户改动；新增 pre-reconcile 模板契约；修复升级在 JSON 报告模式下的提示输出。
+- **verified L2 Team Pack preservation / force dry run（#188）**：新增 `verifiedTeamFiles()`，仅当 Team Pack receipt、pack 与已安装字节三者一致时才认定文件受管，否则回退到普通保护路径；受管文件在升级中跳过并记为 `team_pack_managed`；升级 dry-run 支持传递 `force`（`force: options.forceScripts === true`），报告新增 `teamManagedScripts` 字段。
+- **symlink 可移植路径（#189）**：可移植路径门禁新增 Git 已追踪软链扫描，覆盖绝对路径与 `~` 目标、越界相对目标，以及指向 `templates/<layer>/` overlay 的软链。
+- **dsh / schedule / vcs-pr（#180 区间，1.15.9 → 1.15.14）**：DSH dispatch 恢复可达（可加载 `dsh` adapter 类型、按真实 `dsh --profile headless` 契约调用、裸 `dsh` 探测与四态传输证据），新增 `dispatch-batch` 与 `dispatch-execute --session-id`；新增 `schedule` CLI；vcs-pr 增加 `merge_token_ref`、禁止 bot token 执行合并、阻断 Draft 提升；并接入自学习日更。
+- **lease 与受管许可原语（#156 / #157 / #167 / #168 / #170 / #171 / #172 / #178 / #179）**：permit-bridge serve 入口与逆序释放；远端对端身份原语与逐调用 authority 闸门；跨机票据代理（回环监听与 SSH 反向转发属测试域承载）；租约作用域树（opt-in）；撤销列表陈旧上界与许可桥时限上界；作用域粒度提案。
+- **其他合并项（#181 / #183 / #166 / #175 等）**：`.agent` gitlink 与工作流 `EXPECTED_GITLINK` 同步门禁并接入 pre-commit Gate 3；受管静态身份注册 / 启停 / 审计并统一拒绝禁用身份；Windows 生产传输的受管通道；runtime-artifacts closeout 约束。
+
+### Added
+
+- Add an opt-in session-archive proposal queue and shared English/Chinese evolution helpers. The default remains off; this path produces project-local metadata-only proposal records without copying raw archived text into proposal records, output, or long-term memory, or automatically applying proposals.
+- Add proposal-only evolution contracts and side-effect-free reasoning-handoff preparation.
+- Add a package-owned read-only next-action gap report for the CLI and local SDK, using bounded same-commit Task, advisory-plan, Mission-identity, Decision, and Waitpoint observations, plus a pure advisory-plan draft producer. Incomplete or changed bindings remain explicit gaps; the report does not authorize execution or establish ready-candidate acceptance.
+- Add experimental Chat/GitHub review receipts as evidence transport, without promoting them to authoritative Tasks, Decisions, Waitpoints, or execution approval.
+- Add development-only strict-approval/runtime fixtures and process-canary diagnostics using a fixed cooperative worker. These fixtures do not establish formal L3 autonomy or real AI Host acceptance.
+
+### Fixed
+
+- Preserve customized framework files and migration before-images during upgrade. Fail closed on detected planning, scanning, and migration errors, stop subsequent configuration/version writes after a failed migration, and retain the previous framework version when an update is incomplete.
+- Separate Decision resolution from Waitpoint release or cancellation; downstream lifecycle changes require their own validated operation.
+- Reference packaged Claude command, agent, and skill templates explicitly, retain the packaged `cortex-setup` entrypoint, and remove the default root skills alias that would otherwise be scanned in addition to the configured skills directory.
+- Keep the root npm lockfile executable map aligned with the package manifest and enforce bin-map parity in the existing version-consistency regression.
+- Remove the stale fixed skill count from Marketplace metadata.
+- Restore the submodule mapping for the existing governance gitlink without initializing private governance content.
+- Preserve executable modes for the English/Chinese evolution helpers and shared/local management entrypoints; the new shared evolution helper is executable as well.
+- **跨工具锚点不再陈旧**：`docs/cortex-agent/anchor.md` 此前停在 v1.13.0，且没有任何机制会更新它——文件里写的「重跑 `cortex-agent export-anchor` 即可刷新」并不成立（该命令在文件已存在时只输出到 stdout）。现在锚点被纳入版本载体注册表：版本 bump 会用锚点模板重新渲染它，发包 PR 白名单随之自动放行该路径，发布一致性门禁会拒绝与生成器输出不一致的副本；同时 `export-anchor` 新增 `--write` 显式刷新，默认仍是只读导出。
+- **发布触发路径对齐 npm 可信发布约束**：npm 自 2026-10-02 起拒绝由 `issue_comment` 事件触发的可信发布（Trusted Publishing / OIDC）令牌，原评论触发路径会在 `npm publish` 阶段报 404 而非授权失败。发布收敛为唯一的 owner `workflow_dispatch`，由 dispatch 携带 `release_pr` / `expected_sha` / `decision_id` / `waitpoint_id` 四项治理输入；owner 身份门禁与权威 Decision / Waitpoint 门禁在打标签前、打标签后、发布前三处生效边界同时执行，门禁强度不降级。
+
+### Not Delivered in 1.16.0
+
+- Public `dispatch execute`, `dispatch <task-id>`, `daemon` and `trigger` remain Phase 0 stubs. The bound next-action report retains `execution_authorized=false` and `authority_attested=false`. Review receipts retain `authority:none` and `execution_authorized=false`; neither authenticates an Owner or grants effect permission.
+- Strict fixtures remain disabled by default and test workers are excluded from the npm package. Canonical control has no real platform source configured and `approved-installation` remains null. No controller deployment, permission change, bootstrap refresh or Linux probe is authorized by this scope.
+- Real authority, Host admission/effect acceptance and the remaining formal28 checks are future L3 enablement gates, outside the advisor-only 1.16.0 scope.
+
+### Historical Validation Evidence (previous candidate — not this release)
+
+以下为**此前候选版本**（advisor-only 候选）的历史验证证据说明，保留用于追溯；**不构成**本次 `1.16.0` release candidate 的发布验证。
+
+- 历史候选曾加入 exact-source tar file-manifest 与 digest 检查、插件结构检查、禁用 lifecycle 脚本的离线本地 tar 安装，以及隔离的合成升级保留检查。
+- 历史候选曾对已发布的 `1.15.4` baseline tar 做过 registry 元数据与公开 Git tree 校验（含固定 SHA512 完整性与逐成员 blob/mode 检查）；其中 registry 签名与 provenance 仍未验证。
+- 历史候选曾在四个全新中英文受管 / 自定义项目上验证「安装固定的 1.15.4 tar → 源码候选替换 → apply」的升级保留行为，20 条命令与 8 次 apply 保留了自定义内容、非空历史状态与可执行位。**该次历史运行使用两个标注 1.15.4 的包，不构成 1.15.4 → 1.16.0 的迁移证据**；版本元数据现为 1.16.0，任何后续迁移结果都需单独标明其确切来源与产物，且不得暗示已发布。
+- 历史候选曾在全新公开源码快照中运行既有九条 release CLI 回归（白名单环境变量、空命令搜索路径、临时 HOME/TMP 目录），成功运行正常退出，**未覆盖**超时清理分支。
+- 该 advisor-only 范围变更本身不构成最终发布产物或其已发布基线版本迁移的验证；相关文档、一致性、边界、next-action、archive-proposal、升级与打包检查须针对经评审的候选重新记录。
+
+### Pending for This Release Candidate
+
+- 本次候选尚未获得独立发布授权，npm 上仍无 `1.16.0`。
+- 针对本次候选的精确 source / artifact 版本迁移证据、正式候选产物校验与发布动作均未完成；上文 *Historical Validation Evidence* 属于此前候选的历史记录，不得当作本次发布验证使用。
+
 ## [1.15.14] - 2026-11-09
 
 ### Added
@@ -60,47 +121,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - DSH (DeepSeek Harness) dispatch is now actually reachable. Three independent breaks were removed: (1) additive agent-entry reading via `lib/agents/registry-ext.js` so `external.adapter_type = "dsh"` loads while M-002's frozen `registry.js` stays untouched; (2) `invoke()` speaks the real `dsh --profile headless [--json] -- -` contract (task on stdin, NDJSON run events, `{"type":"final"}` as the only settled signal, exit 0 without it reports `blocked`); (3) `probe()` resolves a bare `dsh` on `PATH` instead of `<cwd>/dsh`, `health()` layers the probe result, and `agent adapter probe <id>` exposes the four-state transport evidence. `agent dispatch-execute dsh:<id>` now passes `verifyTransport` and fails closed with `ERR_DSH_TRANSPORT_UNSUPPORTED`. `discover()` no longer advertises `stdio-json-rpc` before a probe, the host snapshot drops the stale dsh `missing_dispatch_whitelist` / `missing_skill_discovery_path` limits in favour of `transport_unverified`, and `agent discover --adapter-type dsh` accepts the additive union.
 - Harden the DSH adapter's evidence: `probe()` now boots `dsh --profile headless --help` (bounded, read-only) instead of trusting the word "headless" in `dsh --help`, so a missing/broken profile fails closed as `unsupported` (`headless_profile_*`); probe output/cache expose `profile.exit_code`/`profile.ok`. `invoke()` now spawns without a shell by default (the task travels on stdin). The notification pump registers `dsh` as an explicit deferred adapter (`ERR_NOTIFICATION_ADAPTER_UNAVAILABLE`) because dsh 0.2.1-rc.5 has no session-injection surface.
 - Stabilize the DSH probe budget: `--profile headless --help` gets its own 15s timeout with one retry (profile boot measured 3.1–4.6s, so the shared 5s budget flaked ~50% under load and could reject healthy hosts at `verifyTransport`). The profile result must also print `Usage: dsh --profile headless`; real-PATH tests now skip when the host's profile is not ready instead of failing, and cache entries expire (2 min ready / 15s failure) so one transient timeout cannot pin the adapter to `unsupported`.
-
-## [1.16.0] - Unreleased development candidate
-
-Advisor-only development candidate; not published. This release scope covers read-only advice, proposal preparation and upgrade/safety fixes. Real L3 autonomy and real AI Host execution are deferred to incremental, independently accepted 1.16.x delivery. The formal 28-item authorization/L3/SelfEvolution matrix remains a future L3 enablement gate, not a blanket prerequisite for this advisor-only release.
-
-### Added
-
-- Add an opt-in session-archive proposal queue and shared English/Chinese evolution helpers. The default remains off; this path produces project-local metadata-only proposal records without copying raw archived text into proposal records, output, or long-term memory, or automatically applying proposals.
-- Add proposal-only evolution contracts and side-effect-free reasoning-handoff preparation.
-- Add a package-owned read-only next-action gap report for the CLI and local SDK, using bounded same-commit Task, advisory-plan, Mission-identity, Decision, and Waitpoint observations, plus a pure advisory-plan draft producer. Incomplete or changed bindings remain explicit gaps; the report does not authorize execution or establish ready-candidate acceptance.
-- Add experimental Chat/GitHub review receipts as evidence transport, without promoting them to authoritative Tasks, Decisions, Waitpoints, or execution approval.
-- Add development-only strict-approval/runtime fixtures and process-canary diagnostics using a fixed cooperative worker. These fixtures do not establish formal L3 autonomy or real AI Host acceptance.
-
-### Fixed
-
-- Preserve customized framework files and migration before-images during upgrade. Fail closed on detected planning, scanning, and migration errors, stop subsequent configuration/version writes after a failed migration, and retain the previous framework version when an update is incomplete.
-- Separate Decision resolution from Waitpoint release or cancellation; downstream lifecycle changes require their own validated operation.
-- Reference packaged Claude command, agent, and skill templates explicitly, retain the packaged `cortex-setup` entrypoint, and remove the default root skills alias that would otherwise be scanned in addition to the configured skills directory.
-- Keep the root npm lockfile executable map aligned with the package manifest and enforce bin-map parity in the existing version-consistency regression.
-- Remove the stale fixed skill count from Marketplace metadata.
-- Restore the submodule mapping for the existing governance gitlink without initializing private governance content.
-- Preserve executable modes for the English/Chinese evolution helpers and shared/local management entrypoints; the new shared evolution helper is executable as well.
-
-### Not Delivered in 1.16.0
-
-- Public `dispatch execute`, `dispatch <task-id>`, `daemon` and `trigger` remain Phase 0 stubs. The bound next-action report retains `execution_authorized=false` and `authority_attested=false`. Review receipts retain `authority:none` and `execution_authorized=false`; neither authenticates an Owner or grants effect permission.
-- Strict fixtures remain disabled by default and test workers are excluded from the npm package. Canonical control has no real platform source configured and `approved-installation` remains null. No controller deployment, permission change, bootstrap refresh or Linux probe is authorized by this scope.
-- Real authority, Host admission/effect acceptance and the remaining formal28 checks are future L3 enablement gates, outside the advisor-only 1.16.0 scope.
-
-### Release Validation and Pending Acceptance
-
-- Add exact-source tar file-manifest and digest checks, structural plugin checks, offline local-tar installation with lifecycle scripts disabled, and isolated synthetic upgrade-preservation checks.
-- Verify the official published 1.15.4 baseline tar against its registry metadata and exact public Git tree, with pinned SHA512 integrity and per-member blob/mode checks. Registry signatures and provenance remain unverified.
-- Verify actual installation of the pinned published 1.15.4 tar followed by source-candidate replacement and apply operations on four fresh English/Chinese managed/customized projects. The prior candidate run preserved custom content, nonempty historical state, and executable modes across 20 commands and eight apply operations. That historical run used two packages labeled 1.15.4 and is not evidence of a 1.15.4-to-1.16.0 transition. Version metadata is now aligned at 1.16.0; any later transition result must identify its exact source and artifacts separately, without implying publication.
-- Run the existing nine release CLI regressions in a fresh, verified public-source snapshot with allowlisted environment variables, an empty command search path, and temporary HOME/TMP directories. The runner is configured with bounded cooperating-process-group cleanup; the successful candidate run exited normally and did not exercise the timeout-cleanup branch.
-- This advisor-only scope change does not itself establish validation of a final release artifact or its published-baseline version transition. Corresponding document, parity, boundary, next-action, archive-proposal, upgrade and package checks must be recorded against the reviewed candidate. Independent release authorization remains required. Baseline artifact identity and structural package checks do not establish publication, actual Claude installation or future L3 acceptance.
-
-### Fixed
-
-- **跨工具锚点不再陈旧**：`docs/cortex-agent/anchor.md` 此前停在 v1.13.0，且没有任何机制会更新它——文件里写的「重跑 `cortex-agent export-anchor` 即可刷新」并不成立（该命令在文件已存在时只输出到 stdout）。现在锚点被纳入版本载体注册表：版本 bump 会用锚点模板重新渲染它，发包 PR 白名单随之自动放行该路径，发布一致性门禁会拒绝与生成器输出不一致的副本；同时 `export-anchor` 新增 `--write` 显式刷新，默认仍是只读导出。
-- **发布触发路径对齐 npm 可信发布约束**：npm 自 2026-10-02 起拒绝由 `issue_comment` 事件触发的可信发布（Trusted Publishing / OIDC）令牌，原评论触发路径会在 `npm publish` 阶段报 404 而非授权失败。发布收敛为唯一的 owner `workflow_dispatch`，由 dispatch 携带 `release_pr` / `expected_sha` / `decision_id` / `waitpoint_id` 四项治理输入；owner 身份门禁与权威 Decision / Waitpoint 门禁在打标签前、打标签后、发布前三处生效边界同时执行，门禁强度不降级。
 
 ## [1.15.7] - Unreleased
 
