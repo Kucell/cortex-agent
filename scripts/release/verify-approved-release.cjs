@@ -13,7 +13,11 @@ const ALLOWED = new Set([...carrierFiles(), "pnpm-lock.yaml", "CHANGELOG.md", "t
 // binding lives in a single constant because it used to be hardcoded twice —
 // once in the command check and once in the Decision-rationale pattern — and
 // the two must name the same version or the waiver becomes unusable.
-const SINGLE_MAINTAINER_EXCEPTION_VERSION = "1.15.6";
+const SINGLE_MAINTAINER_EXCEPTION_VERSION = "1.16.0";
+const SINGLE_MAINTAINER_RELEASE_PR = Object.freeze({
+  number: 190,
+  mergeSha: "9cdf6ae9978dad96de1594465a0010d3dbf0a02d",
+});
 const SINGLE_MAINTAINER_EXCEPTION_VERSION_RE = new RegExp(
   SINGLE_MAINTAINER_EXCEPTION_VERSION.replace(/\./g, "\\."),
 );
@@ -148,6 +152,9 @@ async function verifyApproval({event,eventName="issue_comment",actor="Kucell",re
   if (waiver) {
     must(command.version === SINGLE_MAINTAINER_EXCEPTION_VERSION,
       "single-maintainer exception limited to v" + SINGLE_MAINTAINER_EXCEPTION_VERSION);
+    must(pr.number === SINGLE_MAINTAINER_RELEASE_PR.number &&
+      pr.merge_commit_sha === SINGLE_MAINTAINER_RELEASE_PR.mergeSha,
+      "single-maintainer exception requires the pinned release preparation PR and merge SHA");
     // A reviewed metadata PR can precede later main commits. The actual release
     // approval still binds to the newest exact main SHA (not the stale PR SHA).
     const comparison = await getJson(api+"/compare/"+

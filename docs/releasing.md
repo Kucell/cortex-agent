@@ -63,25 +63,25 @@ If the commit or version changes, the job stops and must be started again.
 A GitHub Actions success alone from an unchecked run is a dry-run, not
 evidence of npm publication.
 
-## Single-maintainer exception — v1.15.6 only
+## Single-maintainer exception for v1.16.0
 
-A project with one authorized repository maintainer may release **v1.15.6 only**
-without inventing a second GitHub reviewer, but this is **not** an implicit
-override of CI or governance approvals:
+The repository has one authorized maintainer. This exception permits the
+maintainer to publish **v1.16.0** from release-preparation PR [#190](https://github.com/Kucell/cortex-agent/pull/190)
+under the following conditions.
 
 1. The canonical private governance `/release` Decision must be genuinely
    `approved`, `resolved_by=interactive-user`, `workflow_gate=user`,
    `type=approval`, selected option **`approve-single-maintainer`**, and
    `options` must explicitly include that option. Its `rationale` must mention
-   `single-maintainer` and `v1.15.6`.
+   `single-maintainer` and `v1.16.0`.
 2. A matching `released` Waitpoint must be released by `/release` with
    `workflow_gate=owner`. Both records must bind to the **actual current main**
    using `release:cortex-agent@<mainSHA>`; prior 1.15.0 release records are invalid
    for this candidate.
-3. The release-preparation PR must really have merged, modify only reviewed
-   metadata/verification paths, and its merge SHA must be an ancestor of current
-   main. It need not equal current main when later safe fixes landed. Any
-   `CHANGES_REQUESTED` review blocks the waiver.
+3. PR #190 must match its pinned merge commit
+   `9cdf6ae9978dad96de1594465a0010d3dbf0a02d`, modify only the allowed release
+   paths and be an ancestor of current main. Any `CHANGES_REQUESTED` review
+   blocks publication under the exception.
 4. The release-workflow preflight, exact-head tests, packaging, npm/tag
    collision checks and effect-time authority checks remain mandatory.
    This exception does not change GitHub permissions, npm Trusted Publishing
@@ -98,10 +98,10 @@ is `approve`. **Do not falsify an APPROVED GitHub Review to activate this mode.*
 - **Automatic preflight:** `.github/workflows/npm-release-preflight.yml` runs after version-file changes land on `main`. This workflow has read-only permissions, runs architecture/contract tests and `npm pack --dry-run`, and never publishes.
 - **Publish trigger:** the owner dispatches `npm-release.yml` from `main` with `publish=true` and the governance inputs listed above. Publication always runs under the `workflow_dispatch` event, because npm Trusted Publishing rejects OIDC tokens minted for `issue_comment` runs.
 - **Credential prerequisite:** configure a read-only credential in secret `CORTEX_GOVERNANCE_READ_TOKEN` capable of reading the private `Kucell/cortex-agent-agent` Decision/Waitpoint files. Prefer a short-lived GitHub App installation token; do not use npm tokens or put credentials in versioned files.
-- The release gate must verify the exact main commit, actual merged release-preparation PR (matching main or an ancestor in the explicitly approved v1.15.6 single-maintainer mode), accepted file scope, private interactive-user-approved Decision and owner-released Waitpoint for the exact main, and current package version. An ordinary approval requires a distinct write-authorized reviewer; the explicit v1.15.6 `approve-single-maintainer` mode waives only this reviewer identity requirement. Active `CHANGES_REQUESTED` is never waived.
+- The release gate verifies the exact main commit, the merged release-preparation PR, allowed file scope, current package version, a private interactive-user-approved Decision and an owner-released Waitpoint. Ordinary approvals require a distinct reviewer with write access and the PR must match current main. The explicit v1.16.0 single-maintainer exception permits the pinned PR to precede current main and waives the separate reviewer requirement. A `CHANGES_REQUESTED` review still blocks publication.
 - **Input format:** `release_pr` is the merged release-preparation PR number, `expected_sha` is the exact current `main` SHA, and `decision_id` / `waitpoint_id` are the IDs created by the authoritative `/release` owner after the exact-commit dry-run / approval process. Do not confuse a GitHub PR comment with the authoritative Cortex Decision/Waitpoint itself.
 - Failure to verify anything (including unavailable private governance credential) blocks publication; no fallback to simulated approvals or `--force`.
-- Publisher remains `npm-release.yml` with npm Trusted Publishing/OIDC. Publication uses `release_type=current`, `dist_tag=latest` and the existing validations/retry logic. **Manual dispatch is the only publication path; `publish=true` is not an authorization bypass.** It requires the same live private Decision + released Waitpoint, independent write-authorized review, and exact-head verification.
+- The owner dispatches `npm-release.yml` with `release_type=current`, `dist_tag=latest` and `publish=true`. npm Trusted Publishing uses the resulting OIDC identity. The workflow verifies the live private Decision and released Waitpoint, the exact source commit, and the applicable review path above.
 
 **Important:** A pull request that adds this automation cannot activate the trigger until it is separately reviewed and merged. The publish path is owner-dispatched and fail-closed; do not weaken the gate without a separately reviewed policy.
 
