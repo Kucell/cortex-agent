@@ -9,18 +9,13 @@ const MATCH = /^\/cortex-release publish v(\d+\.\d+\.\d+) decision=(D-[A-Za-z0-9
 // the changelog and the consistency test that guards the carrier versions.
 const { carrierFiles } = require(path.join(__dirname, "..", "..", "lib", "release", "version-carriers"));
 const ALLOWED = new Set([...carrierFiles(), "pnpm-lock.yaml", "CHANGELOG.md", "tests/release/release-version-consistency.test.js"]);
-// The single-maintainer exception is bound to one exact release version. The
-// binding lives in a single constant because it used to be hardcoded twice —
-// once in the command check and once in the Decision-rationale pattern — and
-// the two must name the same version or the waiver becomes unusable.
-const SINGLE_MAINTAINER_EXCEPTION_VERSION = "1.16.0";
-const SINGLE_MAINTAINER_RELEASE_PR = Object.freeze({
+// Metadata for 1.16.0 was merged before the single-maintainer policy.
+// Later releases must use a metadata PR merged at the current main commit.
+const SINGLE_MAINTAINER_TRANSITION = Object.freeze({
+  version: "1.16.0",
   number: 190,
   mergeSha: "9cdf6ae9978dad96de1594465a0010d3dbf0a02d",
 });
-const SINGLE_MAINTAINER_EXCEPTION_VERSION_RE = new RegExp(
-  SINGLE_MAINTAINER_EXCEPTION_VERSION.replace(/\./g, "\\."),
-);
 function must(ok, reason) { if (!ok) throw new Error("RELEASE_GATE_BLOCKED: " + reason); }
 function parseCommand(body) {
   const m = String(body || "").trim().match(MATCH);
@@ -46,9 +41,12 @@ function hasIndependentApproval(pr, reviews, eligibleReviewers = null) {
     (eligibleReviewers === null || eligibleReviewers.has(r.user.login.toLowerCase())) &&
     r.commit_id === pr.head.sha);
 }
-function validateGovernance(decision, waitpoint, sha, now=new Date()) {
+function validateGovernance(decision, waitpoint, sha, now=new Date(), version) {
   const target = "release:cortex-agent@" + sha;
   const waiver = decision.selected_option === "approve-single-maintainer";
+  const rationaleVersion = /^\d+\.\d+\.\d+$/.test(version)
+    ? new RegExp("\\bv" + version.replace(/\./g, "\\.") + "(?![\\w+-]|\\.\\d)")
+    : null;
   must(decision.type === "approval" && decision.status === "approved" &&
     (decision.selected_option === "approve" || waiver) &&
     (!waiver || (
@@ -56,7 +54,7 @@ function validateGovernance(decision, waitpoint, sha, now=new Date()) {
       decision.options.includes("approve-single-maintainer") &&
       typeof decision.rationale === "string" &&
       /single-maintainer/i.test(decision.rationale) &&
-      SINGLE_MAINTAINER_EXCEPTION_VERSION_RE.test(decision.rationale)
+      rationaleVersion && rationaleVersion.test(decision.rationale)
     )) &&
     decision.resolved_by === "interactive-user" && decision.workflow_gate === "user" &&
     decision.resolved_at && Number.isFinite(Date.parse(decision.resolved_at)) &&
@@ -147,22 +145,29 @@ async function verifyApproval({event,eventName="issue_comment",actor="Kucell",re
   const decision = decode(await getJson(base+"/decisions/"+command.decision+".json?ref=main",governanceToken,http));
   const waitpoint = decode(await getJson(base+"/waitpoints/"+command.waitpoint+".json?ref=main",governanceToken,http));
   must(decision.decision_id === command.decision && waitpoint.waitpoint_id === command.waitpoint,"governance ID mismatch");
-  validateGovernance(decision,waitpoint,mainSha,now);
+  validateGovernance(decision,waitpoint,mainSha,now,command.version);
   const waiver = decision.selected_option === "approve-single-maintainer";
   if (waiver) {
-    must(command.version === SINGLE_MAINTAINER_EXCEPTION_VERSION,
-      "single-maintainer exception limited to v" + SINGLE_MAINTAINER_EXCEPTION_VERSION);
-    must(pr.number === SINGLE_MAINTAINER_RELEASE_PR.number &&
-      pr.merge_commit_sha === SINGLE_MAINTAINER_RELEASE_PR.mergeSha,
-      "single-maintainer exception requires the pinned release preparation PR and merge SHA");
-    // A reviewed metadata PR can precede later main commits. The actual release
-    // approval still binds to the newest exact main SHA (not the stale PR SHA).
-    const comparison = await getJson(api+"/compare/"+
-      encodeURIComponent(pr.merge_commit_sha)+"..."+encodeURIComponent(mainSha),repoToken,http);
-    must(["ahead","identical"].includes(comparison.status) && comparison.behind_by === 0,
-      "approved release PR is not an ancestor of current main");
+    const collaborators = await getJson(api+"/collaborators?per_page=100",repoToken,http);
+    must(Array.isArray(collaborators) && collaborators.length < 100 &&
+      collaborators.every(row=>row && typeof row.login === "string" &&
+        row.permissions && typeof row.permissions.push === "boolean"),
+      "complete collaborator evidence required for single-maintainer release");
+    const writers = collaborators.filter(row=>row.permissions.push);
+    must(writers.length === 1 && writers[0].login === actor,
+      "single-maintainer release requires the repository owner to be the sole writer");
+    if (pr.merge_commit_sha !== mainSha) {
+      must(command.version === SINGLE_MAINTAINER_TRANSITION.version &&
+        pr.number === SINGLE_MAINTAINER_TRANSITION.number &&
+        pr.merge_commit_sha === SINGLE_MAINTAINER_TRANSITION.mergeSha,
+        "release preparation PR merge SHA differs from current main");
+      const comparison = await getJson(api+"/compare/"+
+        encodeURIComponent(pr.merge_commit_sha)+"..."+encodeURIComponent(mainSha),repoToken,http);
+      must(["ahead","identical"].includes(comparison.status) && comparison.behind_by === 0,
+        "approved release PR is not an ancestor of current main");
+    }
     must(!reviews.some(r=>r.state === "CHANGES_REQUESTED"),
-      "unresolved PR change request forbids review waiver");
+      "PR change request blocks single-maintainer release");
   } else {
     must(pr.merge_commit_sha === mainSha, "release PR merge digest differs from current HEAD");
     must(hasIndependentApproval(pr,reviews,eligible),
@@ -181,4 +186,4 @@ async function main() {
   console.log("Governed release gate verified exact HEAD "+result.sha+" from merged PR #"+result.pr);
 }
 if (require.main === module) main().catch(e=>{console.error(e.message);process.exitCode=1;});
-module.exports = {parseCommand,hasIndependentApproval,validateGovernance,resolveReleaseTrigger,verifyApproval,ALLOWED,SINGLE_MAINTAINER_EXCEPTION_VERSION};
+module.exports = {parseCommand,hasIndependentApproval,validateGovernance,resolveReleaseTrigger,verifyApproval,ALLOWED};

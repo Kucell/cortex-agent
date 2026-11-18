@@ -1,7 +1,7 @@
 "use strict";
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { parseCommand, hasIndependentApproval, validateGovernance, verifyApproval, SINGLE_MAINTAINER_EXCEPTION_VERSION } = require("../../scripts/release/verify-approved-release.cjs");
+const { parseCommand, hasIndependentApproval, validateGovernance, verifyApproval } = require("../../scripts/release/verify-approved-release.cjs");
 const sha = "a".repeat(40);
 const decision = {decision_id:"D-release-1",type:"approval",status:"approved",selected_option:"approve",resolved_by:"interactive-user",workflow_gate:"user",resolved_at:"2026-10-09T06:00:00Z",gate:{action:"release",resource_ref:"release:cortex-agent@"+sha}};
 const waitpoint = {waitpoint_id:"WP-release-1",status:"released",decision_id:"D-release-1",released_by:"/release",workflow_gate:"owner",released_at:"2026-10-09T06:05:00Z",gate:{action:"release",resource_ref:"release:cortex-agent@"+sha}};
@@ -134,6 +134,8 @@ function verifySingleMaintainer({
  releaseReviews = [],
  comparison = {status:"ahead",ahead_by:1,behind_by:0},
  packageVersion = "1.16.0",
+ releaseDecision = singleMaintainerDecision,
+ collaborators = [{login:"Kucell",permissions:{push:true}}],
 } = {}) {
  const prPath = "/pulls/" + releasePr.number;
  return verifyApproval({
@@ -146,41 +148,48 @@ function verifySingleMaintainer({
      if (uri.includes(prPath+"/files")) return http(uri.replace(prPath, "/pulls/51"));
      if (uri.includes(prPath+"/reviews")) return Promise.resolve(ok(releaseReviews));
      if (uri.includes("/compare/")) return Promise.resolve(ok(comparison));
-     if (uri.includes("/decisions/")) return Promise.resolve(ok(b64(singleMaintainerDecision)));
+     if (uri.includes("/collaborators?")) return Promise.resolve(ok(collaborators));
+     if (uri.includes("/decisions/")) return Promise.resolve(ok(b64(releaseDecision)));
      return http(uri);
    },
  });
 }
 
-test("the single-maintainer exception is bound to exactly one version",()=>{
- assert.equal(SINGLE_MAINTAINER_EXCEPTION_VERSION,"1.16.0");
- // Both the command check and the Decision-rationale pattern read the same
- // constant. They used to hardcode the version twice, so the two could drift
- // apart and make the waiver silently unusable.
- const ok={...decision,selected_option:"approve-single-maintainer",
-  options:["approve","reject","approve-single-maintainer"],
-  rationale:"single-maintainer v"+SINGLE_MAINTAINER_EXCEPTION_VERSION};
- assert.equal(validateGovernance(ok,waitpoint,sha),"release:cortex-agent@"+sha);
- // A rationale naming any other version is rejected.
- assert.throws(()=>validateGovernance({...ok,rationale:"single-maintainer v1.15.6"},waitpoint,sha));
+test("single maintainer approval rationale names the exact candidate version",()=>{
+ const now = new Date("2026-11-18T06:00:00Z");
+ assert.equal(validateGovernance(singleMaintainerDecision,waitpoint,sha,now,"1.16.0"),"release:cortex-agent@"+sha);
+ for(const version of ["1.16.1","1.16.0-rc.1","1.16.0+test",undefined]) {
+  assert.throws(()=>validateGovernance(singleMaintainerDecision,waitpoint,sha,now,version),/approved release Decision/);
+ }
+ assert.throws(()=>validateGovernance({...singleMaintainerDecision,rationale:"single-maintainer v1.16.0-rc.1"},waitpoint,sha,now,"1.16.0"),/approved release Decision/);
 });
-test("single maintainer release exception is explicit, version-bound and ancestry-checked", async () => {
+test("the 1.16.0 transition accepts only the pinned ancestor PR", async () => {
   const run=await verifySingleMaintainer();
   assert.deepEqual(run,{version:"1.16.0",sha,pr:190,review_mode:"single-maintainer"});
   await assert.rejects(()=>verifySingleMaintainer({comparison:{status:"diverged",ahead_by:2,behind_by:1}}),/not an ancestor/);
-  await assert.rejects(()=>verifySingleMaintainer({packageVersion:"1.16.1"}),/limited to v1\.16\.0/);
+  await assert.rejects(()=>verifySingleMaintainer({releasePr:{...singleMaintainerPr,number:191}}),/differs from current main/);
+  await assert.rejects(()=>verifySingleMaintainer({releasePr:{...singleMaintainerPr,merge_commit_sha:"d".repeat(40)}}),/differs from current main/);
 });
-test("single maintainer exception rejects every other PR or release preparation merge SHA", async () => {
-  await assert.rejects(()=>verifySingleMaintainer({releasePr:{...singleMaintainerPr,number:191}}),/pinned release preparation PR/);
-  await assert.rejects(()=>verifySingleMaintainer({releasePr:{...singleMaintainerPr,merge_commit_sha:"d".repeat(40)}}),/pinned release preparation PR/);
+test("later single maintainer releases require sole writer and metadata merged at current main", async () => {
+ const releaseDecision = {...singleMaintainerDecision,rationale:"single-maintainer v1.16.1"};
+ const future = {packageVersion:"1.16.1",releasePr:{...pr,number:192},releaseDecision};
+ assert.deepEqual(await verifySingleMaintainer(future),{version:"1.16.1",sha,pr:192,review_mode:"single-maintainer"});
+ await assert.rejects(()=>verifySingleMaintainer({...future,releasePr:singleMaintainerPr}),/differs from current main/);
+ await assert.rejects(()=>verifySingleMaintainer({...future,collaborators:[
+  {login:"Kucell",permissions:{push:true}}, {login:"other-writer",permissions:{push:true}},
+ ]}),/sole writer/);
 });
-test("waiver cannot be implicitly inferred from 'approve' or rationale alone",()=>{
-  assert.throws(()=>validateGovernance({...decision,selected_option:"approve-single-maintainer",options:["approve","reject"],
-    rationale:"single-maintainer v1.16.0"},waitpoint,sha));
-  assert.throws(()=>validateGovernance({...decision,selected_option:"approve-single-maintainer",options:["approve","reject","approve-single-maintainer"],
-    rationale:"v1.16.0"},waitpoint,sha));
-  assert.throws(()=>validateGovernance({...decision,selected_option:"approve-single-maintainer",options:["approve","reject","approve-single-maintainer"],
-    rationale:"single-maintainer but for v1.15.6"},waitpoint,sha));
+test("single maintainer permission requires an explicit option and rationale",async()=>{
+  await assert.rejects(()=>verifySingleMaintainer({
+   releaseDecision:{...singleMaintainerDecision,options:["approve","reject"]},
+  }),/approved release Decision/);
+  await assert.rejects(()=>verifySingleMaintainer({
+   releaseDecision:{...singleMaintainerDecision,rationale:"v1.16.0"},
+  }),/approved release Decision/);
+  await assert.rejects(()=>verifySingleMaintainer({
+   releaseDecision:{...singleMaintainerDecision,selected_option:"approve"},
+   releasePr:{...singleMaintainerPr,merge_commit_sha:sha},
+  }),/independent write-authorized/);
 });
 test("waiver does not allow unanswered change-requested reviews",async()=>{
   const objection={state:"CHANGES_REQUESTED",user:{login:"different-reviewer"},commit_id:pr.head.sha};
