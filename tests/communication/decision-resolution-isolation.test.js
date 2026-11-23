@@ -164,6 +164,25 @@ for (const variant of VARIANTS) {
     });
   }
 
+  for (const [status, selected] of OUTCOMES.filter(([outcome]) => outcome !== "approved")) {
+    test(variant + ": " + status + " Decision cannot release a Waitpoint or mutate state", (t) => {
+      const cwd = fixture(t, variant);
+      const decision = resolve(variant, cwd, status, selected);
+      assert.equal(decision.status, 0, decision.stderr + decision.stdout);
+      const beforeRelease = snapshot(cwd);
+
+      const released = run(variant, cwd, [
+        "waitpoints", "release", "--waitpoint-id", "WP-blocked", "--gate", "owner",
+        "--owner-workflow", "/mission", "--decision-id", DECISION_ID,
+        "--released-by", "mission-coordinator",
+      ]);
+      assert.equal(released.status, 1, released.stderr + released.stdout);
+      assert.equal(JSON.parse(released.stdout).error, "decision_not_approved");
+      assert.deepEqual(snapshot(cwd), beforeRelease);
+      assert.equal(read(cwd, "waitpoints/WP-blocked.json").status, "blocked");
+    });
+  }
+
   test(variant + ": an owning workflow can still explicitly release after approval", (t) => {
     const cwd = fixture(t, variant);
     const result = resolve(variant, cwd, "approved", "approve");
