@@ -9,13 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- 下一个版本的条目写在这里 -->
 
-## [1.16.0] - 2026-11-18 (release candidate, publication pending)
+## [1.16.0] - 2026-11-18 (npm publication indexed; registry verification incomplete)
 
-> **状态**：本条目是 **release candidate**，**尚未发布**到 npm；`2026-11-18` 是候选版本冻结日期，不是发布日期。
-> **已发布基线**：npm registry 上 `cortex-agent` 的最高已发布版本为 `1.15.6`（`latest` = `1.15.6`）。本条目记录的 `1.15.7`–`1.15.14` 以及 `1.16.0` 在 npm 上均未发布。
-> **验收边界**：本次发布授权、正式候选产物校验与 npm 发布本身均未完成，详见 *Pending for This Release Candidate*。
+> **版本状态**：产品仓已在 PR #190 合并 `1.16.0` 版本元数据；第三方 npm 版本索引记录 `cortex-agent@1.16.0` 于 2026-11-18 出现（https://nichedb.dev/i/798534950）。本轮未能直接读取 npm 官方 Registry 返回的具体版本元数据、发布签名或 provenance，因此不能把索引记录提升为完整发布验收。
+> **发布证据边界**：`1.15.6` 是此处合并差异的历史基线，**不是本次已核验的 npm `latest`**。`1.16.0` 有外部版本索引证据，但 `latest` dist-tag、官方 publish timestamp、对应 tarball digest、Git tag/Release 与 provenance 仍需逐项核验。`1.15.7`–`1.15.14` 的条目仍是源码版本历史，不据此推定它们独立发布到 npm。
+> **验收边界**：PR #190/#191/#192 合并说明已有发布准备与流程实现，不替代 Registry 真源、发布授权回执及产物的独立对账。L3 完整自主执行仍需独立授权与真实 Host 验收，详见 *Release Evidence Reconciliation Pending*。
 
-Advisor-only development candidate; not published. This release scope covers read-only advice, proposal preparation and upgrade/safety fixes. Real L3 autonomy and real AI Host execution are deferred to incremental, independently accepted 1.16.x delivery. The formal 28-item authorization/L3/SelfEvolution matrix remains a future L3 enablement gate, not a blanket prerequisite for this advisor-only release.
+Advisor-only release scope (publication indexed externally; authoritative registry verification pending). This scope covers read-only advice, proposal preparation and upgrade/safety fixes. Real L3 autonomy and real AI Host execution are deferred to incremental, independently accepted 1.16.x delivery. The formal 28-item authorization/L3/SelfEvolution matrix remains a future L3 enablement gate, not a blanket prerequisite for this advisor-only release.
 
 ### Merged Since Published 1.15.6 Baseline (v1.15.6 → 11dc3ef0)
 
@@ -65,10 +65,10 @@ Advisor-only development candidate; not published. This release scope covers rea
 - 历史候选曾在全新公开源码快照中运行既有九条 release CLI 回归（白名单环境变量、空命令搜索路径、临时 HOME/TMP 目录），成功运行正常退出，**未覆盖**超时清理分支。
 - 该 advisor-only 范围变更本身不构成最终发布产物或其已发布基线版本迁移的验证；相关文档、一致性、边界、next-action、archive-proposal、升级与打包检查须针对经评审的候选重新记录。
 
-### Pending for This Release Candidate
+### Release Evidence Reconciliation Pending
 
-- 本次候选尚未获得独立发布授权，npm 上仍无 `1.16.0`。
-- 针对本次候选的精确 source / artifact 版本迁移证据、正式候选产物校验与发布动作均未完成；上文 *Historical Validation Evidence* 属于此前候选的历史记录，不得当作本次发布验证使用。
+- 外部 npm 索引显示 2026-11-18 已存在 `cortex-agent@1.16.0`；官方 npm Registry 精确版本、`latest`、provenance、Git tag/Release 和发布授权回执仍为 **NOT_VERIFIED**，不可声称不存在或已完全审计。
+- PR #190 描述了发布专项 50 项、产品回归 278 项、必需 full-test 及 Node 22/24 离线包验收；它们是该 PR 的候选验证记录，不能自动证明 npm 已发布产物与该候选字节一致。应补录正式发布产物 digest、对应源 SHA、迁移证据与 Registry 回执；上文 *Historical Validation Evidence* 不得冒充新验收。
 
 ## [1.15.14] - 2026-11-09
 
