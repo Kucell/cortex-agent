@@ -6,7 +6,7 @@
 
 Cortex 管理的是**项目生命周期**，而不是某一次 Agent 会话的生命周期。Agent、设备、Cloud Sandbox 和聊天会话都可以是临时的；Task / Mission / Decision / Waitpoint / Queue / Lock / Handoff / Evidence 等治理事实必须保持持久、可恢复、可审计，并在并发写入时 fail closed。
 
-> **1.16.0 建议型（advisor-only）候选范围，尚未发布**：本版交付只读 next-action 差距报告、建议计划草案、默认关闭的归档提案队列，以及升级保留与安全边界修复。公开 `dispatch dry-run` 仅提供只读预览；`dispatch execute`、`dispatch <task-id>`、`daemon` 和 `trigger` 继续为 Phase 0 stub，建议与 review receipt 均不授予执行权限。真实 L3 自主执行、Owner authority 与 AIHost 验收将在后续 **1.16.x** 按独立门槛逐步交付；formal28 是后续 L3 启用验收，不能把其全部未完成项当作本版建议型范围的前置条件。本版仍须完成对应候选验证及独立发布授权。
+> **v1.16.0 建议型（advisor-only）范围**：产品仓 `package.json` 已升级至 `1.16.0`（发布准备 PR #190 与发布流程修复 #191/#192 已合并）。外部 npm 索引记录 `cortex-agent@1.16.0` 于 2026-11-18 上线，但本次未能直接读取 npm 官方 Registry 的版本元数据、`latest` dist-tag 或 provenance，详见 [CHANGELOG](CHANGELOG.md) 的发布证据状态。功能范围仍限于只读 next-action 差距报告、建议计划草案、默认关闭的归档提案队列及升级/安全修复。公开 `dispatch dry-run` 只读；`dispatch execute`、`dispatch <task-id>`、`daemon` 和 `trigger` 仍为 Phase 0 stub。真实 L3 自主执行、Owner authority 与 AI Host 验收不得由该版本或发布记录推定已交付，须按独立 Gate 验收；formal28 属于 L3 启用验收，不是该 advisor-only 范围的发布声明。
 
 ## Remote & Detached Governance
 
